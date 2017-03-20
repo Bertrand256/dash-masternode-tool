@@ -529,7 +529,7 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         """
         Broadcasts information about configured Masternode within Dash network using Trezor for signing message
         and a Dash daemon for relaying message.
-        Building broadcast message is based on work of cheaplin (https://github.com/chaeplin/dashmnb)
+        Building broadcast message is based on work of chaeplin (https://github.com/chaeplin/dashmnb)
         """
         if self.curMasternode:
             if not self.curMasternode.collateralTx:
