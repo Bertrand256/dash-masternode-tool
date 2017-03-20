@@ -68,6 +68,7 @@ class Ui_DialogConnection(wnd_conn_base.Ui_DialogConnection, WndUtils):
             self.edtRpcPort.setFocus()
             return False
         modified = modified or cfg.rpc_user != self.edtRpcUsername.text()
+        cfg.rpc_user = self.edtRpcUsername.text()
         modified = modified or cfg.rpc_password != self.edtRpcPassword.text()
         cfg.rpc_password = self.edtRpcPassword.text()
 
