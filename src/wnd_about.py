@@ -34,9 +34,9 @@ class Ui_DialogAbout(wnd_about_base.Ui_DialogAbout, WndUtils):
             self.textAbout.setHtml(self.textAbout.toHtml().replace('font-size:11pt', 'font-size:10pt'))
             self.textAbout.setHtml(self.textAbout.toHtml().replace('font-size:9pt', 'font-size:8pt'))
         elif sys.platform == 'darwin':
-            # self.window.resize(600, 290)
             self.textAbout.setHtml(self.textAbout.toHtml().replace('font-size:11pt', 'font-size:13pt'))
-        pass
+        elif sys.platform == 'linux':
+            self.window.resize(620, 320)
 
     def closeClicked(self):
         self.window.accept()
