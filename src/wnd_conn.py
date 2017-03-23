@@ -168,7 +168,7 @@ class Ui_DialogConnection(wnd_conn_base.Ui_DialogConnection, WndUtils):
                             self.warnMsg("Remote dash.conf parameter 'rpcpassword' is not set, so RPC interface will  "
                                          "not work.")
                 elif isinstance(dashd_conf, str):
-                    self.warnMsg("Couldn't read the remote dashd configuration file due the following error: " +
+                    self.warnMsg("Couldn't read remote dashd configuration file due the following error: " +
                                  dashd_conf)
                 ssh.disconnect()
             except Exception as e:

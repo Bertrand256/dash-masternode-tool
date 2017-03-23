@@ -19,6 +19,7 @@ from PyQt5.QtCore import QThread
 from PyQt5.QtCore import QTimer
 from PyQt5.QtGui import QFont
 from PyQt5.QtGui import QPixmap
+from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtWidgets import QMessageBox
 from trezorlib import client
 from src import dash_utils
@@ -51,10 +52,27 @@ class CheckForUpdateThread(QThread):
             remote_version_str = Ui_MainWindow.extractAppVersion(lines)
             remote_ver = Ui_MainWindow.versionStrToNumber(remote_version_str)
             local_ver = Ui_MainWindow.versionStrToNumber(self.current_app_version)
+
             if remote_ver > local_ver:
-                self.update_status_signal.emit("New version available (" + remote_version_str +
-                                               '). Go to the project\'s website: <a href="' + PROJECT_URL + '">' +
-                                               PROJECT_URL + '</a>', 'green')
+                if sys.platform == 'win32':
+                    item_name = 'exe_win'
+                elif sys.platform == 'darwin':
+                    item_name = 'exe_mac'
+                else:
+                    item_name = 'exe_linux'
+                exe_url = ''
+                for line in lines:
+                    elems = [x.strip() for x in line.split('=')]
+                    if len(elems) == 2 and elems[0] == item_name:
+                        exe_url = elems[1].strip("'")
+                        break
+                if exe_url:
+                    msg = 'Download URL: <a href="' + exe_url + '">' + exe_url + '</a>'
+                else:
+                    msg = 'Go to the project\'s website: <a href="' + PROJECT_URL + '">' + PROJECT_URL + '</a>'
+
+
+                self.update_status_signal.emit("New version available (" + remote_version_str + '). ' + msg, 'green')
         except Exception as e:
             pass
 
@@ -89,12 +107,14 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         main_window.setWindowTitle(APP_NAME_LONG + ' by Bertrand256' + (
             ' (v. ' + self.version_str + ')' if self.version_str else ''))
 
+        self.window = main_window
         self.dashd_intf.window = main_window
         self.btnConfigureDashdConnection.clicked.connect(self.btnDashdConnConfigClick)
         self.btnCheckConnection.clicked.connect(self.btnDashdConnCheckClick)
         self.cboMasternodes.currentIndexChanged.connect(self.cboMasternodesIndexChanged)
         self.btnNewMn.clicked.connect(self.btnNewMnClick)
         self.btnDeleteMn.clicked.connect(self.btnDeleteMnClick)
+        self.btnImportMasternodeConf.clicked.connect(self.btnImportMasternodesConfClick)
         self.btnEditConfiguration.clicked.connect(self.btnEditConfigurationClick)
         self.btnSaveConfiguration.clicked.connect(self.btnSaveConfigurationClick)
         self.btnReadAddressFromTrezor.setEnabled(False)
@@ -201,22 +221,23 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                 self.lblConnectionType.setText('RPC over SSH')
 
     def displayMasternodeConfig(self, set_mn_list_index):
-        if self.curMasternode:
-            if set_mn_list_index:
+        if self.curMasternode and set_mn_list_index:
                 self.cboMasternodes.setCurrentIndex(self.config.masternodes.index(self.curMasternode))
-            try:
+        try:
+            if self.curMasternode:
                 self.curMasternode.lock_modified_change = True
-                self.edtMnName.setText(self.curMasternode.name if self.curMasternode else '')
-                self.edtMnIp.setText(self.curMasternode.ip if self.curMasternode else '')
-                self.edtMnPort.setText(str(self.curMasternode.port) if self.curMasternode else '')
-                self.edtMnPrivateKey.setText(self.curMasternode.privateKey if self.curMasternode else '')
-                self.edtMnCollateralBip32Path.setText(self.curMasternode.collateralBip32Path
-                                                      if self.curMasternode else '')
-                self.edtMnCollateralAddress.setText(self.curMasternode.collateralAddress if self.curMasternode else '')
-                self.edtMnCollateralTx.setText(self.curMasternode.collateralTx if self.curMasternode else '')
-                self.edtMnCollateralTxIndex.setText(self.curMasternode.collateralTxIndex if self.curMasternode else '')
-                self.edtMnStatus.setText('')
-            finally:
+            self.edtMnName.setText(self.curMasternode.name if self.curMasternode else '')
+            self.edtMnIp.setText(self.curMasternode.ip if self.curMasternode else '')
+            self.edtMnPort.setText(str(self.curMasternode.port) if self.curMasternode else '')
+            self.edtMnPrivateKey.setText(self.curMasternode.privateKey if self.curMasternode else '')
+            self.edtMnCollateralBip32Path.setText(self.curMasternode.collateralBip32Path
+                                                  if self.curMasternode else '')
+            self.edtMnCollateralAddress.setText(self.curMasternode.collateralAddress if self.curMasternode else '')
+            self.edtMnCollateralTx.setText(self.curMasternode.collateralTx if self.curMasternode else '')
+            self.edtMnCollateralTxIndex.setText(self.curMasternode.collateralTxIndex if self.curMasternode else '')
+            self.edtMnStatus.setText('')
+        finally:
+            if self.curMasternode:
                 self.curMasternode.lock_modified_change = False
 
     def btnDashdConnConfigClick(self):
@@ -365,11 +386,110 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                 return
             self.config.masternodes.remove(self.curMasternode)
             self.cboMasternodes.removeItem(self.cboMasternodes.currentIndex())
-            pass
+            self.config.modified = True
+            self.checkControlsState()
 
     def btnEditConfigurationClick(self):
         self.editingEnabled = True
         self.checkControlsState()
+
+    def btnImportMasternodesConfClick(self):
+        """
+        Imports masternodes configuration from masternode.conf file.
+        """
+        fileName = QFileDialog.getOpenFileName(self.window,
+                                               caption='Open masternode configuration file',
+                                               directory='',
+                                               filter="All Files (*);;Conf files (*.conf)",
+                                               initialFilter="Conf files (*.conf)"
+                                               )
+
+        if fileName and len(fileName) > 0 and fileName[1]:
+            if os.path.exists(fileName[0]):
+                try:
+                    with open(fileName[0], 'r') as f_ptr:
+                        modified = False
+                        imported_cnt = 0
+                        skipped_cnt = 0
+                        for line in f_ptr.readlines():
+                            line = line.strip()
+                            if not line:
+                                continue
+                            elems = line.split()
+                            if len(elems) >= 5 and not line.startswith('#'):
+                                mn_name = elems[0]
+                                mn_ipport = elems[1]
+                                mn_privkey = elems[2]
+                                mn_tx_hash = elems[3]
+                                mn_tx_idx = elems[4]
+                                mn_dash_addr = ''
+                                if len(elems) > 5:
+                                    mn_dash_addr = elems[5]
+
+                                def update_mn(mn):
+                                    mn.name = mn_name
+                                    ipelems = mn_ipport.split(':')
+                                    if len(ipelems) >= 2:
+                                        mn.ip = ipelems[0]
+                                        mn.port = ipelems[1]
+                                    else:
+                                        mn.ip = mn_ipport
+                                        mn.port = '9999'
+                                    mn.privateKey = mn_privkey
+                                    mn.collateralAddress = mn_dash_addr
+                                    mn.collateralTx = mn_tx_hash
+                                    mn.collateralTxIndex = mn_tx_idx
+                                    mn.collateralBip32Path = ''
+
+                                mn = self.config.get_mn_by_name(mn_name)
+                                if mn:
+                                    msg = QMessageBox()
+                                    msg.setIcon(QMessageBox.Information)
+                                    msg.setText('Masternode ' + mn_name +' exists. Overwrite?')
+                                    msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                                    msg.setDefaultButton(QMessageBox.Ok)
+                                    retval = msg.exec_()
+                                    del msg
+                                    if retval == QMessageBox.No:
+                                        skipped_cnt += 1
+                                        continue
+                                    else:
+                                        # overwrite data
+                                        imported_cnt += 1
+                                        update_mn(mn)
+                                        mn.modified = True
+                                        modified = True
+                                        if self.curMasternode == mn:
+                                            # current mn has been updated - update UI controls to new data
+                                            self.displayMasternodeConfig(False)
+                                else:
+                                    imported_cnt += 1
+                                    mn = MasterNodeConfig()
+                                    update_mn(mn)
+                                    modified = True
+                                    self.config.add_mn(mn)
+                                    self.cboMasternodes.addItem(mn.name, mn)
+                            else:
+                                # incorrenct number of elements
+                                skipped_cnt += 1
+                        if modified:
+                            self.checkControlsState()
+                        if imported_cnt:
+                            msg = 'Successfully imported %s masternode(s)' % str(imported_cnt)
+                            if skipped_cnt:
+                                msg += ', skipped: %s' % str(skipped_cnt)
+                            msg += ".\n\nNow you have to manually fill out the BIP32 path of the collateral " \
+                                   "for each of imported Masternodes."
+                            self.infoMsg(msg)
+                        elif skipped_cnt:
+                            self.infoMsg('Operation finished with no imported and %s skipped masternodes.'
+                                         % str(skipped_cnt))
+
+                except Exception as e:
+                    self.errorMsg('Reading file failed: ' + str(e))
+            else:
+                if fileName[0]:
+                    self.errorMsg("File '" + fileName[0] + "' does not exist")
 
     def btnSaveConfigurationClick(self):
         self.config.save_to_file()

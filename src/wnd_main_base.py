@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(840, 441)
+        MainWindow.resize(842, 441)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(1)
@@ -69,6 +69,9 @@ class Ui_MainWindow(object):
         self.btnEditConfiguration.setMaximumSize(QtCore.QSize(100, 16777215))
         self.btnEditConfiguration.setObjectName("btnEditConfiguration")
         self.horizontalLayout_4.addWidget(self.btnEditConfiguration)
+        self.btnImportMasternodeConf = QtWidgets.QPushButton(self.groupBox_3)
+        self.btnImportMasternodeConf.setObjectName("btnImportMasternodeConf")
+        self.horizontalLayout_4.addWidget(self.btnImportMasternodeConf)
         spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout_4.addItem(spacerItem)
         self.gridLayout_2.addLayout(self.horizontalLayout_4, 0, 1, 1, 1)
@@ -395,6 +398,8 @@ class Ui_MainWindow(object):
         self.btnDeleteMn.setText(_translate("MainWindow", "Delete"))
         self.btnEditConfiguration.setToolTip(_translate("MainWindow", "Enable editing"))
         self.btnEditConfiguration.setText(_translate("MainWindow", "Edit"))
+        self.btnImportMasternodeConf.setToolTip(_translate("MainWindow", "Import Masternodes from masternode.conf file"))
+        self.btnImportMasternodeConf.setText(_translate("MainWindow", "Import"))
         self.edtMnIp.setToolTip(_translate("MainWindow", "The Masternode\'s IP address for incoming communication with other nodes"))
         self.label_11.setText(_translate("MainWindow", "port:"))
         self.edtMnPort.setToolTip(_translate("MainWindow", "The Masternode\'s TCP port number for incoming communication with other nodes"))
