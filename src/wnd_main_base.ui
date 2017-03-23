@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>840</width>
+    <width>842</width>
     <height>441</height>
    </rect>
   </property>
@@ -125,6 +125,16 @@
              </property>
              <property name="text">
               <string>Edit</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnImportMasternodeConf">
+             <property name="toolTip">
+              <string>Import Masternodes from masternode.conf file</string>
+             </property>
+             <property name="text">
+              <string>Import</string>
              </property>
             </widget>
            </item>

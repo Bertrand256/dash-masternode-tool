@@ -123,6 +123,21 @@ class AppConfig(object):
                 return True
         return False
 
+    def get_mn_by_name(self, name):
+        for mn in self.masternodes:
+            if mn.name == name:
+                return mn
+        return None
+
+    def add_mn(self, mn):
+        if not mn in self.masternodes:
+            existing_mn = self.get_mn_by_name(mn.name)
+            if not existing_mn:
+                self.masternodes.append(mn)
+            else:
+                raise Exception('Masternode with this name: ' + mn.name + ' already exists in configuration')
+
+
 
 class MasterNodeConfig:
     def __init__(self):

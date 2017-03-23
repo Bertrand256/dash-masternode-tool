@@ -185,7 +185,26 @@ class DashdSSH(object):
                         executable = elems[1].strip()
                         dashd_dir = os.path.dirname(executable)
                         dash_conf_file = dashd_dir + '/.dashcore/dash.conf'
-                        conf_lines = self.remote_command('cat ' + dash_conf_file)
+                        conf_lines = []
+                        try:
+                            conf_lines = self.remote_command('cat ' + dash_conf_file)
+                        except Exception as e:
+                            # probably error no such file or directory
+                            # try to read dashd's cwd + cmdline
+                            cwd_lines = self.remote_command('ls -l /proc/' + str(pid) + '/cwd')
+                            if cwd_lines:
+                                elems = cwd_lines[0].split('->')
+                                if len(elems) >= 2:
+                                    cwd = elems[1]
+                                    dash_conf_file = cwd + '/.dashcore/dash.conf'
+                                    try:
+                                        conf_lines = self.remote_command('cat ' + dash_conf_file)
+                                    except Exception as e:
+                                        # second method did not suceed, so assume, that conf file is located
+                                        # i /home/<username>/.dashcore directory
+                                        dash_conf_file = '/home/' + self.username + '/.dashcore/dash.conf'
+                                        conf_lines = self.remote_command('cat ' + dash_conf_file)
+
                         for line in conf_lines:
                             elems = [e.strip() for e in line.split('=')]
                             if len(elems) == 2:
