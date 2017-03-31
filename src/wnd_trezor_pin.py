@@ -32,7 +32,7 @@ class Ui_DialogTrezorPin(wnd_trezor_pin_base.Ui_DialogTrezorPin, WndUtils):
         self.btnPin9.clicked.connect(lambda: self.new_key('9'))
         self.btnEnterPin.clicked.connect(self.btnEnterClick)
         self.lblMessage.setText(self.message)
-        self.window.setWindowTitle('Trezor PIN')
+        self.window.setWindowTitle('Hardware wallet PIN')
 
     def btnDeleteClick(self):
         self.pin = self.pin[:-1]

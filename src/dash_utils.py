@@ -4,8 +4,10 @@
 # Created on: 2017-03
 
 import binascii
+
 import bitcoin
-from lib import base58
+
+from src import base58
 
 
 def pubkey_to_address(pubkey):

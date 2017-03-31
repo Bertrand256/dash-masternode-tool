@@ -3,6 +3,7 @@
 # Author: Bertrand256
 # Created on: 2017-03
 
+
 import base64
 import binascii
 import re
@@ -11,17 +12,15 @@ from PyQt5 import QtCore
 import bitcoin
 import os
 import sys
-import trezorlib.types_pb2 as types
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import QObject
 from PyQt5.QtCore import QSize
 from PyQt5.QtCore import QThread
 from PyQt5.QtCore import QTimer
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QFileDialog
 from PyQt5.QtWidgets import QMessageBox
-from trezorlib import client
 from src import dash_utils
 from src import wnd_about
 from src import wnd_conn
@@ -30,8 +29,10 @@ from src import wnd_trezor_pass
 from src import wnd_trezor_pin
 from src.app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG
 from src.dashd_intf import DashdInterface
-from src.trezor_intf import connect_trezor, TrezorCancelException
+from src.hw_common import HardwareWalletCancelException, HardwareWalletPinException
+from src.hw_intf import connect_hw, hw_get_address, disconnect_hw
 from src.wnd_utils import WndUtils
+
 
 PROJECT_URL = 'https://github.com/Bertrand256/dash-masternode-tool'
 
@@ -71,7 +72,6 @@ class CheckForUpdateThread(QThread):
                 else:
                     msg = 'Go to the project\'s website: <a href="' + PROJECT_URL + '">' + PROJECT_URL + '</a>'
 
-
                 self.update_status_signal.emit("New version available (" + remote_version_str + '). ' + msg, 'green')
         except Exception as e:
             pass
@@ -90,7 +90,7 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         self.dashd_info = {}
         self.is_dashd_syncing = False
         self.dashd_connection_ok = False
-        self.trezor_client = None
+        self.hw_client = None
         self.curMasternode = None
         self.editingEnabled = False
         self.app_path = app_path
@@ -134,6 +134,9 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         self.edtMnStatus.setReadOnly(True)
         self.edtMnStatus.setStyleSheet('QLineEdit{background-color: lightgray}')
         self.btnRefreshMnStatus.clicked.connect(self.btnRefreshMnStatusClick)
+        self.chbHwTrezor.toggled.connect(self.hwTypeChanged)
+        self.btnHwDisconnect.clicked.connect(self.hwDisconnect)
+        self.btnHwCheck.clicked.connect(self.hwCheck)
         main_window.closeEvent = self.closeEvent
         self.lblStatus = QtWidgets.QLabel(main_window)
         self.lblStatus.setTextFormat(QtCore.Qt.RichText)
@@ -145,10 +148,18 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         self.statusBar.addPermanentWidget(self.lblStatusDashd, 2)
         self.lblStatusDashd.setText('')
         self.processConnConfig()
-        self.checkControlsState()
         img = QPixmap(os.path.join(self.app_path, "img/dmt.png"))
         img = img.scaled(QSize(64, 64))
         self.lblAbout.setPixmap(img)
+        icon = QIcon()
+        icon.addPixmap(QPixmap(os.path.join(self.app_path, "img/hw-test.ico")))
+        self.btnHwCheck.setIcon(icon)
+        icon = QIcon()
+        icon.addPixmap(QPixmap(os.path.join(self.app_path, "img/hw-lock.ico")))
+        self.btnHwDisconnect.setIcon(icon)
+        icon = QIcon()
+        icon.addPixmap(QPixmap(os.path.join(self.app_path, "img/arrow-right.ico")))
+        self.btnReadAddressFromTrezor.setIcon(icon)
         if sys.platform == 'win32':
             f = QFont("MS Shell Dlg 2", 10)
             self.cboMasternodes.setFont(f)
@@ -171,6 +182,10 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         else:
             self.curMasternode = self.config.masternodes[0]
             self.displayMasternodeConfig(True)
+
+        # after loading whole configuration, reset 'modified' variable
+        self.config.modified = False
+        self.updateControlsState()
 
         # create a thread for checking if there is a new version
         self.update_thread = CheckForUpdateThread(self.update_status_signal, self.version_str)
@@ -219,10 +234,14 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                 self.lblConnectionType.setText('RPC')
             elif self.config.dashd_connect_method == 'rpc_ssh':
                 self.lblConnectionType.setText('RPC over SSH')
+        if self.config.hw_type == 'TREZOR':
+            self.chbHwTrezor.setChecked(True)
+        else:
+            self.chbHwKeepKey.setChecked(True)
 
     def displayMasternodeConfig(self, set_mn_list_index):
         if self.curMasternode and set_mn_list_index:
-                self.cboMasternodes.setCurrentIndex(self.config.masternodes.index(self.curMasternode))
+            self.cboMasternodes.setCurrentIndex(self.config.masternodes.index(self.curMasternode))
         try:
             if self.curMasternode:
                 self.curMasternode.lock_modified_change = True
@@ -249,7 +268,7 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                 try:
                     self.dashd_intf.disconnect()
                     self.processConnConfig()
-                    self.checkControlsState()
+                    self.updateControlsState()
                 except Exception as e:
                     self.errorMsg(str(e))
 
@@ -295,7 +314,7 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                                              str(self.dashd_info.get('protocolversion', ''))
                                              ), 'green')
                     break
-                except ConnectionResetError:
+                except (ConnectionResetError, ConnectionAbortedError):
                     self.setStatus1Text('', 'black')
                     continue
                 except Exception as e:
@@ -348,28 +367,61 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
             color = 'black'
         self.lblStatus.setStyleSheet('QLabel{color: ' + color + '}')
 
-    def connectTrezor(self):
-        if not self.trezor_client:
+    def getHwName(self):
+        if self.config.hw_type == 'TREZOR':
+            return 'Trezor'
+        else:
+            return 'KeepKey'
+
+    def connectHardwareWallet(self):
+        if not self.hw_client:
             try:
-                self.trezor_client = connect_trezor(self.askForPinCallback, self.askForPassCallback)
-                if self.trezor_client:
-                    self.setStatus1Text('Trezor status: Connected', 'green')
+                if sys.platform == 'linux':
+                    if (self.config.hw_type == 'TREZOR' and 'keepkeylib' in sys.modules.keys()) or \
+                       (self.config.hw_type == 'KEEPKEY' and 'trezorlib' in sys.modules.keys()):
+                        self.warnMsg('On linux OS switching between hardware wallets requires reastarting the '
+                                     'application.\n\nPlease restart the application to continue.')
+                        return
+
+                self.hw_client = connect_hw(self.config.hw_type, self.askForPinCallback, self.askForPassCallback)
+                if self.hw_client:
+                    self.setStatus1Text('%s status: connected device %s' % (self.getHwName(),
+                                                                            self.hw_client.features.label), 'green')
                 else:
-                    self.setStatus1Text('Trezor status: Cannot find Trezor device', 'red')
-                    self.errorMsg('Cannot find Trezor device.')
-            except client.PinException as e:
-                self.errorMsg(e.args[1])
-                if self.trezor_client:
-                    self.trezor_client.clear_session()
+                    self.setStatus1Text('%s status: cannot find %s device' %
+                                        (self.getHwName(), self.getHwName()), 'red')
+                    self.errorMsg('Cannot find %s device.' % self.getHwName())
+            except HardwareWalletPinException as e:
+                self.errorMsg(e.msg)
+                if self.hw_client:
+                    self.hw_client.clear_session()
             except OSError as e:
-                self.errorMsg('Cannot open Trezor device.')
+                self.errorMsg('Cannot open %s device.' % self.getHwName())
             except Exception as e:
                 self.errorMsg(str(e))
-                if self.trezor_client:
-                    self.trezor_client.init_device()
+                if self.hw_client:
+                    self.hw_client.init_device()
 
     def btnConnectTrezorClick(self):
-        self.connectTrezor()
+        self.connectHardwareWallet()
+
+    def hwCheck(self):
+        self.connectHardwareWallet()
+        self.updateControlsState()
+        if self.hw_client:
+            features = self.hw_client.features
+            self.hw_client.ping('Hello, press the button', button_protection=False,
+                                pin_protection=features.pin_protection,
+                                passphrase_protection=features.passphrase_protection)
+            self.infoMsg('Connection to %s device (%s) successful.' % (self.getHwName(), features.label))
+
+    def hwDisconnect(self):
+        if self.hw_client:
+            disconnect_hw(self.hw_client)
+            del self.hw_client
+            self.hw_client = None
+            self.setStatus1Text('%s status: disconnected' % (self.getHwName()), 'green')
+            self.updateControlsState()
 
     def btnNewMnClick(self):
         self.newMasternodeConfig()
@@ -387,11 +439,11 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
             self.config.masternodes.remove(self.curMasternode)
             self.cboMasternodes.removeItem(self.cboMasternodes.currentIndex())
             self.config.modified = True
-            self.checkControlsState()
+            self.updateControlsState()
 
     def btnEditConfigurationClick(self):
         self.editingEnabled = True
-        self.checkControlsState()
+        self.updateControlsState()
 
     def btnImportMasternodesConfClick(self):
         """
@@ -411,6 +463,7 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                         modified = False
                         imported_cnt = 0
                         skipped_cnt = 0
+                        mns_imported = []
                         for line in f_ptr.readlines():
                             line = line.strip()
                             if not line:
@@ -426,28 +479,28 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                                 if len(elems) > 5:
                                     mn_dash_addr = elems[5]
 
-                                def update_mn(mn):
-                                    mn.name = mn_name
+                                def update_mn(in_mn):
+                                    in_mn.name = mn_name
                                     ipelems = mn_ipport.split(':')
                                     if len(ipelems) >= 2:
-                                        mn.ip = ipelems[0]
-                                        mn.port = ipelems[1]
+                                        in_mn.ip = ipelems[0]
+                                        in_mn.port = ipelems[1]
                                     else:
-                                        mn.ip = mn_ipport
-                                        mn.port = '9999'
-                                    mn.privateKey = mn_privkey
-                                    mn.collateralAddress = mn_dash_addr
-                                    mn.collateralTx = mn_tx_hash
-                                    mn.collateralTxIndex = mn_tx_idx
-                                    mn.collateralBip32Path = ''
+                                        in_mn.ip = mn_ipport
+                                        in_mn.port = '9999'
+                                    in_mn.privateKey = mn_privkey
+                                    in_mn.collateralAddress = mn_dash_addr
+                                    in_mn.collateralTx = mn_tx_hash
+                                    in_mn.collateralTxIndex = mn_tx_idx
+                                    in_mn.collateralBip32Path = ''
 
                                 mn = self.config.get_mn_by_name(mn_name)
                                 if mn:
                                     msg = QMessageBox()
                                     msg.setIcon(QMessageBox.Information)
-                                    msg.setText('Masternode ' + mn_name +' exists. Overwrite?')
+                                    msg.setText('Masternode ' + mn_name + ' exists. Overwrite?')
                                     msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-                                    msg.setDefaultButton(QMessageBox.Ok)
+                                    msg.setDefaultButton(QMessageBox.Yes)
                                     retval = msg.exec_()
                                     del msg
                                     if retval == QMessageBox.No:
@@ -459,6 +512,7 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                                         update_mn(mn)
                                         mn.modified = True
                                         modified = True
+                                        mns_imported.append(mn)
                                         if self.curMasternode == mn:
                                             # current mn has been updated - update UI controls to new data
                                             self.displayMasternodeConfig(False)
@@ -469,18 +523,76 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                                     modified = True
                                     self.config.add_mn(mn)
                                     self.cboMasternodes.addItem(mn.name, mn)
+                                    mns_imported.append(mn)
                             else:
                                 # incorrenct number of elements
                                 skipped_cnt += 1
                         if modified:
-                            self.checkControlsState()
+                            self.updateControlsState()
                         if imported_cnt:
-                            msg = 'Successfully imported %s masternode(s)' % str(imported_cnt)
+                            msg_text = 'Successfully imported %s masternode(s)' % str(imported_cnt)
                             if skipped_cnt:
-                                msg += ', skipped: %s' % str(skipped_cnt)
-                            msg += ".\n\nNow you have to manually fill out the BIP32 path of the collateral " \
-                                   "for each of imported Masternodes."
-                            self.infoMsg(msg)
+                                msg_text += ', skipped: %s' % str(skipped_cnt)
+                            msg_text += ".\n\nIf you want to scan your " + self.getHwName() + \
+                                        " for BIP32 path(s) corresponding to collateral addresses, connect your " + \
+                                        self.getHwName() + " and click Yes." + \
+                                        "\n\nIf you want to enter BIP32 path(s) manually, click No."
+
+                            msg = QMessageBox()
+                            msg.setIcon(QMessageBox.Information)
+                            msg.setText(msg_text)
+                            msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                            msg.setDefaultButton(QMessageBox.Yes)
+                            retval = msg.exec_()
+                            del msg
+                            if retval == QMessageBox.Yes:
+                                # scan all Dash addresses from imported masternodes for BIP32 path, starting from
+                                # first standard Dash BIP32 path
+                                try:
+                                    self.connectHardwareWallet()
+                                    if self.hw_client:
+                                        paths_found = 0
+                                        paths_missing = 0
+                                        for mn in mns_imported:
+                                            if not mn.collateralBip32Path and mn.collateralAddress:
+                                                # check 10 addresses of account 0 (44'/5'/0'/0), then 10 addreses
+                                                # of account 1 (44'/5'/1'/0) and so on until 9th account.
+                                                # if not found, then check next 10 addresses of account 0 (44'/5'/0'/0)
+                                                # and so on; we assume here, that user rather puts collaterals
+                                                # under first addresses of subsequent accounts than under far addresses
+                                                # of the first account; if so, following iteration shuld be faster
+                                                found = False
+                                                for tenth_nr in (0, 10):
+                                                    for account_nr in range(0, 10):
+                                                        for index in range(tenth_nr * 10, (tenth_nr * 10) + 10):
+                                                            address_n = [2147483692,  # 44'
+                                                                         2147483653,  # 5'
+                                                                         2147483648 + account_nr,  # 0' + account_nr
+                                                                         0,
+                                                                         tenth_nr * 10 + index]
+                                                            dash_addr = hw_get_address(self.hw_client, address_n)
+                                                            if mn.collateralAddress == dash_addr:
+                                                                mn.collateralBip32Path = "44'/5'/" + str(account_nr) + \
+                                                                                         "'/0/" + str(tenth_nr * 10 +
+                                                                                                      index)
+                                                                found = True
+                                                                paths_found += 1
+                                                                if self.curMasternode == mn:
+                                                                    # current mn has been updated - update UI controls
+                                                                    # to new data
+                                                                    self.displayMasternodeConfig(False)
+                                                                break
+                                                        if found:
+                                                            break
+                                                    if found:
+                                                        break
+                                                if not found:
+                                                    paths_missing += 1
+                                        if paths_missing:
+                                            self.warnMsg('Not all BIP32 paths were found. You have to manually enter '
+                                                         'missing paths.')
+                                except Exception as e:
+                                    pass
                         elif skipped_cnt:
                             self.infoMsg('Operation finished with no imported and %s skipped masternodes.'
                                          % str(skipped_cnt))
@@ -494,9 +606,9 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
     def btnSaveConfigurationClick(self):
         self.config.save_to_file()
         self.editingEnabled = False
-        self.checkControlsState()
+        self.updateControlsState()
 
-    def checkControlsState(self):
+    def updateControlsState(self):
         editing = (self.editingEnabled and self.curMasternode is not None)
         self.edtMnIp.setReadOnly(not editing)
         self.edtMnName.setReadOnly(not editing)
@@ -522,6 +634,7 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         self.edtMnCollateralTx.setStyleSheet(bg_color)
         self.edtMnCollateralTxIndex.setStyleSheet(bg_color)
         self.btnSaveConfiguration.setEnabled(self.configModified())
+        self.btnHwDisconnect.setEnabled(True if self.hw_client else False)
 
     def configModified(self):
         # check if masternodes config was changed
@@ -570,7 +683,7 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         else:
             self.curMasternode = None
         self.displayMasternodeConfig(False)
-        self.checkControlsState()
+        self.updateControlsState()
 
     def edtMnNameModified(self):
         if self.curMasternode:
@@ -633,21 +746,31 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
 
     def btnReadAddressFromTrezorClick(self):
         try:
-            self.connectTrezor()
-            if not self.trezor_client:
+            self.connectHardwareWallet()
+            if not self.hw_client:
                 return
-            address_n = self.trezor_client.expand_path(self.curMasternode.collateralBip32Path)
-            dash_addr = self.trezor_client.get_address('Dash', address_n, False, script_type=types.SPENDADDRESS)
+            address_n = self.hw_client.expand_path(self.curMasternode.collateralBip32Path)
+            dash_addr = hw_get_address(self.hw_client, address_n)
             self.edtMnCollateralAddress.setText(dash_addr)
-        except TrezorCancelException:
-            if self.trezor_client:
-                self.trezor_client.init_device()
+        except HardwareWalletCancelException:
+            if self.hw_client:
+                self.hw_client.init_device()
         except Exception as e:
             self.errorMsg(str(e))
 
+    def hwTypeChanged(self):
+        if self.chbHwTrezor.isChecked():
+            self.config.hw_type = 'TREZOR'
+        else:
+            self.config.hw_type = 'KEEPKEY'
+        if self.hw_client:
+            self.hwDisconnect()
+        self.config.modified = True
+        self.updateControlsState()
+
     def broadcastMasternode(self):
         """
-        Broadcasts information about configured Masternode within Dash network using Trezor for signing message
+        Broadcasts information about configured Masternode within Dash network using Hwrdware Wallet for signing message
         and a Dash daemon for relaying message.
         Building broadcast message is based on work of chaeplin (https://github.com/chaeplin/dashmnb)
         """
@@ -684,8 +807,8 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                 return
             mn_pubkey = bitcoin.privkey_to_pubkey(mn_privkey)
 
-            self.connectTrezor()
-            if not self.trezor_client:
+            self.connectHardwareWallet()
+            if not self.hw_client:
                 return
 
             seq = 0xffffffff
@@ -701,18 +824,18 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                 ipv6map += i.to_bytes(1, byteorder='big')[::-1].hex()
             ipv6map += int(self.curMasternode.port).to_bytes(2, byteorder='big').hex()
 
-            address_n = self.trezor_client.expand_path(self.curMasternode.collateralBip32Path)
-            dash_addr = self.trezor_client.get_address('Dash', address_n, False, script_type=types.SPENDADDRESS)
+            address_n = self.hw_client.expand_path(self.curMasternode.collateralBip32Path)
+            dash_addr = hw_get_address(self.hw_client, address_n)
             if not self.curMasternode.collateralAddress:
-                # if mn config's collateral address is empty, assign that from Trezor
+                # if mn config's collateral address is empty, assign that from hardware wallet
                 self.curMasternode.collateralAddress = dash_addr
                 self.edtMnCollateralAddress.setText(self.curMasternode.collateralAddress)
             elif dash_addr != self.curMasternode.collateralAddress:
-                # werify config's collateral addres with Trezor
-                self.errorMsg('Dash address got from Trezor (path: ' + self.curMasternode.collateralBip32Path +
-                              ') does not match with address from current configuration.')
+                # verify config's collateral addres with hardware wallet
+                self.errorMsg('Dash address from %s (path: %s does not match address from current '
+                              'configuration.' % (self.getHwName(), self.curMasternode.collateralBip32Path))
                 return
-            collateral_pubkey = self.trezor_client.get_public_node(address_n).node.public_key.hex()
+            collateral_pubkey = self.hw_client.get_public_node(address_n).node.public_key.hex()
 
             collateral_in = dash_utils.num_to_varint(len(collateral_pubkey) / 2).hex() + collateral_pubkey
             delegate_in = dash_utils.num_to_varint(len(mn_pubkey) / 2).hex() + mn_pubkey
@@ -724,9 +847,9 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                                 binascii.unhexlify(bitcoin.hash160(bytes.fromhex(mn_pubkey)))[::-1].hex() + \
                                 str(info['protocolversion'])
 
-            sig = self.trezor_client.sign_message('Dash', address_n, serialize_for_sig)
+            sig = self.hw_client.sign_message('Dash', address_n, serialize_for_sig)
             if sig.address != self.curMasternode.collateralAddress:
-                self.errorMsg('Trezor address mismatch after signing.')
+                self.errorMsg('%s address mismatch after signing.' % self.getHwName())
                 return
             sig1 = sig.signature.hex()
 
@@ -772,9 +895,9 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
             else:
                 self.errorMsg(ret['overall'])
 
-        except TrezorCancelException:
-            if self.trezor_client:
-                self.trezor_client.init_device()
+        except HardwareWalletCancelException:
+            if self.hw_client:
+                self.hw_client.init_device()
 
         except Exception as e:
             self.errorMsg(str(e))
@@ -797,7 +920,7 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
             if found:
                 status = mn_list.get(cur_collateral_id, 'Unknown')
                 if collateral_id != cur_collateral_id:
-                    status = status + "; warning: collateral configured is not the same as current MN's collateral"
+                    status += "; warning: collateral configured is not the same as current MN's collateral"
             else:
                 status = 'Masternode not found'
         else:
