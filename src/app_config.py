@@ -30,6 +30,8 @@ class AppConfig(object):
         self.ros_rpc_username = ''
         self.ros_rpc_password = ''
 
+        self.hw_type = 'TREZOR'  # TREZOR or KEEPKEY
+
         self.masternodes = []
         self.last_bip32_base_path = ''
         self.bip32_recursive_search = True
@@ -60,8 +62,11 @@ class AppConfig(object):
                 self.ros_rpc_password = config.get(section, 'ros_rpc_password', fallback='')
                 self.last_bip32_base_path = config.get(section, 'bip32_base_path', fallback="44'/5'/0'/0/0")
                 if not self.last_bip32_base_path:
-                    self.last_bip32_base_path = "44'/5'/0'/0/0/0"
+                    self.last_bip32_base_path = "44'/5'/0'/0/0"
                 self.bip32_recursive_search = config.getboolean(section, 'bip32_recursive', fallback=True)
+                self.hw_type = config.get(section, 'hw_type', fallback="TREZOR")
+                if self.hw_type not in ('TREZOR', 'KEEPKEY'):
+                    self.hw_type = 'TREZOR'
 
                 for section in config.sections():
                     if re.match('MN\d', section):
@@ -94,6 +99,7 @@ class AppConfig(object):
         config.set(section, 'ros_rpc_bind_port', str(self.ros_rpc_bind_port))
         config.set(section, 'ros_rpc_username', str(self.ros_rpc_username))
         config.set(section, 'ros_rpc_password', str(self.ros_rpc_password))
+        config.set(section, 'hw_type', self.hw_type)
         config.set(section, 'bip32_base_path', self.last_bip32_base_path)
 
         for idx, mn in enumerate(self.masternodes):
@@ -130,13 +136,12 @@ class AppConfig(object):
         return None
 
     def add_mn(self, mn):
-        if not mn in self.masternodes:
+        if mn not in self.masternodes:
             existing_mn = self.get_mn_by_name(mn.name)
             if not existing_mn:
                 self.masternodes.append(mn)
             else:
                 raise Exception('Masternode with this name: ' + mn.name + ' already exists in configuration')
-
 
 
 class MasterNodeConfig:

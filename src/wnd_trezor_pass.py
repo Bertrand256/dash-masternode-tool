@@ -20,6 +20,7 @@ class Ui_DialogTrezorPin(wnd_trezor_pass_base.Ui_DialogTrezorPass, WndUtils):
         self.edtPassConfirm.textChanged.connect(self.onPassChanged)
         self.window.setWindowTitle('')
         self.btnEnterPass.setEnabled(False)
+        self.window.setWindowTitle('Hardware wallet passphrase')
 
     def onPassChanged(self):
         self.btnEnterPass.setEnabled(self.edtPass.text() == self.edtPassConfirm.text())

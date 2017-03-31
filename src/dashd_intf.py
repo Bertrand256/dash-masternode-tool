@@ -5,6 +5,7 @@
 
 import os
 import re
+import socket
 import threading
 import time
 from PyQt5.QtCore import QThread
@@ -16,6 +17,10 @@ from src.wnd_utils import WndUtils
 import socketserver
 import select
 from src.psw_cache import SshPassCache
+try:
+    import http.client as httplib
+except ImportError:
+    import httplib
 
 
 class ForwardServer (socketserver.ThreadingTCPServer):
@@ -26,29 +31,34 @@ class ForwardServer (socketserver.ThreadingTCPServer):
 class Handler(socketserver.BaseRequestHandler):
     def handle(self):
         try:
-            chan = self.ssh_transport.open_channel('direct-tcpip',
-                                                   (self.chain_host, self.chain_port),
-                                                   self.request.getpeername())
+            chan = self.ssh_transport.open_channel(kind='direct-tcpip',
+                                                   dest_addr=(self.chain_host, self.chain_port),
+                                                   src_addr=self.request.getpeername())
         except Exception as e:
             return
         if chan is None:
             return
 
-        while True:
-            r, w, x = select.select([self.request, chan], [], [])
-            if self.request in r:
-                data = self.request.recv(1024)
-                if len(data) == 0:
-                    break
-                chan.send(data)
-            if chan in r:
-                data = chan.recv(1024)
-                if len(data) == 0:
-                    break
-                self.request.send(data)
-
-        chan.close()
-        self.request.close()
+        try:
+            while True:
+                r, w, x = select.select([self.request, chan], [], [], 10)
+                if self.request in r:
+                    data = self.request.recv(1024)
+                    if len(data) == 0:
+                        break
+                    chan.send(data)
+                if chan in r:
+                    data = chan.recv(1024)
+                    if len(data) == 0:
+                        break
+                    self.request.send(data)
+        except socket.error:
+            pass
+        except Exception as e:
+            print(str(e))
+        finally:
+            chan.close()
+            self.request.close()
 
 
 class SSHTunnelThread(QThread):
@@ -224,6 +234,23 @@ class DashdSSH(object):
             self.connected = False
 
 
+def catch_timeout(func):
+    """
+    Decorator function for catching HTTPConnection timeout and then resetting the connection.
+    :param func: DashdInterface's method decorated
+    """
+    def catch_timeout_wrapper(*args, **kwargs):
+        ret = None
+        for try_nr in range(1, 5):
+            try:
+                ret = func(*args, **kwargs)
+                break
+            except (ConnectionResetError, ConnectionAbortedError):
+                args[0].http_conn.close()  # args[0] == self
+        return ret
+    return catch_timeout_wrapper
+
+
 class DashdInterface(WndUtils):
     def __init__(self, config, window):
         WndUtils.__init__(self)
@@ -235,6 +262,7 @@ class DashdInterface(WndUtils):
         self.active = False
         self.rpc_url = None
         self.proxy = None
+        self.http_conn = None  # HTTPConnection object passed to the AuthServiceProxy (for convinient connection reset)
 
     def disconnect(self):
         if self.active:
@@ -301,28 +329,33 @@ class DashdInterface(WndUtils):
                 raise Exception('Invalid connection method')
 
             self.rpc_url = 'http://' + rpc_user + ':' + rpc_password + '@' + rpc_host + ':' + str(rpc_port)
-            self.proxy = AuthServiceProxy(self.rpc_url)
+            self.http_conn = httplib.HTTPConnection(rpc_host, rpc_port, timeout=1000)
+            self.proxy = AuthServiceProxy(self.rpc_url, timeout=1000, connection=self.http_conn)
             self.active = True
         return self.active
 
+    @catch_timeout
     def getblockcount(self):
         if self.open():
             return self.proxy.getblockcount()
         else:
             raise Exception('Not connected')
 
+    @catch_timeout
     def getblockhash(self, block):
         if self.open():
             return self.proxy.getblockhash(block)
         else:
             raise Exception('Not connected')
 
+    @catch_timeout
     def getinfo(self):
         if self.open():
             return self.proxy.getinfo()
         else:
             raise Exception('Not connected')
 
+    @catch_timeout
     def issynchronized(self):
         if self.open():
             syn = self.proxy.mnsync('status')
@@ -330,18 +363,21 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
+    @catch_timeout
     def masternodebroadcast(self, what, hexto):
         if self.open():
             return self.proxy.masternodebroadcast(what, hexto)
         else:
             raise Exception('Not connected')
 
+    @catch_timeout
     def get_masternodelist(self):
         if self.open():
             return self.proxy.masternodelist()
         else:
             raise Exception('Not connected')
 
+    @catch_timeout
     def get_masternodeaddr(self):
         if self.open():
             return self.proxy.masternodelist('addr')
