@@ -1,6 +1,6 @@
 # Dash Masternode Tool (DMT)
 
-Main purpose of the application is to give possibility to start/broadcast Dash masternode with the use of Trezor hardware wallet as a controller of a 1000 Dash collateral. Currently application implements only basic functionality - it doesn't verify if collateral information provided by the user is correct, so it is user's responsibility to carefully check that data. However, that kind of improvements are planned in the future.
+Main purpose of the application is to give possibility to start/broadcast Dash masternode with the use of Trezor/KeepKey hardware wallet as a controller of a 1000 Dash collateral. Currently application implements only basic functionality - it doesn't verify if collateral information provided by the user is correct, so it is user's responsibility to carefully check that data. However, that kind of improvements are planned in the future.
 
 ## Binaries
 Application is written in python, but for your convinience it is compiled into single executable for Windows, Mac (and soon for Linux). To download archive, click release link on the project main page or: https://github.com/Bertrand256/dash-masternode-tool/releases. App's startup-time maybe is not very fast, but it's just the cost of convinience of having all in one exe file - when starting, app has to unpack all needed libraries.
@@ -49,3 +49,4 @@ To broadcast information about your Masternode, click the button "Start Masterno
 
 ### Comments
 This app has been tested on Mac and Windows 7 with Masternode working on Debian 8 (Jessie). There are many other possible  configurations, so it is also possible, that something will not work in your environment. If such thing happens, you can reach me at blogin[at]nullteq.com, so I'll try to help you. 
+
