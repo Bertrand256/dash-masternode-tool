@@ -13,6 +13,9 @@ add_files = [
  ('img/dash-logo.png','/img'),
  ('img/dmt.png','/img'),
  ('img/dmt.ico','/img'),
+ ('img/arrow-right.ico','/img'),
+ ('img/hw-lock.ico','/img'),
+ ('img/hw-test.ico','/img'),
  ('version.txt', '')
 ]
 

@@ -12,6 +12,9 @@ add_files = [
  ('img/dmt.png','/img'),
  ('img/dash.ico','/img'),
  ('img/dmt.ico','/img'),
+ ('img/arrow-right.ico','/img'),
+ ('img/hw-lock.ico','/img'),
+ ('img/hw-test.ico','/img'),
  ('version.txt', '')
 ]
 
