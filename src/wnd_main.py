@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread
 from PyQt5.QtCore import QTimer
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtWidgets import QFileDialog, QMenu
 from PyQt5.QtWidgets import QMessageBox
 from src import dash_utils
 from src import wnd_about
@@ -27,11 +27,15 @@ from src import wnd_conn
 from src import wnd_main_base
 from src import wnd_trezor_pass
 from src import wnd_trezor_pin
+from src import wnd_send_payout
 from src.app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG
 from src.dashd_intf import DashdInterface
 from src.hw_common import HardwareWalletCancelException, HardwareWalletPinException
-from src.hw_intf import connect_hw, hw_get_address, disconnect_hw
+from src.hw_intf import connect_hw, hw_get_address, disconnect_hw, sign_message
 from src.wnd_utils import WndUtils
+from src import app_cache as cache
+from src.wnd_sign_message import Ui_DialogSignMessage
+from src.wnd_hw_setup import Ui_DialogHwSetup
 
 
 PROJECT_URL = 'https://github.com/Bertrand256/dash-masternode-tool'
@@ -108,6 +112,7 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
             ' (v. ' + self.version_str + ')' if self.version_str else ''))
 
         self.window = main_window
+        self.inside_setup_ui = True
         self.dashd_intf.window = main_window
         self.btnConfigureDashdConnection.clicked.connect(self.btnDashdConnConfigClick)
         self.btnCheckConnection.clicked.connect(self.btnDashdConnCheckClick)
@@ -151,6 +156,8 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         img = QPixmap(os.path.join(self.app_path, "img/dmt.png"))
         img = img.scaled(QSize(64, 64))
         self.lblAbout.setPixmap(img)
+
+        # set icons for tool buttons
         icon = QIcon()
         icon.addPixmap(QPixmap(os.path.join(self.app_path, "img/hw-test.ico")))
         self.btnHwCheck.setIcon(icon)
@@ -160,6 +167,30 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         icon = QIcon()
         icon.addPixmap(QPixmap(os.path.join(self.app_path, "img/arrow-right.ico")))
         self.btnReadAddressFromTrezor.setIcon(icon)
+        icon = QIcon()
+        icon.addPixmap(QPixmap(os.path.join(self.app_path, "img/dash-transfer.png")))
+        self.btnActions.setIcon(icon)
+
+        # create popup menu for actions button
+        mnu = QMenu()
+
+        # transfer for current mn
+        self.actTransferFundsSelectedMn = mnu.addAction("Transfer funds from current Masternode's address...")
+        self.actTransferFundsSelectedMn.triggered.connect(self.transferFundsForSelectedMn)
+
+        # transfer for all mns
+        self.actTransferFundsForAllMns = mnu.addAction("Transfer funds from all Masternodes addresses...")
+        self.actTransferFundsForAllMns.triggered.connect(self.transferFundsForAllMns)
+
+        # sign message with HW
+        self.actSignMessageWithHw = mnu.addAction("Sign message with HW for current Masternode's address...")
+        self.actSignMessageWithHw.triggered.connect(self.signMessageWithHw)
+
+        # hardware wallet setup tools
+        self.actHwSetup = mnu.addAction("Hardware Wallet PIN/Passphrase configuration...")
+        self.actHwSetup.triggered.connect(self.hwSetup)
+        self.btnActions.setMenu(mnu)
+
         if sys.platform == 'win32':
             f = QFont("MS Shell Dlg 2", 10)
             self.cboMasternodes.setFont(f)
@@ -172,6 +203,7 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
             self.edtMnCollateralTx.setFont(f)
             self.edtMnCollateralTxIndex.setFont(f)
             self.edtMnStatus.setFont(f)
+            self.btnActions.setFont(f)
 
         # add masternodes to the combobox
         self.cboMasternodes.clear()
@@ -180,7 +212,11 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         if not self.config.masternodes:
             self.newMasternodeConfig()
         else:
-            self.curMasternode = self.config.masternodes[0]
+            # get last masternode selected
+            idx = cache.get_value('WndMainCurMasternodeIndex', 0, int)
+            if idx >= len(self.config.masternodes):
+                idx = 0
+            self.curMasternode = self.config.masternodes[idx]
             self.displayMasternodeConfig(True)
 
         # after loading whole configuration, reset 'modified' variable
@@ -191,6 +227,7 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         self.update_thread = CheckForUpdateThread(self.update_status_signal, self.version_str)
         self.update_status_signal.connect(self.setStatus1Text)
         self.update_thread.start()
+        self.inside_setup_ui = False
 
     @staticmethod
     def extractAppVersion(lines):
@@ -285,45 +322,38 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                 del self.timer
 
         if self.config.is_config_complete():
-            for idx in range(1, 4):
-                # retry if ConnectionResetError occures
-                try:
-                    synced = self.dashd_intf.issynchronized()
-                    self.dashd_info = self.dashd_intf.getinfo()
-                    self.dashd_connection_ok = True
-                    if not synced:
-                        if not self.is_dashd_syncing:
-                            self.is_dashd_syncing = True
-                            self.lblConnectionStatus.setText('Dash deamon synchronizing...')
-                            self.lblConnectionStatus.setStyleSheet('QLabel{color: orange}')
-                            if not hasattr(self, 'timer'):
-                                self.timer = QTimer()
-                                self.timer.timeout.connect(self.checkDashdConnectionStatusTimer)
-                                self.timer.start(2000)
-                    else:
-                        self.is_dashd_syncing = False
-                        self.lblConnectionStatus.setText('Connection successful')
-                        self.lblConnectionStatus.setStyleSheet('QLabel{color: green}')
-                        stopTimer()
-                    if self.dashd_info:
-                        self.setStatus1Text('Dashd info: blocks: %s, connections: %s, version: %s, protovol '
-                                            'version: %s' %
-                                            (str(self.dashd_info.get('blocks', '')),
-                                             str(self.dashd_info.get('connections', '')),
-                                             str(self.dashd_info.get('version', '')),
-                                             str(self.dashd_info.get('protocolversion', ''))
-                                             ), 'green')
-                    break
-                except (ConnectionResetError, ConnectionAbortedError):
-                    self.setStatus1Text('', 'black')
-                    continue
-                except Exception as e:
+            try:
+                synced = self.dashd_intf.issynchronized()
+                self.dashd_info = self.dashd_intf.getinfo()
+                self.dashd_connection_ok = True
+                if not synced:
+                    if not self.is_dashd_syncing:
+                        self.is_dashd_syncing = True
+                        self.lblConnectionStatus.setText('Dash deamon synchronizing...')
+                        self.lblConnectionStatus.setStyleSheet('QLabel{color: orange}')
+                        if not hasattr(self, 'timer'):
+                            self.timer = QTimer()
+                            self.timer.timeout.connect(self.checkDashdConnectionStatusTimer)
+                            self.timer.start(2000)
+                else:
                     self.is_dashd_syncing = False
-                    self.dashd_connection_ok = False
-                    self.lblConnectionStatus.setText(str(e))
-                    self.lblConnectionStatus.setStyleSheet('QLabel{color: red}')
-                    self.setStatus1Text('', 'black')
-                    break
+                    self.lblConnectionStatus.setText('Connection successful')
+                    self.lblConnectionStatus.setStyleSheet('QLabel{color: green}')
+                    stopTimer()
+                if self.dashd_info:
+                    self.setStatus1Text('Dashd info: blocks: %s, connections: %s, version: %s, protovol '
+                                        'version: %s' %
+                                        (str(self.dashd_info.get('blocks', '')),
+                                         str(self.dashd_info.get('connections', '')),
+                                         str(self.dashd_info.get('version', '')),
+                                         str(self.dashd_info.get('protocolversion', ''))
+                                         ), 'green')
+            except Exception as e:
+                self.is_dashd_syncing = False
+                self.dashd_connection_ok = False
+                self.lblConnectionStatus.setText(str(e))
+                self.lblConnectionStatus.setStyleSheet('QLabel{color: red}')
+                self.setStatus1Text('', 'black')
         else:
             # configuration is not complete; if timer was created before, delete it
             self.is_dashd_syncing = False
@@ -409,11 +439,15 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         self.connectHardwareWallet()
         self.updateControlsState()
         if self.hw_client:
-            features = self.hw_client.features
-            self.hw_client.ping('Hello, press the button', button_protection=False,
-                                pin_protection=features.pin_protection,
-                                passphrase_protection=features.passphrase_protection)
-            self.infoMsg('Connection to %s device (%s) successful.' % (self.getHwName(), features.label))
+            try:
+                features = self.hw_client.features
+                self.hw_client.ping('Hello, press the button', button_protection=False,
+                                    pin_protection=features.pin_protection,
+                                    passphrase_protection=features.passphrase_protection)
+                self.infoMsg('Connection to %s device (%s) successful.' % (self.getHwName(), features.label))
+            except HardwareWalletCancelException:
+                if self.hw_client:
+                    self.hw_client.init_device()
 
     def hwDisconnect(self):
         if self.hw_client:
@@ -684,6 +718,8 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
             self.curMasternode = None
         self.displayMasternodeConfig(False)
         self.updateControlsState()
+        if not self.inside_setup_ui:
+            cache.set_value('WndMainCurMasternodeIndex', self.cboMasternodes.currentIndex())
 
     def edtMnNameModified(self):
         if self.curMasternode:
@@ -799,6 +835,12 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         if not self.dashd_connection_ok:
             self.errorMsg("Connection to Dash daemon is not established")
             return
+        mn_status = self.getMnStatus()
+        if mn_status in ('ENABLED', 'PRE_ENABLED'):
+            if self.queryDlg("Warning: masternode's state is %s. \n\nDo you really want to broadcast MN start "
+                             "message?" % mn_status, default_button=QMessageBox.Cancel,
+                             icon=QMessageBox.Warning) == QMessageBox.Cancel:
+                return
 
         try:
             mn_privkey = dash_utils.wif_to_privkey(self.curMasternode.privateKey)
@@ -832,11 +874,49 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                 self.edtMnCollateralAddress.setText(self.curMasternode.collateralAddress)
             elif dash_addr != self.curMasternode.collateralAddress:
                 # verify config's collateral addres with hardware wallet
-                self.errorMsg('Dash address from %s (path: %s does not match address from current '
-                              'configuration.' % (self.getHwName(), self.curMasternode.collateralBip32Path))
-                return
-            collateral_pubkey = self.hw_client.get_public_node(address_n).node.public_key.hex()
+                if self.queryDlg(message="Dash address from %s's path %s (%s) does not match address from current "
+                                 'configuration (%s).\n\nDou you really want to continue?' %
+                        (self.getHwName(), self.curMasternode.collateralBip32Path, dash_addr,
+                         self.curMasternode.collateralAddress),
+                        default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
+                    return
 
+            # check if there is 1000 Dash collateral
+            try:
+                utxos = self.dashd_intf.getaddressutxos([dash_addr])
+                found = False
+                for utxo in utxos:
+                    if utxo['txid'] == self.curMasternode.collateralTx and \
+                       str(utxo['outputIndex']) == self.curMasternode.collateralTxIndex:
+                        found = True
+                        break
+                if found:
+                    if utxo['satoshis'] != 100000000000:
+                        if self.queryDlg(
+                                message="Collateral's transaction output should equal 100000000000 Satoshis (1000 Dash)"
+                                        ", but its value is: %d.\n\nDo you really want to continue?"
+                                        % (utxo['satoshis']),
+                                buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
+                            return
+                else:
+                    if self.queryDlg(
+                            message="Could not find specified transaction hash/index for collateral's address: %s "
+                                    "\n\nDo you really want to continue?"
+                                    % dash_addr,
+                            buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                            default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
+                        return
+            except Exception as e:
+                if self.queryDlg(
+                        message="Error occurred while verifying collateral transaction: %s"
+                                "\n\nDo you really want to continue?"
+                                % str(e),
+                        buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                        default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
+                    return
+
+            collateral_pubkey = self.hw_client.get_public_node(address_n).node.public_key.hex()
             collateral_in = dash_utils.num_to_varint(len(collateral_pubkey) / 2).hex() + collateral_pubkey
             delegate_in = dash_utils.num_to_varint(len(mn_pubkey) / 2).hex() + mn_pubkey
             info = self.dashd_intf.getinfo()
@@ -848,7 +928,7 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                                 str(info['protocolversion'])
 
             sig = self.hw_client.sign_message('Dash', address_n, serialize_for_sig)
-            if sig.address != self.curMasternode.collateralAddress:
+            if sig.address != dash_addr:
                 self.errorMsg('%s address mismatch after signing.' % self.getHwName())
                 return
             sig1 = sig.signature.hex()
@@ -902,8 +982,11 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
         except Exception as e:
             self.errorMsg(str(e))
 
-    def btnRefreshMnStatusClick(self):
-        self.checkDashdConnection()
+    def getMnStatus(self):
+        """
+        Gets current masternode status.
+        :return: masternode's status
+        """
         if self.dashd_connection_ok:
             addr_ip = self.curMasternode.ip + ':' + self.curMasternode.port
             collateral_id = self.curMasternode.collateralTx + '-' + self.curMasternode.collateralTxIndex
@@ -925,8 +1008,73 @@ class Ui_MainWindow(wnd_main_base.Ui_MainWindow, WndUtils, QObject):
                 status = 'Masternode not found'
         else:
             status = "Problem with connection to dashd"
+        return status
+
+    def btnRefreshMnStatusClick(self):
+        self.checkDashdConnection()
+        status = self.getMnStatus()
         self.edtMnStatus.setText(status)
-        if status.strip().upper().startswith('ENABLED'):
+        if status.strip().startswith('ENABLED') or status.strip().startswith('PRE_ENABLED'):
             self.edtMnStatus.setStyleSheet('QLineEdit{color: green; background-color: lightgray}')
         else:
             self.edtMnStatus.setStyleSheet('QLineEdit{color: black; background-color: lightgray}')
+
+    def transferFundsForSelectedMn(self):
+        """
+        Shows tranfser funds window with utxos related to current masternode. 
+        """
+        if self.curMasternode:
+            src_addresses = []
+            if self.curMasternode.collateralAddress and self.curMasternode.collateralBip32Path:
+                src_addresses.append((self.curMasternode.collateralAddress, self.curMasternode.collateralBip32Path))
+                self.executeTransferFundsDialog(src_addresses)
+            else:
+                self.errorMsg("Empty Masternpde collateral's BIP32 path and/or address")
+        else:
+            self.errorMsg('No masternode selected')
+
+    def transferFundsForAllMns(self):
+        """
+        Shows tranfser funds window with utxos related to all masternodes. 
+        """
+        src_addresses = []
+        for mn in self.config.masternodes:
+            if mn.collateralAddress and mn.collateralBip32Path:
+                src_addresses.append((mn.collateralAddress, mn.collateralBip32Path))
+        if len(src_addresses):
+            self.executeTransferFundsDialog(src_addresses)
+        else:
+            self.errorMsg('No masternode with set collateral BIP32 path and address')
+
+    def executeTransferFundsDialog(self, src_addresses):
+        if not self.dashd_intf.open():
+            self.errorMsg('Dash daemon not connected')
+        else:
+            dialog = QtWidgets.QDialog()
+            ui = wnd_send_payout.Ui_DialogSendPayout(src_addresses, self)
+            ui.setupUi(dialog)
+            dialog.exec_()
+
+    def signMessageWithHw(self):
+        if self.curMasternode:
+            self.connectHardwareWallet()
+            if self.hw_client:
+                if not self.curMasternode.collateralBip32Path:
+                    self.errorMsg("Empty Masternode's collateral BIP32 path")
+                else:
+                    dialog = QtWidgets.QDialog()
+                    ui = Ui_DialogSignMessage(self, self.curMasternode.collateralBip32Path,
+                                              self.curMasternode.collateralAddress)
+                    ui.setupUi(dialog)
+                    dialog.exec_()
+
+    def hwSetup(self):
+        """
+        Hardware wallet setup.
+        """
+        self.connectHardwareWallet()
+        if self.hw_client:
+            dialog = QtWidgets.QDialog()
+            ui = Ui_DialogHwSetup(self)
+            ui.setupUi(dialog)
+            dialog.exec_()

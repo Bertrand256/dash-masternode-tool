@@ -26,5 +26,6 @@ if __name__ == '__main__':
             app.setWindowIcon(app_icon)
     except:
         pass
+
     sys.exit(app.exec_())
 
