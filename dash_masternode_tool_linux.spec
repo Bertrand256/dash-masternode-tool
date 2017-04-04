@@ -8,13 +8,13 @@ lib_path = os.path.join(os.path.dirname(os.path.realpath('__file__')), 'venv3/li
 
 add_files = [
  (os.path.join(lib_path, 'bitcoin/english.txt'),'/bitcoin'),
- ('img/dash-logo.png','/img'),
  ('img/dmt.png','/img'),
  ('img/dash.ico','/img'),
  ('img/dmt.ico','/img'),
  ('img/arrow-right.ico','/img'),
  ('img/hw-lock.ico','/img'),
  ('img/hw-test.ico','/img'),
+ ('img/dash-transfer.png','/img'),
  ('version.txt', '')
 ]
 

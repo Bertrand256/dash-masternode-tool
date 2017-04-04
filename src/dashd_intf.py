@@ -9,7 +9,7 @@ import socket
 import threading
 import time
 from PyQt5.QtCore import QThread
-from bitcoinrpc.authproxy import AuthServiceProxy
+from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from paramiko import AuthenticationException
 from src.app_config import AppConfig
 from random import randint
@@ -234,19 +234,43 @@ class DashdSSH(object):
             self.connected = False
 
 
-def catch_timeout(func):
+class DashdIndexException(JSONRPCException):
+    """
+    Exception for notifying, that dash daemon should have indexing option tuned on
+    """
+    def __init__(self, parent_exception):
+        JSONRPCException.__init__(self, parent_exception.error)
+        self.message = self.message + \
+                       '\n\nMake sure the dash daemon you are connecting to has the follofing options enabled in ' \
+                       'its dash.conf:\n\n' + \
+                       'addressindex=1\n' + \
+                       'spentindex=1\n' + \
+                       'timestampindex=1\n' + \
+                       'txindex=1\n\n' + \
+                       'After enabling above parameters execute dashd with "-reindex" option (linux: ./dashd -reindex)'
+
+
+def control_rpc_call(func):
     """
     Decorator function for catching HTTPConnection timeout and then resetting the connection.
     :param func: DashdInterface's method decorated
     """
     def catch_timeout_wrapper(*args, **kwargs):
         ret = None
+        last_exception = None
         for try_nr in range(1, 5):
             try:
                 ret = func(*args, **kwargs)
+                last_exception = None
                 break
-            except (ConnectionResetError, ConnectionAbortedError):
+            except (ConnectionResetError, ConnectionAbortedError) as e:
+                last_exception = e
                 args[0].http_conn.close()  # args[0] == self
+            except JSONRPCException as e:
+                if e.code == -5 and e.message == 'No information available for address':
+                    raise DashdIndexException(e)
+        if last_exception:
+            raise last_exception
         return ret
     return catch_timeout_wrapper
 
@@ -273,6 +297,7 @@ class DashdInterface(WndUtils):
             self.active = False
 
     def open(self):
+        # TODO: support openning dialogs from inside a thread
         if not self.active:
             rpc_host = None
             rpc_port = None
@@ -296,6 +321,9 @@ class DashdInterface(WndUtils):
                         break
                     except AuthenticationException as e:
                         self.errorMsg(str(e))
+                    except TimeoutError as e:
+                        self.errorMsg(str(e))
+                        return False
                     except Exception as e:
                         self.errorMsg(str(e))
 
@@ -334,28 +362,28 @@ class DashdInterface(WndUtils):
             self.active = True
         return self.active
 
-    @catch_timeout
+    @control_rpc_call
     def getblockcount(self):
         if self.open():
             return self.proxy.getblockcount()
         else:
             raise Exception('Not connected')
 
-    @catch_timeout
+    @control_rpc_call
     def getblockhash(self, block):
         if self.open():
             return self.proxy.getblockhash(block)
         else:
             raise Exception('Not connected')
 
-    @catch_timeout
+    @control_rpc_call
     def getinfo(self):
         if self.open():
             return self.proxy.getinfo()
         else:
             raise Exception('Not connected')
 
-    @catch_timeout
+    @control_rpc_call
     def issynchronized(self):
         if self.open():
             syn = self.proxy.mnsync('status')
@@ -363,23 +391,79 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
-    @catch_timeout
+    @control_rpc_call
     def masternodebroadcast(self, what, hexto):
         if self.open():
             return self.proxy.masternodebroadcast(what, hexto)
         else:
             raise Exception('Not connected')
 
-    @catch_timeout
+    @control_rpc_call
     def get_masternodelist(self):
         if self.open():
             return self.proxy.masternodelist()
         else:
             raise Exception('Not connected')
 
-    @catch_timeout
+    @control_rpc_call
     def get_masternodeaddr(self):
         if self.open():
             return self.proxy.masternodelist('addr')
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def getaddressbalance(self, address):
+        if self.open():
+            return self.proxy.getaddressbalance({'addresses': [address]}).get('balance')
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def getaddressutxos(self, addresses):
+        if self.open():
+            return self.proxy.getaddressutxos({'addresses': addresses})
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def getrawtransaction(self, txid, verbose):
+        if self.open():
+            return self.proxy.getrawtransaction(txid, verbose)
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def getblockhash(self, blockid):
+        if self.open():
+            return self.proxy.getblockhash(blockid)
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def getblockheader(self, blockhash):
+        if self.open():
+            return self.proxy.getblockheader(blockhash)
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def validateaddress(self, address):
+        if self.open():
+            return self.proxy.validateaddress(address)
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def decoderawtransaction(self, tx):
+        if self.open():
+            return self.proxy.decoderawtransaction(tx)
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def sendrawtransaction(self, tx):
+        if self.open():
+            return self.proxy.sendrawtransaction(tx)
         else:
             raise Exception('Not connected')

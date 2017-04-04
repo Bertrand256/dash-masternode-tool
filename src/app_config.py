@@ -7,11 +7,12 @@ import os
 import re
 from configparser import ConfigParser
 from os.path import expanduser
+from src import app_cache as cache
 
 
 APP_NAME_SHORT = 'DashMasternodeTool'
 APP_NAME_LONG = 'Dash Masternode Tool'
-
+MIN_TX_FEE = 10000
 
 class AppConfig(object):
     def __init__(self):
@@ -40,7 +41,11 @@ class AppConfig(object):
         app_user_dir = os.path.join(home_dir, APP_NAME_SHORT)
         if not os.path.exists(app_user_dir):
             os.makedirs(app_user_dir)
+        self.cache_dir = os.path.join(app_user_dir, 'cache')
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
         self.app_config_file_name = os.path.join(app_user_dir, 'config.ini')
+        cache.init(self.cache_dir)
 
     def read_from_file(self):
         if os.path.exists(self.app_config_file_name):

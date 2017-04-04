@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>824</width>
-    <height>468</height>
+    <width>821</width>
+    <height>446</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -21,6 +21,9 @@
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QGridLayout" name="gridLayout_3">
+    <property name="bottomMargin">
+     <number>6</number>
+    </property>
     <item row="2" column="0" colspan="2">
      <widget class="QGroupBox" name="groupBox_3">
       <property name="sizePolicy">
@@ -590,26 +593,39 @@
          <item row="7" column="1">
           <layout class="QVBoxLayout" name="verticalLayout_3">
            <item>
-            <widget class="QPushButton" name="btnBroadcastMn">
-             <property name="minimumSize">
-              <size>
-               <width>0</width>
-               <height>40</height>
-              </size>
+            <layout class="QHBoxLayout" name="horizontalLayout_12" stretch="3">
+             <property name="spacing">
+              <number>2</number>
              </property>
-             <property name="maximumSize">
-              <size>
-               <width>16777215</width>
-               <height>200</height>
-              </size>
-             </property>
-             <property name="toolTip">
-              <string>Broadcast information about the Masternode</string>
-             </property>
-             <property name="text">
-              <string>Start Masternode using Hardware Wallet</string>
-             </property>
-            </widget>
+             <item>
+              <widget class="QPushButton" name="btnBroadcastMn">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>40</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>16777215</width>
+                 <height>200</height>
+                </size>
+               </property>
+               <property name="toolTip">
+                <string>Broadcast information about the Masternode</string>
+               </property>
+               <property name="text">
+                <string>Start Masternode using Hardware Wallet</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
            </item>
            <item>
             <spacer name="verticalSpacer_2">
@@ -648,7 +664,7 @@
          </sizepolicy>
         </property>
         <property name="title">
-         <string>Configuration</string>
+         <string/>
         </property>
         <property name="flat">
          <bool>false</bool>
@@ -928,6 +944,48 @@
              <property name="sizeConstraint">
               <enum>QLayout::SetNoConstraint</enum>
              </property>
+             <item>
+              <widget class="QToolButton" name="btnActions">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="font">
+                <font>
+                 <pointsize>12</pointsize>
+                 <weight>50</weight>
+                 <bold>false</bold>
+                 <underline>false</underline>
+                </font>
+               </property>
+               <property name="text">
+                <string>Tools</string>
+               </property>
+               <property name="iconSize">
+                <size>
+                 <width>24</width>
+                 <height>16</height>
+                </size>
+               </property>
+               <property name="popupMode">
+                <enum>QToolButton::InstantPopup</enum>
+               </property>
+               <property name="toolButtonStyle">
+                <enum>Qt::ToolButtonTextBesideIcon</enum>
+               </property>
+               <property name="arrowType">
+                <enum>Qt::NoArrow</enum>
+               </property>
+              </widget>
+             </item>
             </layout>
            </item>
           </layout>

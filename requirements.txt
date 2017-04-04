@@ -4,4 +4,5 @@ trezor>=0.7.12
 PyQt5
 pyinstaller
 paramiko
+requests
 -e git+https://github.com/chaeplin/python-keepkey#egg=keepkey

@@ -41,3 +41,51 @@ def disconnect_hw(client):
         client.close()
     except Exception as e:
         pass  # HW must have been disconnected
+
+
+def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
+    """
+    Creates a signed transaction.
+    :param main_ui: Main window for configuration data
+    :param utxos_to_spend: list of utxos to send
+    :param dest_address: destination (Dash) address
+    :param tx_fee: transaction fee
+    :return: tuple (serialized tx, total transaction amount in satoshis)
+    """
+    main_ui.connectHardwareWallet()
+    client = main_ui.hw_client
+    if client:
+        if main_ui.config.hw_type == 'TREZOR':
+            import src.hw_intf_trezor as trezor
+
+            return trezor.prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee)
+        else:
+            import src.hw_intf_keepkey as keepkey
+
+            return keepkey.prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee)
+
+
+def sign_message(main_ui, bip32path, message):
+    client = main_ui.hw_client
+    if client:
+        if main_ui.config.hw_type == 'TREZOR':
+            import src.hw_intf_trezor as trezor
+
+            return trezor.sign_message(main_ui, bip32path, message)
+        else:
+            import src.hw_intf_keepkey as keepkey
+
+            return keepkey.sign_message(main_ui, bip32path, message)
+
+
+def change_pin(main_ui, remove=False):
+    client = main_ui.hw_client
+    if client:
+        if main_ui.config.hw_type == 'TREZOR':
+            import src.hw_intf_trezor as trezor
+
+            return trezor.change_pin(main_ui, remove)
+        else:
+            import src.hw_intf_keepkey as keepkey
+
+            return keepkey.change_pin(main_ui, remove)

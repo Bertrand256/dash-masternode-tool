@@ -10,12 +10,12 @@ qt5_path = os.path.join(lib_path, 'PyQt5\\Qt\\bin')
 sys.path.append(qt5_path)
 add_files = [
  (os.path.join(lib_path, 'bitcoin/english.txt'),'/bitcoin'),
- ('img/dash-logo.png','/img'),
  ('img/dmt.png','/img'),
  ('img/dmt.ico','/img'),
  ('img/arrow-right.ico','/img'),
  ('img/hw-lock.ico','/img'),
  ('img/hw-test.ico','/img'),
+ ('img/dash-transfer.png','/img'),
  ('version.txt', '')
 ]
 
