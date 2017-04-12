@@ -2,9 +2,12 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+import threading
 
-from PyQt5.QtWidgets import QInputDialog
+from PyQt5.QtWidgets import QInputDialog, QMessageBox
 from PyQt5.QtWidgets import QLineEdit
+
+from src.wnd_utils import WndUtils
 
 
 class SshPassCache(object):
@@ -15,8 +18,16 @@ class SshPassCache(object):
         key = username + '@' + host
         password = SshPassCache.cache.get(key)
         if not password:
-            password, ok = QInputDialog.getText(window, 'Password Dialog',
-                                                'Enter password for ' + key + ':', echo=QLineEdit.Password)
+            def query_psw():
+                password, ok = QInputDialog.getText(window, 'Password Dialog',
+                                                    'Enter password for ' + key + ':', echo=QLineEdit.Password)
+                return password, ok
+
+            if threading.current_thread() != threading.main_thread():
+                password, ok = WndUtils.callFunInTheMainThread(query_psw)
+            else:
+                password, ok = query_psw()
+
         return password
 
     @staticmethod

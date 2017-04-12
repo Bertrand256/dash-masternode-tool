@@ -5,6 +5,8 @@
 
 import json
 import binascii
+
+import logging
 from keepkeylib.client import TextUIMixin as keepkey_TextUIMixin
 from keepkeylib.client import ProtocolMixin as keepkey_ProtocolMixin
 from keepkeylib.client import BaseClient as keepkey_BaseClient
@@ -12,6 +14,8 @@ from keepkeylib import messages_pb2 as keepkey_proto
 from keepkeylib.tx_api import TxApiInsight
 from src.hw_common import HardwareWalletCancelException
 import keepkeylib.types_pb2 as proto_types
+
+from src.wnd_utils import WndUtils
 
 
 class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):
@@ -51,12 +55,18 @@ class MyKeepkeyClient(keepkey_ProtocolMixin, MyKeepkeyTextUIMixin, keepkey_BaseC
 
 def connect_keepkey(ask_for_pin_fun, ask_for_pass_fun):
     try:
-        from keepkeylib.transport_hid import HidTransport
+        def get_transport():
+            from keepkeylib.transport_hid import HidTransport
+            count = len(HidTransport.enumerate())
+            if not count:
+                logging.warning('Number of Keepkey devices: 0')
+            for d in HidTransport.enumerate():
+                transport = HidTransport(d)
+                return transport
 
-        transport = None
-        for d in HidTransport.enumerate():
-            transport = HidTransport(d)
-            break
+        # HidTransport.enumerate() has to be called in the main thread - second call from bg thread
+        # causes SIGSEGV
+        transport = WndUtils.callFunInTheMainThread(get_transport)
 
         if transport:
             client = MyKeepkeyClient(transport, ask_for_pin_fun, ask_for_pass_fun)
@@ -65,6 +75,7 @@ def connect_keepkey(ask_for_pin_fun, ask_for_pass_fun):
             return None
 
     except Exception as e:
+        logging.exception("Exception occurred")
         raise
 
 
@@ -74,6 +85,7 @@ def reconnect_keepkey(client, ask_for_pin_fun, ask_for_pass_fun):
         client.init_device()
         return connect_keepkey(ask_for_pin_fun, ask_for_pass_fun)
     except Exception as e:
+        logging.exception("Exception occurred")
         raise
 
 

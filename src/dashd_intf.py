@@ -6,6 +6,7 @@
 import os
 import re
 import socket
+import ssl
 import threading
 import time
 from PyQt5.QtCore import QThread
@@ -94,6 +95,16 @@ class SSHTunnelThread(QThread):
 
 class UnknownError(Exception):
     pass
+
+
+class UserCancelledConnection(Exception):
+    pass
+
+
+class DashdConnectionError(Exception):
+    def __init__(self, org_exception):
+        Exception.__init__(org_exception)
+        self.org_exception = org_exception
 
 
 class DashdSSH(object):
@@ -241,13 +252,13 @@ class DashdIndexException(JSONRPCException):
     def __init__(self, parent_exception):
         JSONRPCException.__init__(self, parent_exception.error)
         self.message = self.message + \
-                       '\n\nMake sure the dash daemon you are connecting to has the follofing options enabled in ' \
+                       '\n\nMake sure the dash daemon you are connecting to has the following options enabled in ' \
                        'its dash.conf:\n\n' + \
                        'addressindex=1\n' + \
                        'spentindex=1\n' + \
                        'timestampindex=1\n' + \
                        'txindex=1\n\n' + \
-                       'After enabling above parameters execute dashd with "-reindex" option (linux: ./dashd -reindex)'
+                       'Changing these parameters requires to execute dashd with "-reindex" option (linux: ./dashd -reindex)'
 
 
 def control_rpc_call(func):
@@ -258,17 +269,40 @@ def control_rpc_call(func):
     def catch_timeout_wrapper(*args, **kwargs):
         ret = None
         last_exception = None
+        self = args[0]
+        self.mark_call_begin()
         for try_nr in range(1, 5):
             try:
-                ret = func(*args, **kwargs)
-                last_exception = None
-                break
-            except (ConnectionResetError, ConnectionAbortedError) as e:
-                last_exception = e
-                args[0].http_conn.close()  # args[0] == self
-            except JSONRPCException as e:
-                if e.code == -5 and e.message == 'No information available for address':
-                    raise DashdIndexException(e)
+                try:
+                    ret = func(*args, **kwargs)
+                    last_exception = None
+                    self.mark_cur_conn_cfg_is_ok()
+                    break
+                except (ConnectionResetError, ConnectionAbortedError, httplib.CannotSendRequest, BrokenPipeError) as e:
+                    last_exception = e
+                    self.http_conn.close()
+                except JSONRPCException as e:
+                    if e.code == -5 and e.message == 'No information available for address':
+                        raise DashdIndexException(e)
+                    elif e.error.get('message','').find('403 Forbidden'):
+                        self.http_conn.close()
+                        raise DashdConnectionError(e)
+                    else:
+                        self.http_conn.close()
+
+                except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
+                    # exceptions raised by not likely functioning dashd node; try to switch to another node
+                    # if there is any in the config
+                    raise DashdConnectionError(e)
+
+            except DashdConnectionError as e:
+                # try another net config if possible
+                if not self.switch_to_next_config():
+                    self.last_error_message = str(e.org_exception)
+                    raise e.org_exception  # couldn't use another conn config, raise last exception
+                else:
+                    try_nr -= 1  # another config retries do not count
+
         if last_exception:
             raise last_exception
         return ret
@@ -276,54 +310,146 @@ def control_rpc_call(func):
 
 
 class DashdInterface(WndUtils):
-    def __init__(self, config, window):
-        WndUtils.__init__(self)
+    def __init__(self, config, window, connection=None, on_connection_begin_callback=None,
+                 on_connection_try_fail_callback=None, on_connection_finished_callback=None):
+        WndUtils.__init__(self, app_path=config.app_path)
         assert isinstance(config, AppConfig)
+
         self.config = config
-        self.last_connect_method = config.dashd_connect_method
+        # conn configurations are used from the first item in the list; if one fails, then next is taken
+        if connection:
+            # this parameter is used for testing specific connection
+            self.connections = [connection]
+        else:
+            # get connection list orderd by priority of use
+            self.connections = self.config.get_ordered_conn_list()
+        self.cur_conn_index = 0
+        if self.connections:
+            self.cur_conn_def = self.connections[self.cur_conn_index]
+        else:
+            self.cur_conn_def = None
+
+        # below is the connection with which particular RPC call has started; if connection is switched because of
+        # problems with some nodes, switching stops if we close round and return to the starting connection
+        self.starting_conn = None
+
         self.ssh = None
         self.window = window
         self.active = False
         self.rpc_url = None
         self.proxy = None
         self.http_conn = None  # HTTPConnection object passed to the AuthServiceProxy (for convinient connection reset)
+        self.on_connection_begin_callback = on_connection_begin_callback
+        self.on_connection_try_fail_callback = on_connection_try_fail_callback
+        self.on_connection_finished_callback = on_connection_finished_callback
+        self.last_error_message = None
+
+    def apply_new_cfg(self):
+        """
+        Called after any of connection config changed.
+        """
+        # get connection list orderd by priority of use
+        self.disconnect()
+        self.connections = self.config.get_ordered_conn_list()
+        self.cur_conn_index = 0
+        if not len(self.connections):
+            raise Exception('There is no connections to Dash network enabled in the configuration.')
+        self.cur_conn_def = self.connections[self.cur_conn_index]
 
     def disconnect(self):
         if self.active:
-            if self.last_connect_method == 'rpc_ssh' and self.ssh:
+            if self.ssh:
                 self.ssh.disconnect()
                 del self.ssh
                 self.ssh = None
             self.active = False
 
-    def open(self):
-        # TODO: support openning dialogs from inside a thread
-        if not self.active:
-            rpc_host = None
-            rpc_port = None
-            rpc_user = None
-            rpc_password = None
+    def mark_call_begin(self):
+        self.starting_conn = self.cur_conn_def
 
-            if self.config.dashd_connect_method == 'rpc_ssh':
+    def switch_to_next_config(self):
+        """
+        If there is another dashd config not used recently, switch to it. Called only when there was a problem
+        with current connection config.
+        :return: True if successfully switched ot False if there was no another config
+        """
+        if self.cur_conn_def:
+            self.config.conn_cfg_failure(self.cur_conn_def)  # mark connection as defective
+        if self.cur_conn_index < len(self.connections)-1:
+            idx = self.cur_conn_index + 1
+        else:
+            idx = 0
+
+        conn = self.connections[idx]
+        if conn != self.starting_conn:
+            self.disconnect()
+            self.cur_conn_index = idx
+            self.cur_conn_def = conn
+            if not self.open():
+                return self.switch_to_next_config()
+            else:
+                return True
+        else:
+            return False
+
+    def mark_cur_conn_cfg_is_ok(self):
+        if self.cur_conn_def:
+            self.config.conn_cfg_success(self.cur_conn_def)
+
+    def open(self):
+        """
+        Opens connection to dash RPC. If it fails, then the next enabled conn config will be used, if any exists.
+        :return: True if successfully connected, False if user cancelled the operation. If all of the attempts 
+            fail, then appropriate exception will be raised.
+        """
+        try:
+            if not self.cur_conn_def:
+                raise Exception('There is no connections to Dash network enabled in the configuration.')
+
+            while True:
+                try:
+                    if self.open_internal():
+                        break
+                except UserCancelledConnection:
+                    return False
+                except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
+                    # exceptions raised by not likely functioning dashd node; try to switch to another node
+                    # if there is any in the config
+                    if not self.switch_to_next_config():
+                        raise e  # couldn't use another conn config, raise exception
+                    else:
+                        break
+        except Exception as e:
+            self.last_error_message = str(e)
+            raise
+
+        return True
+
+    def open_internal(self):
+        """
+        Try to establish connection to dash RPC daemon for current connection config.
+        :return: True, if connection successfully establishes, False if user Cancels the operation (not always 
+            cancelling will be possible - only when user is prompted for a password).
+        """
+        if not self.active:
+            if self.cur_conn_def.use_ssh_tunnel:
                 # RPC over SSH
                 while True:
-                    password = SshPassCache.get_password(self.window, self.config.ros_ssh_username,
-                                                         self.config.ros_ssh_host)
+                    password = SshPassCache.get_password(self.window, self.cur_conn_def.ssh_conn_cfg.username,
+                                                         self.cur_conn_def.ssh_conn_cfg.host)
                     if not password:
-                        return False
+                        raise UserCancelledConnection()
 
-                    self.ssh = DashdSSH(self.config.ros_ssh_host, self.config.ros_ssh_port,
-                                        self.config.ros_ssh_username, password)
+                    self.ssh = DashdSSH(self.cur_conn_def.ssh_conn_cfg.host, self.cur_conn_def.ssh_conn_cfg.port,
+                                        self.cur_conn_def.ssh_conn_cfg.username, password)
                     try:
                         self.ssh.connect()
-                        SshPassCache.save_password(self.config.ros_ssh_username, self.config.ros_ssh_host,
+                        SshPassCache.save_password(self.cur_conn_def.ssh_conn_cfg.username,
+                                                   self.cur_conn_def.ssh_conn_cfg.host,
                                                    password)
                         break
                     except AuthenticationException as e:
                         self.errorMsg(str(e))
-                    except TimeoutError as e:
-                        self.errorMsg(str(e))
-                        return False
                     except Exception as e:
                         self.errorMsg(str(e))
 
@@ -334,8 +460,9 @@ class DashdInterface(WndUtils):
                 for try_nr in range(1, 10):
                     try:
                         local_port = randint(2000, 50000)
-                        self.ssh.open_tunnel(local_port, self.config.ros_rpc_bind_ip,
-                                             int(self.config.ros_rpc_bind_port))
+                        self.ssh.open_tunnel(local_port,
+                                             self.cur_conn_def.host,
+                                             int(self.cur_conn_def.port))
                         success = True
                         break
                     except Exception as e:
@@ -343,24 +470,65 @@ class DashdInterface(WndUtils):
                 if not success:
                     return False
                 else:
-                    rpc_user = self.config.ros_rpc_username
-                    rpc_password = self.config.ros_rpc_password
+                    rpc_user = self.cur_conn_def.username
+                    rpc_password = self.cur_conn_def.password
                     rpc_host = '127.0.0.1'  # SSH tunnel on loopback
                     rpc_port = local_port
-            elif self.config.dashd_connect_method == 'rpc':
-                # direct RPC
-                rpc_host = self.config.rpc_ip
-                rpc_port = self.config.rpc_port
-                rpc_user = self.config.rpc_user
-                rpc_password = self.config.rpc_password
             else:
-                raise Exception('Invalid connection method')
+                # direct RPC
+                rpc_host = self.cur_conn_def.host
+                rpc_port = self.cur_conn_def.port
+                rpc_user = self.cur_conn_def.username
+                rpc_password = self.cur_conn_def.password
 
-            self.rpc_url = 'http://' + rpc_user + ':' + rpc_password + '@' + rpc_host + ':' + str(rpc_port)
-            self.http_conn = httplib.HTTPConnection(rpc_host, rpc_port, timeout=1000)
+            if self.cur_conn_def.use_ssl:
+                self.rpc_url = 'https://'
+                self.http_conn = httplib.HTTPSConnection(rpc_host, rpc_port, timeout=5, context=ssl._create_unverified_context())
+            else:
+                self.rpc_url = 'http://'
+                self.http_conn = httplib.HTTPConnection(rpc_host, rpc_port, timeout=5)
+
+            self.rpc_url += rpc_user + ':' + rpc_password + '@' + rpc_host + ':' + str(rpc_port)
             self.proxy = AuthServiceProxy(self.rpc_url, timeout=1000, connection=self.http_conn)
+
+            try:
+                if self.on_connection_begin_callback:
+                    try:
+                        # make the owner know, we are connecting
+                        self.on_connection_begin_callback()
+                    except:
+                        pass
+
+                # check the connection
+                self.http_conn.connect()
+
+                if self.on_connection_finished_callback:
+                    try:
+                        # make the owner know, we successfully finished connection
+                        self.on_connection_finished_callback()
+                    except:
+                        pass
+            except:
+                if self.on_connection_try_fail_callback:
+                    try:
+                        # make the owner know, connection attempt failed
+                        self.on_connection_try_fail_callback()
+                    except:
+                        pass
+                raise
+            finally:
+                self.http_conn.close()
+                # timeout hase been initially set to 5 seconds to perform 'quick' connection test
+                self.http_conn.timeout = 20
+
             self.active = True
         return self.active
+
+    def get_active_conn_description(self):
+        if self.cur_conn_def:
+            return self.cur_conn_def.get_description()
+        else:
+            return '???'
 
     @control_rpc_call
     def getblockcount(self):
@@ -386,8 +554,23 @@ class DashdInterface(WndUtils):
     @control_rpc_call
     def issynchronized(self):
         if self.open():
-            syn = self.proxy.mnsync('status')
-            return syn.get('IsSynced')
+            # if connecting to HTTP(S) proxy do not check if dash daemon is synchronized
+            if self.cur_conn_def.is_http_proxy():
+                return True
+            else:
+                syn = self.proxy.mnsync('status')
+                return syn.get('IsSynced')
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def mnsync(self):
+        if self.open():
+            # if connecting to HTTP(S) proxy do not call this function - it will not be exposed
+            if self.cur_conn_def.is_http_proxy():
+                return {}
+            else:
+                return self.proxy.mnsync('status')
         else:
             raise Exception('Not connected')
 

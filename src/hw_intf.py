@@ -3,32 +3,39 @@
 # Author: Bertrand256
 # Created on: 2017-03
 from src.hw_common import HardwareWalletPinException
-
+import logging
 
 def connect_hw(hw_type, ask_for_pin_fun, ask_for_pass_fun):
-    if hw_type == 'TREZOR':
-        import src.hw_intf_trezor as trezor
-        import trezorlib.client as client
-        try:
-            return trezor.connect_trezor(ask_for_pin_fun, ask_for_pass_fun)
-        except client.PinException as e:
-            raise HardwareWalletPinException(e.args[1])
-    else:
-        import src.hw_intf_keepkey as keepkey
-        import keepkeylib.client as client
-        try:
-            return keepkey.connect_keepkey(ask_for_pin_fun, ask_for_pass_fun)
-        except client.PinException as e:
-            raise HardwareWalletPinException(e.args[1])
+    try:
+        if hw_type == 'TREZOR':
+            import src.hw_intf_trezor as trezor
+            import trezorlib.client as client
+            try:
+                return trezor.connect_trezor(ask_for_pin_fun, ask_for_pass_fun)
+            except client.PinException as e:
+                raise HardwareWalletPinException(e.args[1])
+        elif hw_type == 'KEEPKEY':
+            import src.hw_intf_keepkey as keepkey
+            import keepkeylib.client as client
+            try:
+                return keepkey.connect_keepkey(ask_for_pin_fun, ask_for_pass_fun)
+            except client.PinException as e:
+                raise HardwareWalletPinException(e.args[1])
+        else:
+            logging.error('Unsupported HW type: ' + str(hw_type))
+    except:
+        logging.exception('Exception occurred')
 
 
 def reconnect_hw(hw_type, client, ask_for_pin_fun, ask_for_pass_fun):
     if hw_type == 'TREZOR':
         from src.hw_intf_trezor import reconnect_trezor
         return reconnect_trezor(client, ask_for_pin_fun, ask_for_pass_fun)
-    else:
+    elif hw_type == 'KEEPKEY':
         from src.hw_intf_keepkey import reconnect_keepkey
         return reconnect_keepkey(client, ask_for_pin_fun, ask_for_pass_fun)
+    else:
+        logging.error('Unsupported HW type: ' + str(hw_type))
 
 
 def hw_get_address(client, address_n):
@@ -59,10 +66,14 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
             import src.hw_intf_trezor as trezor
 
             return trezor.prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee)
-        else:
+
+        elif main_ui.config.hw_type == 'KEEPKEY':
             import src.hw_intf_keepkey as keepkey
 
             return keepkey.prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee)
+
+        else:
+            logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
 
 
 def sign_message(main_ui, bip32path, message):
@@ -72,10 +83,14 @@ def sign_message(main_ui, bip32path, message):
             import src.hw_intf_trezor as trezor
 
             return trezor.sign_message(main_ui, bip32path, message)
-        else:
+
+        elif main_ui.config.hw_type == 'KEEPKEY':
             import src.hw_intf_keepkey as keepkey
 
             return keepkey.sign_message(main_ui, bip32path, message)
+
+        else:
+            logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
 
 
 def change_pin(main_ui, remove=False):
@@ -85,7 +100,10 @@ def change_pin(main_ui, remove=False):
             import src.hw_intf_trezor as trezor
 
             return trezor.change_pin(main_ui, remove)
-        else:
+
+        elif main_ui.config.hw_type == 'KEEPKEY':
             import src.hw_intf_keepkey as keepkey
 
             return keepkey.change_pin(main_ui, remove)
+        else:
+            logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
