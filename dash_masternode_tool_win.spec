@@ -7,6 +7,11 @@ block_cipher = None
 lib_path = os.path.join(os.path.dirname(os.path.realpath('__file__')), 'venv3\\Lib\\site-packages')
 qt5_path = os.path.join(lib_path, 'PyQt5\\Qt\\bin')
 
+with open(os.path.join(app_path, 'version.txt')) as fptr:
+    lines = fptr.read().splitlines()
+    self.version_str = self.extractAppVersion(lines)
+
+
 sys.path.append(qt5_path)
 add_files = [
  (os.path.join(lib_path, 'bitcoin/english.txt'),'/bitcoin'),

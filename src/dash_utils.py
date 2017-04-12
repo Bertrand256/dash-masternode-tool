@@ -4,9 +4,12 @@
 # Created on: 2017-03
 
 import binascii
-
+import base64
 import bitcoin
-
+from cryptography.fernet import Fernet
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from src import base58
 
 
@@ -127,3 +130,49 @@ def serialize_input_str(tx, prevout_n, sequence, script_sig):
         s.append(', nSequence=%d' % sequence)
     s.append(')')
     return ''.join(s)
+
+
+def bip32_path_n_to_string(path_n):
+    ret = ''
+    for elem in path_n:
+        if elem >= 0x80000000:
+            ret += ('/' if ret else '') + str(elem - 0x80000000) + "'"
+        else:
+            ret += ('/' if ret else '') + str(elem)
+    return ret
+
+
+def encrypt(input_str, key):
+    salt = b'D9\x82\xbfSibW(\xb1q\xeb\xd1\x84\x118'
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+        backend=default_backend()
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(key.encode('utf-8')))
+    fer = Fernet(key)
+    h = fer.encrypt(input_str.encode('utf-8'))
+    h = h.hex()
+    return h
+
+
+def decrypt(input_str, key):
+    try:
+        input_str = binascii.unhexlify(input_str)
+        salt = b'D9\x82\xbfSibW(\xb1q\xeb\xd1\x84\x118'
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+            backend=default_backend()
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(key.encode('utf-8')))
+        fer = Fernet(key)
+        h = fer.decrypt(input_str)
+        h = h.decode('utf-8')
+    except:
+        return ''
+    return h

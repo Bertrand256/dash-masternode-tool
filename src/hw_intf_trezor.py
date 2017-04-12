@@ -11,6 +11,8 @@ from trezorlib.tx_api import TxApiInsight
 from src.hw_common import HardwareWalletCancelException
 from trezorlib import messages_pb2 as trezor_proto
 import trezorlib.types_pb2 as proto_types
+import logging
+from src.wnd_utils import WndUtils
 
 
 class MyTrezorTextUIMixin(trezor_TextUIMixin):
@@ -50,19 +52,31 @@ class MyTrezorClient(trezor_ProtocolMixin, MyTrezorTextUIMixin, trezor_BaseClien
 
 def connect_trezor(ask_for_pin_fun, ask_for_pass_fun):
     try:
-        from trezorlib.transport_hid import HidTransport
-        transport = None
-        for d in HidTransport.enumerate():
-            transport = HidTransport(d)
-            break
+        logging.info('Started function')
+        def get_transport():
+            from trezorlib.transport_hid import HidTransport
+            count = len(HidTransport.enumerate())
+            if not count:
+                logging.warning('Number of Trezor devices: 0')
+            for d in HidTransport.enumerate():
+                transport = HidTransport(d)
+                return transport
 
+        # HidTransport.enumerate() has to be called in the main thread - second call from bg thread
+        # causes SIGSEGV
+        transport = WndUtils.callFunInTheMainThread(get_transport)
+        logging.info('Read transport')
         if transport:
+            logging.info('Transport is OK')
             client = MyTrezorClient(transport, ask_for_pin_fun, ask_for_pass_fun)
+            logging.info('Returning client')
             return client
         else:
+            logging.warning('Transport is None')
             return None
 
     except Exception as e:
+        logging.exception("Exception occurred")
         raise
 
 
@@ -72,6 +86,7 @@ def reconnect_trezor(client, ask_for_pin_fun, ask_for_pass_fun):
         client.init_device()
         return connect_trezor(ask_for_pin_fun, ask_for_pass_fun)
     except Exception as e:
+        logging.exception("Exception occurred")
         raise
 
 
