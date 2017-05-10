@@ -1,14 +1,36 @@
-# Dash Masternode Tool (DMT)
+## Dash Masternode Tool (DMT)
 
-Main purpose of the application is to give possibility to start/broadcast Dash masternode with the use of Trezor/KeepKey hardware wallet as a controller of a 1000 Dash collateral. Currently application implements only basic functionality - it doesn't verify if collateral information provided by the user is correct, so it is user's responsibility to carefully check that data. However, that kind of improvements are planned in the future.
+### Description
 
-## Binaries
-Application is written in python, but for your convinience it is compiled into single executable for Windows, Mac (and soon for Linux). To download archive, click release link on the project main page or: https://github.com/Bertrand256/dash-masternode-tool/releases. App's startup-time maybe is not very fast, but it's just the cost of convinience of having all in one exe file - when starting, app has to unpack all needed libraries.
+The main purpose of the application is to give you the ability to easily start masternode if its collateral is controlled by a hardware wallet. 
 
-## Main application window
-![1](./doc/dmt-main-window.png)
+##### Features
+- Sending _Start masternode_ command if your collateral is controlled by a hardware wallet
+- Transfering your masternode earnings in a safe way (without touching callateral's transaction)
+- Signing messages with your hardware wallet
+- Voting on proposals (work in progress)
+- Some other interesting features in the plans
 
-## Steps to configure
+##### Supported hardware wallets
+-[x] Trezor
+-[x] KeepKey
+-[ ] Ledger Nano S (work in progress)
+
+
+### Binaries
+The application is written in Python, but tu run it requires several libraries, which in turn require installation of the C++ compiler, so preparation is not very trivial for non-technical people, especially in Linux.
+
+Therefore, in addition to providing source code in Github, for the convenience of such people, I have also released binary versions for the three major operating systems: Mac OS, Windows (32 and 64-bit versions) and Linux. To be more specific, the application is _"compiled"_ and tested under the following OS distributions:
+* Windows 7 64-bit
+* Mac OSX El Capitan 10.11.6
+* Linux Debian Jessie
+
+URL to the latest release: https://github.com/Bertrand256/dash-masternode-tool/releases/latest
+
+### Main application window
+![Main window](./doc/dmt-main-window.png)
+
+### Configuration
 Broadcasting message about a masternode (but also checking of a masternode's status) requires you to have access to a working Dash daemon (dashd) with JSON-RPC enabled. This can be Dash-QT on your local network or Dash daemon working as your masternode - before you broadcast message about your masternode, you have to have its dashd running, so it can help you to broadcast message about itself.
 
 ### Enable JSON-RPC of dashd
