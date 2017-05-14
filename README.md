@@ -1,63 +1,47 @@
 ## Dash Masternode Tool (DMT)
 
-### Description
+### Background (masternodes)
+Dash masternodes are full-nodes which are incentivized by paying them a share of the block reward for the work they do for the network. In order to run masternode, apart from setting up a server wich runs the software, you must dedicate 1000 Dash _collateral_, which is _"tied up"_ to your node as long as you want it to be considered a masternode. It's very important, that the private key controlling the funds can (and for security reasons should) be kept outside the masternode server itself. 
 
-The main purpose of the application is to give you the ability to easily start masternode if its collateral is controlled by a hardware wallet. 
+A server + installed _Dash daemon_ software form a Dash full-node, but before the rest of the network accepts it as a ligitimate masternode, one more thing must happen: the person controlling the node must prove, that he/she is also in control of the private key of the node's collateral. This is achieved by the requirement of sending the network a special message signed by this private key just after starting the masternode software. This message is referred to as sending _Start masternode_ message. 
 
-##### Features
-- Sending _Start masternode_ command if your collateral is controlled by a hardware wallet
-- Transfering your masternode earnings in a safe way (without touching callateral's transaction)
-- Signing messages with your hardware wallet
+This action can be performed using the Dash reference client - Dash-Qt. As can be expecetd, this requires sending of 1000 Dash to the address controlled by your Dash-Qt (software) wallet. After the recent increase in the value of Dash and burst of amount of malware distributed on the Internet, you do not have to be paranoid to say that sending that amount of resources to a software wallet is not really secure, regardless of what type of OS you use. For these reasons it is highly recomended to use a **hardware wallet** for this purpose.
+
+### Purpose of the application
+The main purpose of the application is to give MNOs (masternode owners) the ability to send _Start masternode_ command with easy to use graphical interface, if MN's collateral is controlled by a hardware wallet, such as Trezor or Keepkey.
+
+##### All features
+- Sending _Start masternode_ command if a collateral is controlled by a hardware wallet
+- Transfering masternode's earnings in a safe way (without touching callateral's 1000 Dash transaction)
+- Signing messages with a hardware wallet
 - Voting on proposals (work in progress)
-- Some other interesting features in the plans
 
 ##### Supported hardware wallets
 -[x] Trezor
 -[x] KeepKey
--[ ] Ledger Nano S (work in progress)
-
-
-### Binaries
-The application is written in Python, but tu run it requires several libraries, which in turn require installation of the C++ compiler, so preparation is not very trivial for non-technical people, especially in Linux.
-
-Therefore, in addition to providing source code in Github, for the convenience of such people, I have also released binary versions for the three major operating systems: Mac OS, Windows (32 and 64-bit versions) and Linux. To be more specific, the application is _"compiled"_ and tested under the following OS distributions:
-* Windows 7 64-bit
-* Mac OSX El Capitan 10.11.6
-* Linux Debian Jessie
-
-URL to the latest release: https://github.com/Bertrand256/dash-masternode-tool/releases/latest
+-[ ] Ledger Nano S (in the future)
 
 ### Main application window
+Most ot the application features are accessible from tha main program window:
+
 ![Main window](./doc/dmt-main-window.png)
 
 ### Configuration
-Broadcasting message about a masternode (but also checking of a masternode's status) requires you to have access to a working Dash daemon (dashd) with JSON-RPC enabled. This can be Dash-QT on your local network or Dash daemon working as your masternode - before you broadcast message about your masternode, you have to have its dashd running, so it can help you to broadcast message about itself.
 
-### Enable JSON-RPC of dashd
-To enable dashd JSON-RPC, edit file dash.conf located in a subdirectory .dashcore (linux) and configure the following parameters:
+#### Configuration of connection(s)
+Utilizing most of the application's features involves exchanging information between the application itself and the Dash network. The term "Dash network" is in this case a little abstract concept. In fact, DMT needs to connect to one of the nodes that make up the network, more specifically - those that serve JSON-RPC requests. 
 
-    - rpcuser=any_alphanumeric_string_as_a_username
-    - rpcpassword=any_alphanumeric_string_as_a_password
-    - rpcport=9998
-    - rpcallowip=127.0.0.1
-    - server=1
-    - addressindex=1
-    - spentindex=1
-    - timestampindex=1
-    - txindex=1
-  
-Restart Dash daemon after file modification to make the new parameters working.
- 
-### Configure Dash daemon connection in DMT
-In the main window click "Configure" button.
-Choose tab "Dashd direct RPC" if your Dash daemon works on your local network or has exposed RPC port on the Internet (not recomended). In this mode dialog's parameters are self explanatory.
+Depending on your preferences, you can choose one of three possible configuration types:
+ * [Direct connection to your own Dash JSON-RPC daemon](doc/connections.md#direct-json-rpc-connection)
+ * [Connection to your own (remote) Dash JSON-RPC daemon through an SSH tunnel](#doc/connections.md)
+ * [Connection to "public" JSON-RPC proxy](doc/connections.md)
 
-If your Dash daemon works on remote server and according to most recomendations, has no RPC port exposed to the Internet, but on the other hand has open SSH port (22), second mode, activated by clicking "Dashd RPC over SSH tunnel", is for you.
+#### Configuration of masternode(s)
 
-Enter values in the "SSH host", "port" and "SSH username" editboxes.
-Now, you can click "Read RPC configuration from SSH host" button to automatically read dashd.conf file from your remote server and then extract parameters related to RPC configuration. This option requires that provided username has privileges to read dash.conf file. This step is not required - you can enter that values manually.
+##### Scenario A: moving funds from Dash-QT software wallet to HW
 
-Click "Test connection" to check if RPC communication works as expected.
+##### Scenario B: setting-up a new masternode 
+
 
 ### Create masternode's configuration
 In the main window click the button "New" and fill the information:
@@ -74,6 +58,16 @@ The last information, you must provide is the Collateral transaction hash and in
 
 ### Broadcasting information about Masternode.
 To broadcast information about your Masternode, click the button "Start Masternode using Trezor". This step will cause  dialogs for Trezor PIN/password to show up and finally Trezor will ask you for broadcast-message signature. 
+
+### Download executable version
+The application is written in Python, but to run it requires several libraries, which in turn require installation of the C++ compiler. All in all, preparation is not very trivial for non-technical people, especially in Linux OS.
+
+Therefore, in addition to providing source code in Github, I've also released binary versions for all three major operating systems - Mac OS, Windows (32 and 64-bit) and Linux. More specifically, applications is "compiled" and tested under the following OS distributions:
+* Windows 7 64-bit
+* Mac OSX El Capitan 10.11.6
+* Linux Debian Jessie
+
+The latest release can be found under: https://github.com/Bertrand256/dash-masternode-tool/releases/latest
 
 ### Transfering funds (version >= 0.9.4)
 Beginning with version 0.9.4 DMT you can transfer MN earnings. This works in a bit different way, than with other Dash wallets - DMT gives a user 100% control on which 'unspent transaction outputs' (utxo) he/she whishes to transfer. This eliminates the need of 'Coin control' functionality, implemented in some wallets. 
