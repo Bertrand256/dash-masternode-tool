@@ -12,12 +12,12 @@ import time
 from PyQt5.QtCore import QThread
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from paramiko import AuthenticationException
-from src.app_config import AppConfig
+from app_config import AppConfig
 from random import randint
-from src.wnd_utils import WndUtils
+from wnd_utils import WndUtils
 import socketserver
 import select
-from src.psw_cache import SshPassCache
+from psw_cache import SshPassCache
 try:
     import http.client as httplib
 except ImportError:

@@ -4,7 +4,7 @@ import os
 import sys
 import PyQt5.QtWidgets as qwi
 from PyQt5.QtGui import QIcon
-from src import main_dlg
+import main_dlg
 import traceback
 import logging
 

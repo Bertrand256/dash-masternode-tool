@@ -8,11 +8,11 @@ from trezorlib.client import TextUIMixin as trezor_TextUIMixin
 from trezorlib.client import ProtocolMixin as trezor_ProtocolMixin
 from trezorlib.client import BaseClient as trezor_BaseClient
 from trezorlib.tx_api import TxApiInsight
-from src.hw_common import HardwareWalletCancelException
+from hw_common import HardwareWalletCancelException
 from trezorlib import messages_pb2 as trezor_proto
 import trezorlib.types_pb2 as proto_types
 import logging
-from src.wnd_utils import WndUtils
+from wnd_utils import WndUtils
 
 
 class MyTrezorTextUIMixin(trezor_TextUIMixin):

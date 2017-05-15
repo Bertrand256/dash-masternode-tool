@@ -6,8 +6,7 @@ import threading
 
 from PyQt5.QtWidgets import QInputDialog, QMessageBox
 from PyQt5.QtWidgets import QLineEdit
-
-from src.wnd_utils import WndUtils
+from wnd_utils import WndUtils
 
 
 class SshPassCache(object):

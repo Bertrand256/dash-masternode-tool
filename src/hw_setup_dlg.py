@@ -4,8 +4,8 @@
 # Created on: 2017-04
 
 from PyQt5.QtWidgets import QMessageBox, QDialog, QLayout
-import src.hw_intf as hw_intf
-import src.wnd_utils as wnd_utils
+import hw_intf as hw_intf
+import wnd_utils as wnd_utils
 from ui import ui_hw_setup_dlg
 
 

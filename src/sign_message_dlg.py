@@ -5,8 +5,8 @@
 
 import base64
 from PyQt5.QtWidgets import QDialog
-import src.wnd_utils as wnd_utils
-from src.hw_intf import sign_message
+import wnd_utils as wnd_utils
+from hw_intf import sign_message
 from ui import ui_sign_message_dlg
 
 

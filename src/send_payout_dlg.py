@@ -9,11 +9,11 @@ from PyQt5 import QtCore
 from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSlot
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox
-from src import app_cache as cache
-from src.app_config import MIN_TX_FEE
-from src.dashd_intf import DashdInterface, DashdIndexException
-from src.hw_intf import prepare_transfer_tx, hw_get_address
-from src.wnd_utils import WndUtils
+import app_cache as cache
+from app_config import MIN_TX_FEE
+from dashd_intf import DashdInterface, DashdIndexException
+from hw_intf import prepare_transfer_tx, hw_get_address
+from wnd_utils import WndUtils
 from ui import ui_send_payout_dlg
 
 

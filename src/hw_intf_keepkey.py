@@ -12,10 +12,9 @@ from keepkeylib.client import ProtocolMixin as keepkey_ProtocolMixin
 from keepkeylib.client import BaseClient as keepkey_BaseClient
 from keepkeylib import messages_pb2 as keepkey_proto
 from keepkeylib.tx_api import TxApiInsight
-from src.hw_common import HardwareWalletCancelException
+from hw_common import HardwareWalletCancelException
 import keepkeylib.types_pb2 as proto_types
-
-from src.wnd_utils import WndUtils
+from wnd_utils import WndUtils
 
 
 class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):

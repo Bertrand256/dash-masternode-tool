@@ -13,7 +13,7 @@ from shutil import copyfile
 import logging
 import bitcoin
 from dash_utils import encrypt, decrypt
-from src import app_cache as cache
+import app_cache as cache
 import default_config
 
 

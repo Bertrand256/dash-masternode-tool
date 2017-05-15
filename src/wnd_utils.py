@@ -9,7 +9,7 @@ from PyQt5.QtCore import Qt, QObject
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap
 from PyQt5.QtWidgets import QMessageBox, QWidget
 import math
-from src.thread_fun_dlg import ThreadFunDlg, WorkerThread
+from thread_fun_dlg import ThreadFunDlg, WorkerThread
 
 
 class WndUtils():

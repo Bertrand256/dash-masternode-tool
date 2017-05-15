@@ -4,7 +4,7 @@
 # Created on: 2017-03
 from PyQt5.QtWidgets import QDialog, QLayout
 from ui import ui_hw_pin_dlg
-from src.wnd_utils import WndUtils
+from wnd_utils import WndUtils
 
 
 class HardwareWalletPinDlg(QDialog, ui_hw_pin_dlg.Ui_HardwareWalletPinDlg, WndUtils):
