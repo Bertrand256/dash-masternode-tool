@@ -545,7 +545,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                 return
             password = SshPassCache.get_password(self, username, host)
             if password:
-                from src.dashd_intf import DashdSSH
+                from dashd_intf import DashdSSH
                 ssh = DashdSSH(host, int(port), username, password)
                 try:
                     ssh.connect()

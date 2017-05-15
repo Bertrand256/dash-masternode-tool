@@ -3,7 +3,7 @@
 # Author: Bertrand256
 # Created on: 2017-03
 from PyQt5.QtWidgets import QDialog, QLayout
-from src.wnd_utils import WndUtils
+from wnd_utils import WndUtils
 from ui import ui_hw_pass_dlg
 
 

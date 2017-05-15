@@ -7,8 +7,8 @@ import sys
 from PyQt5.QtCore import QSize, pyqtSlot
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QDialog, QLayout
-from src.ui import ui_about_dlg
-from src.wnd_utils import WndUtils
+from ui import ui_about_dlg
+from wnd_utils import WndUtils
 import os
 
 

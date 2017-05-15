@@ -3,12 +3,10 @@
 # Author: Bertrand256
 # Created on: 2017-05
 import datetime
-
 import logging
-
 from PyQt5.QtCore import Qt, pyqtSlot, QModelIndex
 from PyQt5.QtWidgets import QMessageBox, QDialog, QLayout, QTableWidgetItem, QDialogButtonBox
-import src.wnd_utils as wnd_utils
+import wnd_utils as wnd_utils
 from dashd_intf import DashdIndexException
 from ui import ui_find_coll_tx_dlg
 

@@ -25,20 +25,20 @@ from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle
 from PyQt5.QtWidgets import QMessageBox
 from config_dlg import ConfigDlg
 from find_coll_tx_dlg import FindCollateralTxDlg
-from src import about_dlg
-from src import app_cache as cache
-from src import dash_utils
-from src import hw_pass_dlg
-from src import hw_pin_dlg
-from src import send_payout_dlg
-from src.app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG, APP_NAME_SHORT
-from src.dash_utils import bip32_path_n_to_string
-from src.dashd_intf import DashdInterface, DashdIndexException
-from src.hw_common import HardwareWalletCancelException, HardwareWalletPinException
-from src.hw_intf import connect_hw, hw_get_address, disconnect_hw
-from src.hw_setup_dlg import HwSetupDlg
-from src.sign_message_dlg import SignMessageDlg
-from src.wnd_utils import WndUtils
+import about_dlg
+import app_cache as cache
+import dash_utils
+import hw_pass_dlg
+import hw_pin_dlg
+import send_payout_dlg
+from app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG, APP_NAME_SHORT
+from dash_utils import bip32_path_n_to_string
+from dashd_intf import DashdInterface, DashdIndexException
+from hw_common import HardwareWalletCancelException, HardwareWalletPinException
+from hw_intf import connect_hw, hw_get_address, disconnect_hw
+from hw_setup_dlg import HwSetupDlg
+from sign_message_dlg import SignMessageDlg
+from wnd_utils import WndUtils
 from ui import ui_main_dlg
 
 
