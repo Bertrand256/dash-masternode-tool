@@ -11,7 +11,7 @@ This action can be performed using the Dash reference client - Dash-Qt. As can b
 The main purpose of the application is to give MNOs (masternode owners) the ability to send _Start masternode_ command with easy to use graphical interface, if MN's collateral is controlled by a hardware wallet, such as Trezor or Keepkey.
 
 ##### All features
-- Sending _Start masternode_ command if a collateral is controlled by a hardware wallet
+- Sending _Start masternode_ command if the collateral is controlled by a hardware wallet
 - Transfering masternode's earnings in a safe way (without touching callateral's 1000 Dash transaction)
 - Signing messages with a hardware wallet
 - Voting on proposals (work in progress)
@@ -29,18 +29,18 @@ Most ot the application features are accessible from tha main program window:
 ### Configuration
 
 #### Configuration of connection(s)
-Utilizing most of the application's features involves exchanging information between the application itself and the Dash network. The term "Dash network" is in this case a little abstract concept. In fact, DMT needs to connect to one of the nodes that make up the network, more specifically - those that serve JSON-RPC requests. 
+Utilizing most of the application's features involves exchanging information between the application itself and the Dash network. The term "Dash network" is in this case a little fuzzy concept. In fact, DMT needs to connect to one of the nodes that make up the network, more specifically - those that serve JSON-RPC requests. 
 
-Depending on your preferences, you can choose one of three possible configuration types:
- * [Direct connection to your own Dash JSON-RPC daemon](doc/connections.md#direct-json-rpc-connection)
+Depending on your preferences, you can choose one of three possible connection types:
+ * [Direct connection to your own Dash JSON-RPC daemon](doc/config-connection-direct.md)
  * [Connection to your own (remote) Dash JSON-RPC daemon through an SSH tunnel](#doc/connections.md)
- * [Connection to "public" JSON-RPC proxy](doc/connections.md)
+ * [Connection to "public" JSON-RPC proxy](doc/config-connection-direct.md)
 
 #### Configuration of masternode(s)
 
-##### Scenario A: moving funds from Dash-QT software wallet to HW
+##### Scenario A - if moving funds from Dash-QT software wallet to HW
 
-##### Scenario B: setting-up a new masternode 
+##### Scenario B - if setting-up a new masternode 
 
 
 ### Create masternode's configuration
