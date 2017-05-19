@@ -31,10 +31,11 @@ For this:
  ![1](img/dashqt-rebuild-index.png)
 
  
-### 3. Configure the connection in DMT
+### 3. Configure connection in DMT
  * In the main application window click the `Configure` button. 
  * Choose the `Dashd network` tab.
  * Click the `+` (plus) button on the left side of the dialog.
+ * Check the box `Enabled`.
  * Fill in the values:
    * `RPC host` to 127.0.0.1
    * `port` to 9998
