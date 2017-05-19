@@ -21,4 +21,4 @@ The communication is carried out as follows:
 ### Configuration
 
 #### 1. Enable JSON-RPC and "indexing" in the Dash daemon
-The procedure is similar to the RPC/indexing [setup](config-connection-direct.md) in Dash Core application.
+The procedure is similar to the RPC/indexing [setup](config-connection-direct.md#2-enable-json-rpc-and-indexing-in-the-dash-core) in Dash Core application.
