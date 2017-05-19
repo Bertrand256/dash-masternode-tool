@@ -4,7 +4,7 @@ In this scenario you are going to use your own _Dash daemon_ configured to serve
 ### 1. Install Dash Core software wallet
 As a _Dash daemon_ you are going to use the Dash official client - Dash Core. If you haven't installed this program before, do it now. Installer matching your operating system can be downloaded from the following page: https://www.dash.org/wallets.
 
-### 2 Enable JSON-RPC and indexing in the Dash Core
+### 2. Enable JSON-RPC and indexing in the Dash Core
 ####  2.1 Set the required parameters in the `dash.conf` file
 Default Dash Core configuration doesn't have any of the required settings, so it will be necessary to make some changes in the `dash.conf` file. Location of this file varies depending on the operating system you are using, and may be changed during installation, so I will not specify any paths due to possible confusion. Instead, I suggest clicking the `Tools->Open Wallet Configuration File` menu item of the Dash Core application. After that `dash.conf` file will be open in default text editor. 
 
