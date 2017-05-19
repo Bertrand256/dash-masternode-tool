@@ -40,9 +40,9 @@ For this:
    * `port` to 9998
    * `RPC username` to a value you've entered for `rpcuser` parameter in the `dash.conf` file.
    * `RPC password` to a value you've entered for `rpcpassword` parameter in the `dash.conf` file.
- * Make sure, that `Use SSH tunnel` and `SSL` checkboxes are unchecked. Also, if you decide to use only this connection, deactivate all other connections by unchecking their `Enabled` checkbox.
+ * Make sure, that `Use SSH tunnel` and `SSL` checkboxes are unchecked. Also, if you decide to use only this connection, deactivate all other connections by unchecking their `Enabled` checkbox.  
  ![!](img/dmt-config-dlg-conn-direct.png)
- * Click the `Test connection` button. The successful connection test ends with the following message:
+ * Click the `Test connection` button. The successful connection test ends with the following message:  
  ![](img/dmt-conn-success.png)
  
 
