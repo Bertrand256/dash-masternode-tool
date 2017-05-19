@@ -38,7 +38,7 @@ Most of the features of the application involves the exchange of data between th
 
 You can choose one of three possible connection types:
  * [Connection to your local Dash daemon like Dash Core](doc/config-connection-direct.md)
- * [Connection to your remote Dash daemon (like your masternode) through an SSH tunnel](doc/config-connection-direct.md)
+ * [Connection to your remote Dash daemon (like your masternode) through an SSH tunnel](doc/config-connection-ssh.md)
  * [Connection to "public" JSON-RPC proxy](doc/config-connection-direct.md)
 
 #### 3. Configuration of masternode(s)
