@@ -5,7 +5,7 @@ Dash masternodes are full-nodes which are incentivized by paying them a share of
 
 A server + installed _Dash daemon_ software form a Dash full-node, but before the rest of the network accepts it as a ligitimate masternode, one more thing must happen: the person controlling the node must prove, that he/she is also in control of the private key of the node's collateral. This is achieved by the requirement of sending the network a special message signed by this private key just after starting the masternode software. This message is referred to as sending _Start masternode_ message. 
 
-This action can be performed using the Dash reference client - Dash-Qt. As can be expecetd, this requires sending of 1000 Dash to the address controlled by your Dash-Qt (software) wallet. After the recent increase in the value of Dash and burst of amount of malware distributed on the Internet, you do not have to be paranoid to say that sending that amount of resources to a software wallet is not really secure, regardless of what type of OS you use. For these reasons it is highly recomended to use a **hardware wallet** for this purpose.
+This action can be performed using the Dash reference client - Dash Core. As can be expecetd, this requires sending of 1000 Dash to the address controlled by your Dash Core (software) wallet. After the recent increase in the value of Dash and burst of amount of malware distributed on the Internet, you do not have to be paranoid to say that sending that amount of resources to a software wallet is not really secure, regardless of what type of OS you use. For these reasons it is highly recomended to use a **hardware wallet** for this purpose.
 
 ### Purpose of the application
 The main purpose of the application is to give MNOs (masternode owners) the ability to send _Start masternode_ command with easy to use graphical interface, if MN's collateral is controlled by a hardware wallet, such as Trezor or Keepkey.
@@ -21,24 +21,29 @@ The main purpose of the application is to give MNOs (masternode owners) the abil
 -[x] KeepKey
 -[ ] Ledger Nano S (in the future)
 
-### Main application window
 Most ot the application features are accessible from tha main program window:
-
-![Main window](./doc/dmt-main-window.png)
+![Main window](doc/img/dmt-main-window.png)
 
 ### Configuration
 
-#### Configuration of connection(s)
-Utilizing most of the application's features involves exchanging information between the application itself and the Dash network. The term "Dash network" is in this case a little fuzzy concept. In fact, DMT needs to connect to one of the nodes that make up the network, more specifically - those that serve JSON-RPC requests. 
+#### 1. Setting the hardware wallet type
+ * Click the `Configure` button.
+ * In the configuration dialog that will open, select the `Miscellaneous` tab.
+ * Depending on type of your hardware wallet, select the `Trezor` or `Keepkey` option. 
+ ![1](doc/img/dmt-config-dlg-misc.png)
 
-Depending on your preferences, you can choose one of three possible connection types:
- * [Direct connection to your own Dash JSON-RPC daemon](doc/config-connection-direct.md)
- * [Connection to your own (remote) Dash JSON-RPC daemon through an SSH tunnel](#doc/connections.md)
+#### 2. Dash network configuration
+
+Most of the features of the application involves the exchange of data between the application itself and the Dash network. In short, DMT needs to connect to one of the full-nodes that make up the network, more specifically, the one that handles JSON-RPC requests. For DMT application this node will be playing the role of a gateway to the Dash network. It does not matter which full-node it will be - for the Dash network all are equal and exchange information between themselves.
+
+You can choose one of three possible connection types:
+ * [Connection to your local Dash daemon like Dash Core](doc/config-connection-direct.md)
+ * [Connection to your remote Dash daemon (like your masternode) through an SSH tunnel](#doc/connections.md)
  * [Connection to "public" JSON-RPC proxy](doc/config-connection-direct.md)
 
-#### Configuration of masternode(s)
+#### 3. Configuration of masternode(s)
 
-##### Scenario A - if moving funds from Dash-QT software wallet to HW
+##### Scenario A - if moving funds from Dash Core software wallet to HW
 
 ##### Scenario B - if setting-up a new masternode 
 
@@ -78,22 +83,22 @@ To show up the "Transfer funds" window, click the "Tools" button. Then, from pop
  - "Transfer funds from current Masternode's address" (mode 1)
  - "Transfer funds from all Masternodes addresses" (mode 2) 
   
-![1](./doc/dmt-transfer-funds.png)
+![1](doc/img/dmt-transfer-funds.png)
 
 Select all UTXOs you wish to include in your transaction, verify transaction fee and click the "Send" button. After signing transaction with your hardware wallet, app will ask you if you want do broadcast transaction to Dash network. 
 
-![1](./doc/dmt-transfer-funds-broadcast.png)
+![1](doc/img/dmt-transfer-funds-broadcast.png)
 
 ### Signing message with hardware wallet
 To sign message with your hardware wallet click the "Tools" button and then select the "Sign message with HW for current Masternode's address" menu item. 
 This will show the "Sign message" window:
 
-![1](./doc/dmt-hw-sign-message.png)
+![1](doc/img/dmt-hw-sign-message.png)
 
 ### Changing hardware wallet's PIN/passphrase configuration
 Click the "Tools" button and then "Hardware Wallet PIN/Passphrase configuration" item. This will show up the configuration window:
  
-![1](./doc/dmt-hardware-wallet-config.png)
+![1](doc/img/dmt-hardware-wallet-config.png)
 
 
 ### Comments
