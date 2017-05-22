@@ -1,7 +1,7 @@
-## Connection to remote Dash daemon through on SSH tunnel
+## Connection through an SSH tunnel
 
 ### SSH tunnels
-If you - as probably most masternode owners - have your masternode runnung under VPS service and you have access to it via SSH, then using it as a JSON-RPC gateway will probably be the best option for you. 
+If you - as probably most masternode owners - have your masternode runnung under VPS service and have access to it via SSH, then using it as a JSON-RPC gateway will probably be the best option for you. 
 
 For security reasons, the TCP port used for JSON-RPC communication (9998 by dafault) should be blocked on Dash full-nodes. For this reason, you will not be able to connect to it directly over the Internet. However, if you have SSH access to this server, you can create a secure channel that connects the local machine to the remote JSON-RPC service so that the DMT application feels like the remote service was working locally. 
 
@@ -13,7 +13,7 @@ The communication is carried out as follows:
  
 
 ```
- Local computer ━━━━━━━━━━━━━━━━➜ SSH session ━━━━━━━━━━━━━━━━➜ remote_server:22
+ Local computer ━━━━━━━━━━━━━━━━> SSH session ━━━━━━━━━━━━━━━━> remote_server:22
            ┃- connecting to 127.0.0.1:random local port           ┃ - listenning on 127.0.0.1:9998 
  DMT app ━━┛                                                      ┗━━━ Dash daemon JSON-RPC
 ```
@@ -21,13 +21,15 @@ The communication is carried out as follows:
 ### Configuration
 
 #### 1. Enable JSON-RPC and "indexing" in the Dash daemon configuration
-The procedure is similar to the RPC/indexing [setup](config-connection-direct.md#2-enable-json-rpc-and-indexing-in-the-dash-core) in Dash Core application.
+The procedure is similar to the RPC/indexing [procedure](config-connection-direct.md#2-enable-json-rpc-and-indexing-in-the-dash-core) for a local RPC node scenario.
  * log-in to the server running _Dash daemon (dashd)_ with a SSH terminal
  * cd do the _dashd's_ configuration directory: `cd ~/.dashcore`
  * open the `dash.conf` file with your preferred text editor
- * enter the configuration parameters that have been listed [here](config-connection-direct.md#21-set-the-required-parameters-in-the-dashconf-file)
- * stop the _Dash daemon_: `./dash-cli stop` 
- * start the _Dash daemon_ with reindex option: `./dashd -reindex`
+ * enter the configuration parameters listed [here](config-connection-direct.md#21-set-the-required-parameters-in-the-dashconf-file)
+ * stop the _dashd_ process: `./dash-cli stop` 
+ * start the _dashd_ with the _-reindex_ parameter: `./dashd -reindex`
+
+Take into account, that the last step can take several hours to complete.
  
 ### 2. Configure connection in DMT
  * In the main application window click the `Configure` button. 

@@ -1,4 +1,4 @@
-## Direct JSON RPC connection
+## Connection to a local Dash daemon
 In this scenario you are going to use your own _Dash daemon_ configured to serve JSON-RPC requests on your local network or on any network you have direct (non filtered) access to. The most convinient way to achieve this is to run a daemon on the same computer on which you run the DMT application. 
 
 ### 1. Install Dash Core software wallet
@@ -29,7 +29,7 @@ For this:
  * Click the `Toools->Wallet Repair` menu item.
  * In the _Tools_ dialog that will open click the `Rebuild index` button.  
  ![1](img/dashqt-rebuild-index.png)
-
+ * Wait until the operation is completed which can take several hours.
  
 ### 3. Configure connection in DMT
  * In the main application window click the `Configure` button. 
