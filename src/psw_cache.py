@@ -9,23 +9,50 @@ from PyQt5.QtWidgets import QLineEdit
 from wnd_utils import WndUtils
 
 
+class UserCancelledConnection(Exception):
+    pass
+
+
 class SshPassCache(object):
     cache = {}
+    parent_window = None
 
     @staticmethod
-    def get_password(window, username, host):
+    def ask_for_password(username, host, message=None):
+        if not SshPassCache.parent_window:
+            raise Exception('SshPassCache not initialized')
+
+        def query_psw(msg):
+            password, ok = QInputDialog.getText(SshPassCache.parent_window, 'Password Dialog',
+                                                msg, echo=QLineEdit.Password)
+            return password, ok
+
+        if not message:
+            message = 'Enter password for ' + username + '@' + host + ':'
+
+        if threading.current_thread() != threading.main_thread():
+            password, ok = WndUtils.callFunInTheMainThread(query_psw, message)
+        else:
+            password, ok = query_psw(message)
+
+        if not ok:
+            raise UserCancelledConnection
+        return password
+
+    @staticmethod
+    def get_password(username, host, message=None):
+        if not SshPassCache.parent_window:
+            raise Exception('SshPassCache not initialized')
+
+        if not message:
+            message = 'Enter password for ' + username + '@' + host + ':'
+        else:
+            message = message + ':'
+
         key = username + '@' + host
         password = SshPassCache.cache.get(key)
         if not password:
-            def query_psw():
-                password, ok = QInputDialog.getText(window, 'Password Dialog',
-                                                    'Enter password for ' + key + ':', echo=QLineEdit.Password)
-                return password, ok
-
-            if threading.current_thread() != threading.main_thread():
-                password, ok = WndUtils.callFunInTheMainThread(query_psw)
-            else:
-                password, ok = query_psw()
+            password = SshPassCache.ask_for_password(username, host, message)
 
         return password
 
@@ -33,3 +60,6 @@ class SshPassCache(object):
     def save_password(username, host, password):
         SshPassCache.cache[username + '@' + host] = password
 
+    @staticmethod
+    def set_parent_window(parent_window):
+        SshPassCache.parent_window = parent_window

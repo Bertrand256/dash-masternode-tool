@@ -158,6 +158,13 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.updateUi()
         self.disable_cfg_update = False
 
+    def closeEvent(self, event):
+        if self.is_modified:
+            if self.queryDlg('Configuration modified. Save?',
+                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                             default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+                self.applyConfigChanges()
+
     def displayConnsConfigs(self):
         # display all connection configs
         self.lstConns.clear()
@@ -251,6 +258,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.config.check_for_updates = self.local_config.check_for_updates
             self.config.backup_config_file = self.local_config.backup_config_file
             self.config.modified = True
+            self.config.save_to_file()
             self.main_window.connsCfgChanged()
 
     def on_accepted(self):
@@ -283,7 +291,12 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             cfg = self.local_config.dash_net_configs[self.lstConns.currentRow()]
             item = self.lstConns.currentItem()
             if item:
-                item.setText(cfg.get_description())
+                old_state = self.disable_cfg_update
+                try:
+                    self.disable_cfg_update = True  # block updating of UI controls
+                    item.setText(cfg.get_description())
+                finally:
+                    self.disable_cfg_update = old_state
 
     @pyqtSlot()
     def on_actNewConn_triggered(self):
@@ -543,55 +556,52 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                 username, ok = QInputDialog.getText(self, 'Username Dialog', 'Enter username for SSH connection:')
             if not ok or not username:
                 return
-            password = SshPassCache.get_password(self, username, host)
-            if password:
-                from dashd_intf import DashdSSH
-                ssh = DashdSSH(host, int(port), username, password)
-                try:
-                    ssh.connect()
-                    SshPassCache.save_password(username, host, password)  # save password in cache
-                    dashd_conf = ssh.find_dashd_config()
-                    self.disable_cfg_update = True
-                    if isinstance(dashd_conf, tuple) and len(dashd_conf) >= 3:
-                        if not dashd_conf[0]:
-                            self.infoMsg('Remore Dash daemon seems to be shut down')
-                        elif not dashd_conf[1]:
-                            self.infoMsg('Could not find remote dashd.conf file')
+            from dashd_intf import DashdSSH
+            ssh = DashdSSH(host, int(port), username)
+            try:
+                ssh.connect()
+                dashd_conf = ssh.find_dashd_config()
+                self.disable_cfg_update = True
+                if isinstance(dashd_conf, tuple) and len(dashd_conf) >= 3:
+                    if not dashd_conf[0]:
+                        self.infoMsg('Remore Dash daemon seems to be shut down')
+                    elif not dashd_conf[1]:
+                        self.infoMsg('Could not find remote dashd.conf file')
+                    else:
+                        file = dashd_conf[2]
+                        rpcuser = file.get('rpcuser', '')
+                        rpcpassword = file.get('rpcpassword', '')
+                        if file.get('rpcuser', ''):
+                            cfg.username = rpcuser
+                        if file.get('rpcpassword', ''):
+                            cfg.password = rpcpassword
+                        if file.get('rpcport', ''):
+                            cfg.port = file.get('rpcport', '9998')
+                        rpcbind = file.get('rpcbind', '')
+                        if not rpcbind:  # listen on all interfaces if not set
+                            cfg.host = '127.0.0.1'
                         else:
-                            file = dashd_conf[2]
-                            rpcuser = file.get('rpcuser', '')
-                            rpcpassword = file.get('rpcpassword', '')
-                            if file.get('rpcuser', ''):
-                                cfg.username = rpcuser
-                            if file.get('rpcpassword', ''):
-                                cfg.password = rpcpassword
-                            if file.get('rpcport', ''):
-                                cfg.port = file.get('rpcport', '9998')
-                            rpcbind = file.get('rpcbind', '')
-                            if not rpcbind:  # listen on all interfaces if not set
-                                cfg.host = '127.0.0.1'
-                            else:
-                                cfg.host = rpcbind
+                            cfg.host = rpcbind
 
-                            if file.get('server', '1') == '0':
-                                self.warnMsg("Remote dash.conf parameter 'server' is set to '0', so RPC interface will "
-                                             "not work.")
-                            if not rpcuser:
-                                self.warnMsg("Remote dash.conf parameter 'rpcuser' is not set, so RPC interface will  "
-                                             "not work.")
-                            if not rpcpassword:
-                                self.warnMsg("Remote dash.conf parameter 'rpcpassword' is not set, so RPC interface will  "
-                                             "not work.")
-                        self.updateUi()
-                    elif isinstance(dashd_conf, str):
-                        self.warnMsg("Couldn't read remote dashd configuration file due the following error: " +
-                                     dashd_conf)
-                    ssh.disconnect()
-                except Exception as e:
-                    self.errorMsg(str(e))
-                    return
-                finally:
-                    self.disable_cfg_update = False
+                        if file.get('server', '1') == '0':
+                            self.warnMsg("Remote dash.conf parameter 'server' is set to '0', so RPC interface will "
+                                         "not work.")
+                        if not rpcuser:
+                            self.warnMsg("Remote dash.conf parameter 'rpcuser' is not set, so RPC interface will  "
+                                         "not work.")
+                        if not rpcpassword:
+                            self.warnMsg("Remote dash.conf parameter 'rpcpassword' is not set, so RPC interface will  "
+                                         "not work.")
+                    self.updateUi()
+                elif isinstance(dashd_conf, str):
+                    self.warnMsg("Couldn't read remote dashd configuration file due the following error: " +
+                                 dashd_conf)
+                ssh.disconnect()
+            except Exception as e:
+                self.errorMsg(str(e))
+                return
+            finally:
+                self.disable_cfg_update = False
 
     def on_btnTestConnection_clicked(self):
         if self.lstConns.currentRow() >= 0:

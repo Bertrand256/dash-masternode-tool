@@ -29,7 +29,7 @@ Most ot the application features are accessible from tha main program window:
 #### 1. Setting the hardware wallet type
  * Click the `Configure` button.
  * In the configuration dialog that will open, select the `Miscellaneous` tab.
- * Depending on type of your hardware wallet, select the `Trezor` or `Keepkey` option.  
+ * Depending on type of your hardware wallet, select the `Trezor` or `Keepkey` option.      
  ![1](doc/img/dmt-config-dlg-misc.png)
 
 #### 2. Dash network configuration
