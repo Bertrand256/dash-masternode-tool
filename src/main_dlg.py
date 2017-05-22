@@ -37,6 +37,7 @@ from dashd_intf import DashdInterface, DashdIndexException
 from hw_common import HardwareWalletCancelException, HardwareWalletPinException
 from hw_intf import connect_hw, hw_get_address, disconnect_hw
 from hw_setup_dlg import HwSetupDlg
+from psw_cache import SshPassCache
 from sign_message_dlg import SignMessageDlg
 from wnd_utils import WndUtils
 from ui import ui_main_dlg
@@ -83,6 +84,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.setWindowTitle(APP_NAME_LONG + ' by Bertrand256' + (
             ' (v. ' + self.version_str + ')' if self.version_str else ''))
 
+        SshPassCache.set_parent_window(self)
         self.inside_setup_ui = True
         self.dashd_intf.window = self
         self.btnHwBip32ToAddress.setEnabled(False)
@@ -260,13 +262,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.dashd_intf.disconnect()
 
         if self.configModified():
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Warning)
-            msg.setText('Do you want to save configuration before exit?')
-            msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            msg.setDefaultButton(QMessageBox.Yes)
-            retval = msg.exec_()
-            if retval == QMessageBox.Yes:
+            if self.queryDlg('Configuration modified. Save?',
+                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                             default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
                 self.on_btnSaveConfiguration_clicked()
 
     def displayMasternodeConfig(self, set_mn_list_index):

@@ -11,13 +11,15 @@ import threading
 import time
 from PyQt5.QtCore import QThread
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
-from paramiko import AuthenticationException
+from paramiko import AuthenticationException, PasswordRequiredException, SSHException
 from app_config import AppConfig
 from random import randint
 from wnd_utils import WndUtils
 import socketserver
 import select
-from psw_cache import SshPassCache
+from os.path import expanduser
+from psw_cache import SshPassCache, UserCancelledConnection
+
 try:
     import http.client as httplib
 except ImportError:
@@ -97,10 +99,6 @@ class UnknownError(Exception):
     pass
 
 
-class UserCancelledConnection(Exception):
-    pass
-
-
 class DashdConnectionError(Exception):
     def __init__(self, org_exception):
         Exception.__init__(org_exception)
@@ -108,11 +106,10 @@ class DashdConnectionError(Exception):
 
 
 class DashdSSH(object):
-    def __init__(self, host, port, username, password):
+    def __init__(self, host, port, username):
         self.host = host
         self.port = port
         self.username = username
-        self.password = password
         self.ssh = None
         self.channel = None
         self.fw_channel = None
@@ -157,8 +154,54 @@ class DashdSSH(object):
         import paramiko
         self.ssh = paramiko.SSHClient()
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.ssh.connect(self.host, port=int(self.port), username=self.username, password=self.password)
-        self.connected = True
+        # password = SshPassCache.get_password(self.username, self.host)
+        # password = SshPassCache.get_password(self.cur_conn_def.ssh_conn_cfg.username,
+        #                                      self.cur_conn_def.ssh_conn_cfg.host)
+        # if not password:
+        #     raise UserCancelledConnection()
+        # SshPassCache.save_password(self.cur_conn_def.ssh_conn_cfg.username,
+        #                            self.cur_conn_def.ssh_conn_cfg.host,
+        #                            password)
+
+        password = None
+
+        # try to locate ssh private key in standard location
+        home_path = expanduser('~')
+        ssh_dir = os.path.join(home_path, '.ssh')
+        key_filename = os.path.join(ssh_dir, 'id_rsa')
+        if not os.path.exists(key_filename):
+            key_filename = os.path.join(ssh_dir, 'id_dsa')
+            if not os.path.exists(key_filename):
+                key_filename = os.path.join(ssh_dir, 'id_ecdsa')
+                if not os.path.exists(key_filename):
+                    key_filename = None
+
+        while True:
+            try:
+                self.ssh.connect(self.host, port=int(self.port), username=self.username, password=password,
+                                 key_filename=key_filename)
+                self.connected = True
+                if password:
+                    SshPassCache.save_password(self.username, self.host, password)
+                break
+            except (PasswordRequiredException, AuthenticationException) as e:
+                # get password from cache or ask for it
+                if key_filename:
+                    message = "Enter password for RSA private key '%s'" % key_filename
+                else:
+                    message = None
+                password = SshPassCache. get_password(self.username, self.host, message=message)
+                if not password:
+                    raise UserCancelledConnection()
+            except SSHException as e:
+                if e.args and e.args[0] == 'No authentication methods available':
+                    password = SshPassCache.get_password(self.username, self.host)
+                    if not password:
+                        raise UserCancelledConnection()
+                else:
+                    raise
+            except Exception as e:
+                raise
 
     def open_tunnel(self, local_port, remote_ip, remote_port):
         if self.connected:
@@ -410,6 +453,9 @@ class DashdInterface(WndUtils):
                 try:
                     if self.open_internal():
                         break
+                    else:
+                        if not self.switch_to_next_config():
+                            return False
                 except UserCancelledConnection:
                     return False
                 except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
@@ -435,23 +481,17 @@ class DashdInterface(WndUtils):
             if self.cur_conn_def.use_ssh_tunnel:
                 # RPC over SSH
                 while True:
-                    password = SshPassCache.get_password(self.window, self.cur_conn_def.ssh_conn_cfg.username,
-                                                         self.cur_conn_def.ssh_conn_cfg.host)
-                    if not password:
-                        raise UserCancelledConnection()
-
                     self.ssh = DashdSSH(self.cur_conn_def.ssh_conn_cfg.host, self.cur_conn_def.ssh_conn_cfg.port,
-                                        self.cur_conn_def.ssh_conn_cfg.username, password)
+                                        self.cur_conn_def.ssh_conn_cfg.username)
                     try:
                         self.ssh.connect()
-                        SshPassCache.save_password(self.cur_conn_def.ssh_conn_cfg.username,
-                                                   self.cur_conn_def.ssh_conn_cfg.host,
-                                                   password)
                         break
-                    except AuthenticationException as e:
-                        self.errorMsg(str(e))
+                    # except AuthenticationException as e:
+                    #     self.errorMsg(str(e))
                     except Exception as e:
-                        self.errorMsg(str(e))
+                        # self.errorMsg(str(e))
+                        # return False
+                        raise
 
                 # configure SSH tunnel
                 # get random local unprivileged port number to establish SSH tunnel
