@@ -571,17 +571,24 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                         file = dashd_conf[2]
                         rpcuser = file.get('rpcuser', '')
                         rpcpassword = file.get('rpcpassword', '')
-                        if file.get('rpcuser', ''):
+                        rpcport = file.get('rpcport', '9998')
+                        modified = False
+                        if rpcuser:
+                            modified = modified or (cfg.username != rpcuser)
                             cfg.username = rpcuser
-                        if file.get('rpcpassword', ''):
+                        if rpcpassword:
+                            modified = modified or (cfg.password != rpcpassword)
                             cfg.password = rpcpassword
-                        if file.get('rpcport', ''):
-                            cfg.port = file.get('rpcport', '9998')
+                        if rpcport:
+                            modified = modified or (cfg.port != rpcport)
+                            cfg.port = rpcport
                         rpcbind = file.get('rpcbind', '')
                         if not rpcbind:  # listen on all interfaces if not set
-                            cfg.host = '127.0.0.1'
-                        else:
-                            cfg.host = rpcbind
+                            rpcbind = '127.0.0.1'
+                        modified = modified or (cfg.host != rpcbind)
+                        cfg.host = rpcbind
+                        if modified:
+                            self.is_modified = modified
 
                         if file.get('server', '1') == '0':
                             self.warnMsg("Remote dash.conf parameter 'server' is set to '0', so RPC interface will "
