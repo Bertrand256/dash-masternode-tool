@@ -18,6 +18,7 @@ from wnd_utils import WndUtils
 import socketserver
 import select
 from os.path import expanduser
+from PyQt5.QtWidgets import QMessageBox
 from psw_cache import SshPassCache, UserCancelledConnection
 
 try:
@@ -155,50 +156,37 @@ class DashdSSH(object):
         self.ssh = paramiko.SSHClient()
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         password = None
+        pass_message = None
 
-        key_filename = None
-        # try to locate ssh private key in standard location
-        # home_path = expanduser('~')
-        # ssh_dir = os.path.join(home_path, '.ssh')
-        # key_filename = os.path.join(ssh_dir, 'id_rsa')
-        # if not os.path.exists(key_filename):
-        #     key_filename = os.path.join(ssh_dir, 'id_dsa')
-        #     if not os.path.exists(key_filename):
-        #         key_filename = os.path.join(ssh_dir, 'id_ecdsa')
-        #         if not os.path.exists(key_filename):
-        #             key_filename = None
-
-        pk_password = False
         while True:
             try:
-                self.ssh.connect(self.host, port=int(self.port), username=self.username, password=password,
-                                 key_filename=key_filename)
+                self.ssh.connect(self.host, port=int(self.port), username=self.username, password=password)
                 self.connected = True
                 if password:
                     SshPassCache.save_password(self.username, self.host, password)
                 break
             except PasswordRequiredException as e:
                 # private key with password protection is used; ask user for password
+                pass_message = "Enter passphrase for <b>private key</b> or password for %s" % \
+                               (self.username + '@' + self.host)
                 while True:
-                    password = SshPassCache.get_password(self.username, self.host, message="Enter password for private key")
+                    password = SshPassCache.get_password(self.username, self.host, message=pass_message)
                     if password:
-                        pk_password = True
                         break
 
             except AuthenticationException as e:
-                # This exception will be raised in two cases:
-                #  1. a private key file with password protectection is used  but the user enters bad password for it
-                #  2. normal login to server is performed but the user enters bad password
+                # This exception will be raised in the following cases:
+                #  1. a private key with password protectection is used but the user enters incorrect password
+                #  2. a private key exists but user's public key is not added to the server's allowed keys
+                #  3. normal login to server is performed but the user enters bad password
                 # So, in the first case, the second query for password will ask for normal password to server, not
                 #  for a private key.
 
-                if pk_password:
-                    message = 'The provided password for the encrypted private key is incorrect.'
+                WndUtils.errorMsg(message='Incorrect password, try again...')
 
                 while True:
-                    password = SshPassCache.get_password(self.username, self.host,)
+                    password = SshPassCache.get_password(self.username, self.host, message=pass_message)
                     if password:
-                        pk_password = False
                         break
 
             except SSHException as e:
@@ -206,7 +194,6 @@ class DashdSSH(object):
                     while True:
                         password = SshPassCache.get_password(self.username, self.host)
                         if password:
-                            pk_password = False
                             break
                 else:
                     raise
@@ -496,11 +483,7 @@ class DashdInterface(WndUtils):
                     try:
                         self.ssh.connect()
                         break
-                    # except AuthenticationException as e:
-                    #     self.errorMsg(str(e))
                     except Exception as e:
-                        # self.errorMsg(str(e))
-                        # return False
                         raise
 
                 # configure SSH tunnel
