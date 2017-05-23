@@ -154,28 +154,21 @@ class DashdSSH(object):
         import paramiko
         self.ssh = paramiko.SSHClient()
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        # password = SshPassCache.get_password(self.username, self.host)
-        # password = SshPassCache.get_password(self.cur_conn_def.ssh_conn_cfg.username,
-        #                                      self.cur_conn_def.ssh_conn_cfg.host)
-        # if not password:
-        #     raise UserCancelledConnection()
-        # SshPassCache.save_password(self.cur_conn_def.ssh_conn_cfg.username,
-        #                            self.cur_conn_def.ssh_conn_cfg.host,
-        #                            password)
-
         password = None
 
+        key_filename = None
         # try to locate ssh private key in standard location
-        home_path = expanduser('~')
-        ssh_dir = os.path.join(home_path, '.ssh')
-        key_filename = os.path.join(ssh_dir, 'id_rsa')
-        if not os.path.exists(key_filename):
-            key_filename = os.path.join(ssh_dir, 'id_dsa')
-            if not os.path.exists(key_filename):
-                key_filename = os.path.join(ssh_dir, 'id_ecdsa')
-                if not os.path.exists(key_filename):
-                    key_filename = None
+        # home_path = expanduser('~')
+        # ssh_dir = os.path.join(home_path, '.ssh')
+        # key_filename = os.path.join(ssh_dir, 'id_rsa')
+        # if not os.path.exists(key_filename):
+        #     key_filename = os.path.join(ssh_dir, 'id_dsa')
+        #     if not os.path.exists(key_filename):
+        #         key_filename = os.path.join(ssh_dir, 'id_ecdsa')
+        #         if not os.path.exists(key_filename):
+        #             key_filename = None
 
+        pk_password = False
         while True:
             try:
                 self.ssh.connect(self.host, port=int(self.port), username=self.username, password=password,
@@ -184,20 +177,37 @@ class DashdSSH(object):
                 if password:
                     SshPassCache.save_password(self.username, self.host, password)
                 break
-            except (PasswordRequiredException, AuthenticationException) as e:
-                # get password from cache or ask for it
-                if key_filename:
-                    message = "Enter password for RSA private key '%s'" % key_filename
-                else:
-                    message = None
-                password = SshPassCache. get_password(self.username, self.host, message=message)
-                if not password:
-                    raise UserCancelledConnection()
+            except PasswordRequiredException as e:
+                # private key with password protection is used; ask user for password
+                while True:
+                    password = SshPassCache.get_password(self.username, self.host, message="Enter password for private key")
+                    if password:
+                        pk_password = True
+                        break
+
+            except AuthenticationException as e:
+                # This exception will be raised in two cases:
+                #  1. a private key file with password protectection is used  but the user enters bad password for it
+                #  2. normal login to server is performed but the user enters bad password
+                # So, in the first case, the second query for password will ask for normal password to server, not
+                #  for a private key.
+
+                if pk_password:
+                    message = 'The provided password for the encrypted private key is incorrect.'
+
+                while True:
+                    password = SshPassCache.get_password(self.username, self.host,)
+                    if password:
+                        pk_password = False
+                        break
+
             except SSHException as e:
                 if e.args and e.args[0] == 'No authentication methods available':
-                    password = SshPassCache.get_password(self.username, self.host)
-                    if not password:
-                        raise UserCancelledConnection()
+                    while True:
+                        password = SshPassCache.get_password(self.username, self.host)
+                        if password:
+                            pk_password = False
+                            break
                 else:
                     raise
             except Exception as e:
