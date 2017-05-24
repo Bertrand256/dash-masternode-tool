@@ -162,6 +162,7 @@ class DashdSSH(object):
             try:
                 self.ssh.connect(self.host, port=int(self.port), username=self.username, password=password)
                 self.connected = True
+                print('Connected through SSH')
                 if password:
                     SshPassCache.save_password(self.username, self.host, password)
                 break
@@ -615,9 +616,9 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
-    def get_masternodelist(self):
+    def get_masternodelist(self, *args):
         if self.open():
-            return self.proxy.masternodelist()
+            return self.proxy.masternodelist(*args)
         else:
             raise Exception('Not connected')
 
@@ -683,3 +684,4 @@ class DashdInterface(WndUtils):
             return self.proxy.sendrawtransaction(tx)
         else:
             raise Exception('Not connected')
+

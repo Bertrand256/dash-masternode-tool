@@ -7,6 +7,7 @@ import logging
 from PyQt5.QtCore import Qt, pyqtSlot, QModelIndex
 from PyQt5.QtWidgets import QMessageBox, QDialog, QLayout, QTableWidgetItem, QDialogButtonBox
 import wnd_utils as wnd_utils
+from app_config import DATETIME_FORMAT
 from dashd_intf import DashdIndexException
 from ui import ui_find_coll_tx_dlg
 
@@ -96,7 +97,7 @@ class FindCollateralTxDlg(QDialog, ui_find_coll_tx_dlg.Ui_FindCollateralTxDlg, w
                         for utxo in self.utxos:
                             blockhash = self.dashd_intf.getblockhash(utxo.get('height'))
                             bh = self.dashd_intf.getblockheader(blockhash)
-                            utxo['time_str'] = datetime.datetime.fromtimestamp(bh['time']).strftime('%Y-%m-%d %H:%M')
+                            utxo['time_str'] = datetime.datetime.fromtimestamp(bh['time']).strftime(DATETIME_FORMAT)
                     except Exception as e:
                         self.errorMsg(str(e))
 

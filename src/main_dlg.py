@@ -31,7 +31,7 @@ import dash_utils
 import hw_pass_dlg
 import hw_pin_dlg
 import send_payout_dlg
-from app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG, APP_NAME_SHORT
+from app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG, APP_NAME_SHORT, DATE_FORMAT, DATETIME_FORMAT
 from dash_utils import bip32_path_n_to_string
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_common import HardwareWalletCancelException, HardwareWalletPinException
@@ -88,8 +88,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.inside_setup_ui = True
         self.dashd_intf.window = self
         self.btnHwBip32ToAddress.setEnabled(False)
-        self.edtMnStatus.setReadOnly(True)
-        self.edtMnStatus.setStyleSheet('QLineEdit{background-color: lightgray}')
+        # self.edtMnStatus.setReadOnly(True)
+        # self.edtMnStatus.setStyleSheet('QLineEdit{background-color: lightgray}')
         self.closeEvent = self.closeEvent
         self.lblStatus1 = QtWidgets.QLabel(self)
         self.lblStatus1.setAutoFillBackground(False)
@@ -204,7 +204,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot()
     def on_actCheckForUpdates_triggered(self, force_check=True):
         if self.config.check_for_updates:
-            cur_date = datetime.datetime.now().strftime('%Y-%m-%d')
+            cur_date = datetime.datetime.now().strftime(DATE_FORMAT)
             last_ver_check_date = cache.get_value('check_for_updates_last_date', '', str)
             if force_check or cur_date != last_ver_check_date:
                 self.runInThread(self.checkForUpdates, (cur_date, force_check))
@@ -282,7 +282,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.edtMnCollateralAddress.setText(self.curMasternode.collateralAddress if self.curMasternode else '')
             self.edtMnCollateralTx.setText(self.curMasternode.collateralTx if self.curMasternode else '')
             self.edtMnCollateralTxIndex.setText(self.curMasternode.collateralTxIndex if self.curMasternode else '')
-            self.edtMnStatus.setText('')
+            self.lblMnStatus.setText('')
         finally:
             if self.curMasternode:
                 self.curMasternode.lock_modified_change = False
@@ -1144,7 +1144,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.warnMsg("You must wait until the Dash daemon finishes synchronizing.")
             return
 
-        mn_status = self.getMnStatus()
+        mn_status = self.getMnStatus(extended=True)
         if mn_status in ('ENABLED', 'PRE_ENABLED'):
             if self.queryDlg("Warning: masternode's state is %s. \n\nDo you really want to broadcast MN start "
                              "message?" % mn_status, default_button=QMessageBox.Cancel,
@@ -1325,43 +1325,52 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.errorMsg(str(e))
             logging.exception('Exception occurred.')
 
-    def getMnStatus(self):
+    def getMnStatus(self, extended):
         """
-        Gets current masternode status.
+        Gets current masternode status.        
+        :param extended: if False, function returns only status (ENABLED, PRE_ENABLED,..), if True it returns
+            a few more informations related to the masternode
         :return: masternode's status
         """
         if self.dashd_connection_ok:
             addr_ip = self.curMasternode.ip + ':' + self.curMasternode.port
             collateral_id = self.curMasternode.collateralTx + '-' + self.curMasternode.collateralTxIndex
-            mn_list = self.dashd_intf.get_masternodelist()
-            mn_addr = self.dashd_intf.get_masternodeaddr()
-            found = False
-            cur_collateral_id = ''
-            for cur_collateral_id in mn_addr:
-                cur_addr_ip = mn_addr[cur_collateral_id]
-                if addr_ip == cur_addr_ip:
-                    found = True
-                    break
 
-            if found:
-                status = mn_list.get(cur_collateral_id, 'Unknown')
-                if collateral_id != cur_collateral_id:
-                    status += "; warning: collateral configured is not the same as current MN's collateral"
+            # (status, protocol, payee, lastseen, activeseconds, lastpaidtime, pastpaidblock, ip) =
+            mns_info = self.dashd_intf.get_masternodelist('full', collateral_id)
+            mn_info = mns_info.get(collateral_id)
+            if mn_info:
+                mn_info = mn_info.strip()
+                # status protocol payee lastseen activeseconds lastpaidtime lastpaidblock IP
+                elems = mn_info.split()
+                if len(elems) >= 8:
+                    status_str, _, _, lastseen, activeseconds, lastpaidtime, _, _ = elems
+                    if extended:
+                        lastseen_str = datetime.datetime.fromtimestamp(float(lastseen)).strftime(DATETIME_FORMAT)
+                        lastpaid_str = datetime.datetime.fromtimestamp(float(lastpaidtime)).strftime(DATETIME_FORMAT)
+                        activeseconds_str = dash_utils.seconds_to_human(int(activeseconds))
+                        if status_str == 'ENABLED' or status_str == 'PRE_ENABLED':
+                            color = 'green'
+                        else:
+                            color = 'red'
+                        status = '<b>Status</b>: <span style="color:%s">%s</span>, <b>Last Seen</b>: %s, ' \
+                                 '<b>Last Paid</b>: %s, <span><b>Active Duration</b>: %s</span>' % \
+                                 (color, status_str, lastseen_str, lastpaid_str, activeseconds_str)
+                    else:
+                        status = status_str
+                else:
+                    status = '???'
             else:
-                status = 'Masternode not found'
+                status = '<span style="color:red">Masternode not found</span>'
         else:
-            status = "Problem with connection to dashd"
+            status = '<span style="color:red">Problem with connection to dashd</span>'
         return status
 
     @pyqtSlot(bool)
     def on_btnRefreshMnStatus_clicked(self):
         self.checkDashdConnection(wait_for_check_finish=True)
-        status = self.getMnStatus()
-        self.edtMnStatus.setText(status)
-        if status.strip().startswith('ENABLED') or status.strip().startswith('PRE_ENABLED'):
-            self.edtMnStatus.setStyleSheet('QLineEdit{color: green; background-color: lightgray}')
-        else:
-            self.edtMnStatus.setStyleSheet('QLineEdit{color: black; background-color: lightgray}')
+        status = self.getMnStatus(extended=True)
+        self.lblMnStatus.setText(status)
 
     @pyqtSlot(bool)
     def on_actTransferFundsSelectedMn_triggered(self):
