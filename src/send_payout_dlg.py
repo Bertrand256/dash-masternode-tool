@@ -10,7 +10,7 @@ from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSlot
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox
 import app_cache as cache
-from app_config import MIN_TX_FEE
+from app_config import MIN_TX_FEE, DATETIME_FORMAT
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_intf import prepare_transfer_tx, hw_get_address
 from wnd_utils import WndUtils
@@ -368,7 +368,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     for utxo in self.utxos:
                         blockhash = self.dashd_intf.getblockhash(utxo.get('height'))
                         bh = self.dashd_intf.getblockheader(blockhash)
-                        utxo['time_str'] = datetime.datetime.fromtimestamp(bh['time']).strftime('%Y-%m-%d %H:%M')
+                        utxo['time_str'] = datetime.datetime.fromtimestamp(bh['time']).strftime(DATETIME_FORMAT)
 
                         # for a given utxo dash address find its bip32 path
                         found = False

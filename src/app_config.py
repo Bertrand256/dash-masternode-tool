@@ -21,6 +21,8 @@ APP_NAME_SHORT = 'DashMasternodeTool'
 APP_NAME_LONG = 'Dash Masternode Tool'
 MIN_TX_FEE = 10000
 APP_CFG_CUR_VERSION = 2  # current version of configuration file format
+DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+DATE_FORMAT = '%Y-%m-%d'
 
 
 class AppConfig(object):

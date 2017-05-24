@@ -230,6 +230,64 @@
            </item>
           </layout>
          </item>
+         <item row="5" column="1">
+          <layout class="QHBoxLayout" name="horizontalLayout_7">
+           <property name="spacing">
+            <number>8</number>
+           </property>
+           <item>
+            <widget class="QLineEdit" name="edtMnCollateralTx">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>300</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="toolTip">
+              <string>The collateral transaction hash from the 1000 Dash deposit</string>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="label_7">
+             <property name="text">
+              <string>TX index:</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLineEdit" name="edtMnCollateralTxIndex">
+             <property name="maximumSize">
+              <size>
+               <width>25</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="toolTip">
+              <string>The collateral transaction's (unspent) output index with the 1000 Dash deposit (usally 0)</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
          <item row="4" column="1">
           <layout class="QHBoxLayout" name="layCollateral" stretch="1,0,0">
            <property name="spacing">
@@ -461,7 +519,7 @@
            </property>
           </widget>
          </item>
-         <item row="3" column="2">
+         <item row="3" column="3">
           <widget class="QPushButton" name="btnGenerateMNPrivateKey">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
@@ -486,31 +544,6 @@
            </property>
            <property name="text">
             <string>Generate new</string>
-           </property>
-          </widget>
-         </item>
-         <item row="6" column="1">
-          <widget class="QLineEdit" name="edtMnStatus">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="minimumSize">
-            <size>
-             <width>0</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>16777215</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="toolTip">
-            <string>Status of the Masternode. To get current status click the button &lt;Get status&gt;.</string>
            </property>
           </widget>
          </item>
@@ -575,7 +608,7 @@
            </property>
           </widget>
          </item>
-         <item row="6" column="2">
+         <item row="6" column="3">
           <widget class="QPushButton" name="btnRefreshMnStatus">
            <property name="toolTip">
             <string>Get Masternode's status</string>
@@ -584,64 +617,6 @@
             <string>Get status</string>
            </property>
           </widget>
-         </item>
-         <item row="5" column="1">
-          <layout class="QHBoxLayout" name="horizontalLayout_7">
-           <property name="spacing">
-            <number>8</number>
-           </property>
-           <item>
-            <widget class="QLineEdit" name="edtMnCollateralTx">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="minimumSize">
-              <size>
-               <width>300</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="maximumSize">
-              <size>
-               <width>16777215</width>
-               <height>16777215</height>
-              </size>
-             </property>
-             <property name="toolTip">
-              <string>The collateral transaction hash from the 1000 Dash deposit</string>
-             </property>
-             <property name="text">
-              <string/>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="label_7">
-             <property name="text">
-              <string>TX index:</string>
-             </property>
-             <property name="alignment">
-              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLineEdit" name="edtMnCollateralTxIndex">
-             <property name="maximumSize">
-              <size>
-               <width>25</width>
-               <height>16777215</height>
-              </size>
-             </property>
-             <property name="toolTip">
-              <string>The collateral transaction's (unspent) output index with the 1000 Dash deposit (usally 0)</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
          </item>
          <item row="7" column="1">
           <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -695,7 +670,7 @@
            </item>
           </layout>
          </item>
-         <item row="5" column="2">
+         <item row="5" column="3">
           <widget class="QPushButton" name="btnFindCollateral">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
@@ -714,6 +689,25 @@
            </property>
            <property name="text">
             <string>Lookup</string>
+           </property>
+          </widget>
+         </item>
+         <item row="6" column="1">
+          <widget class="QLabel" name="lblMnStatus">
+           <property name="frameShape">
+            <enum>QFrame::Panel</enum>
+           </property>
+           <property name="frameShadow">
+            <enum>QFrame::Sunken</enum>
+           </property>
+           <property name="lineWidth">
+            <number>1</number>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
            </property>
           </widget>
          </item>
