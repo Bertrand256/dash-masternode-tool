@@ -352,6 +352,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             mtx = QMutex()
             cond = QWaitCondition()
             try:
+                logging.info('wait_for_synch_finished_thread')
                 mtx.lock()
                 while not ctrl.finish:
                     synced = self.dashd_intf.issynchronized()
@@ -381,12 +382,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             :param ctrl: control structure to communicate with WorkerThread object (not used here)
             """
             try:
-                logging.debug("before call issynchronized")
+                logging.info("before call issynchronized")
                 synced = self.dashd_intf.issynchronized()
-                logging.debug("after call issynchronized")
+                logging.info("after call issynchronized")
                 self.dashd_info = self.dashd_intf.getinfo()
+                logging.info("after call getinfo")
                 self.dashd_connection_ok = True
                 if not synced:
+                    logging.info("dashd not synced")
                     if not self.is_dashd_syncing and not (hasattr(self, 'wait_for_dashd_synced_thread') and
                                                                   self.wait_for_dashd_synced_thread is not None):
                         self.is_dashd_syncing = True
@@ -408,7 +411,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             """
             Called after thread terminates.
             """
-            logging.debug("connect_finished finished")
+            logging.info("connect_finished finished")
             del self.check_conn_thread
             self.check_conn_thread = None
             if call_on_check_finished:
@@ -424,11 +427,22 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         # if a thread waiting for dashd to finish synchronizing is running, call the callback function
                         call_on_check_finished()
                 else:
-                    self.check_conn_thread = self.runInThread(connect_thread, (), on_thread_finish=connect_finished)
-                    if wait_for_check_finish:
-                        event_loop.exec()
+                    #todo: sometimes thre is deadlock in gui so now we are turning off threading until finding a solution
+
+                    # logging.info("starting connect_finished")
+                    # self.check_conn_thread = self.runInThread(connect_thread, (), on_thread_finish=connect_finished)
+                    # if wait_for_check_finish:
+                    #     logging.info("entering event_loop")
+                    #     event_loop.exec()
+                    #     logging.info("left event_loop")
+
+                    # todo: temporary non threaded version:
+                    connect_thread({})
+                    if call_on_check_finished:
+                        call_on_check_finished()
         else:
             # configuration is not complete
+            logging.warning("config not complete")
             self.is_dashd_syncing = False
             self.dashd_connection_ok = False
 

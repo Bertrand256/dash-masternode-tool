@@ -9,6 +9,8 @@ import socket
 import ssl
 import threading
 import time
+
+import logging
 from PyQt5.QtCore import QThread
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from paramiko import AuthenticationException, PasswordRequiredException, SSHException
@@ -481,9 +483,12 @@ class DashdInterface(WndUtils):
                     self.ssh = DashdSSH(self.cur_conn_def.ssh_conn_cfg.host, self.cur_conn_def.ssh_conn_cfg.port,
                                         self.cur_conn_def.ssh_conn_cfg.username)
                     try:
+                        logging.info('starting ssh.connect')
                         self.ssh.connect()
+                        logging.info('finished ssh.connect')
                         break
                     except Exception as e:
+                        logging.error('error in ssh.connect')
                         raise
 
                 # configure SSH tunnel
@@ -492,6 +497,7 @@ class DashdInterface(WndUtils):
                 local_port = None
                 for try_nr in range(1, 10):
                     try:
+                        logging.info('beginning ssh.open_tunnel')
                         local_port = randint(2000, 50000)
                         self.ssh.open_tunnel(local_port,
                                              self.cur_conn_def.host,
@@ -499,8 +505,11 @@ class DashdInterface(WndUtils):
                         success = True
                         break
                     except Exception as e:
+                        logging.error('error in ssh.open_tunnel loop')
                         pass
+                logging.info('finished ssh.open_tunnel loop')
                 if not success:
+                    logging.error('finished ssh.open_tunnel loop with error')
                     return False
                 else:
                     rpc_user = self.cur_conn_def.username
@@ -521,19 +530,25 @@ class DashdInterface(WndUtils):
                 self.rpc_url = 'http://'
                 self.http_conn = httplib.HTTPConnection(rpc_host, rpc_port, timeout=5)
 
+            logging.info('AuthServiceProxy begin')
             self.rpc_url += rpc_user + ':' + rpc_password + '@' + rpc_host + ':' + str(rpc_port)
             self.proxy = AuthServiceProxy(self.rpc_url, timeout=1000, connection=self.http_conn)
+            logging.info('AuthServiceProxy end')
 
             try:
                 if self.on_connection_begin_callback:
                     try:
                         # make the owner know, we are connecting
+                        logging.info('on_connection_begin_callback begin')
                         self.on_connection_begin_callback()
+                        logging.info('on_connection_begin_callback end')
                     except:
                         pass
 
                 # check the connection
+                logging.info('starting http_conn.connect()')
                 self.http_conn.connect()
+                logging.info('finished http_conn.connect()')
 
                 if self.on_connection_finished_callback:
                     try:
@@ -550,6 +565,7 @@ class DashdInterface(WndUtils):
                         pass
                 raise
             finally:
+                logging.info('http_conn.close()')
                 self.http_conn.close()
                 # timeout hase been initially set to 5 seconds to perform 'quick' connection test
                 self.http_conn.timeout = 20
