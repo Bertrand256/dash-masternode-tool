@@ -57,7 +57,8 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         self.accepted.connect(self.on_accepted)
-
+        self.lblStatus.setText('Config file: ' + '<a href="file://' + self.config.app_config_file_name + '">' + self.config.app_config_file_name + '</a>')
+        self.lblStatus.setOpenExternalLinks(True)
         self.disable_cfg_update = True
 
         # display all connection configs

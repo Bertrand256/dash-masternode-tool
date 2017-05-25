@@ -326,6 +326,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
         Called after connection to dash daemon sucessufully establishes.
         """
+        logging.debug("on_connection_finished")
         self.setStatus1Text('<b>RPC network status:</b> OK (%s)' % self.dashd_intf.get_active_conn_description(), 'green')
 
     def checkDashdConnection(self, wait_for_check_finish=False, call_on_check_finished=None):
@@ -380,7 +381,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             :param ctrl: control structure to communicate with WorkerThread object (not used here)
             """
             try:
+                logging.debug("before call issynchronized")
                 synced = self.dashd_intf.issynchronized()
+                logging.debug("after call issynchronized")
                 self.dashd_info = self.dashd_intf.getinfo()
                 self.dashd_connection_ok = True
                 if not synced:
@@ -405,6 +408,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             """
             Called after thread terminates.
             """
+            logging.debug("connect_finished finished")
             del self.check_conn_thread
             self.check_conn_thread = None
             if call_on_check_finished:
@@ -1347,15 +1351,27 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     status_str, _, _, lastseen, activeseconds, lastpaidtime, _, _ = elems
                     if extended:
                         lastseen_str = datetime.datetime.fromtimestamp(float(lastseen)).strftime(DATETIME_FORMAT)
+                        lastseen_ago = dash_utils.seconds_to_human(time.time() - float(lastseen))
                         lastpaid_str = datetime.datetime.fromtimestamp(float(lastpaidtime)).strftime(DATETIME_FORMAT)
-                        activeseconds_str = dash_utils.seconds_to_human(int(activeseconds))
+                        lastpaid_ago = dash_utils.seconds_to_human(time.time() - float(lastpaidtime), out_seconds=False)
+                        activeseconds_str = dash_utils.seconds_to_human(int(activeseconds), out_seconds=False)
                         if status_str == 'ENABLED' or status_str == 'PRE_ENABLED':
                             color = 'green'
                         else:
                             color = 'red'
-                        status = '<b>Status</b>: <span style="color:%s">%s</span>, <b>Last Seen</b>: %s, ' \
-                                 '<b>Last Paid</b>: %s, <span><b>Active Duration</b>: %s</span>' % \
-                                 (color, status_str, lastseen_str, lastpaid_str, activeseconds_str)
+                        status = '<style>td {white-space:nowrap;padding-right:8px}' \
+                                 '.title {text-align:right;font-weight:bold}' \
+                                 '.ago {font-style:italic}' \
+                                 '.value {color:navy}' \
+                                 '</style>' \
+                                 '<table>' \
+                                 '<tr><td class="title">Status:</td><td class="value"><span style="color:%s">%s</span></td></tr>' \
+                                 '<tr><td class="title">Last Seen:</td><td class="value">%s</td><td class="ago">%s ago</td></tr>' \
+                                 '<tr><td class="title">Last Paid:</td><td class="value">%s</td><td class="ago">%s ago</td></tr>' \
+                                 '<tr><td class="title">Active Duration:</td><td class="value" colspan="2">%s</td></tr>' \
+                                 '</table>' % \
+                                 (color, status_str, lastseen_str, lastseen_ago, lastpaid_str, lastpaid_ago,
+                                  activeseconds_str)
                     else:
                         status = status_str
                 else:

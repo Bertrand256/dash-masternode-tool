@@ -162,7 +162,6 @@ class DashdSSH(object):
             try:
                 self.ssh.connect(self.host, port=int(self.port), username=self.username, password=password)
                 self.connected = True
-                print('Connected through SSH')
                 if password:
                     SshPassCache.save_password(self.username, self.host, password)
                 break

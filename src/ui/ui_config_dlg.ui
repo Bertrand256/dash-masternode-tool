@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>683</width>
-    <height>462</height>
+    <height>463</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -356,6 +356,19 @@
        </item>
       </layout>
      </widget>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="lblStatus">
+     <property name="frameShape">
+      <enum>QFrame::NoFrame</enum>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+     <property name="openExternalLinks">
+      <bool>true</bool>
+     </property>
     </widget>
    </item>
    <item>
