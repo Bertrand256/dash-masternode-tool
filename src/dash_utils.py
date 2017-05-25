@@ -178,51 +178,53 @@ def decrypt(input_str, key):
     return h
 
 
-def seconds_to_human(seconds):
+def seconds_to_human(number_of_seconds, out_seconds=True):
     """
     Converts number of seconds to string representation.
-    :param seconds: number of seconds.
+    :param out_seconds: False, if seconds part in output is to be trucated
+    :param number_of_seconds: number of seconds.
     :return: string representation of time delta
     """
     human_strings = []
 
-    if seconds > 604800:
+    if number_of_seconds > 604800:
         # days
-        weeks = int(seconds / 604800)
-        seconds = seconds - (weeks * 604800)
+        weeks = int(number_of_seconds / 604800)
+        number_of_seconds = number_of_seconds - (weeks * 604800)
         elem_str = str(int(weeks)) + ' week'
         if weeks > 1:
             elem_str += 's'
         human_strings.append(elem_str)
 
-    if seconds > 86400:
+    if number_of_seconds > 86400:
         # days
-        days = int(seconds / 86400)
-        seconds = seconds - (days * 86400)
+        days = int(number_of_seconds / 86400)
+        number_of_seconds = number_of_seconds - (days * 86400)
         elem_str = str(int(days)) + ' day'
         if days > 1:
             elem_str += 's'
         human_strings.append(elem_str)
 
-    if seconds > 3600:
-        hours = int(seconds / 3600)
-        seconds = seconds - (hours * 3600)
+    if number_of_seconds > 3600:
+        hours = int(number_of_seconds / 3600)
+        number_of_seconds = number_of_seconds - (hours * 3600)
         elem_str = str(int(hours)) + ' hour'
         if hours > 1:
             elem_str += 's'
         human_strings.append(elem_str)
 
-    if seconds > 60:
-        minutes = int(seconds / 60)
-        seconds = seconds - (minutes * 60)
-        if minutes == 1:
-            elem_str = str(int(minutes)) + ' minute'
-            if minutes > 1:
-                elem_str += 's'
-            human_strings.append(elem_str)
-
-    if seconds >= 1:
-        elem_str = str(seconds) + ' second'
-        if seconds > 1:
+    if number_of_seconds > 60:
+        minutes = int(number_of_seconds / 60)
+        number_of_seconds = number_of_seconds - (minutes * 60)
+        elem_str = str(int(minutes)) + ' minute'
+        if minutes > 1:
             elem_str += 's'
+        human_strings.append(elem_str)
+
+    if out_seconds and number_of_seconds >= 1:
+        elem_str = str(int(number_of_seconds)) + ' second'
+        if number_of_seconds > 1:
+            elem_str += 's'
+        human_strings.append(elem_str)
+
     return ' '.join(human_strings)

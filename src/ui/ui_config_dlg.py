@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_config_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.8.1
+# Created by: PyQt5 UI code generator 5.8.2
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -12,7 +12,7 @@ class Ui_ConfigDlg(object):
     def setupUi(self, ConfigDlg):
         ConfigDlg.setObjectName("ConfigDlg")
         ConfigDlg.setWindowModality(QtCore.Qt.NonModal)
-        ConfigDlg.resize(683, 462)
+        ConfigDlg.resize(683, 463)
         ConfigDlg.setModal(False)
         self.verticalLayout = QtWidgets.QVBoxLayout(ConfigDlg)
         self.verticalLayout.setSizeConstraint(QtWidgets.QLayout.SetDefaultConstraint)
@@ -107,7 +107,6 @@ class Ui_ConfigDlg(object):
         self.tabMisc = QtWidgets.QWidget()
         self.tabMisc.setObjectName("tabMisc")
         self.verticalLayout_2 = QtWidgets.QVBoxLayout(self.tabMisc)
-        self.verticalLayout_2.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout_2.setSpacing(12)
         self.verticalLayout_2.setObjectName("verticalLayout_2")
         self.layHardwareWallet = QtWidgets.QHBoxLayout()
@@ -140,6 +139,12 @@ class Ui_ConfigDlg(object):
         self.verticalLayout_2.addItem(spacerItem2)
         self.tabWidget.addTab(self.tabMisc, "")
         self.verticalLayout.addWidget(self.tabWidget)
+        self.lblStatus = QtWidgets.QLabel(ConfigDlg)
+        self.lblStatus.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.lblStatus.setText("")
+        self.lblStatus.setOpenExternalLinks(True)
+        self.lblStatus.setObjectName("lblStatus")
+        self.verticalLayout.addWidget(self.lblStatus)
         self.buttonBox = QtWidgets.QDialogButtonBox(ConfigDlg)
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
         self.buttonBox.setStandardButtons(QtWidgets.QDialogButtonBox.Apply|QtWidgets.QDialogButtonBox.Cancel|QtWidgets.QDialogButtonBox.Ok)
