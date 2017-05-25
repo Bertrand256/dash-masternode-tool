@@ -3,6 +3,8 @@
 # Author: Bertrand256
 # Created on: 2017-05
 import copy
+
+import sys
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt, pyqtSlot, QPoint
 from PyQt5.QtWidgets import QInputDialog, QDialog, QLayout, QListWidgetItem, QPushButton, QCheckBox, QWidget, \
@@ -57,7 +59,11 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         self.accepted.connect(self.on_accepted)
-        self.lblStatus.setText('Config file: ' + '<a href="file://' + self.config.app_config_file_name + '">' + self.config.app_config_file_name + '</a>')
+        if sys.platform == 'win32':
+            a_link = '<a href="file:///' + self.config.app_config_file_name + '">' + self.config.app_config_file_name + '</a>'
+        else:
+            a_link = '<a href="file://' + self.config.app_config_file_name + '">' + self.config.app_config_file_name + '</a>'
+        self.lblStatus.setText('Config file: ' + a_link)
         self.lblStatus.setOpenExternalLinks(True)
         self.disable_cfg_update = True
 
