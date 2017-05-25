@@ -86,7 +86,6 @@ a = Analysis(['src/dash_masternode_tool.py'],
 pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)
 
-
 exe = EXE(pyz,
           a.scripts,
           a.binaries,
@@ -96,7 +95,7 @@ exe = EXE(pyz,
           debug=False,
           strip=False,
           upx=False,
-          console=False,
+          console=True,
 		  icon=os.path.join('img',('dmt.%s' % ('icns' if os_type=='darwin' else 'ico'))))
 
 if os_type == 'darwin':
