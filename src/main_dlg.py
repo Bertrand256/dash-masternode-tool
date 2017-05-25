@@ -1148,7 +1148,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.warnMsg("You must wait until the Dash daemon finishes synchronizing.")
             return
 
-        mn_status = self.getMnStatus(extended=True)
+        mn_status = self.getMnStatus(extended=False)
         if mn_status in ('ENABLED', 'PRE_ENABLED'):
             if self.queryDlg("Warning: masternode's state is %s. \n\nDo you really want to broadcast MN start "
                              "message?" % mn_status, default_button=QMessageBox.Cancel,

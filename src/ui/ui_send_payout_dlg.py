@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_send_payout_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.8.1
+# Created by: PyQt5 UI code generator 5.8.2
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -25,10 +25,6 @@ class Ui_SendPayoutDlg(object):
         self.horizontalLayout.setContentsMargins(-1, 8, -1, -1)
         self.horizontalLayout.setSpacing(4)
         self.horizontalLayout.setObjectName("horizontalLayout")
-        self.chbHideCollateralTx = QtWidgets.QCheckBox(SendPayoutDlg)
-        self.chbHideCollateralTx.setStyleSheet("margin-right:15px")
-        self.chbHideCollateralTx.setObjectName("chbHideCollateralTx")
-        self.horizontalLayout.addWidget(self.chbHideCollateralTx)
         self.btnCheckAll = QtWidgets.QToolButton(SendPayoutDlg)
         self.btnCheckAll.setText("")
         self.btnCheckAll.setIconSize(QtCore.QSize(12, 12))
@@ -39,6 +35,10 @@ class Ui_SendPayoutDlg(object):
         self.btnUncheckAll.setIconSize(QtCore.QSize(12, 12))
         self.btnUncheckAll.setObjectName("btnUncheckAll")
         self.horizontalLayout.addWidget(self.btnUncheckAll)
+        self.chbHideCollateralTx = QtWidgets.QCheckBox(SendPayoutDlg)
+        self.chbHideCollateralTx.setStyleSheet("margin-left:20px")
+        self.chbHideCollateralTx.setObjectName("chbHideCollateralTx")
+        self.horizontalLayout.addWidget(self.chbHideCollateralTx)
         spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout.addItem(spacerItem)
         self.verticalLayout.addLayout(self.horizontalLayout)
@@ -131,9 +131,9 @@ class Ui_SendPayoutDlg(object):
         _translate = QtCore.QCoreApplication.translate
         SendPayoutDlg.setWindowTitle(_translate("SendPayoutDlg", "Dialog"))
         self.label_3.setText(_translate("SendPayoutDlg", "List of unspent transaction outputs (UTXO) assigned to Masternode addresses. You can transfer all or selected outputs to a new Dash address."))
-        self.chbHideCollateralTx.setText(_translate("SendPayoutDlg", "Hide collateral utxos"))
         self.btnCheckAll.setToolTip(_translate("SendPayoutDlg", "Check all utxos"))
         self.btnUncheckAll.setToolTip(_translate("SendPayoutDlg", "Uncheck all utxos"))
+        self.chbHideCollateralTx.setText(_translate("SendPayoutDlg", "Hide collateral utxos"))
         self.lblAmountText.setText(_translate("SendPayoutDlg", "Amount to send:"))
         self.lblAmount.setText(_translate("SendPayoutDlg", "0"))
         self.label.setText(_translate("SendPayoutDlg", "Send to address:"))

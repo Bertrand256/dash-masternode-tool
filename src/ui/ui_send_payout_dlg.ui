@@ -42,16 +42,6 @@
       <number>8</number>
      </property>
      <item>
-      <widget class="QCheckBox" name="chbHideCollateralTx">
-       <property name="styleSheet">
-        <string notr="true">margin-right:15px</string>
-       </property>
-       <property name="text">
-        <string>Hide collateral utxos</string>
-       </property>
-      </widget>
-     </item>
-     <item>
       <widget class="QToolButton" name="btnCheckAll">
        <property name="toolTip">
         <string>Check all utxos</string>
@@ -80,6 +70,16 @@
          <width>12</width>
          <height>12</height>
         </size>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="chbHideCollateralTx">
+       <property name="styleSheet">
+        <string notr="true">margin-left:20px</string>
+       </property>
+       <property name="text">
+        <string>Hide collateral utxos</string>
        </property>
       </widget>
      </item>
