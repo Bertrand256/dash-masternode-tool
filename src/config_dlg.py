@@ -182,7 +182,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.local_config.hw_type = 'TREZOR'
         else:
             self.local_config.hw_type = 'KEEPKEY'
-            self.set_modified()
+        self.set_modified()
 
     @pyqtSlot(QPoint)
     def on_lstConns_customContextMenuRequested(self, point):
