@@ -95,7 +95,7 @@ exe = EXE(pyz,
           debug=False,
           strip=False,
           upx=False,
-          console=True,
+          console=False,
 		  icon=os.path.join('img',('dmt.%s' % ('icns' if os_type=='darwin' else 'ico'))))
 
 if os_type == 'darwin':

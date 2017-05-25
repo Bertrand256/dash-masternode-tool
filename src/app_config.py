@@ -6,6 +6,7 @@ import datetime
 import json
 import os
 import re
+import sys
 from configparser import ConfigParser
 from os.path import expanduser
 from random import randint
@@ -70,8 +71,13 @@ class AppConfig(object):
         self.log_file = os.path.join(self.log_dir, 'dmt.log')
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
+
+        if getattr(sys, 'frozen', False):
+            llevel = logging.INFO
+        else:
+            llevel = logging.DEBUG
         logging.basicConfig(filename=self.log_file, format='%(asctime)s %(levelname)s | %(funcName)s | %(message)s',
-                            level=logging.INFO, filemode='w', datefmt='%Y-%m-%d %H:%M:%S')
+                            level=llevel, filemode='w', datefmt='%Y-%m-%d %H:%M:%S')
         logging.info('App started')
 
         # directory for configuration backups:
