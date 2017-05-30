@@ -704,3 +704,17 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
+    @control_rpc_call
+    def getcurrentvotes(self, hash):
+        if self.open():
+            return self.proxy.getcurrentvotes(hash)
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def gobject(self, *args):
+        if self.open():
+            return self.proxy.gobject(*args)
+        else:
+            raise Exception('Not connected')
+

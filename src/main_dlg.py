@@ -31,6 +31,7 @@ import dash_utils
 import hw_pass_dlg
 import hw_pin_dlg
 import send_payout_dlg
+from proposals_dlg import ProposalsDlg
 from app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG, APP_NAME_SHORT, DATE_FORMAT, DATETIME_FORMAT
 from dash_utils import bip32_path_n_to_string
 from dashd_intf import DashdInterface, DashdIndexException
@@ -150,6 +151,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.actHwSetup = mnu.addAction("Hardware Wallet PIN/Passphrase configuration...")
         self.setIcon(self.actHwSetup, "hw.png")
         self.actHwSetup.triggered.connect(self.on_actHwSetup_triggered)
+
+        # proposals
+        self.actProposals = mnu.addAction("Proposals/voting...")
+        self.actProposals.triggered.connect(self.on_actProposals_triggered)
 
         # check for updates
         self.actCheckForUpdates = mnu.addAction("Check for updates")
@@ -1482,5 +1487,18 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         self.edtMnCollateralTxIndex.setText(str(txidx))
                         self.curMnModified()
                         self.updateControlsState()
+        else:
+            logging.warning("curMasternode or collateralAddress empty")
+
+    @pyqtSlot(bool)
+    def on_actProposals_triggered(self):
+        """
+        Open dialog with list of utxos of collateral dash address.
+        :return: 
+        """
+        if self.curMasternode and self.curMasternode.collateralAddress:
+            ui = ProposalsDlg(self, self.dashd_intf)
+            if ui.exec_():
+                pass
         else:
             logging.warning("curMasternode or collateralAddress empty")
