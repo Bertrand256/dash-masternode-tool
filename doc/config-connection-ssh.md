@@ -1,9 +1,9 @@
 ## Connection through an SSH tunnel
 
 ### SSH tunnels
-If you - as probably most masternode owners - have your masternode runnung under VPS service and have access to it via SSH, then using it as a JSON-RPC gateway will probably be the best option for you. 
+If you - as probably most masternode owners - have your masternode running under VPS service and have access to it via SSH, then using it as a JSON-RPC gateway will probably be the best option for you. 
 
-For security reasons, the TCP port used for JSON-RPC communication (9998 by dafault) should be blocked on Dash full-nodes. For this reason, you will not be able to connect to it directly over the Internet. However, if you have SSH access to this server, you can create a secure channel that connects the local machine to the remote JSON-RPC service so that the DMT application feels like the remote service was working locally. 
+For security reasons, the TCP port used for JSON-RPC communication (9998 by default) should be blocked on Dash full-nodes. For this reason, you will not be able to connect to it directly over the Internet. However, if you have SSH access to this server, you can create a secure channel that connects the local machine to the remote JSON-RPC service so that the DMT application feels like the remote service was working locally. 
 
 The communication is carried out as follows:
  * an SSH session with a remote server (Dash daemon) is created using its public IP and SSH port 
@@ -46,7 +46,7 @@ Take into account, that the last step can take several hours to complete.
    * `RPC username`: a value you've entered for `rpcuser` parameter in the `dash.conf` file
    * `RPC password`: a value you've entered for `rpcpassword` parameter in the `dash.conf` file   
  
- Instead of entering parameters related to the RPC configuration, you can click the `Read RPC configuration from SSH host`. In this case the applications will try to read the values from the remote `dash.conf` file.  
+ Instead of entering parameters related to the RPC configuration, you can click the `Read RPC configuration from SSH host`. In this case, the applications will try to read the values from the remote `dash.conf` file.  
  * Make sure, that `SSL` checkbox is unchecked. Also, if you decide to use only this connection, deactivate all other connections by unchecking their `Enabled` checkbox.  
  ![!](img/dmt-config-dlg-conn-ssh.png)
  * Click the `Test connection` button. The successful connection test ends with the following message:  

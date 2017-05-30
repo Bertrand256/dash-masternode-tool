@@ -176,7 +176,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.updateControlsState()
         self.setMessage("", None)
 
-        self.on_actCheckForUpdates_triggered(force_check=False)
+        self.on_actCheckForUpdates_triggered(True, force_check=False)
 
         self.inside_setup_ui = False
         logging.info('Finished setup of the main dialog.')
@@ -201,8 +201,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         version_nr = int(version_nr_str)
         return version_nr
 
-    @pyqtSlot()
-    def on_actCheckForUpdates_triggered(self, force_check=True):
+    @pyqtSlot(bool)
+    def on_actCheckForUpdates_triggered(self, checked, force_check=True):
         if self.config.check_for_updates:
             cur_date = datetime.datetime.now().strftime(DATE_FORMAT)
             last_ver_check_date = cache.get_value('check_for_updates_last_date', '', str)
@@ -1159,13 +1159,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.errorMsg("Connection to Dash daemon is not established.")
             return
         if self.is_dashd_syncing:
-            self.warnMsg("You must wait until the Dash daemon finishes synchronizing.")
+            self.warnMsg("Dash daemon to which you are connected is synchronizing. You have to wait "
+                         "until it's finished.")
             return
 
         mn_status = self.getMnStatus(extended=False)
         if mn_status in ('ENABLED', 'PRE_ENABLED'):
-            if self.queryDlg("Warning: masternode's state is %s. \n\nDo you really want to broadcast MN start "
-                             "message?" % mn_status, default_button=QMessageBox.Cancel,
+            if self.queryDlg("Warning: masternode state is %s. \n\nDo you really want to sent 'Start Masternode' "
+                             "message? " % mn_status, default_button=QMessageBox.Cancel,
                              icon=QMessageBox.Warning) == QMessageBox.Cancel:
                 return
 
@@ -1202,10 +1203,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.updateControlsState()
             elif dash_addr != self.curMasternode.collateralAddress:
                 # verify config's collateral addres with hardware wallet
-                if self.queryDlg(message="Dash address from %s's path %s (%s) does not match address from current "
-                                 'configuration (%s).\n\nDou you really want to continue?' %
-                        (self.getHwName(), self.curMasternode.collateralBip32Path, dash_addr,
-                         self.curMasternode.collateralAddress),
+                if self.queryDlg(message="The Dash address retrieved from the hardware wallet (%s) for the configured "
+                                         "BIP32 path does not match the collateral address entered in the "
+                                         "configuration: %s.\n\n"
+                                         "Do you really want to continue?" %
+                        (dash_addr, self.curMasternode.collateralAddress),
                         default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
                     return
 
@@ -1224,15 +1226,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if found:
                     if utxo.get('satoshis', None) != 100000000000:
                         if self.queryDlg(
-                                message="Collateral's transaction output should equal 100000000000 Satoshis (1000 Dash)"
-                                        ", but its value is: %d.\n\nDo you really want to continue?"
+                                message="Collateral transaction output should equal 100000000000 Satoshis (1000 Dash)"
+                                        ", but its value is: %d Satoshis.\n\nDo you really want to continue?"
                                         % (utxo['satoshis']),
                                 buttons=QMessageBox.Yes | QMessageBox.Cancel,
                                 default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
                             return
                 else:
                     if self.queryDlg(
-                            message="Could not find specified transaction id/index for collateral's address: %s."
+                            message="Could not find the specified transaction id/index for the collateral address: %s."
                                     "\n\nDo you really want to continue?"
                                     % dash_addr,
                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
@@ -1417,6 +1419,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             self.errorMsg('No masternode selected')
 
+    @pyqtSlot(bool)
     def on_actTransferFundsForAllMns_triggered(self):
         """
         Shows tranfser funds window with utxos related to all masternodes. 
@@ -1437,6 +1440,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             ui = send_payout_dlg.SendPayoutDlg(src_addresses, self)
             ui.exec_()
 
+    @pyqtSlot(bool)
     def on_actSignMessageWithHw_triggered(self):
         if self.curMasternode:
             self.connectHardwareWallet()
@@ -1448,6 +1452,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                         self.curMasternode.collateralAddress)
                     ui.exec_()
 
+    @pyqtSlot(bool)
     def on_actHwSetup_triggered(self):
         """
         Hardware wallet setup.
@@ -1468,10 +1473,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if ui.exec_():
                 tx, txidx = ui.getSelection()
                 if tx:
-                    self.curMasternode.collateralTx = tx
-                    self.curMasternode.collateralTxIndex = str(txidx)
-                    self.edtMnCollateralTx.setText(tx)
-                    self.edtMnCollateralTxIndex.setText(str(txidx))
-                    self.updateControlsState()
+                    if self.curMasternode.collateralTx != tx or self.curMasternode.collateralTxIndex != str(txidx):
+                        self.curMasternode.collateralTx = tx
+                        self.curMasternode.collateralTxIndex = str(txidx)
+                        self.edtMnCollateralTx.setText(tx)
+                        self.edtMnCollateralTxIndex.setText(str(txidx))
+                        self.curMnModified()
+                        self.updateControlsState()
         else:
             logging.warning("curMasternode or collateralAddress empty")
