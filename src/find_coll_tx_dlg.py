@@ -57,7 +57,7 @@ class FindCollateralTxDlg(QDialog, ui_find_coll_tx_dlg.Ui_FindCollateralTxDlg, w
             self.tableWidget.setItem(row, 0, item(utxo.get('txid', None)))
             self.tableWidget.setItem(row, 1, item(str(utxo.get('outputIndex', None))))
             self.tableWidget.setItem(row, 2, item(utxo.get('time_str', None)))
-            self.tableWidget.setItem(row, 3, item(str(self.block_count - utxo.get('height', 0))))
+            self.tableWidget.setItem(row, 3, item(str(utxo['confirmations'])))
 
         if len(self.utxos):
             self.tableWidget.resizeColumnsToContents()
@@ -88,6 +88,7 @@ class FindCollateralTxDlg(QDialog, ui_find_coll_tx_dlg.Ui_FindCollateralTxDlg, w
                     #                     show_message=True,
                     #                     show_progress_bar=False)
                     # ctrl.display_msg_fun('<b>Loading unspent transaction outputs. Please wait...</b>')
+
                     self.block_count = self.dashd_intf.getblockcount()
                     self.utxos = self.dashd_intf.getaddressutxos([self.dash_address])
                     self.utxos = [utxo for utxo in self.utxos if utxo['satoshis'] == 100000000000 ]
@@ -98,6 +99,7 @@ class FindCollateralTxDlg(QDialog, ui_find_coll_tx_dlg.Ui_FindCollateralTxDlg, w
                             blockhash = self.dashd_intf.getblockhash(utxo.get('height'))
                             bh = self.dashd_intf.getblockheader(blockhash)
                             utxo['time_str'] = datetime.datetime.fromtimestamp(bh['time']).strftime(DATETIME_FORMAT)
+                            utxo['confirmations'] = bh['confirmations']
                     except Exception as e:
                         self.errorMsg(str(e))
 
