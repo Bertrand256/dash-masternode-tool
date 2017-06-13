@@ -1057,6 +1057,34 @@
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
  </widget>
+ <tabstops>
+  <tabstop>cboMasternodes</tabstop>
+  <tabstop>edtMnName</tabstop>
+  <tabstop>edtMnIp</tabstop>
+  <tabstop>edtMnPort</tabstop>
+  <tabstop>edtMnPrivateKey</tabstop>
+  <tabstop>edtMnCollateralAddress</tabstop>
+  <tabstop>edtMnCollateralBip32Path</tabstop>
+  <tabstop>edtMnCollateralTx</tabstop>
+  <tabstop>edtMnCollateralTxIndex</tabstop>
+  <tabstop>btnNewMn</tabstop>
+  <tabstop>btnImportMasternodesConf</tabstop>
+  <tabstop>btnEditMn</tabstop>
+  <tabstop>btnHwAddressToBip32</tabstop>
+  <tabstop>btnHwBip32ToAddress</tabstop>
+  <tabstop>btnDeleteMn</tabstop>
+  <tabstop>btnGenerateMNPrivateKey</tabstop>
+  <tabstop>btnRefreshMnStatus</tabstop>
+  <tabstop>btnBroadcastMn</tabstop>
+  <tabstop>btnFindCollateral</tabstop>
+  <tabstop>btnCheckConnection</tabstop>
+  <tabstop>btnConfiguration</tabstop>
+  <tabstop>btnSaveConfiguration</tabstop>
+  <tabstop>btnActions</tabstop>
+  <tabstop>btnAbout</tabstop>
+  <tabstop>btnHwCheck</tabstop>
+  <tabstop>btnHwDisconnect</tabstop>
+ </tabstops>
  <resources/>
  <connections/>
 </ui>

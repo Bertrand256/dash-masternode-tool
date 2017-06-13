@@ -400,6 +400,7 @@ class DashdInterface(WndUtils):
 
     def disconnect(self):
         if self.active:
+            logging.debug('Disconnecting')
             if self.ssh:
                 self.ssh.disconnect()
                 del self.ssh
@@ -424,6 +425,7 @@ class DashdInterface(WndUtils):
 
         conn = self.connections[idx]
         if conn != self.starting_conn:
+            logging.debug("Trying to switch to another connection: %s" % conn.get_description())
             self.disconnect()
             self.cur_conn_index = idx
             self.cur_conn_def = conn
@@ -432,6 +434,7 @@ class DashdInterface(WndUtils):
             else:
                 return True
         else:
+            logging.warning('Failed to connect: no another connection configurations.')
             return False
 
     def mark_cur_conn_cfg_is_ok(self):
@@ -477,15 +480,16 @@ class DashdInterface(WndUtils):
             cancelling will be possible - only when user is prompted for a password).
         """
         if not self.active:
+            logging.debug("Trying to open connection: %s" % self.cur_conn_def.get_description())
             if self.cur_conn_def.use_ssh_tunnel:
                 # RPC over SSH
                 while True:
                     self.ssh = DashdSSH(self.cur_conn_def.ssh_conn_cfg.host, self.cur_conn_def.ssh_conn_cfg.port,
                                         self.cur_conn_def.ssh_conn_cfg.username)
                     try:
-                        logging.info('starting ssh.connect')
+                        logging.debug('starting ssh.connect')
                         self.ssh.connect()
-                        logging.info('finished ssh.connect')
+                        logging.debug('finished ssh.connect')
                         break
                     except Exception as e:
                         logging.error('error in ssh.connect')
@@ -497,7 +501,7 @@ class DashdInterface(WndUtils):
                 local_port = None
                 for try_nr in range(1, 10):
                     try:
-                        logging.info('beginning ssh.open_tunnel')
+                        logging.debug('beginning ssh.open_tunnel')
                         local_port = randint(2000, 50000)
                         self.ssh.open_tunnel(local_port,
                                              self.cur_conn_def.host,
@@ -507,7 +511,7 @@ class DashdInterface(WndUtils):
                     except Exception as e:
                         logging.error('error in ssh.open_tunnel loop')
                         pass
-                logging.info('finished ssh.open_tunnel loop')
+                logging.debug('finished ssh.open_tunnel loop')
                 if not success:
                     logging.error('finished ssh.open_tunnel loop with error')
                     return False
@@ -530,42 +534,42 @@ class DashdInterface(WndUtils):
                 self.rpc_url = 'http://'
                 self.http_conn = httplib.HTTPConnection(rpc_host, rpc_port, timeout=5)
 
-            logging.info('AuthServiceProxy begin')
             self.rpc_url += rpc_user + ':' + rpc_password + '@' + rpc_host + ':' + str(rpc_port)
+            logging.debug('AuthServiceProxy begin: %s' % self.rpc_url)
             self.proxy = AuthServiceProxy(self.rpc_url, timeout=1000, connection=self.http_conn)
-            logging.info('AuthServiceProxy end')
+            logging.debug('AuthServiceProxy end')
 
             try:
                 if self.on_connection_begin_callback:
                     try:
                         # make the owner know, we are connecting
-                        logging.info('on_connection_begin_callback begin')
+                        logging.debug('on_connection_begin_callback begin')
                         self.on_connection_begin_callback()
-                        logging.info('on_connection_begin_callback end')
+                        logging.debug('on_connection_begin_callback end')
                     except:
                         pass
 
                 # check the connection
-                logging.info('starting http_conn.connect()')
                 self.http_conn.connect()
-                logging.info('finished http_conn.connect()')
+                logging.debug('Successfully connected')
 
                 if self.on_connection_finished_callback:
                     try:
                         # make the owner know, we successfully finished connection
                         self.on_connection_finished_callback()
                     except:
-                        pass
+                        logging.exception('on_connection_finished_callback call exception')
             except:
+                logging.exception('Connection failed')
                 if self.on_connection_try_fail_callback:
                     try:
                         # make the owner know, connection attempt failed
                         self.on_connection_try_fail_callback()
                     except:
-                        pass
+                        logging.exception('on_connection_try_fail_callback call exception')
                 raise
             finally:
-                logging.info('http_conn.close()')
+                logging.debug('http_conn.close()')
                 self.http_conn.close()
                 # timeout hase been initially set to 5 seconds to perform 'quick' connection test
                 self.http_conn.timeout = 20

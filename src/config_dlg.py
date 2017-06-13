@@ -5,6 +5,8 @@
 import copy
 
 import sys
+
+import logging
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt, pyqtSlot, QPoint
 from PyQt5.QtWidgets import QInputDialog, QDialog, QLayout, QListWidgetItem, QPushButton, QCheckBox, QWidget, \
@@ -66,6 +68,12 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.lblStatus.setText('Config file: ' + a_link)
         self.lblStatus.setOpenExternalLinks(True)
         self.disable_cfg_update = True
+
+        if sys.platform == 'win32':
+            a_link = 'Log file: <a href="file:///' + self.config.log_file + '">' + self.config.log_file + ' </a>'
+        else:
+            a_link = 'Log file: <a href="file://' + self.config.log_file + '">' + self.config.log_file + '</a>'
+        self.lblOpenLogFile.setText(a_link)
 
         # display all connection configs
         self.displayConnsConfigs()
@@ -161,6 +169,15 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.chbHwKeepKey.setChecked(True)
         self.chbCheckForUpdates.setChecked(self.local_config.check_for_updates)
         self.chbBackupConfigFile.setChecked(self.local_config.backup_config_file)
+        idx = {
+                'CRITICAL': 0,
+                'ERROR': 1,
+                'WARNING': 2,
+                'INFO': 3,
+                'DEBUG': 4,
+                'NOTSET': 5
+              }.get(self.local_config.log_level_str, 2)
+        self.cboLogLevel.setCurrentIndex(idx)
 
         self.updateUi()
         self.disable_cfg_update = False
@@ -264,8 +281,8 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                 self.config.hw_type = self.local_config.hw_type
             self.config.check_for_updates = self.local_config.check_for_updates
             self.config.backup_config_file = self.local_config.backup_config_file
+            self.config.set_log_level(self.local_config.log_level_str)
             self.config.modified = True
-            self.config.save_to_file()
             self.main_window.connsCfgChanged()
 
     def on_accepted(self):
@@ -506,6 +523,22 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.local_config.random_dash_net_config = checked
             self.set_modified()
 
+    @pyqtSlot(int)
+    def on_cboLogLevel_currentIndexChanged(self, index):
+        """
+        Event fired when loglevel changed by the user.
+        :param index: index of the selected level.
+        """
+        if not self.disable_cfg_update:
+            level = {0: 50,
+                     1: 40,
+                     2: 30,
+                     3: 20,
+                     4: 10,
+                     5: 0}.get(index, 30)
+            self.local_config.log_level_str = logging.getLevelName(level)
+            self.set_modified()
+
     def updateUi(self):
         dis_old = self.disable_cfg_update
         self.disable_cfg_update = True
@@ -634,3 +667,4 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             finally:
 
                 del dashd_intf
+
