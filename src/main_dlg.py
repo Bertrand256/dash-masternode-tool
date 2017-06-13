@@ -54,7 +54,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         WndUtils.__init__(self, app_path=app_path)
         ui_main_dlg.Ui_MainWindow.__init__(self)
         self.config = AppConfig(app_path)
-        self.config.read_from_file()
         self.dashd_intf = DashdInterface(self.config, window=None,
                                          on_connection_begin_callback=self.on_connection_begin,
                                          on_connection_try_fail_callback=self.on_connection_failed,

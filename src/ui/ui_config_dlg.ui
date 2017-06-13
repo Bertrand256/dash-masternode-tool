@@ -342,6 +342,72 @@
         </widget>
        </item>
        <item>
+        <layout class="QHBoxLayout" name="hlLogLevel">
+         <item>
+          <widget class="QLabel" name="lblLogLevel">
+           <property name="text">
+            <string>Log level:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="cboLogLevel">
+           <item>
+            <property name="text">
+             <string>Critical</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Error</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Warning</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Info</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Debug</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="lblOpenLogFile">
+           <property name="text">
+            <string/>
+           </property>
+           <property name="openExternalLinks">
+            <bool>true</bool>
+           </property>
+           <property name="textInteractionFlags">
+            <set>Qt::LinksAccessibleByKeyboard|Qt::LinksAccessibleByMouse|Qt::TextBrowserInteraction|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_3">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
         <spacer name="verticalSpacer">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
@@ -368,6 +434,9 @@
      </property>
      <property name="openExternalLinks">
       <bool>true</bool>
+     </property>
+     <property name="textInteractionFlags">
+      <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
      </property>
     </widget>
    </item>

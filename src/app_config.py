@@ -29,6 +29,7 @@ DATE_FORMAT = '%Y-%m-%d'
 class AppConfig(object):
     def __init__(self, app_path):
         self.app_path = app_path
+        self.log_level_str = 'WARNING'
 
         # List of Dash network configurations. Multiple conn configs advantage is to give the possibility to use
         # another config if particular one is not functioning (when using "public" RPC service, it could be node's
@@ -72,13 +73,15 @@ class AppConfig(object):
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
 
-        if getattr(sys, 'frozen', False):
-            llevel = logging.INFO
-        else:
-            llevel = logging.DEBUG
+        try:
+            # read configuration from a file
+            self.read_from_file()
+        except:
+            pass
+
         logging.basicConfig(filename=self.log_file, format='%(asctime)s %(levelname)s | %(funcName)s | %(message)s',
-                            level=llevel, filemode='w', datefmt='%Y-%m-%d %H:%M:%S')
-        logging.info('App started')
+                            level=self.log_level_str, filemode='w', datefmt='%Y-%m-%d %H:%M:%S')
+        logging.info('App started with log level: %s' % self.log_level_str)
 
         # directory for configuration backups:
         self.cfg_backup_dir = os.path.join(app_user_dir, 'backup')
@@ -157,6 +160,10 @@ class AppConfig(object):
                 self.check_for_updates = self.value_to_bool(config.get(section, 'check_for_updates', fallback='1'))
                 self.backup_config_file = self.value_to_bool(config.get(section, 'backup_config_file', fallback='1'))
 
+                self.log_level_str = config.get(section, 'log_level', fallback='WARNING')
+                if self.log_level_str not in ('CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'):
+                    self.log_level_str = 'WARNING'
+
                 for section in config.sections():
                     if re.match('MN\d', section):
                         mn = MasterNodeConfig()
@@ -226,6 +233,7 @@ class AppConfig(object):
         config = ConfigParser()
         config.add_section(section)
         config.set(section, 'CFG_VERSION', str(APP_CFG_CUR_VERSION))
+        config.set(section, 'log_level', self.log_level_str)
         config.set(section, 'hw_type', self.hw_type)
         config.set(section, 'bip32_base_path', self.last_bip32_base_path)
         config.set(section, 'random_dash_net_config', '1' if self.random_dash_net_config else '0')
@@ -295,6 +303,18 @@ class AppConfig(object):
         else:
             v = default
         return v
+
+    def set_log_level(self, new_log_level_str):
+        """
+        Method called when log level has been changed by the user. New log
+        :param new_log_level: new log level (symbol as INFO,WARNING,etc) to be set. 
+        """
+        if self.log_level_str != new_log_level_str:
+            lg = logging.getLogger()
+            if lg:
+                lg.setLevel(new_log_level_str)
+                logging.info('Changed log level to: %s' % new_log_level_str)
+            self.log_level_str = new_log_level_str
 
     def is_config_complete(self):
         for cfg in self.dash_net_configs:
