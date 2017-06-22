@@ -73,15 +73,17 @@ class AppConfig(object):
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
 
+
+        self.log_level_str = 'INFO'
+        logging.basicConfig(filename=self.log_file, format='%(asctime)s %(levelname)s | %(funcName)s | %(message)s',
+                            level=self.log_level_str, filemode='w', datefmt='%Y-%m-%d %H:%M:%S')
+        logging.info('App started')
+
         try:
             # read configuration from a file
             self.read_from_file()
         except:
             pass
-
-        logging.basicConfig(filename=self.log_file, format='%(asctime)s %(levelname)s | %(funcName)s | %(message)s',
-                            level=self.log_level_str, filemode='w', datefmt='%Y-%m-%d %H:%M:%S')
-        logging.info('App started with log level: %s' % self.log_level_str)
 
         # directory for configuration backups:
         self.cfg_backup_dir = os.path.join(app_user_dir, 'backup')
@@ -101,6 +103,12 @@ class AppConfig(object):
                 section = 'CONFIG'
                 config.read(self.app_config_file_name)
                 ini_version = config.get(section, 'CFG_VERSION', fallback=1)  # if CFG_VERSION not set it's old config
+
+                log_level_str = config.get(section, 'log_level', fallback='WARNING')
+                if log_level_str not in ('CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'):
+                    log_level_str = 'WARNING'
+                if self.log_level_str != log_level_str:
+                    self.set_log_level(log_level_str)
 
                 if ini_version == 1:
                     # read network config from old file format
@@ -160,10 +168,6 @@ class AppConfig(object):
                 self.check_for_updates = self.value_to_bool(config.get(section, 'check_for_updates', fallback='1'))
                 self.backup_config_file = self.value_to_bool(config.get(section, 'backup_config_file', fallback='1'))
 
-                self.log_level_str = config.get(section, 'log_level', fallback='WARNING')
-                if self.log_level_str not in ('CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'):
-                    self.log_level_str = 'WARNING'
-
                 for section in config.sections():
                     if re.match('MN\d', section):
                         mn = MasterNodeConfig()
@@ -184,14 +188,14 @@ class AppConfig(object):
                         cfg.port = config.get(section, 'port', fallback='')
                         cfg.use_ssl = self.value_to_bool(config.get(section, 'use_ssl', fallback='0'))
                         cfg.username = config.get(section, 'username', fallback='')
-                        cfg.password = config.get(section, 'password', fallback='')
+                        cfg.set_encrypted_password(config.get(section, 'password', fallback=''))
                         cfg.use_ssh_tunnel = self.value_to_bool(config.get(section, 'use_ssh_tunnel', fallback='0'))
                         cfg.ssh_conn_cfg.host = config.get(section, 'ssh_host', fallback='')
                         cfg.ssh_conn_cfg.port = config.get(section, 'ssh_port', fallback='')
                         cfg.ssh_conn_cfg.username = config.get(section, 'ssh_username', fallback='')
                         self.dash_net_configs.append(cfg)
             except Exception:
-                pass
+                logging.exception('Read configuration error:')
 
         try:
             cfgs = self.decode_connections(default_config.dashd_default_connections)
@@ -376,7 +380,7 @@ class AppConfig(object):
                     cfg.host = conn_raw['host']
                     cfg.port = conn_raw['port']
                     cfg.username = conn_raw['username']
-                    cfg.password = conn_raw['password']
+                    cfg.set_encrypted_password(conn_raw['password'])
                     cfg.use_ssl = conn_raw['use_ssl']
                     if cfg.use_ssh_tunnel:
                         if 'ssh_host' in conn_raw:
@@ -689,14 +693,6 @@ class DashNetworkConnectionCfg(object):
 
     @password.setter
     def password(self, password):
-        try:
-            # check if password is a hexadecimal string - then it probably is an encrypted string with AES
-            int(password, 16)
-            p = decrypt(password, APP_NAME_LONG)
-            password = p
-        except Exception as e:
-            pass
-
         self.__password = password
 
     def get_password_encrypted(self):
@@ -704,6 +700,17 @@ class DashNetworkConnectionCfg(object):
             return encrypt(self.__password, APP_NAME_LONG)
         except:
             return self.__password
+
+    def set_encrypted_password(self, password):
+        try:
+            # check if password is a hexadecimal string - then it probably is an encrypted string with AES
+            int(password, 16)
+            p = decrypt(password, APP_NAME_LONG)
+            password = p
+        except Exception as e:
+            logging.warning('Password decryption error: ' + str(e))
+
+        self.__password = password
 
     @property
     def use_ssl(self):
