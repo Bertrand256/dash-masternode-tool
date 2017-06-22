@@ -153,14 +153,23 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             row = 0
             for pro_key in self.proposals:
                 prop = self.proposals[pro_key]
-                if prop.get('fCachedFunding', False) or prop.get('fCachedEndorsed', False):
-                    continue
+                # if prop.get('fCachedFunding', False) or prop.get('fCachedEndorsed', False):
+                #     continue
                 self.tableWidget.insertRow(self.tableWidget.rowCount())
+
+                #todo: while debugging
+                logging.debug('')
+                logging.debug('=========================================================================================')
+                logging.debug(json.dumps(prop))
 
                 dstr = prop.get("DataString")
                 prop_data_json = json.loads(dstr)
                 prop_data = find_prop_data(prop_data_json)
                 if prop_data:
+                    # todo: while debugging
+                    logging.debug('-----------------------------------')
+                    logging.debug(json.dumps(prop_data))
+
                     # "name" column display as a hyperlink if possible
                     url = prop_data.get('url', '')
                     if url:
