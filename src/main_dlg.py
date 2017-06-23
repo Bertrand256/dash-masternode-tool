@@ -624,14 +624,17 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if self.hw_client:
                     self.hw_client.init_device()
 
-    @pyqtSlot(bool)
-    def on_btnHwDisconnect_clicked(self):
+    def disconnectHardwareWallet(self):
         if self.hw_client:
             disconnect_hw(self.hw_client)
             del self.hw_client
             self.hw_client = None
             self.setStatus2Text('<b>HW status:</b> idle', 'black')
             self.updateControlsState()
+
+    @pyqtSlot(bool)
+    def on_btnHwDisconnect_clicked(self):
+        self.disconnectHardwareWallet()
 
     @pyqtSlot(bool)
     def on_btnNewMn_clicked(self):
@@ -685,7 +688,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 address_n = [2147483692,  # 44'
                              2147483653,  # 5'
                             ]
-                addr_of_cur_path = hw_get_address(self.hw_client, address_n)
+                addr_of_cur_path = hw_get_address(self, address_n)
                 b32cache = self.bip32_cache.get(addr_of_cur_path, None)
                 modified_b32cache = False
                 cache_file = os.path.join(self.config.cache_dir, 'bip32cache_%s.json' % addr_of_cur_path)
@@ -739,7 +742,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                     # first, find dash address in cache by bip32 path
                                     addr_of_cur_path = b32cache.get(cur_bip32_path, None)
                                     if not addr_of_cur_path:
-                                        addr_of_cur_path = hw_get_address(self.hw_client, address_n)
+                                        addr_of_cur_path = hw_get_address(self, address_n)
                                         b32cache[cur_bip32_path] = addr_of_cur_path
                                         modified_b32cache = True
 
@@ -1082,7 +1085,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 return
             if self.curMasternode and self.curMasternode.collateralBip32Path:
                 address_n = self.hw_client.expand_path(self.curMasternode.collateralBip32Path)
-                dash_addr = hw_get_address(self.hw_client, address_n)
+                dash_addr = hw_get_address(self, address_n)
                 self.edtMnCollateralAddress.setText(dash_addr)
                 self.curMasternode.collateralAddress = dash_addr
                 self.updateControlsState()
@@ -1194,7 +1197,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             ipv6map += int(self.curMasternode.port).to_bytes(2, byteorder='big').hex()
 
             address_n = self.hw_client.expand_path(self.curMasternode.collateralBip32Path)
-            dash_addr = hw_get_address(self.hw_client, address_n)
+            dash_addr = hw_get_address(self, address_n)
             if not self.curMasternode.collateralAddress:
                 # if mn config's collateral address is empty, assign that from hardware wallet
                 self.curMasternode.collateralAddress = dash_addr
