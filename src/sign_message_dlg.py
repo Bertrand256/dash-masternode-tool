@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import QDialog
 import wnd_utils as wnd_utils
 from hw_intf import sign_message
 from ui import ui_sign_message_dlg
-
+import logging
 
 class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.WndUtils):
     def __init__(self, main_ui, bip32path, address):
@@ -41,5 +41,6 @@ class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.W
                 self.errorMsg('Empty message to sign.')
 
         except Exception as e:
+            logging.exception('Sign message exception:')
             self.errorMsg(str(e))
 

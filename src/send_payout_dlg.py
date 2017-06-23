@@ -304,7 +304,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     addr_hw = bip32_to_address.get(bip32_path, None)
                     if not addr_hw:
                         address_n = self.main_ui.hw_client.expand_path(bip32_path)
-                        addr_hw = hw_get_address(self.main_ui.hw_client, address_n)
+                        addr_hw = hw_get_address(self.main_ui, address_n)
                         bip32_to_address[bip32_path] = addr_hw
                     if addr_hw != utxo['address']:
                         self.errorMsg("Current Dash address from %s's path %s (%s) doesn't match address of funds "
