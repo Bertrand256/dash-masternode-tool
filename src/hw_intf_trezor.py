@@ -11,6 +11,7 @@ from trezorlib.tx_api import TxApiInsight
 from hw_common import HardwareWalletCancelException
 from trezorlib import messages_pb2 as trezor_proto
 import trezorlib.types_pb2 as proto_types
+import base58
 import logging
 from wnd_utils import WndUtils
 
@@ -97,7 +98,7 @@ class MyTxApiInsight(TxApiInsight):
         self.dashd_inf = dashd_inf
         self.cache_dir = cache_dir
 
-    def fetch_json(self, url, resource, resourceid):
+    def fetch_json(self, resource, resourceid):
         cache_file = ''
         if self.cache_dir:
             cache_file = '%s/%s_%s_%s.json' % (self.cache_dir, self.network, resource, resourceid)
@@ -107,7 +108,7 @@ class MyTxApiInsight(TxApiInsight):
             except:
                 pass
         try:
-            j = self.dashd_inf.getrawtransaction(resourceid.decode("utf-8"), 1)
+            j = self.dashd_inf.getrawtransaction(resourceid, 1)
         except Exception as e:
             raise
         if cache_file:
@@ -144,10 +145,17 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
     amt -= tx_fee
     amt = int(amt)
 
+    # check if dest_address is a Dash address or a script address and then set appropriate script_type
+    # https://github.com/dashpay/dash/blob/master/src/chainparams.cpp#L140
+    if dest_address.startswith('7'):
+        stype = proto_types.PAYTOSCRIPTHASH
+    else:
+        stype = proto_types.PAYTOADDRESS
+
     ot = proto_types.TxOutputType(
         address=dest_address,
         amount=amt,
-        script_type=proto_types.PAYTOADDRESS
+        script_type=stype
     )
     outputs.append(ot)
     signed = client.sign_tx('Dash', inputs, outputs)
