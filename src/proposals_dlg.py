@@ -9,9 +9,21 @@ from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt, pyqtSlot, QModelIndex
 from PyQt5.QtWidgets import QDialog, QTableWidgetItem, QDialogButtonBox
 import wnd_utils as wnd_utils
-from app_config import DATE_FORMAT
+from app_config import DATE_FORMAT, DATETIME_FORMAT
 from dashd_intf import DashdIndexException
 from ui import ui_proposals
+
+
+class Proposal(object):
+    def __init__(self):
+        pass
+
+
+class ProposalColumn(object):
+    def __init__(self, symbol, caption, visible):
+        self.column_symbol = symbol
+        self.caption = caption
+        self.visible = visible
 
 
 class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
@@ -21,12 +33,38 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.main_wnd = parent
         self.dashd_intf = dashd_intf
         self.proposals = []
+        self.mn_count = None
+        self.columns = [
+            ProposalColumn('NAME', 'Name', True),
+            ProposalColumn('HASH', 'Hash', False),
+            ProposalColumn('COLLATERAL_HASH', 'Collateral hash', False),
+            ProposalColumn('PAYMENT_START', 'Payment start', True),
+            ProposalColumn('PAYMENT_END', 'Payment end', True),
+            ProposalColumn('PAYMENT_AMOUNT', 'Amount', True),
+            ProposalColumn('YES_COUNT', 'Yes count', True),
+            ProposalColumn('NO_COUNT', 'No count', True),
+            ProposalColumn('ABSTAIN_COUNT', 'Abstain count', True),
+            ProposalColumn('CREATION_TIME', 'Creation time', True),
+            ProposalColumn('URL', 'URL', True),
+            ProposalColumn('PAYMENT_ADDRESS', 'Payment address', False)
+        ]
         self.setupUi()
 
     def setupUi(self):
         try:
             ui_proposals.Ui_ProposalsDlg.setupUi(self, self)
             self.setWindowTitle('Proposals')
+
+            # setup proposals grid
+            self.tableWidget.clear()
+            self.tableWidget.setColumnCount(len(self.columns))
+            for idx, col in enumerate(self.columns):
+                item = QtWidgets.QTableWidgetItem()
+                item.setText(col.caption)
+                self.tableWidget.setHorizontalHeaderItem(idx, item)
+                if not col.visible:
+                    self.tableWidget.hideColumn(idx)
+
             self.lblMessage.setVisible(True)
             self.lblMessage.setText('<b style="color:orange">Reading transactions, please wait...<b>')
             self.runInThread(self.load_proposals_thread, (), self.display_data)
@@ -47,8 +85,17 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             else:
                 try:
                     self.proposals = self.dashd_intf.gobject("list", "valid", "proposals")
-                    # sorted()
-
+                    mns = self.dashd_intf.get_masternodelist('full')
+                    self.mn_count = 0
+                    statuses = {}
+                    # count all active masternodes
+                    for mn in mns:
+                        if mn.status in ('ENABLED','PRE_ENABLED','NEW_START_REQUIRED','WATCHDOG_EXPIRED'):
+                            self.mn_count += 1
+                        if statuses.get(mn.status):
+                            statuses[mn.status] += 1
+                        else:
+                            statuses[mn.status] = 1
                 except DashdIndexException as e:
                     self.errorMsg(str(e))
 
@@ -151,6 +198,32 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
         try:
             row = 0
+
+            # todo: logging
+            csv = [
+                "proposal_name",
+                "Hash",
+                "fCachedDelete",
+                "fCachedFunding",
+                "ObjectType",
+                "fBlockchainValidity",
+                "fCachedEndorsed",
+                "IsValidReason",
+                "AbstainCount",
+                "CollateralHash",
+                "YesCount",
+                "NoCount",
+                "AbsoluteYesCount",
+                "fCachedValid",
+                "CreationTime",
+                "proposal_url",
+                "proposal_type",
+                "proposal_end_epoch",
+                "proposal_start_epoch",
+                "proposal_payment_address",
+                "proposal_payment_amount"]
+            print('\t'.join(csv))
+
             for pro_key in self.proposals:
                 prop = self.proposals[pro_key]
                 # if prop.get('fCachedFunding', False) or prop.get('fCachedEndorsed', False):
@@ -165,10 +238,37 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 dstr = prop.get("DataString")
                 prop_data_json = json.loads(dstr)
                 prop_data = find_prop_data(prop_data_json)
+
+                # todo: while debugging
+                logging.debug('-----------------------------------')
+                logging.debug(json.dumps(prop_data_json))
+
                 if prop_data:
-                    # todo: while debugging
-                    logging.debug('-----------------------------------')
-                    logging.debug(json.dumps(prop_data))
+                    # todo: tempoary logging
+                    csv = [
+                        prop_data.get("name"),
+                        prop.get("Hash"),
+                        prop.get("fCachedDelete"),
+                        prop.get("fCachedFunding"),
+                        prop.get("ObjectType"),
+                        prop.get("fBlockchainValidity"),
+                        prop.get("fCachedEndorsed"),
+                        prop.get("IsValidReason"),
+                        prop.get("AbstainCount"),
+                        prop.get("CollateralHash"),
+                        prop.get("YesCount"),
+                        prop.get("NoCount"),
+                        prop.get("AbsoluteYesCount"),
+                        prop.get("fCachedValid"),
+                        datetime.datetime.fromtimestamp(int(prop.get("CreationTime"))).strftime(DATETIME_FORMAT),
+                        prop_data.get("url"),
+                        prop_data.get("type"),
+                        datetime.datetime.fromtimestamp(int(prop_data['end_epoch'])).strftime(DATE_FORMAT),
+                        datetime.datetime.fromtimestamp(int(prop_data['start_epoch'])).strftime(DATE_FORMAT),
+                        prop_data.get("payment_address"),
+                        prop_data.get("payment_amount")
+                    ]
+                    print('\t'.join([str(r) for r in csv]))
 
                     # "name" column display as a hyperlink if possible
                     url = prop_data.get('url', '')
@@ -188,6 +288,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     self.tableWidget.setItem(row, 4, item(int(prop.get('YesCount', '')), Qt.AlignRight))  # 'Yes count' column
                     self.tableWidget.setItem(row, 5, item(int(prop.get('NoCount', '')), Qt.AlignRight))  # 'No count' column
                     self.tableWidget.setItem(row, 6, item(int(prop.get('AbstainCount', '')), Qt.AlignRight))  # 'Abstain count' column
+                else:
+                    logging.warning("Not found proposal data for %s" % prop.get("Hash"))
                 row += 1
 
             self.tableWidget.resizeColumnsToContents()

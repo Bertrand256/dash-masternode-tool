@@ -351,6 +351,19 @@ def control_rpc_call(func):
     return catch_timeout_wrapper
 
 
+class Masternode(object):
+    def __init__(self):
+        self.ident = None
+        self.status = None
+        self.protocol = None
+        self.payee = None
+        self.lastseen = None
+        self.activeseconds = None
+        self.lastpaidtime = None
+        self.lastpaidblock = None
+        self.IP = None
+
+
 class DashdInterface(WndUtils):
     def __init__(self, config, window, connection=None, on_connection_begin_callback=None,
                  on_connection_try_fail_callback=None, on_connection_finished_callback=None):
@@ -374,6 +387,8 @@ class DashdInterface(WndUtils):
         # below is the connection with which particular RPC call has started; if connection is switched because of
         # problems with some nodes, switching stops if we close round and return to the starting connection
         self.starting_conn = None
+
+        self.masternodes = []  # cached list of all masternodes (Masternode object)
 
         self.ssh = None
         self.window = window
@@ -635,16 +650,43 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
-    def get_masternodelist(self, *args):
-        if self.open():
-            return self.proxy.masternodelist(*args)
-        else:
-            raise Exception('Not connected')
+    def get_masternodelist(self, *args, skip_cache=False):
+        def parse_mns(mns_raw):
+            """
+            Parses dictionary of strings returned from the RPC to Masternode object list.
+            :param mns_raw: Dict of masternodes in format of RPC masternodelist command
+            :return: list of Masternode object
+            """
+            ret_list = []
+            for mn_id in mns_raw.keys():
+                mn_raw = mns_raw.get(mn_id)
+                mn_raw = mn_raw.strip()
+                elems = mn_raw.split()
+                if len(elems) >= 8:
+                    mn = Masternode()
+                    mn.status, mn.protocol, mn.payee, mn.lastseen, mn.activeseconds, mn.lastpaidtime, \
+                    mn.lastpaidblock, mn.IP = elems
+                    mn.lastseen = int(mn.lastseen)
+                    mn.activeseconds = int(mn.activeseconds)
+                    mn.lastpaidtime = int(mn.lastpaidtime)
+                    mn.lastpaidblock = int(mn.lastpaidblock)
+                    mn.ident = mn_id
+                    ret_list.append(mn)
+            return ret_list
 
-    @control_rpc_call
-    def get_masternodeaddr(self):
         if self.open():
-            return self.proxy.masternodelist('addr')
+            if len(args) == 1 and args[0] == 'full':
+                if self.masternodes and not skip_cache:
+                    # if masternode list has been read before, return cached version
+                    return self.masternodes
+                else:
+                    mns = self.proxy.masternodelist(*args)
+                    self.masternodes = parse_mns(mns)
+                    return self.masternodes
+            else:
+                mns = self.proxy.masternodelist(*args)
+                mns = parse_mns(mns)
+                return mns
         else:
             raise Exception('Not connected')
 
@@ -718,3 +760,9 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
+    @control_rpc_call
+    def masternode(self, *args):
+        if self.open():
+            return self.proxy.masternode(*args)
+        else:
+            raise Exception('Not connected')

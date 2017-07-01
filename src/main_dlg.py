@@ -1364,41 +1364,35 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             collateral_id = self.curMasternode.collateralTx + '-' + self.curMasternode.collateralTxIndex
 
             # (status, protocol, payee, lastseen, activeseconds, lastpaidtime, pastpaidblock, ip) =
-            mns_info = self.dashd_intf.get_masternodelist('full', collateral_id)
-            mn_info = mns_info.get(collateral_id)
-            if mn_info:
-                mn_info = mn_info.strip()
-                # status protocol payee lastseen activeseconds lastpaidtime lastpaidblock IP
-                elems = mn_info.split()
-                if len(elems) >= 8:
-                    status_str, _, _, lastseen, activeseconds, lastpaidtime, _, _ = elems
-                    if extended:
-                        lastseen_str = datetime.datetime.fromtimestamp(float(lastseen)).strftime(DATETIME_FORMAT)
-                        lastseen_ago = dash_utils.seconds_to_human(time.time() - float(lastseen))
-                        lastpaid_str = datetime.datetime.fromtimestamp(float(lastpaidtime)).strftime(DATETIME_FORMAT)
-                        lastpaid_ago = dash_utils.seconds_to_human(time.time() - float(lastpaidtime), out_seconds=False)
-                        activeseconds_str = dash_utils.seconds_to_human(int(activeseconds), out_seconds=False)
-                        if status_str == 'ENABLED' or status_str == 'PRE_ENABLED':
-                            color = 'green'
-                        else:
-                            color = 'red'
-                        status = '<style>td {white-space:nowrap;padding-right:8px}' \
-                                 '.title {text-align:right;font-weight:bold}' \
-                                 '.ago {font-style:italic}' \
-                                 '.value {color:navy}' \
-                                 '</style>' \
-                                 '<table>' \
-                                 '<tr><td class="title">Status:</td><td class="value"><span style="color:%s">%s</span></td></tr>' \
-                                 '<tr><td class="title">Last Seen:</td><td class="value">%s</td><td class="ago">%s ago</td></tr>' \
-                                 '<tr><td class="title">Last Paid:</td><td class="value">%s</td><td class="ago">%s ago</td></tr>' \
-                                 '<tr><td class="title">Active Duration:</td><td class="value" colspan="2">%s</td></tr>' \
-                                 '</table>' % \
-                                 (color, status_str, lastseen_str, lastseen_ago, lastpaid_str, lastpaid_ago,
-                                  activeseconds_str)
+            mns_info = self.dashd_intf.get_masternodelist('full', collateral_id, skip_cache=True)
+            if mns_info:
+                mn_info = mns_info[0]  # there shold be the only our masternode in the list
+
+                if extended:
+                    lastseen_str = datetime.datetime.fromtimestamp(float(mn_info.lastseen)).strftime(DATETIME_FORMAT)
+                    lastseen_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastseen))
+                    lastpaid_str = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime)).strftime(DATETIME_FORMAT)
+                    lastpaid_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastpaidtime), out_seconds=False)
+                    activeseconds_str = dash_utils.seconds_to_human(int(mn_info.activeseconds), out_seconds=False)
+                    if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
+                        color = 'green'
                     else:
-                        status = status_str
+                        color = 'red'
+                    status = '<style>td {white-space:nowrap;padding-right:8px}' \
+                             '.title {text-align:right;font-weight:bold}' \
+                             '.ago {font-style:italic}' \
+                             '.value {color:navy}' \
+                             '</style>' \
+                             '<table>' \
+                             '<tr><td class="title">Status:</td><td class="value"><span style="color:%s">%s</span></td></tr>' \
+                             '<tr><td class="title">Last Seen:</td><td class="value">%s</td><td class="ago">%s ago</td></tr>' \
+                             '<tr><td class="title">Last Paid:</td><td class="value">%s</td><td class="ago">%s ago</td></tr>' \
+                             '<tr><td class="title">Active Duration:</td><td class="value" colspan="2">%s</td></tr>' \
+                             '</table>' % \
+                             (color, mn_info.status, lastseen_str, lastseen_ago, lastpaid_str, lastpaid_ago,
+                              activeseconds_str)
                 else:
-                    status = '???'
+                    status = mn_info.status
             else:
                 status = '<span style="color:red">Masternode not found</span>'
         else:
