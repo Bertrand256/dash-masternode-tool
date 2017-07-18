@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_ProposalsDlg(object):
     def setupUi(self, ProposalsDlg):
         ProposalsDlg.setObjectName("ProposalsDlg")
-        ProposalsDlg.resize(745, 428)
+        ProposalsDlg.resize(786, 428)
         ProposalsDlg.setModal(True)
         self.verticalLayout = QtWidgets.QVBoxLayout(ProposalsDlg)
         self.verticalLayout.setContentsMargins(8, 8, 8, 8)
