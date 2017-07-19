@@ -5,6 +5,8 @@
 import datetime
 import json
 import logging
+
+import re
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt, pyqtSlot, QModelIndex
 from PyQt5.QtWidgets import QDialog, QTableWidgetItem, QDialogButtonBox
@@ -12,13 +14,42 @@ import wnd_utils as wnd_utils
 from app_config import DATE_FORMAT, DATETIME_FORMAT
 from dashd_intf import DashdIndexException
 from ui import ui_proposals
+from src.common import AttrsProtected
+from src.wnd_utils import WndUtils
 
 
-class ProposalColumn(object):
-    def __init__(self, symbol, caption, visible):
-        self.column_symbol = symbol
+class ProposalColumn(AttrsProtected):
+    def __init__(self, symbol, caption, visible, voting_mn=None):
+        """
+        Constructor.
+        :param symbol: Column symbol/name. There are a) static columns, which name carries information about
+            column destinations (these columns are defined in PROPOSAL_COLUMNS) and b) dynamic columns, which
+            present voting made by specified masternodes for each proposal.
+        :param caption: The column's caption.
+        :param visible: True, if column is visible
+        :param voting_mn: Used only when the column is dynamic (otherwise the value is None). In this case, the
+            value should be the masternode's ident, which comprises of masternode's collateral transaction hash
+            and the transaction index, separated by dash character (-).
+        """
+        AttrsProtected.__init__(self)
+        self.symbol = symbol
         self.caption = caption
         self.visible = visible
+        self.voting_mn = voting_mn
+        self.set_attr_protection()
+
+
+class ProposalVotingColumn(AttrsProtected):
+    def __init__(self, mn_ident, column_caption, proposal_attr_name):
+        """
+        Information about grid's columns presenting results of user-selected masternodes
+        voting.
+        """
+        AttrsProtected.__init__(self)
+        self.mn_ident = mn_ident
+        self.column_caption = column_caption
+        self.proposal_attr_name = proposal_attr_name
+        self.set_attr_protection()
 
 
 PROPOSAL_COLUMNS = [
@@ -43,22 +74,39 @@ PROPOSAL_COLUMNS = [
 ]
 
 
+class Vote(AttrsProtected):
+    def __init__(self, voting_masternode, vote_time, vote_result):
+        super().__init__()
+        self.voting_masternode = voting_masternode
+        self.vote_time = vote_time
+        self.vote_result = vote_result
+        self.set_attr_protection()
+
+
 class Proposal(object):
     def __init__(self):
-        pass
+        self.voting_loaded = False
+        self.visible = True
+        self.votes = []
+
+    def add_vote(self, vote):
+        self.votes.append(vote)
 
     def __getattr__(self, name):
         for pc in PROPOSAL_COLUMNS:
-            if pc.column_symbol == name:
-                return None
-        raise AttributeError('Attribute "%s" not found inside the Proposal object' % name)
+            if pc.symbol == name:
+                return super().__getattr__(name)
+        raise AttributeError('Attribute "%s" not found in the "Proposal" object.' % name)
 
     def __setattr__(self, name, value):
-        for pc in PROPOSAL_COLUMNS:
-            if pc.column_symbol == name:
-                super().__setattr__(name, value)
-                return
-        raise AttributeError('Attribute "%s" not found inside the proposal object' % name)
+        if name in ('voting_loaded', 'visible', 'votes'):
+            super().__setattr__(name, value)
+        else:
+            for pc in PROPOSAL_COLUMNS:
+                if pc.symbol == name:
+                    super().__setattr__(name, value)
+                    return
+            raise AttributeError('Attribute "%s" not found in the "Proposal" object.' % name)
 
 
 class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
@@ -68,7 +116,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.main_wnd = parent
         self.dashd_intf = dashd_intf
         self.proposals = []
-        self.props = []
+        self.masternodes_by_ident = {}
         self.mn_count = None
         self.setupUi()
 
@@ -76,6 +124,16 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         try:
             ui_proposals.Ui_ProposalsDlg.setupUi(self, self)
             self.setWindowTitle('Proposals')
+
+            # let's define "dynamic" columns, showing voting results for user-specified masternodes
+            for idx, mn in enumerate(self.main_wnd.config.masternodes):
+                mn_ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
+                if mn_ident:
+                    mn_label = mn.name
+                    attr_value_name = 'mn_voting_' + str(idx)
+                    PROPOSAL_COLUMNS.append(ProposalColumn(attr_value_name,
+                                                           'Voting (' + mn_label + ')', True,
+                                                            voting_mn=mn_ident))
 
             # setup proposals grid
             self.tableWidget.clear()
@@ -88,7 +146,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     self.tableWidget.hideColumn(idx)
 
             self.lblMessage.setVisible(True)
-            self.lblMessage.setText('<b style="color:orange">Reading transactions, please wait...<b>')
+            self.lblMessage.setText('<b style="color:orange">Reading proposals data, please wait...<b>')
             self.runInThread(self.load_proposals_thread, (), self.display_data)
             self.updateUi()
         except:
@@ -107,7 +165,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         :return: index of a column
         """
         for idx, pc in enumerate(PROPOSAL_COLUMNS):
-            if pc.column_symbol == name:
+            if pc.symbol == name:
                 return idx
         raise Exception('Invalid proposal column name: ' + name)
 
@@ -131,10 +189,25 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 self.errorMsg('Dash daemon not connected')
             else:
                 try:
-                    self.proposals = self.dashd_intf.gobject("list", "valid", "proposals")
+                    # get list of all masternodes
+                    mns = self.dashd_intf.get_masternodelist('full')
+                    self.mn_count = 0
+                    statuses = {}
+                    # count all active masternodes
+                    for mn in mns:
+                        if mn.status in ('ENABLED','PRE_ENABLED','NEW_START_REQUIRED','WATCHDOG_EXPIRED'):
+                            self.mn_count += 1
+                        if statuses.get(mn.status):
+                            statuses[mn.status] += 1
+                        else:
+                            statuses[mn.status] = 1
 
-                    for pro_key in self.proposals:
-                        prop_raw = self.proposals[pro_key]
+                        # add mn to an ident indexed dict
+                        self.masternodes_by_ident[mn.ident] = mn
+
+                    proposals = self.dashd_intf.gobject("list", "valid", "proposals")
+                    for pro_key in proposals:
+                        prop_raw = proposals[pro_key]
 
                         prop_dstr = prop_raw.get("DataString")
                         prop_data_json = json.loads(prop_dstr)
@@ -161,25 +234,66 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         prop.ObjectType = prop_raw['ObjectType']
                         prop.fBlockchainValidity = prop_raw['fBlockchainValidity']
                         prop.IsValidReason = prop_raw['IsValidReason']
-                        self.props.append(prop)
+                        self.proposals.append(prop)
 
-                    mns = self.dashd_intf.get_masternodelist('full')
-                    self.mn_count = 0
-                    statuses = {}
-                    # count all active masternodes
-                    for mn in mns:
-                        if mn.status in ('ENABLED','PRE_ENABLED','NEW_START_REQUIRED','WATCHDOG_EXPIRED'):
-                            self.mn_count += 1
-                        if statuses.get(mn.status):
-                            statuses[mn.status] += 1
-                        else:
-                            statuses[mn.status] = 1
+                    self.runInThread(self.read_voting_results_thread, (False,))
                 except DashdIndexException as e:
                     self.errorMsg(str(e))
 
                 except Exception as e:
                     logging.exception('Exception while retrieving proposals data.')
-                    self.errorMsg('Error occurred while calling getaddressutxos method: ' + str(e))
+                    self.errorMsg('Error while retrieving proposals data: ' + str(e))
+        except Exception as e:
+            pass
+
+    def read_voting_results_thread(self, ctrl, force_reload):
+        """
+        Retrieve from a Dash daemon voting results for all defined masternodes, for all visible Proposals.
+        :param ctrl:
+        :param force_reload: if False (default) we read voting results only for Proposals, which hasn't
+          been read yet (for example has been filtered out).
+        :return:
+        """
+        def display_voting_data():
+            pass
+
+        try:
+            if not self.dashd_intf.open():
+                self.errorMsg('Dash daemon not connected')
+            else:
+                try:
+                    for prop in self.proposals:
+                        if prop.visible and (not prop.voting_loaded or force_reload):
+                            votes = self.dashd_intf.gobject("getvotes", prop.hash)
+                            for v_key in votes:
+                                v = votes[v_key]
+                                match = re.search("CTxIn\(COutPoint\(([A-Fa-f0-9]+)\s*\,\s*(\d+).+\:(\d+)\:(\w+)", v)
+                                if len(match.groups()) == 4:
+                                    mn_ident = match.group(1) + '-' + match.group(2)
+                                    voting_time = datetime.datetime.fromtimestamp(int(match.group(3)))
+                                    voting_result = match.group(4)
+                                    mn = self.masternodes_by_ident.get(mn_ident)
+                                    if mn:
+                                        v = Vote(mn, voting_time, voting_result)
+                                        prop.add_vote(v)
+
+                                    # check if voting masternode has its column in the main grid's;
+                                    # if so, pass the voting result to a corresponding proposal field
+                                    for col_idx, col in enumerate(PROPOSAL_COLUMNS):
+                                        if col.voting_mn == mn_ident:
+                                            setattr(prop, col.symbol, voting_result)
+                                            break
+                                else:
+                                    logging.warning('Proposal %s, parsing unsuccessful for voting: %s' % (prop.hash, v))
+                    # display data from dynamict (voting) columns
+                    WndUtils.callFunInTheMainThread(display_voting_data)
+
+                except DashdIndexException as e:
+                    self.errorMsg(str(e))
+
+                except Exception as e:
+                    logging.exception('Exception while retrieving voting data.')
+                    self.errorMsg('Error while retrieving voting data: ' + str(e))
         except Exception as e:
             pass
 
@@ -253,7 +367,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         try:
             row = 0
 
-            for prop in self.props:
+            for prop in self.proposals:
                 # if prop.get('fCachedFunding', False) or prop.get('fCachedEndorsed', False):
                 #     continue
                 self.tableWidget.insertRow(self.tableWidget.rowCount())

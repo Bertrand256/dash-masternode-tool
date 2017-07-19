@@ -22,6 +22,7 @@ import select
 from os.path import expanduser
 from PyQt5.QtWidgets import QMessageBox
 from psw_cache import SshPassCache, UserCancelledConnection
+from common import AttrsProtected
 
 try:
     import http.client as httplib
@@ -351,8 +352,9 @@ def control_rpc_call(func):
     return catch_timeout_wrapper
 
 
-class Masternode(object):
+class Masternode(AttrsProtected):
     def __init__(self):
+        AttrsProtected.__init__(self)
         self.ident = None
         self.status = None
         self.protocol = None
@@ -362,6 +364,7 @@ class Masternode(object):
         self.lastpaidtime = None
         self.lastpaidblock = None
         self.IP = None
+        self.set_attr_protection()
 
 
 class DashdInterface(WndUtils):
