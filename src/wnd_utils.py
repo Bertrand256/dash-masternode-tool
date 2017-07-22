@@ -10,6 +10,7 @@ from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap
 from PyQt5.QtWidgets import QMessageBox, QWidget
 import math
 from thread_fun_dlg import ThreadFunDlg, WorkerThread
+import app_cache as app_cache
 
 
 class WndUtils():
@@ -126,6 +127,12 @@ class WndUtils():
         else:
             icon = self.style().standardIcon(ico)
         widget.setIcon(icon)
+
+    def set_cache_value(self, name, value):
+        app_cache.set_value(self.__class__.__name__ + '_' + name, value)
+
+    def get_cache_value(self, name, default_value, type):
+        return app_cache.get_value(self.__class__.__name__ + '_' + name, default_value, type)
 
 
 class ThreadWndUtils(QObject):

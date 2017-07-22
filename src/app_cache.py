@@ -63,6 +63,7 @@ def init(cache_dir):
 
 
 def set_value(symbol, value):
+    global cache
     if cache:
         cache.set_value(symbol, value)
     else:
@@ -70,6 +71,7 @@ def set_value(symbol, value):
 
 
 def get_value(symbol, default_value, type):
+    global cache
     if cache:
         return cache.get_value(symbol, default_value, type)
     else:
