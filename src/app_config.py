@@ -6,6 +6,7 @@ import datetime
 import json
 import os
 import re
+import sqlite3
 import sys
 from configparser import ConfigParser
 from os.path import expanduser
@@ -66,6 +67,17 @@ class AppConfig(object):
             os.makedirs(self.cache_dir)
         self.app_config_file_name = os.path.join(app_user_dir, 'config.ini')
         cache.init(self.cache_dir)
+
+        # database (SQLITE) cache for caching bigger datasets:
+        self.db_cache_file_name = os.path.join(self.cache_dir, 'dmt_cache.db')
+        db_conn = None
+        try:
+            db_conn = sqlite3.connect(self.db_cache_file_name)
+        except Exception as e:
+            logging.exception('SQLite initialization error')
+        finally:
+            if db_conn:
+                db_conn.close()
 
         # setup logging
         self.log_dir = os.path.join(app_user_dir, 'logs')
