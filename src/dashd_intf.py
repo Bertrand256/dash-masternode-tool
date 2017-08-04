@@ -6,10 +6,11 @@
 import os
 import re
 import socket
+import sqlite3
 import ssl
 import threading
 import time
-
+import datetime
 import logging
 from PyQt5.QtCore import QThread
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
@@ -28,6 +29,11 @@ try:
     import http.client as httplib
 except ImportError:
     import httplib
+
+
+# how many seconds cached masternodes data are valid; cached masternode data is used only for non-critical
+# features
+MASTERNODES_CACHE_VALID_SECONDS = 60 * 15  # 30 minutes
 
 
 class ForwardServer (socketserver.ThreadingTCPServer):
@@ -364,7 +370,20 @@ class Masternode(AttrsProtected):
         self.lastpaidtime = None
         self.lastpaidblock = None
         self.IP = None
+        self.db_id = None
+        self.marker = None
+        self.modified = False
+        self.monitor_changes = False
         self.set_attr_protection()
+
+    def __setattr__(self, name, value):
+        if hasattr(self, name) and name not in ('modified', 'marker', 'monitor_changes', '_AttrsProtected__allow_attr_definition'):
+            if self.monitor_changes and getattr(self, name) != value:
+                self.modified = True
+                logging.info('MN attr modified. Attr: %s, old value: %s, new value: %s ' %
+                          (name, str(getattr(self, name)), value))
+        super().__setattr__(name, value)
+
 
 
 class DashdInterface(WndUtils):
@@ -392,6 +411,7 @@ class DashdInterface(WndUtils):
         self.starting_conn = None
 
         self.masternodes = []  # cached list of all masternodes (Masternode object)
+        self.masternodes_by_ident = {}
 
         self.ssh = None
         self.window = window
@@ -403,6 +423,46 @@ class DashdInterface(WndUtils):
         self.on_connection_try_fail_callback = on_connection_try_fail_callback
         self.on_connection_finished_callback = on_connection_finished_callback
         self.last_error_message = None
+        self.db_active = False
+
+        # open and initialize database for caching masternode data
+        db_conn = None
+        try:
+            tm_start = time.time()
+            db_conn = sqlite3.connect(self.config.db_cache_file_name)
+            cur = db_conn.cursor()
+            cur.execute("CREATE TABLE IF NOT EXISTS MASTERNODES(id INTEGER PRIMARY KEY, ident TEXT, status TEXT," 
+                        " protocol TEXT, payee TEXT, last_seen INTEGER, active_seconds INTEGER,"
+                        " last_paid_time INTEGER, last_paid_block INTEGER, ip TEXT,"
+                        " dmt_active INTEGER, dmt_create_time TEXT, dmt_deactivation_time TEXT)")
+            cur.execute("CREATE INDEX IF NOT EXISTS IDX_MASTERNODES_DMT_ACTIVE ON MASTERNODES(dmt_active)")
+
+            cur.execute("SELECT id, ident, status, protocol, payee, last_seen, active_seconds,"
+                        " last_paid_time, last_paid_block, IP from MASTERNODES where dmt_active=1")
+            for row in cur.fetchall():
+                mn = Masternode()
+                mn.db_id = row[0]
+                mn.ident = row[1]
+                mn.status = row[2]
+                mn.protocol = row[3]
+                mn.payee = row[4]
+                mn.lastseen = row[5]
+                mn.activeseconds = row[6]
+                mn.lastpaidtime = row[7]
+                mn.lastpaidblock = row[8]
+                mn.IP = row[9]
+                self.masternodes.append(mn)
+                self.masternodes_by_ident[mn.ident] = mn
+
+            tm_diff = time.time() - tm_start
+            logging.info('DB read time of MASTERNODES: %d seconds' % int(tm_diff))
+            self.db_active = True
+        except Exception as e:
+            logging.exception('SQLite initialization error')
+        finally:
+            if db_conn:
+                db_conn.close()
+
 
     def apply_new_cfg(self):
         """
@@ -677,14 +737,111 @@ class DashdInterface(WndUtils):
                     ret_list.append(mn)
             return ret_list
 
+        def update_masternode_data(existing_mn, new_data, cursor):
+            # update cached masternode's properties
+            existing_mn.modified = False
+            existing_mn.monitor_changes = True
+            existing_mn.ident = new_data.ident
+            existing_mn.status = new_data.status
+            existing_mn.protocol = new_data.protocol
+            existing_mn.payee = new_data.payee
+            existing_mn.lastseen = new_data.lastseen
+            existing_mn.activeseconds = new_data.activeseconds
+            existing_mn.lastpaidtime = new_data.lastpaidtime
+            existing_mn.lastpaidblock = new_data.lastpaidblock
+            existing_mn.IP = new_data.IP
+
+            # ... and finally update MN db record
+            if cursor and existing_mn.modified:
+                cursor.execute("UPDATE MASTERNODES set ident=?, status=?, protocol=?, payee=?,"
+                               " last_seen=?, active_seconds=?, last_paid_time=?, "
+                               " last_paid_block=?, ip=?"
+                               "WHERE id=?",
+                               (new_data.ident, new_data.status, new_data.protocol, new_data.payee,
+                                new_data.lastseen, new_data.activeseconds, new_data.lastpaidtime,
+                                new_data.lastpaidblock, new_data.IP, new_data.db_id))
+
         if self.open():
+
             if len(args) == 1 and args[0] == 'full':
-                if self.masternodes and not skip_cache:
+                last_read_time = self.get_cache_value('MasternodesLastReadTime', 0, int)
+
+                if self.masternodes and not skip_cache and \
+                   int(time.time()) - last_read_time < MASTERNODES_CACHE_VALID_SECONDS:
                     # if masternode list has been read before, return cached version
                     return self.masternodes
                 else:
+                    logging.debug('Loading masternode list from Dash daemon...')
                     mns = self.proxy.masternodelist(*args)
-                    self.masternodes = parse_mns(mns)
+                    mns = parse_mns(mns)
+                    logging.debug('Finished loading masternode list')
+
+                    if self.db_active:
+                        # save masternodes to db cache
+                        db_conn = None
+                        db_modified = False
+                        try:
+                            db_conn = sqlite3.connect(self.config.db_cache_file_name)
+                            cur = db_conn.cursor()
+
+                            # mark already cached masternodes to identify those to delete
+                            for mn in self.masternodes:
+                                mn.marker = False
+
+                            for mn in mns:
+                                # check if new-read masternode is alterady in the cache
+                                existing_mn = self.masternodes_by_ident.get(mn.ident)
+                                if not existing_mn:
+                                    mn.marker = True
+                                    self.masternodes.append(mn)
+                                    self.masternodes_by_ident[mn.ident] = mn
+
+                                    cur.execute("INSERT INTO MASTERNODES(ident, status, protocol, payee, last_seen,"
+                                                " active_seconds, last_paid_time, last_paid_block, ip, dmt_active,"
+                                                " dmt_create_time) "
+                                                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                                                (mn.ident, mn.status, mn.protocol, mn.payee, mn.lastseen,
+                                                 mn.activeseconds, mn.lastpaidtime, mn.lastpaidblock, mn.IP, 1,
+                                                 datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                                    mn.db_id = cur.lastrowid
+                                    db_modified = True
+                                else:
+                                    existing_mn.marker = True
+                                    update_masternode_data(existing_mn, mn, cur)
+                                    db_modified = True
+
+                            # remove from cache masternodes no longer existing
+                            for mn_index in reversed(range(len(self.masternodes))):
+                                mn = self.masternodes[mn_index]
+
+                                if not mn.marker:
+                                    if self.db_active:
+                                        cur.execute("UPDATE MASTERNODES set dmt_active=0, dmt_deactivation_time=?"
+                                                    "WHERE ID=?",
+                                                    (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                                    mn.db_id))
+                                        db_modified = True
+                                    self.masternodes_by_ident.pop(mn.ident,0)
+                                    del self.masternodes[mn_index]
+
+                            self.set_cache_value('MasternodesLastReadTime', int(time.time()))
+                        except Exception as e:
+                            logging.exception('SQLite initialization error')
+                        finally:
+                            if db_conn:
+                                if db_modified:
+                                    db_conn.commit()
+                                db_conn.close()
+                    else:
+                        # cache database is not availabale, apply retrieved data to self.masternodes list
+                        for mn in mns:
+                            existing_mn = self.masternodes_by_ident.get(mn.ident)
+                            if existing_mn:
+                                update_masternode_data(existing_mn, mn, None)
+                            else:
+                                self.masternodes.append(mn)
+                                self.masternodes_by_ident[mn.ident] = mn
+
                     return self.masternodes
             else:
                 mns = self.proxy.masternodelist(*args)

@@ -18,6 +18,7 @@ from dashd_intf import DashdIndexException
 from ui import ui_proposals
 from src.common import AttrsProtected
 from src.wnd_utils import WndUtils
+import sqlite3
 
 
 # Definition of how long the cached proposals information is valid. If it's valid, dialog
@@ -64,6 +65,9 @@ class Proposal(AttrsProtected):
         self.columns = columns
         self.values = {}  # dictionary of proposal values (key: ProposalColumn)
         self.votes = []
+        self.db_id = None
+        self.marker = None
+        self.modified = False
         self.set_attr_protection()
 
     def set_value(self, name, value):
@@ -72,7 +76,12 @@ class Proposal(AttrsProtected):
         """
         for col in self.columns:
             if col.name == name:
-                self.values[col] = value
+                old_value = self.values.get(col)
+                if old_value != value:
+                    self.modified = True
+                    self.values[col] = value
+                    logging.info("Proposal's column modified. Name: %s, old value: %s, New value: %s" %
+                                 (name, old_value, value))
                 return
         raise AttributeError('Invalid Proposal value name: ' + name)
 
@@ -101,23 +110,48 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             ProposalColumn('payment_end', 'Payment end', True),
             ProposalColumn('payment_amount', 'Amount', True),
             ProposalColumn('yes_count', 'Yes count', True),
+            ProposalColumn('absolute_yes_count', 'Absolute Yes count', True),
             ProposalColumn('no_count', 'No count', True),
             ProposalColumn('abstain_count', 'Abstain count', True),
             ProposalColumn('creation_time', 'Creation time', True),
             ProposalColumn('url', 'URL', True),
             ProposalColumn('payment_address', 'Payment address', True),
+            ProposalColumn('type', 'Type', False),
             ProposalColumn('hash', 'Hash', True),
             ProposalColumn('collateral_hash', 'Collateral hash', True),
-            ProposalColumn('fCachedDelete', 'fCachedDelete', True),
-            ProposalColumn('fCachedFunding', 'fCachedFunding', True),
-            ProposalColumn('fCachedEndorsed', 'fCachedEndorsed', True),
+            ProposalColumn('fBlockchainValidity', 'fBlockchainValidity', False),
+            ProposalColumn('fCachedValid', 'fCachedValid', False),
+            ProposalColumn('fCachedDelete', 'fCachedDelete', False),
+            ProposalColumn('fCachedFunding', 'fCachedFunding', False),
+            ProposalColumn('fCachedEndorsed', 'fCachedEndorsed', False),
             ProposalColumn('ObjectType', 'ObjectType', True),
-            ProposalColumn('fBlockchainValidity', 'fBlockchainValidity', True),
             ProposalColumn('IsValidReason', 'IsValidReason', True)
         ]
         self.proposals = []
+        self.proposals_by_hash = {}  #  dict of Proposal object indexed by proposal hash
         self.masternodes_by_ident = {}
         self.mn_count = None
+        self.db_active = False
+
+        # open and initialize database for caching proposals data
+        db_conn = None
+        try:
+            db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
+            cur = db_conn.cursor()
+            cur.execute("CREATE TABLE IF NOT EXISTS PROPOSALS(id INTEGER PRIMARY KEY, name TEXT, payment_start TEXT," 
+                        " payment_end TEXT, payment_amount REAL, yes_count INTEGER, absolute_yes_count INTEGER,"
+                        " no_count INTEGER, abstain_count INTEGER, creation_time TEXT, url TEXT, payment_address TEXT,"
+                        " type INTEGER, hash TEXT,  collateral_hash TEXT, f_blockchain_validity INTEGER,"
+                        " f_cached_valid INTEGER, f_cached_delete INTEGER, f_cached_funding INTEGER, "
+                        " f_cached_endorsed INTEGER, object_type INTEGER, "
+                        " is_valid_reason TEXT, dmt_active INTEGER, dmt_create_time TEXT, dmt_deactivation_time TEXT)")
+            self.db_active = True
+        except Exception as e:
+            logging.exception('SQLite initialization error')
+        finally:
+            if db_conn:
+                db_conn.close()
+
         self.setupUi()
 
     def setupUi(self):
@@ -142,9 +176,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 },
              2. for dynamic (masternode voting) columns:
                 {
-                    name: Column name (str),
+                    name: Masternode ident (str),
                     visible: (bool),
-                    voting_mn: Whether column relates to masternode voting (bool),
+                    voting_mn: True if the column relates to masternode voting (bool),
                     caption: Column's caption (str)
                 }
             """
@@ -182,8 +216,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             # todo: for testing:
             # self.save_config()
 
-            self.display_message('Reading proposals data, please wait...')
-            self.runInThread(self.read_proposals_thread, (False,), self.display_data)
+            self.runInThread(self.read_proposals_thread, (False,))
             self.updateUi()
         except:
             logging.exception('Exception occurred')
@@ -259,17 +292,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 return idx
         raise Exception('Invalid column name: ' + name)
 
-    def read_proposals_thread(self, ctrl, force_reload):
-        """
-        Reads proposals data from Dash daemon.
-        :param ctrl:
-        :param force_reload: if running
-        :return:
-        """
+    def read_proposals_from_network(self):
+        """ Reads proposals from Dash network. """
+
         def find_prop_data(prop_data, level=1):
-            """
-            Find proposal dict inside a list extracted from DataString field
-            """
+            """ Find proposal dict inside a list extracted from DataString field. """
             if isinstance(prop_data, list):
                 if len(prop_data) > 2:
                     logging.warning('len(prop_data) > 2 [level: %d]. prop_data: %s' % (level, json.dumps(prop_data)))
@@ -281,14 +308,179 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             return None
 
         try:
+            self.display_message('Reading proposals data, please wait...')
+            proposals = self.dashd_intf.gobject("list", "valid", "proposals")
+
+            # reset marker value in all existing Proposal object - we'll use it to check which
+            # of prevoiusly read proposals do not exit anymore
+            for prop in self.proposals:
+                prop.marker = False
+                prop.modified = False  # all modified proposals will be saved to DB cache
+
+            for pro_key in proposals:
+                prop_raw = proposals[pro_key]
+
+                prop_dstr = prop_raw.get("DataString")
+                prop_data_json = json.loads(prop_dstr)
+                prop_data = find_prop_data(prop_data_json)
+                if prop_data is None:
+                    continue
+
+                prop = self.proposals_by_hash.get(prop_raw['Hash'])
+                if not prop:
+                    is_new = True
+                    prop = Proposal(self.columns)
+                else:
+                    is_new = False
+                prop.marker = True
+
+                prop.set_value('name', prop_data['name'])
+                prop.set_value('payment_start', datetime.datetime.fromtimestamp(int(prop_data['start_epoch'])))
+                prop.set_value('payment_end', datetime.datetime.fromtimestamp(int(prop_data['end_epoch'])))
+                prop.set_value('payment_amount', float(prop_data['payment_amount']))
+                prop.set_value('yes_count', int(prop_raw['YesCount']))
+                prop.set_value('absolute_yes_count', int(prop_raw['AbsoluteYesCount']))
+                prop.set_value('no_count', int(prop_raw['NoCount']))
+                prop.set_value('abstain_count', int(prop_raw['AbstainCount']))
+                prop.set_value('creation_time', datetime.datetime.fromtimestamp(int(prop_raw["CreationTime"])))
+                prop.set_value('url', prop_data['url'])
+                prop.set_value('payment_address', prop_data["payment_address"])
+                prop.set_value('type', prop_data['type'])
+                prop.set_value('hash', prop_raw['Hash'])
+                prop.set_value('collateral_hash', prop_raw['CollateralHash'])
+                prop.set_value('fBlockchainValidity', prop_raw['fBlockchainValidity'])
+                prop.set_value('fCachedValid', prop_raw['fCachedValid'])
+                prop.set_value('fCachedDelete', prop_raw['fCachedDelete'])
+                prop.set_value('fCachedFunding', prop_raw['fCachedFunding'])
+                prop.set_value('fCachedEndorsed', prop_raw['fCachedEndorsed'])
+                prop.set_value('ObjectType', prop_raw['ObjectType'])
+                prop.set_value('IsValidReason', prop_raw['IsValidReason'])
+                if is_new:
+                    self.proposals.append(prop)
+                    self.proposals_by_hash[prop.get_value('hash')] = prop
+
+            db_conn = None
+            db_modified = False
+            try:
+                db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
+                cur = db_conn.cursor()
+
+                for prop in self.proposals:
+                    if prop.marker:
+                        if not prop.db_id:
+                            cur.execute("INSERT INTO PROPOSALS (name, payment_start, payment_end, payment_amount,"
+                                        " yes_count, absolute_yes_count, no_count, abstain_count, creation_time,"
+                                        " url, payment_address, type, hash, collateral_hash, f_blockchain_validity,"
+                                        " f_cached_valid, f_cached_delete, f_cached_funding, f_cached_endorsed, "
+                                        " object_type, is_valid_reason, dmt_active, dmt_create_time, "
+                                        " dmt_deactivation_time)"
+                                        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                                        (prop.get_value('name'),
+                                         prop.get_value('payment_start').strftime('%Y-%m-%d %H:%M:%S'),
+                                         prop.get_value('payment_end').strftime('%Y-%m-%d %H:%M:%S'),
+                                         prop.get_value('payment_amount'),
+                                         prop.get_value('yes_count'),
+                                         prop.get_value('absolute_yes_count'),
+                                         prop.get_value('no_count'),
+                                         prop.get_value('abstain_count'),
+                                         prop.get_value('creation_time').strftime('%Y-%m-%d %H:%M:%S'),
+                                         prop.get_value('url'),
+                                         prop.get_value('payment_address'),
+                                         prop.get_value('type'),
+                                         prop.get_value('hash'),
+                                         prop.get_value('collateral_hash'),
+                                         prop.get_value('fBlockchainValidity'),
+                                         prop.get_value('fCachedValid'),
+                                         prop.get_value('fCachedDelete'),
+                                         prop.get_value('fCachedFunding'),
+                                         prop.get_value('fCachedEndorsed'),
+                                         prop.get_value('ObjectType'),
+                                         prop.get_value('IsValidReason'),
+                                         1,
+                                         datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                         None))
+                            prop.db_id = cur.lastrowid
+                            db_modified = True
+                        else:
+                            # proposal's db record already exists, check if should be updated
+                            if prop.modified:
+                                cur.execute("UPDATE PROPOSALS set name=?, payment_start=?, payment_end=?, "
+                                            "payment_amount=?, yes_count=?, absolute_yes_count=?, no_count=?, "
+                                            "abstain_count=?, creation_time=?, url=?, payment_address=?, type=?,"
+                                            "hash=?, collateral_hash=?, f_blockchain_validity=?, f_cached_valid=?,"
+                                            "f_cached_delete=?, f_cached_funding=?, f_cached_endorsed=?, object_type=?,"
+                                            "is_valid_reason=? WHERE id=?",
+                                            (
+                                                prop.get_value('name'),
+                                                prop.get_value('payment_start').strftime('%Y-%m-%d %H:%M:%S'),
+                                                prop.get_value('payment_end').strftime('%Y-%m-%d %H:%M:%S'),
+                                                prop.get_value('payment_amount'),
+                                                prop.get_value('yes_count'),
+                                                prop.get_value('absolute_yes_count'),
+                                                prop.get_value('no_count'),
+                                                prop.get_value('abstain_count'),
+                                                prop.get_value('creation_time').strftime('%Y-%m-%d %H:%M:%S'),
+                                                prop.get_value('url'),
+                                                prop.get_value('payment_address'),
+                                                prop.get_value('type'),
+                                                prop.get_value('hash'),
+                                                prop.get_value('collateral_hash'),
+                                                prop.get_value('fBlockchainValidity'),
+                                                prop.get_value('fCachedValid'),
+                                                prop.get_value('fCachedDelete'),
+                                                prop.get_value('fCachedFunding'),
+                                                prop.get_value('fCachedEndorsed'),
+                                                prop.get_value('ObjectType'),
+                                                prop.get_value('IsValidReason'),
+                                                prop.db_id
+                                            ))
+                                db_modified = True
+
+                # delete proposals which no longer exists in tha Dash network
+                for prop_idx in reversed(range(len(self.proposals))):
+                    prop = self.proposals[prop_idx]
+
+                    if not prop.marker:
+                        logging.debug('Deactivating proposal in the cache. Hash: %s, DB id: %s' %
+                                      (prop.get_value('hash'), str(prop.db_id)))
+                        cur.execute("UPDATE PROPOSALS set dmt_active=0, dmt_deactivation_time=? WHERE id=?",
+                                    (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), prop.db_id))
+
+                        self.proposals_by_hash.pop(prop.get_value('hash'), 0)
+                        del self.proposals[prop_idx]
+                        db_modified = True
+
+            except Exception as e:
+                logging.exception('Exception while saving proposals to db.')
+            finally:
+                if db_conn:
+                    if db_modified:
+                        db_conn.commit()
+                    db_conn.close()
+
+            self.set_cache_value('ProposalsLastReadTime', int(time.time()))  # save when proposals has been
+
+        except Exception as e:
+            logging.exception('Exception wile reading proposals from Dash network.')
+
+    def read_proposals_thread(self, ctrl, force_reload):
+        """ Reads proposals data from Dash daemon.
+        :param ctrl:
+        :param force_reload: if running
+        :return:
+        """
+
+        try:
             if not self.dashd_intf.open():
                 self.errorMsg('Dash daemon not connected')
             else:
                 try:
                     # get list of all masternodes
+                    self.display_message('Reading masternode data, please wait...')
                     mns = self.dashd_intf.get_masternodelist('full')
                     self.mn_count = 0
                     statuses = {}
+
                     # count all active masternodes
                     for mn in mns:
                         if mn.status in ('ENABLED','PRE_ENABLED','NEW_START_REQUIRED','WATCHDOG_EXPIRED'):
@@ -301,58 +493,60 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         # add mn to an ident indexed dict
                         self.masternodes_by_ident[mn.ident] = mn
 
-                    skip_reading_from_dash_network = False
-                    cache_file_name = os.path.join(self.main_wnd.config.cache_dir, 'proposals.json')
+                    if self.db_active:
+                        db_conn = None
+                        try:
+                            # read all proposals from DB cache
+                            db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
+                            cur = db_conn.cursor()
+
+                            cur.execute(
+                                "SELECT name, payment_start, payment_end, payment_amount,"
+                                " yes_count, absolute_yes_count, no_count, abstain_count, creation_time,"
+                                " url, payment_address, type, hash, collateral_hash, f_blockchain_validity,"
+                                " f_cached_valid, f_cached_delete, f_cached_funding, f_cached_endorsed, object_type,"
+                                " is_valid_reason, dmt_active, dmt_create_time, dmt_deactivation_time, id "
+                                "FROM PROPOSALS where dmt_active=1")
+
+                            for row in cur.fetchall():
+                                prop = Proposal(self.columns)
+                                prop.set_value('name', row[0])
+                                prop.set_value('payment_start', datetime.datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S'))
+                                prop.set_value('payment_end',  datetime.datetime.strptime(row[2], '%Y-%m-%d %H:%M:%S'))
+                                prop.set_value('payment_amount', row[3])
+                                prop.set_value('yes_count', row[4])
+                                prop.set_value('absolute_yes_count', row[5])
+                                prop.set_value('no_count', row[6])
+                                prop.set_value('abstain_count', row[7])
+                                prop.set_value('creation_time', datetime.datetime.strptime(row[8], '%Y-%m-%d %H:%M:%S'))
+                                prop.set_value('url', row[9])
+                                prop.set_value('payment_address', row[10])
+                                prop.set_value('type', row[11])
+                                prop.set_value('hash', row[12])
+                                prop.set_value('collateral_hash', row[13])
+                                prop.set_value('fBlockchainValidity', True if row[14] else False)
+                                prop.set_value('fCachedValid', True if row[15] else False)
+                                prop.set_value('fCachedDelete', True if row[16] else False)
+                                prop.set_value('fCachedFunding', True if row[17] else False)
+                                prop.set_value('fCachedEndorsed', True if row[18] else False)
+                                prop.set_value('ObjectType', row[19])
+                                prop.set_value('IsValidReason', row[20])
+                                prop.db_id = row[24]
+                                self.proposals.append(prop)
+                                self.proposals_by_hash[prop.get_value('hash')] = prop
+
+                        except Exception as e:
+                            logging.exception('Exception while saving proposals to db.')
+                        finally:
+                            if db_conn:
+                                db_conn.close()
+                        # display loaded proposal data on the grid
+                        WndUtils.callFunInTheMainThread(self.display_data)
 
                     last_read_time = self.get_cache_value('ProposalsLastReadTime', 0, int)
-                    if not (force_reload or int(time.time()) - last_read_time > PROPOSALS_CACHE_VALID_SECONDS):
-                        # try to read information from cache
-                        if self.main_wnd.config.cache_dir:
-                            if os.path.exists(cache_file_name):
-                                try:  # looking into cache first
-                                    proposals = json.load(open(cache_file_name))
-                                    skip_reading_from_dash_network = True
-                                except:
-                                    pass
-
-                    if not skip_reading_from_dash_network:
-                        proposals = self.dashd_intf.gobject("list", "valid", "proposals")
-                        self.set_cache_value('ProposalsLastReadTime', int(time.time()))  # save when proposals has been
-                                                                                         # retrieved the last time
-                        try:
-                            json.dump(proposals, open(cache_file_name, 'w'))
-                        except Exception as e:
-                            logging.exception('Could not save proposal data to cache.')
-
-                    for pro_key in proposals:
-                        prop_raw = proposals[pro_key]
-
-                        prop_dstr = prop_raw.get("DataString")
-                        prop_data_json = json.loads(prop_dstr)
-                        prop_data = find_prop_data(prop_data_json)
-                        if prop_data is None:
-                            continue
-
-                        prop = Proposal(self.columns)
-                        prop.set_value('name', prop_data['name'])
-                        prop.set_value('hash', prop_raw['Hash'])
-                        prop.set_value('collateral_hash', prop_raw['CollateralHash'])
-                        prop.set_value('payment_start', datetime.datetime.fromtimestamp(int(prop_data['start_epoch'])))
-                        prop.set_value('payment_end', datetime.datetime.fromtimestamp(int(prop_data['end_epoch'])))
-                        prop.set_value('payment_amount', float(prop_data['payment_amount']))
-                        prop.set_value('yes_count', int(prop_raw['YesCount']))
-                        prop.set_value('no_count', int(prop_raw['NoCount']))
-                        prop.set_value('abstain_count', int(prop_raw['AbstainCount']))
-                        prop.set_value('creation_time', datetime.datetime.fromtimestamp(int(prop_raw["CreationTime"])))
-                        prop.set_value('url', prop_data['url'])
-                        prop.set_value('payment_address', prop_data["payment_address"])
-                        prop.set_value('fCachedDelete', prop_raw['fCachedDelete'])
-                        prop.set_value('fCachedFunding', prop_raw['fCachedFunding'])
-                        prop.set_value('fCachedEndorsed', prop_raw['fCachedEndorsed'])
-                        prop.set_value('ObjectType', prop_raw['ObjectType'])
-                        prop.set_value('fBlockchainValidity', prop_raw['fBlockchainValidity'])
-                        prop.set_value('IsValidReason', prop_raw['IsValidReason'])
-                        self.proposals.append(prop)
+                    if force_reload or int(time.time()) - last_read_time > PROPOSALS_CACHE_VALID_SECONDS or \
+                       len(self.proposals) == 0:
+                        self.read_proposals_from_network()
 
                     self.runInThread(self.read_voting_results_thread, (False,))
                 except DashdIndexException as e:
@@ -477,23 +671,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             for prop in self.proposals:
                 self.tableWidget.insertRow(self.tableWidget.rowCount())
 
-                self.set_table_value(row, 'hash', prop)
-                self.set_table_value(row, 'collateral_hash', prop)
-                self.set_table_value(row, 'payment_start', prop)
-                self.set_table_value(row, 'payment_end', prop)
-                self.set_table_value(row, 'payment_amount', prop, Qt.AlignRight)
-                self.set_table_value(row, 'yes_count', prop, Qt.AlignRight)
-                self.set_table_value(row, 'no_count', prop, Qt.AlignRight)
-                self.set_table_value(row, 'abstain_count', prop, Qt.AlignRight)
-                self.set_table_value(row, 'creation_time', prop)
-                self.set_table_value(row, 'payment_address', prop)
-                self.set_table_value(row, 'fCachedDelete', prop)
-                self.set_table_value(row, 'fCachedFunding', prop)
-                self.set_table_value(row, 'fCachedEndorsed', prop)
-                self.set_table_value(row, 'ObjectType', prop)
-                self.set_table_value(row, 'fBlockchainValidity', prop)
-                self.set_table_value(row, 'IsValidReason', prop)
-
                 # "name" column display as a hyperlink if possible
                 if prop.get_value('url'):
                     url_lbl = QtWidgets.QLabel(self.tableWidget)
@@ -504,6 +681,15 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     # url is empty, so display value as normal text, not hyperlink
                     self.set_table_value(row, 'name', prop)
 
+                self.set_table_value(row, 'payment_start', prop)
+                self.set_table_value(row, 'payment_end', prop)
+                self.set_table_value(row, 'payment_amount', prop, Qt.AlignRight)
+                self.set_table_value(row, 'yes_count', prop, Qt.AlignRight)
+                self.set_table_value(row, 'absolute_yes_count', prop, Qt.AlignRight)
+                self.set_table_value(row, 'no_count', prop, Qt.AlignRight)
+                self.set_table_value(row, 'abstain_count', prop, Qt.AlignRight)
+                self.set_table_value(row, 'creation_time', prop)
+
                 if prop.get_value('url'):
                     url_lbl = QtWidgets.QLabel(self.tableWidget)
                     url_lbl.setText('<a href="%s">%s</a>' % (prop.get_value('url'), prop.get_value('url')))
@@ -512,6 +698,18 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 else:
                     # url is empty, so display value as normal text
                     self.set_table_value(row, 'url', prop)
+
+                self.set_table_value(row, 'payment_address', prop)
+                self.set_table_value(row, 'type', prop)
+                self.set_table_value(row, 'hash', prop)
+                self.set_table_value(row, 'collateral_hash', prop)
+                self.set_table_value(row, 'fBlockchainValidity', prop)
+                self.set_table_value(row, 'fCachedValid', prop)
+                self.set_table_value(row, 'fCachedDelete', prop)
+                self.set_table_value(row, 'fCachedFunding', prop)
+                self.set_table_value(row, 'fCachedEndorsed', prop)
+                self.set_table_value(row, 'ObjectType', prop)
+                self.set_table_value(row, 'IsValidReason', prop)
 
                 row += 1
 
