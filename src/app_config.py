@@ -24,7 +24,7 @@ MIN_TX_FEE = 10000
 APP_CFG_CUR_VERSION = 2  # current version of configuration file format
 DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
 DATE_FORMAT = '%Y-%m-%d'
-
+SCREENSHOT_MODE = False
 
 class AppConfig(object):
     def __init__(self, app_path):
@@ -49,6 +49,7 @@ class AppConfig(object):
         self.defective_net_configs = []
 
         self.hw_type = 'TREZOR'  # TREZOR or KEEPKEY
+        self.block_explorer_tx = 'https://chainz.cryptoid.info/dash/tx.dws?%TXID%'
 
         self.check_for_updates = True
         self.backup_config_file = True

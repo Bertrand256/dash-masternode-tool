@@ -16,7 +16,7 @@
      * [Scenario B: configuration of a new masternode](doc/config-masternodes-b.md)
  * [Features](#features)
    * [Starting masternode](#starting-masternode)
-   * [Transferring masternode earnings](#transferring-masternode-earnings)
+   * [Transferring of masternode earnings](#transferring-of-masternode-earnings)
    * [Signing messages with hardware wallet](#signing-messages-with-hardware-wallet)
    * [Changing hardware wallet's PIN/passphrase](#changing-hardware-wallets-pinpassphrase)
  * [Downloads](https://github.com/Bertrand256/dash-masternode-tool/releases/latest)
@@ -130,20 +130,30 @@ In the case of failure, the message text may vary, depending on the problem natu
  
 
 
-### Transferring masternode earnings
+### Transferring of masternode earnings
 Beginning with version 0.9.4 DMT you can transfer your masternode earnings. This works in a bit different way than with other Dash wallets - DMT gives you a 100% control on which _unspent transaction outputs_ (utxo) you wish to transfer. This has the same effect as the _Coin control_ functionality implemented in _Dash Core wallet_. 
 
-`Transfer funds` window lists all _UTXOs_ of a currently selected Masternode (mode 1) or all Masternodes in configuration (mode 2). By default, all _UTXOs_ not used as MN collateral are checked. MN collateral's _UTXOs_ (1000 Dash) are also initially hidden, just to avoid unintentional sending its funds and thus breaking MN. You can show those hidden entries by unchecking `Hide collateral utxos` option.
+`Transfer funds` window lists all _UTXOs_ of a currently selected Masternode (mode 1), all Masternodes in configuration (mode 2) or of any address controlled by the hardware wallet (mode 3). By default, all _UTXOs_ not used as MN collateral are checked. MN collateral's _UTXOs_ (1000 Dash) are initially hidden, just to avoid unintentional sending its funds and thus breaking MN. You can show those hidden entries by unchecking `Hide collateral utxos` option.
 
 To show up the `Transfer funds` window, click the `Tools` button. Then, from popup menu choose:
  - `Transfer funds from current Masternode's address` (mode 1)
- - `Transfer funds from all Masternodes addresses` (mode 2) 
-  
+ - `Transfer funds from all Masternodes addresses` (mode 2)
+ - `Transfer funds from any HW address` (mode 3) 
+
+Sending masternodes' payouts:  
 ![1](doc/img/dmt-transfer-funds.png)
+
+Transferring of funds from any address controlled by a hardware wallet:
+![1](doc/img/dmt-transfer-funds-any-address.png) 
 
 Select all _UTXOs_ you wish to include in your transaction, verify transaction fee and click the `Send` button. After signing the transaction with your hardware wallet, the app will ask you if you want do broadcast the transaction to Dash network. 
 
 ![1](doc/img/dmt-transfer-funds-broadcast.png)
+
+After the user's confirmation application broadcasts the transaction and displays a message box with the transaction ID:
+
+![1](doc/img/dmt-transfer-funds-confirmation.png)
+
 
 ### Signing messages with hardware wallet
 To sign a message with your hardware wallet click the `Tools` button and then select the `Sign message with HW for current Masternode's address` menu item. 
