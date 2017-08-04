@@ -414,7 +414,7 @@ class DashdInterface(WndUtils):
         """
         If there is another dashd config not used recently, switch to it. Called only when there was a problem
         with current connection config.
-        :return: True if successfully switched ot False if there was no another config
+        :return: True if successfully switched or False if there was no another config
         """
         if self.cur_conn_def:
             self.config.conn_cfg_failure(self.cur_conn_def)  # mark connection as defective
@@ -424,7 +424,7 @@ class DashdInterface(WndUtils):
             idx = 0
 
         conn = self.connections[idx]
-        if conn != self.starting_conn:
+        if conn != self.starting_conn and conn != self.cur_conn_def:
             logging.debug("Trying to switch to another connection: %s" % conn.get_description())
             self.disconnect()
             self.cur_conn_index = idx

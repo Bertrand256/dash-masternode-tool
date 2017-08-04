@@ -9,6 +9,7 @@ from PyQt5.QtCore import Qt, QObject
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap
 from PyQt5.QtWidgets import QMessageBox, QWidget
 import math
+import message_dlg
 from thread_fun_dlg import ThreadFunDlg, WorkerThread
 
 
@@ -18,10 +19,21 @@ class WndUtils():
         self.app_path = app_path
         pass
 
+    def messageDlg(self, message):
+        ui = message_dlg.MessageDlg(self, message)
+        ui.exec_()
+
     @staticmethod
     def displayMessage(type, message):
         msg = QMessageBox()
+        msg.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard | Qt.LinksAccessibleByMouse)
         msg.setIcon(type)
+
+        # because of the bug: https://bugreports.qt.io/browse/QTBUG-48964
+        # we'll convert a message to HTML format to avoid bolded font on Mac platform
+        if message.find('<html') < 0:
+            message = '<html style="font-weight:normal">' + message.replace('\n', '<br>') + '</html>'
+
         msg.setText(message)
         return msg.exec_()
 
@@ -53,6 +65,14 @@ class WndUtils():
         def dlg(message, buttons, default_button, icon):
             msg = QMessageBox()
             msg.setIcon(icon)
+            msg.setTextInteractionFlags(
+                Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard | Qt.LinksAccessibleByMouse)
+
+            # because of the bug: https://bugreports.qt.io/browse/QTBUG-48964
+            # we'll convert a message to HTML format to avoid bolded font on Mac platform
+            if message.find('<html') < 0:
+                message = '<html style="font-weight:normal">' + message.replace('\n', '<br>') + '</html>'
+
             msg.setText(message)
             msg.setStandardButtons(buttons)
             msg.setDefaultButton(default_button)

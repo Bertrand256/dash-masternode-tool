@@ -18,8 +18,8 @@ import bitcoin
 import logging
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
-from PyQt5.QtCore import QSize, pyqtSlot, QEventLoop, QMutex, QWaitCondition
-from PyQt5.QtGui import QFont, QIcon
+from PyQt5.QtCore import QSize, pyqtSlot, QEventLoop, QMutex, QWaitCondition, QUrl
+from PyQt5.QtGui import QFont, QIcon, QDesktopServices
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle
 from PyQt5.QtWidgets import QMessageBox
@@ -35,12 +35,13 @@ from app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG, APP_NAME_SHOR
 from dash_utils import bip32_path_n_to_string
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_common import HardwareWalletCancelException, HardwareWalletPinException
-from hw_intf import connect_hw, hw_get_address, disconnect_hw
+from hw_intf import connect_hw, hw_get_address, disconnect_hw, ping
 from hw_setup_dlg import HwSetupDlg
 from psw_cache import SshPassCache
 from sign_message_dlg import SignMessageDlg
 from wnd_utils import WndUtils
 from ui import ui_main_dlg
+from message_dlg import MessageDlg
 
 
 PROJECT_URL = 'https://github.com/Bertrand256/dash-masternode-tool'
@@ -141,6 +142,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.setIcon(self.actTransferFundsForAllMns, "money-bag.png")
         self.actTransferFundsForAllMns.triggered.connect(self.on_actTransferFundsForAllMns_triggered)
 
+        # transfer for a specified address/bip32 path
+        self.actTransferFundsForAddress = mnu.addAction("Transfer funds from any HW address...")
+        self.setIcon(self.actTransferFundsForAddress, "wallet.png")
+        self.actTransferFundsForAddress.triggered.connect(self.on_actTransferFundsForAddress_triggered)
+
         # sign message with HW
         self.actSignMessageWithHw = mnu.addAction("Sign message with HW for current Masternode's address...")
         self.setIcon(self.actSignMessageWithHw, "sign.png")
@@ -151,10 +157,16 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.setIcon(self.actHwSetup, "hw.png")
         self.actHwSetup.triggered.connect(self.on_actHwSetup_triggered)
 
+        mnu.addSeparator()
+
         # check for updates
         self.actCheckForUpdates = mnu.addAction("Check for updates")
         self.actCheckForUpdates.triggered.connect(self.on_actCheckForUpdates_triggered)
         self.btnActions.setMenu(mnu)
+
+        # log file
+        self.actLogFile = mnu.addAction('Open log file (%s)' % self.config.log_file)
+        self.actLogFile.triggered.connect(self.on_actLogFile_triggered)
 
         # add masternodes to the combobox
         self.cboMasternodes.clear()
@@ -196,7 +208,18 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @staticmethod
     def versionStrToNumber(version_str):
         elems = version_str.split('.')
-        version_nr_str = ''.join([n.zfill(4) for n in elems])
+        if elems:
+            # last element of a version string can have a suffix
+            last_elem = elems[len(elems) - 1]
+            if not last_elem.isdigit():
+                res = re.findall(r'^\d+', last_elem)
+                if res:
+                    elems[len(elems) - 1] = res[0]
+                else:
+                    del elems[len(elems) - 1]
+
+        ver_list = [n.zfill(4) for n in elems]
+        version_nr_str = ''.join(ver_list)
         version_nr = int(version_nr_str)
         return version_nr
 
@@ -207,6 +230,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             last_ver_check_date = cache.get_value('check_for_updates_last_date', '', str)
             if force_check or cur_date != last_ver_check_date:
                 self.runInThread(self.checkForUpdates, (cur_date, force_check))
+
+    @pyqtSlot(bool)
+    def on_actLogFile_triggered(self, checked):
+        if os.path.exists(self.config.log_file):
+            ret = QDesktopServices.openUrl(QUrl("file:///%s" % self.config.log_file))
+            if not ret:
+                self.warnMsg('Could not open "%s" file in a default OS application.' % self.config.log_file)
 
     def checkForUpdates(self, ctrl, cur_date_str, force_check):
         """
@@ -616,9 +646,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.hw_client:
             try:
                 features = self.hw_client.features
-                self.hw_client.ping('Hello, press the button', button_protection=False,
-                                    pin_protection=features.pin_protection,
-                                    passphrase_protection=features.passphrase_protection)
+                ping(self, 'Hello, press the button', button_protection=False,
+                      pin_protection=features.pin_protection,
+                      passphrase_protection=features.passphrase_protection)
                 self.infoMsg('Connection to %s device (%s) successful.' % (self.getHwName(), features.label))
             except HardwareWalletCancelException:
                 if self.hw_client:
@@ -1046,16 +1076,20 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.btnHwAddressToBip32.setEnabled(False)
 
     @pyqtSlot(str)
-    def on_edtMnCollateralTx_textEdited(self):
+    def on_edtMnCollateralTx_textEdited(self, text):
         if self.curMasternode:
             self.curMnModified()
-            self.curMasternode.collateralTx = self.edtMnCollateralTx.text()
+            self.curMasternode.collateralTx = text
+        else:
+            logging.warning('curMasternode == None')
 
     @pyqtSlot(str)
-    def on_edtMnCollateralTxIndex_textEdited(self):
+    def on_edtMnCollateralTxIndex_textEdited(self, text):
         if self.curMasternode:
             self.curMnModified()
-            self.curMasternode.collateralTxIndex = self.edtMnCollateralTxIndex.text()
+            self.curMasternode.collateralTxIndex = text
+        else:
+            logging.warning('curMasternode == None')
 
     @pyqtSlot(bool)
     def on_btnGenerateMNPrivateKey_clicked(self):
@@ -1434,6 +1468,17 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.executeTransferFundsDialog(src_addresses)
         else:
             self.errorMsg('No masternode with set collateral BIP32 path and address')
+
+    @pyqtSlot(bool)
+    def on_actTransferFundsForAddress_triggered(self):
+        """
+        Shows tranfser funds window for address/path specified by the user.
+        """
+        if not self.dashd_intf.open():
+            self.errorMsg('Dash daemon not connected')
+        else:
+            ui = send_payout_dlg.SendPayoutDlg([], self)
+            ui.exec_()
 
     def executeTransferFundsDialog(self, src_addresses):
         if not self.dashd_intf.open():

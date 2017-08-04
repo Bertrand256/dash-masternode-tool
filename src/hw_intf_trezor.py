@@ -25,7 +25,7 @@ class MyTrezorTextUIMixin(trezor_TextUIMixin):
 
     def callback_PassphraseRequest(self, msg):
         passphrase = self.ask_for_pass_fun(msg)
-        if not passphrase:
+        if passphrase is None:
             raise HardwareWalletCancelException('Cancelled')
         return trezor_proto.PassphraseAck(passphrase=passphrase)
 
