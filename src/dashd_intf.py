@@ -380,8 +380,6 @@ class Masternode(AttrsProtected):
         if hasattr(self, name) and name not in ('modified', 'marker', 'monitor_changes', '_AttrsProtected__allow_attr_definition'):
             if self.monitor_changes and getattr(self, name) != value:
                 self.modified = True
-                logging.info('MN attr modified. Attr: %s, old value: %s, new value: %s ' %
-                          (name, str(getattr(self, name)), value))
         super().__setattr__(name, value)
 
 
