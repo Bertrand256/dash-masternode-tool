@@ -33,7 +33,7 @@ except ImportError:
 
 # how many seconds cached masternodes data are valid; cached masternode data is used only for non-critical
 # features
-MASTERNODES_CACHE_VALID_SECONDS = 60 * 15  # 30 minutes
+MASTERNODES_CACHE_VALID_SECONDS = 60 * 60  # 60 minutes
 
 
 class ForwardServer (socketserver.ThreadingTCPServer):
@@ -422,6 +422,7 @@ class DashdInterface(WndUtils):
         self.on_connection_finished_callback = on_connection_finished_callback
         self.last_error_message = None
         self.db_active = False
+        self.governanceinfo = None  # cached result of getgovernanceinfo query
 
         # open and initialize database for caching masternode data
         db_conn = None
@@ -435,6 +436,7 @@ class DashdInterface(WndUtils):
                         " dmt_active INTEGER, dmt_create_time TEXT, dmt_deactivation_time TEXT)")
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_MASTERNODES_DMT_ACTIVE ON MASTERNODES(dmt_active)")
 
+            logging.debug("Reading masternodes' data from DB")
             cur.execute("SELECT id, ident, status, protocol, payee, last_seen, active_seconds,"
                         " last_paid_time, last_paid_block, IP from MASTERNODES where dmt_active=1")
             for row in cur.fetchall():
@@ -453,7 +455,7 @@ class DashdInterface(WndUtils):
                 self.masternodes_by_ident[mn.ident] = mn
 
             tm_diff = time.time() - tm_start
-            logging.info('DB read time of MASTERNODES: %d seconds' % int(tm_diff))
+            logging.info('DB read time of %d MASTERNODES: %d seconds' % (len(self.masternodes), int(tm_diff)))
             self.db_active = True
         except Exception as e:
             logging.exception('SQLite initialization error')
@@ -763,6 +765,7 @@ class DashdInterface(WndUtils):
 
             if len(args) == 1 and args[0] == 'full':
                 last_read_time = self.get_cache_value('MasternodesLastReadTime', 0, int)
+                logging.debug("MasternodesLastReadTime: %d" % last_read_time)
 
                 if self.masternodes and not skip_cache and \
                    int(time.time()) - last_read_time < MASTERNODES_CACHE_VALID_SECONDS:
@@ -922,5 +925,14 @@ class DashdInterface(WndUtils):
     def masternode(self, *args):
         if self.open():
             return self.proxy.masternode(*args)
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def getgovernanceinfo(self, skip_cache=False):
+        if self.open():
+            if skip_cache or not self.governanceinfo:
+                self.governanceinfo = self.proxy.getgovernanceinfo()
+            return self.governanceinfo
         else:
             raise Exception('Not connected')

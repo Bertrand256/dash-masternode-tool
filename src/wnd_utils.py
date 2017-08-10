@@ -2,8 +2,11 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+import logging
 import os
 import threading
+import traceback
+
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt, QObject
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap
@@ -101,18 +104,26 @@ class WndUtils():
         Run a function inside a thread.
         :param worker_fun: reference to function to be executed inside a thread
         :param worker_fun_args: arguments passed to a thread function
-        :param on_thread_finish: function to be called after thread finishes
+        :param on_thread_finish: function to be called after thread finishes its execution
         :return: reference to a thread object
         """
         thread = None
-        def on_thread_finished():
+
+        def on_thread_finished_int(on_thread_finish_ext, nr):
             if thread.worker_exception:
                 raise thread.worker_exception
-            if on_thread_finish:
-                on_thread_finish()
+            if on_thread_finish_ext:
+                on_thread_finish_ext()
 
+        if threading.current_thread() != threading.main_thread():
+            # starting thread from another thread causes an issue of not passing arguments'
+            # values to on_thread_finished_int function, so on_thread_finish is not called
+            st = traceback.format_stack()
+            logging.error('Running thread from inside another thread. Stack: \n' + ''.join(st))
+
+        logging.debug('runInThread')
         thread = WorkerThread(worker_fun=worker_fun, worker_fun_args=worker_fun_args)
-        thread.finished.connect(on_thread_finished)
+        thread.finished.connect(lambda: on_thread_finished_int(on_thread_finish, 22))
         thread.start()
         return thread
 

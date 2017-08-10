@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_proposals.ui'
 #
-# Created by: PyQt5 UI code generator 5.8.2
+# Created by: PyQt5 UI code generator 5.9
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -31,34 +31,19 @@ class Ui_ProposalsDlg(object):
         spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout.addItem(spacerItem)
         self.verticalLayout.addLayout(self.horizontalLayout)
-        self.tableWidget = QtWidgets.QTableWidget(ProposalsDlg)
-        self.tableWidget.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContentsOnFirstShow)
-        self.tableWidget.setEditTriggers(QtWidgets.QAbstractItemView.AnyKeyPressed|QtWidgets.QAbstractItemView.DoubleClicked|QtWidgets.QAbstractItemView.EditKeyPressed)
-        self.tableWidget.setAlternatingRowColors(True)
-        self.tableWidget.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
-        self.tableWidget.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectItems)
-        self.tableWidget.setShowGrid(True)
-        self.tableWidget.setObjectName("tableWidget")
-        self.tableWidget.setColumnCount(7)
-        self.tableWidget.setRowCount(0)
-        item = QtWidgets.QTableWidgetItem()
-        self.tableWidget.setHorizontalHeaderItem(0, item)
-        item = QtWidgets.QTableWidgetItem()
-        self.tableWidget.setHorizontalHeaderItem(1, item)
-        item = QtWidgets.QTableWidgetItem()
-        self.tableWidget.setHorizontalHeaderItem(2, item)
-        item = QtWidgets.QTableWidgetItem()
-        self.tableWidget.setHorizontalHeaderItem(3, item)
-        item = QtWidgets.QTableWidgetItem()
-        self.tableWidget.setHorizontalHeaderItem(4, item)
-        item = QtWidgets.QTableWidgetItem()
-        self.tableWidget.setHorizontalHeaderItem(5, item)
-        item = QtWidgets.QTableWidgetItem()
-        self.tableWidget.setHorizontalHeaderItem(6, item)
-        self.tableWidget.horizontalHeader().setSortIndicatorShown(True)
-        self.tableWidget.horizontalHeader().setStretchLastSection(True)
-        self.tableWidget.verticalHeader().setCascadingSectionResizes(False)
-        self.verticalLayout.addWidget(self.tableWidget)
+        self.propsView = QtWidgets.QTableView(ProposalsDlg)
+        self.propsView.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContentsOnFirstShow)
+        self.propsView.setEditTriggers(QtWidgets.QAbstractItemView.AnyKeyPressed|QtWidgets.QAbstractItemView.DoubleClicked|QtWidgets.QAbstractItemView.EditKeyPressed)
+        self.propsView.setAlternatingRowColors(True)
+        self.propsView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.propsView.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.propsView.setShowGrid(True)
+        self.propsView.setSortingEnabled(False)
+        self.propsView.setObjectName("propsView")
+        self.propsView.verticalHeader().setVisible(False)
+        self.propsView.verticalHeader().setCascadingSectionResizes(False)
+        self.propsView.verticalHeader().setHighlightSections(False)
+        self.verticalLayout.addWidget(self.propsView)
         self.buttonBox = QtWidgets.QDialogButtonBox(ProposalsDlg)
         self.buttonBox.setStandardButtons(QtWidgets.QDialogButtonBox.Cancel|QtWidgets.QDialogButtonBox.Ok)
         self.buttonBox.setObjectName("buttonBox")
@@ -71,21 +56,6 @@ class Ui_ProposalsDlg(object):
         _translate = QtCore.QCoreApplication.translate
         ProposalsDlg.setWindowTitle(_translate("ProposalsDlg", "Dialog"))
         self.pushButton.setText(_translate("ProposalsDlg", "Columns"))
-        self.tableWidget.setSortingEnabled(True)
-        item = self.tableWidget.horizontalHeaderItem(0)
-        item.setText(_translate("ProposalsDlg", "Proposal name"))
-        item = self.tableWidget.horizontalHeaderItem(1)
-        item.setText(_translate("ProposalsDlg", "Payment start"))
-        item = self.tableWidget.horizontalHeaderItem(2)
-        item.setText(_translate("ProposalsDlg", "Payment end"))
-        item = self.tableWidget.horizontalHeaderItem(3)
-        item.setText(_translate("ProposalsDlg", "Payment amount"))
-        item = self.tableWidget.horizontalHeaderItem(4)
-        item.setText(_translate("ProposalsDlg", "Yes count"))
-        item = self.tableWidget.horizontalHeaderItem(5)
-        item.setText(_translate("ProposalsDlg", "No count"))
-        item = self.tableWidget.horizontalHeaderItem(6)
-        item.setText(_translate("ProposalsDlg", "Abstain count"))
 
 
 if __name__ == "__main__":
