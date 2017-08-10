@@ -9,13 +9,14 @@ import os
 import re
 import threading
 import time
-from PyQt5 import QtWidgets
-from PyQt5.QtCore import Qt, pyqtSlot, QModelIndex
-from PyQt5.QtWidgets import QDialog, QTableWidgetItem, QDialogButtonBox
-import wnd_utils as wnd_utils
-from app_config import DATE_FORMAT, DATETIME_FORMAT
-from dashd_intf import DashdIndexException
-from ui import ui_proposals
+from PyQt5 import QtWidgets, QtGui
+from PyQt5.QtCore import Qt, pyqtSlot, QModelIndex, QVariant, QAbstractTableModel, QSortFilterProxyModel
+from PyQt5.QtGui import QColor
+from PyQt5.QtWidgets import QDialog, QTableWidgetItem, QDialogButtonBox, QHeaderView
+import src.wnd_utils as wnd_utils
+from src.app_config import DATE_FORMAT, DATETIME_FORMAT
+from src.dashd_intf import DashdIndexException
+from src.ui import ui_proposals
 from src.common import AttrsProtected
 from src.wnd_utils import WndUtils
 import sqlite3
@@ -48,6 +49,8 @@ class ProposalColumn(AttrsProtected):
         self.voting_mn = voting_mn
         self.my_masternode = None  # True, if column for masternode vote relates to user's masternode; such columns
                                    # can not be removed
+        self.initial_width = None
+        self.initial_order_no = None
         self.set_attr_protection()
 
 
@@ -74,12 +77,24 @@ class Proposal(AttrsProtected):
         self.marker = None
         self.modified = False
         self.voting_last_read_time = 0
-        self.voting_enabled = True
+        self.voting_in_progress = True
+
+        # voting_status:
+        #   1: voting in progress, funding
+        #   2: voting in progress, no funding
+        #   3: deadline passed, funding
+        #   4: deadline passed, no funding
+        self.voting_status = None
+
+        self.name_col_widget = None
+        self.url_col_widget = None
+
         self.set_attr_protection()
 
     def set_value(self, name, value):
         """
         Sets value for a specified Proposal column.
+        :returns True, if new value is different that old value
         """
         for col in self.columns:
             if col.name == name:
@@ -87,7 +102,9 @@ class Proposal(AttrsProtected):
                 if old_value != value:
                     self.modified = True
                     self.values[col] = value
-                return
+                    return True
+                else:
+                    return False
         raise AttributeError('Invalid Proposal value name: ' + name)
 
     def get_value(self, name):
@@ -112,6 +129,42 @@ class Proposal(AttrsProtected):
     def add_vote(self, vote):
         self.votes.append(vote)
 
+    def apply_values(self, masternodes, last_suberblock_time, next_superblock_datetime):
+        """ Calculate voting_in_progress and voting_status values, based on colums' values.
+        """
+
+        payment_start = self.get_value('payment_start')
+        payment_end = self.get_value('payment_end')
+        funding_enabled = self.get_value('fCachedFunding')
+
+        if payment_start and payment_end:
+            payment_start = payment_start.timestamp()
+            payment_end = payment_end.timestamp()
+            now = time.time()
+            self.voting_in_progress = (payment_start > last_suberblock_time) or \
+                                      (payment_end > next_superblock_datetime and funding_enabled)
+        else:
+            self.voting_in_progress = False
+
+        abs_yes_count = self.get_value('absolute_yes_count')
+        mns_count = len(masternodes)
+        if self.voting_in_progress:
+            if abs_yes_count >= mns_count * 0.1:
+                self.voting_status = 1  # will be funded
+                self.set_value('voting_status_caption', 'Will be funded (%d of %d needed)' %
+                               (abs_yes_count, int(mns_count * 0.1)))
+            else:
+                self.voting_status = 2  # needs additional votes
+                self.set_value('voting_status_caption', 'Needs additional %d votes' % (int(mns_count * 0.1) -
+                                                                                       abs_yes_count))
+        else:
+            if funding_enabled:
+                self.voting_status = 3  # funded
+                self.set_value('voting_status_caption', 'Passed with funding')
+            else:
+                self.voting_status = 4  # not funded
+                self.set_value('voting_status_caption', 'Not funded')
+
 
 class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def __init__(self, parent, dashd_intf):
@@ -121,19 +174,20 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.dashd_intf = dashd_intf
         self.columns = [
             ProposalColumn('name', 'Name', True),
-            ProposalColumn('payment_start', 'Payment start', True),
-            ProposalColumn('payment_end', 'Payment end', True),
+            ProposalColumn('voting_status_caption', 'Voting Status', True),
+            ProposalColumn('payment_start', 'Payment Start', True),
+            ProposalColumn('payment_end', 'Payment End', True),
             ProposalColumn('payment_amount', 'Amount', True),
-            ProposalColumn('yes_count', 'Yes count', True),
-            ProposalColumn('absolute_yes_count', 'Absolute Yes count', True),
-            ProposalColumn('no_count', 'No count', True),
-            ProposalColumn('abstain_count', 'Abstain count', True),
-            ProposalColumn('creation_time', 'Creation time', True),
+            ProposalColumn('yes_count', 'YES Count', True),
+            ProposalColumn('absolute_yes_count', 'Absolute YES Count', True),
+            ProposalColumn('no_count', 'NO Count', True),
+            ProposalColumn('abstain_count', 'Abstain Count', True),
+            ProposalColumn('creation_time', 'Creation Time', True),
             ProposalColumn('url', 'URL', True),
-            ProposalColumn('payment_address', 'Payment address', True),
+            ProposalColumn('payment_address', 'Payment Address', True),
             ProposalColumn('type', 'Type', False),
             ProposalColumn('hash', 'Hash', True),
-            ProposalColumn('collateral_hash', 'Collateral hash', True),
+            ProposalColumn('collateral_hash', 'Collateral Hash', True),
             ProposalColumn('fBlockchainValidity', 'fBlockchainValidity', False),
             ProposalColumn('fCachedValid', 'fCachedValid', False),
             ProposalColumn('fCachedDelete', 'fCachedDelete', False),
@@ -144,10 +198,15 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         ]
         self.proposals = []
         self.proposals_by_hash = {}  #  dict of Proposal object indexed by proposal hash
+        self.proposals_by_db_id = {}
+        self.masternodes = []
         self.masternodes_by_ident = {}
         self.masternodes_by_db_id = {}
         self.mn_count = None
         self.db_active = False
+        self.governanceinfo = None
+        self.last_superblock_time = None
+        self.next_superblock_time = None
 
         # open and initialize database for caching proposals data
         db_conn = None
@@ -184,14 +243,16 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         try:
             ui_proposals.Ui_ProposalsDlg.setupUi(self, self)
             self.setWindowTitle('Proposals')
-            self.tableWidget.verticalHeader().setDefaultSectionSize(
-                self.tableWidget.verticalHeader().fontMetrics().height() + 6)
+
+            self.resize(self.get_cache_value('WindowWidth', self.size().width(), int),
+                        self.get_cache_value('WindowHeight', self.size().width(), int))
 
             # let's define "dynamic" columns that show voting results for user's masternodes
             for idx, mn in enumerate(self.main_wnd.config.masternodes):
                 mn_ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
                 if mn_ident:
-                    self.add_voting_column(mn_ident, 'Vote (' + mn.name + ')', my_masternode=True)
+                    self.add_voting_column(mn_ident, 'Vote (' + mn.name + ')', my_masternode=True,
+                                           insert_before_column=self.column_index_by_name('payment_start'))
 
             """ Read configuration of grid columns such as: display order, visibility. Also read configuration
              of dynamic columns: when user decides to display voting results of a masternode, which is not 
@@ -212,66 +273,90 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             """
             cfg_cols = self.get_cache_value('ColumnsCfg', [], list)
             if isinstance(cfg_cols, list):
-                for c in cfg_cols:
+                for col_saved_index, c in enumerate(cfg_cols):
                     name = c.get('name')
                     visible = c.get('visible', True)
                     voting_mn = c.get('voting_mn')
                     caption = c.get('caption')
+                    initial_width = c.get('width')
+                    if not isinstance(initial_width, int):
+                        initial_width = None
+
                     if isinstance(name, str) and isinstance(visible, bool) and isinstance(voting_mn, bool):
                         found = False
                         for col in self.columns:
                             if col.name == name:
                                 col.visible = visible
-                                col.caption = caption
+                                col.initial_width = initial_width
+                                col.initial_order_no = col_saved_index
                                 found = True
                                 break
                         if not found and voting_mn and caption:
                             # add voting column defined by the user
-                            self.add_voting_column(name, caption, my_masternode=False)
+                            self.add_voting_column(name, caption, my_masternode=False,
+                                                   insert_before_column=self.column_index_by_name('payment_start'))
             else:
                 logging.warning('Invalid type of cached ColumnsCfg')
+            self.columns.sort(key = lambda x: x.initial_order_no if x.initial_order_no is not None else 100)
 
-            # setup proposals grid
-            self.tableWidget.clear()
-            self.tableWidget.setColumnCount(len(self.columns))
-            for idx, col in enumerate(self.columns):
-                item = QtWidgets.QTableWidgetItem()
-                item.setText(col.caption)
-                self.tableWidget.setHorizontalHeaderItem(idx, item)
-                if not col.visible:
-                    self.tableWidget.hideColumn(idx)
+            self.propsView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+            self.propsView.setSortingEnabled(True)
+            self.propsView.sortByColumn(self.column_index_by_name('voting_status_caption'), Qt.AscendingOrder)
 
-            # todo: for testing:
-            # self.save_config()
+            # create model serving data to the view
+            self.propsModel = ProposalsModel(self, self.columns, self.proposals)
+            self.proxyModel = ProposalFilterProxyModel(self, self.proposals, self.columns)
+            self.proxyModel.setSourceModel(self.propsModel)
+            self.propsView.setModel(self.proxyModel)
 
-            self.runInThread(self.read_proposals_thread, (False,))
+            # set initial column widths
+            for col_idx, col in enumerate(self.columns):
+                if col.initial_width:
+                    self.propsView.setColumnWidth(col_idx, col.initial_width)
+
+            self.propsView.verticalHeader().setDefaultSectionSize(
+                self.propsView.verticalHeader().fontMetrics().height() + 6)
+
+            def read_proposals_from_network():
+                self.runInThread(self.read_voting_from_network_thread, (False,), self.sort_proposals_initially)
+                pass
+
+            # read initial data (from db) inside a thread and then read data from network if needed
+            self.runInThread(self.read_data_thread, (False,), on_thread_finish=read_proposals_from_network)
             self.updateUi()
         except:
             logging.exception('Exception occurred')
             raise
 
     def updateUi(self):
-        items = self.tableWidget.selectedItems()
-        selected = len(items) > 0
-        self.buttonBox.button(QDialogButtonBox.Ok).setEnabled(selected)
+        pass
+
+    def closeEvent(self, event):
+        self.save_config()
 
     def save_config(self):
         """
         Saves dynamic configuration (for example grid columns) to cache.
         :return:
         """
-        cfg = []
-        for col in self.columns:
-            c = {
-                'name': col.name,
-                'visible': col.visible,
-                'voting_mn': col.voting_mn,
-                'caption': col.caption
-            }
-            cfg.append(c)
-        self.set_cache_value('ColumnsCfg', cfg)
+        try:
+            cfg = []
+            for col_idx, col in enumerate(self.columns):
+                c = {
+                    'name': col.name,
+                    'visible': col.visible,
+                    'voting_mn': col.voting_mn,
+                    'caption': col.caption,
+                    'width': self.propsView.columnWidth(col_idx)
+                }
+                cfg.append(c)
+            self.set_cache_value('ColumnsCfg', cfg)
+            self.set_cache_value('WindowWidth', self.size().width())
+            self.set_cache_value('WindowHeight', self.size().height())
+        except Exception as e:
+            logging.exception('Exception while saving dialog configuration to cache.')
 
-    def add_voting_column(self, mn_ident, mn_label, my_masternode=None):
+    def add_voting_column(self, mn_ident, mn_label, my_masternode=None, insert_before_column=None):
         """
         Adds a dynamic column that displays a vote of the masternode with the specified identifier.
         :return:
@@ -282,7 +367,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 return  # column for this masternode is already added
 
         col = ProposalColumn(mn_ident, mn_label, visible=True, voting_mn=True)
-        self.columns.append(col)
+        if isinstance(insert_before_column, int) and insert_before_column < len(self.columns):
+            self.columns.insert(insert_before_column, col)
+        else:
+            self.columns.append(col)
 
         if my_masternode is None:
             # check if the specified masternode is in the user configuration; if so, mark the column
@@ -299,7 +387,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         def disp(message):
             if message:
                 self.lblMessage.setVisible(True)
-                self.lblMessage.setText('<b style="color:orange">' + message + '<b>')
+                self.lblMessage.setText('<b style="color:blue">' + message + '<b>')
             else:
                 self.lblMessage.setVisible(False)
                 self.lblMessage.setText('')
@@ -320,8 +408,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 return idx
         raise Exception('Invalid column name: ' + name)
 
+    def column_by_name(self, name):
+        for idx, pc in enumerate(self.columns):
+            if pc.name == name:
+                return pc
+        raise Exception('Invalid column name: ' + name)
+
     def read_proposals_from_network(self):
-        """ Reads proposals from Dash network. """
+        """ Reads proposals from the Dash network. """
 
         def find_prop_data(prop_data, level=1):
             """ Find proposal dict inside a list extracted from DataString field. """
@@ -337,7 +431,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
         try:
             self.display_message('Reading proposals data, please wait...')
+            logging.debug('Reading proposals from the Dash network.')
             proposals = self.dashd_intf.gobject("list", "valid", "proposals")
+            rows_added = False
 
             # reset marker value in all existing Proposal object - we'll use it to check which
             # of prevoiusly read proposals do not exit anymore
@@ -383,9 +479,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 prop.set_value('fCachedEndorsed', prop_raw['fCachedEndorsed'])
                 prop.set_value('ObjectType', prop_raw['ObjectType'])
                 prop.set_value('IsValidReason', prop_raw['IsValidReason'])
+                prop.apply_values(self.masternodes, self.last_superblock_time, self.next_superblock_time)
                 if is_new:
                     self.proposals.append(prop)
                     self.proposals_by_hash[prop.get_value('hash')] = prop
+                    rows_added = True
 
             db_conn = None
             db_modified = False
@@ -396,6 +494,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 for prop in self.proposals:
                     if prop.marker:
                         if not prop.db_id:
+                            logging.debug('Adding new proposal to DB. Hash: ' + prop.get_value('hash'))
                             cur.execute("INSERT INTO PROPOSALS (name, payment_start, payment_end, payment_amount,"
                                         " yes_count, absolute_yes_count, no_count, abstain_count, creation_time,"
                                         " url, payment_address, type, hash, collateral_hash, f_blockchain_validity,"
@@ -428,10 +527,13 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                          datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                                          None))
                             prop.db_id = cur.lastrowid
+                            self.proposals_by_db_id[prop.db_id] = prop
                             db_modified = True
                         else:
                             # proposal's db record already exists, check if should be updated
                             if prop.modified:
+                                logging.debug('Updating proposal in the DB. Hash: %s, DB id: %d' %
+                                              (prop.get_value('hash'), prop.db_id) )
                                 cur.execute("UPDATE PROPOSALS set name=?, payment_start=?, payment_end=?, "
                                             "payment_amount=?, yes_count=?, absolute_yes_count=?, no_count=?, "
                                             "abstain_count=?, creation_time=?, url=?, payment_address=?, type=?,"
@@ -475,6 +577,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                     (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), prop.db_id))
 
                         self.proposals_by_hash.pop(prop.get_value('hash'), 0)
+                        self.proposals_by_db_id.pop(prop.db_id)
                         del self.proposals[prop_idx]
                         db_modified = True
 
@@ -487,11 +590,22 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     db_conn.close()
 
             self.set_cache_value('ProposalsLastReadTime', int(time.time()))  # save when proposals has been
+            logging.debug('Finished updating proposals data.')
 
         except Exception as e:
             logging.exception('Exception wile reading proposals from Dash network.')
 
-    def read_proposals_thread(self, ctrl, force_reload):
+    def sort_proposals_initially(self):
+        # make the initial proposals' sorting - with active voting first
+        cur_tm = time.time()
+        def cmp(prop):
+            # sort by voting_status asc, creation_time desc:
+            ret = (cur_tm * prop.voting_status) + cur_tm - prop.get_value('creation_time').timestamp()
+            return ret
+
+        self.proposals.sort(key=cmp)
+
+    def read_data_thread(self, ctrl, force_reload):
         """ Reads proposals data from Dash daemon.
         :param ctrl:
         :param force_reload: if running
@@ -499,13 +613,35 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         """
 
         try:
+            self.display_message('Connecting to Dash daemon, please wait...')
             if not self.dashd_intf.open():
                 self.errorMsg('Dash daemon not connected')
             else:
                 try:
+
+                    try:
+                        self.display_message('Reading governance data, please wait...')
+
+                        # get the date-time of the last superblock and calculate the date-time of the next one
+                        self.governanceinfo = self.dashd_intf.getgovernanceinfo()
+
+                        sb_last = self.governanceinfo.get('lastsuperblock')
+                        sb_next = self.governanceinfo.get('nextsuperblock')
+
+                        sb_last_hash = self.dashd_intf.getblockhash(sb_last)
+                        bh = self.dashd_intf.getblockheader(sb_last_hash)
+                        self.last_superblock_time = bh['time']
+                        self.next_superblock_time = bh['time'] + (sb_next - sb_last) * 2.5 * 60
+
+                    except Exception as e:
+                        self.errorMsg("Coundn't read governanceinfo from the Dash network. "
+                                      "Because ot this, some features may not work correcly. Error details: " + str(e))
+
                     # get list of all masternodes
                     self.display_message('Reading masternode data, please wait...')
+
                     mns = self.dashd_intf.get_masternodelist('full')
+                    self.masternodes = mns
                     self.mn_count = 0
                     statuses = {}
 
@@ -531,6 +667,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
                             cur = db_conn.cursor()
 
+                            logging.debug("Reading proposals' data from DB")
                             cur.execute(
                                 "SELECT name, payment_start, payment_end, payment_amount,"
                                 " yes_count, absolute_yes_count, no_count, abstain_count, creation_time,"
@@ -538,7 +675,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 " f_cached_valid, f_cached_delete, f_cached_funding, f_cached_endorsed, object_type,"
                                 " is_valid_reason, dmt_active, dmt_create_time, dmt_deactivation_time, id,"
                                 " dmt_voting_last_read_time "
-                                "FROM PROPOSALS where dmt_active=1")
+                                "FROM PROPOSALS where dmt_active=1"
+                                # " LIMIT 20"  #todo: testing only
+                            )
 
                             for row in cur.fetchall():
                                 prop = Proposal(self.columns)
@@ -565,33 +704,17 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 prop.set_value('IsValidReason', row[20])
                                 prop.db_id = row[24]
                                 prop.voting_last_read_time = row[25]
+                                prop.apply_values(self.masternodes, self.last_superblock_time,
+                                                  self.next_superblock_time)
                                 self.proposals.append(prop)
                                 self.proposals_by_hash[prop.get_value('hash')] = prop
+                                self.proposals_by_db_id[prop.db_id] = prop
 
-                            # Read voting for each proposal
-                            self.display_message('Reading voting data from DB, please wait...')
+                            logging.debug("Finished reading proposals' data from DB")
 
-                            begin_time = time.time()
-                            for prop in self.proposals:
-                                cur.execute("SELECT masternode_id, masternode_ident, voting_time, voting_result "
-                                            "FROM VOTING_RESULTS where proposal_id=?", (prop.db_id,))
-
-                                for row in cur.fetchall():
-                                    mn = self.masternodes_by_db_id.get(row[0])
-                                    v = Vote(mn, datetime.datetime.strptime(row[2], '%Y-%m-%d %H:%M:%S'), row[3],
-                                             row[1])
-                                    prop.add_vote(v)
-
-                                    if mn:
-                                        for col_idx, col in enumerate(self.columns):
-                                            if col.voting_mn == True and col.name == mn.ident:
-                                                prop.set_value(col.name, row[3])
-
-                            time_diff = time.time() - begin_time
-                            logging.info('Voting data read from database time: %d seconds' % time_diff)
-
-                            # display loaded proposal data on the grid
-                            WndUtils.callFunInTheMainThread(self.display_data)
+                            # display data, now without voting results, which will be read below
+                            self.sort_proposals_initially()
+                            WndUtils.callFunInTheMainThread(self.display_proposals_data)
 
                         except Exception as e:
                             logging.exception('Exception while saving proposals to db.')
@@ -599,12 +722,13 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             if db_conn:
                                 db_conn.close()
 
+                    # read voting data from DB, only for "voting" columns
+                    self.read_voting_from_db(self.columns)
+
                     last_read_time = self.get_cache_value('ProposalsLastReadTime', 0, int)
                     if force_reload or int(time.time()) - last_read_time > PROPOSALS_CACHE_VALID_SECONDS or \
                        len(self.proposals) == 0:
                         self.read_proposals_from_network()
-
-                    self.runInThread(self.read_voting_results_thread, (False,))
                 except DashdIndexException as e:
                     self.errorMsg(str(e))
 
@@ -612,54 +736,45 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     logging.exception('Exception while retrieving proposals data.')
                     self.errorMsg('Error while retrieving proposals data: ' + str(e))
         except Exception as e:
-            pass
+            logging.exception('Exception while reading data.')
+        finally:
+            self.display_message("")
 
-    def set_table_value(self, row_nr, value_name, proposal, horz_align=None):
+    def read_voting_from_db(self, columns):
+        """ Read voting results for specified voting columns
+        :param columns list of voting columns for which data will be loaded from db; it is used when user adds
+          a new column - wee want read data only for this column
         """
-        Displays specified proposal's information (column) on the main grid.
-        :param row_nr: grid's row number (and also then proposal index) to be displayed
-        :param value_name: proposal's value name
-        :param proposal: reference to a Proposal object
-        :param horz_align: type of horizontal alignment in the grid's cell
-        """
-        col_nr = self.column_index_by_name(value_name)
-        value = proposal.get_value(value_name)
+        db_conn = None
+        self.display_message('Reading voting data from DB, please wait...')
+        begin_time = time.time()
 
-        item = self.tableWidget.item(row_nr, col_nr)
-        item_created = False
-        if isinstance(value, (int, float)):
-            if not item:
-                item = QTableWidgetItem()
-                item_created = True
-            item.setData(Qt.DisplayRole, value)
-        else:
-            if value is None:
-                value = ""
-            if not item:
-                item = QTableWidgetItem(str(value))
-                item_created = True
-            else:
-                item.setText(str(value))
-        if item_created:
-            item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-            if horz_align:
-                item.setTextAlignment(horz_align)
-            self.tableWidget.setItem(row_nr, col_nr, item)
-
-    def update_grid_data(self, cells_to_update):
-        """
-        Updates specified cells of the proposal grid due to data updatng.
-        Function called from inside a thread by synchronization engine, synchronizing it with the main thread.
-        It's necessary because of dealing with visual controls.
-        :param cells_to_update: list of tuples row-column of the grid to be updated.
-        """
         try:
-            for row_idx, col_idx in cells_to_update:
-                self.set_table_value(row_idx, self.columns[col_idx].name, self.proposals[row_idx])
-        except Exception as e:
-            self.errorMsg(str(e))
+            db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
+            cur = db_conn.cursor()
 
-    def read_voting_results_thread(self, ctrl, force_reload):
+            for col in columns:
+                if col.voting_mn:
+                    mn_ident = col.name
+                    mn = self.masternodes_by_ident.get(mn_ident)
+                    if mn:
+                        cur.execute("SELECT proposal_id, voting_time, voting_result "
+                                    "FROM VOTING_RESULTS WHERE masternode_id=?", (mn.db_id,))
+                        for row in cur.fetchall():
+                            prop = self.proposals_by_db_id.get(row[0])
+                            if prop:
+                                if prop.set_value(col.name, row[2]):
+                                    pass
+
+        except Exception as e:
+            logging.exception('Exception while saving proposals to db.')
+        finally:
+            if db_conn:
+                db_conn.close()
+            time_diff = time.time() - begin_time
+            logging.info('Voting data read from database time: %s seconds' % str(time_diff))
+
+    def read_voting_from_network_thread(self, ctrl, force_reload):
         """
         Retrieve from a Dash daemon voting results for all defined masternodes, for all visible Proposals.
         :param ctrl:
@@ -669,21 +784,17 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         """
 
         try:
-            cells_to_update = []  # list of row, column tuples, of which values has been modified - wee need
-                                  # to update corresponding grid's cells
             votes_added = []  # list of tuples proposal-vote, that has been added (will be saved to database cache)
 
             if not self.dashd_intf.open():
                 self.errorMsg('Dash daemon not connected')
             else:
                 try:
-                    for row_idx, prop in enumerate(self.proposals):
-                        # todo: testing only
-                        # if row_idx > 10:
-                        #     break
-                        # todo: end  testing
+                    proposals_updated = []  # list of proposals for which votes were loaded
 
-                        if (prop.voting_enabled or prop.voting_last_read_time == 0) and \
+                    for row_idx, prop in enumerate(self.proposals):
+
+                        if (prop.voting_in_progress or prop.voting_last_read_time == 0) and \
                            (force_reload or (time.time() - prop.voting_last_read_time) > VOTING_RELOAD_TIME):
                            # read voting results from the Dash network if:
                            #  - haven't ever read voting results for this proposal
@@ -691,7 +802,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                            #    passed since the last read or user forced to reload votes
 
                             self.display_message('Reading voting data %d of %d' % (row_idx+1, len(self.proposals)))
+                            logging.debug('Reading votes for proposal ' + prop.get_value('hash'))
                             votes = self.dashd_intf.gobject("getvotes", prop.get_value('hash'))
+                            logging.debug('Votes read finished')
                             for v_key in votes:
                                 v = votes[v_key]
                                 match = re.search("CTxIn\(COutPoint\(([A-Fa-f0-9]+)\s*\,\s*(\d+).+\:(\d+)\:(\w+)", v)
@@ -711,21 +824,21 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                         if col.voting_mn == True and col.name == mn_ident:
                                             if prop.get_value(col.name) != voting_result:
                                                 prop.set_value(col.name, voting_result)
-                                                cells_to_update.append((row_idx, col_idx))
                                             break
                                 else:
                                     logging.warning('Proposal %s, parsing unsuccessful for voting: %s' % (prop.hash, v))
+
+                            proposals_updated.append(prop)
                         else:
-                            logging.info("Proposal %d voting data valid. Skipping reading from network." % prop.db_id)
+                            logging.debug("Proposal %d voting data valid - no need to load data from Dash network." % prop.db_id)
 
                     # display data from dynamic (voting) columns
-                    WndUtils.callFunInTheMainThread(self.update_grid_data, cells_to_update)
+                    # WndUtils.callFunInTheMainThread(self.update_grid_data, cells_to_update)
 
                     # save voting results to the database cache
                     if self.db_active:
                         db_conn = None
                         db_modified = False
-                        unique_proposals = []  # list of proposals for which votes were loaded
                         try:
                             db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
                             cur = db_conn.cursor()
@@ -739,16 +852,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                              v.voting_time,
                                              v.voting_result))
 
-                                if not prop in unique_proposals:
-                                    unique_proposals.append(prop)
-
                                 db_modified = True
 
                             # update proposals' voting_last_read_time
-                            for prop in unique_proposals:
+                            for prop in proposals_updated:
                                 prop.voting_last_read_time = time.time()
                                 cur.execute("UPDATE PROPOSALS set dmt_voting_last_read_time=? where id=?",
                                             (int(time.time()), prop.db_id))
+                                db_modified = True
 
                         except Exception as e:
                             logging.exception('Exception while saving voting results to the database cache.')
@@ -760,81 +871,44 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 db_conn.close()
 
                 except DashdIndexException as e:
+                    logging.exception('Exception while retrieving voting data.')
                     self.errorMsg(str(e))
 
                 except Exception as e:
                     logging.exception('Exception while retrieving voting data.')
                     self.errorMsg('Error while retrieving voting data: ' + str(e))
         except Exception as e:
-            pass
+            logging.exception('Exception while retrieving voting data.')
         finally:
             self.display_message(None)
 
-    def display_data(self):
-
+    def display_proposals_data(self):
         try:
-            row = 0
-
+            tm_begin = time.time()
+            # reset special columns' widgets assigned to proposals
             for prop in self.proposals:
-                self.tableWidget.insertRow(self.tableWidget.rowCount())
+                prop.name_col_widget = None
+                prop.url_col_widget = None
 
-                # "name" column display as a hyperlink if possible
-                if prop.get_value('url'):
-                    url_lbl = QtWidgets.QLabel(self.tableWidget)
-                    url_lbl.setText('<a href="%s">%s</a>' % (prop.get_value('url'), prop.get_value('name')))
-                    url_lbl.setOpenExternalLinks(True)
-                    self.tableWidget.setCellWidget(row, self.column_index_by_name('name'), url_lbl)
-                else:
-                    # url is empty, so display value as normal text, not hyperlink
-                    self.set_table_value(row, 'name', prop)
+            self.propsModel.beginResetModel()
+            self.propsModel.endResetModel()
+            self.propsModel.displaySpecialCells()
 
-                self.set_table_value(row, 'payment_start', prop)
-                self.set_table_value(row, 'payment_end', prop)
-                self.set_table_value(row, 'payment_amount', prop, Qt.AlignRight)
-                self.set_table_value(row, 'yes_count', prop, Qt.AlignRight)
-                self.set_table_value(row, 'absolute_yes_count', prop, Qt.AlignRight)
-                self.set_table_value(row, 'no_count', prop, Qt.AlignRight)
-                self.set_table_value(row, 'abstain_count', prop, Qt.AlignRight)
-                self.set_table_value(row, 'creation_time', prop)
+            # if there is no saved column widths, resize widths to its contents
+            widths_initialized = False
+            for col in self.columns:
+                if col.initial_width:
+                    widths_initialized = True
+                    break
 
-                if prop.get_value('url'):
-                    url_lbl = QtWidgets.QLabel(self.tableWidget)
-                    url_lbl.setText('<a href="%s">%s</a>' % (prop.get_value('url'), prop.get_value('url')))
-                    url_lbl.setOpenExternalLinks(True)
-                    self.tableWidget.setCellWidget(row, self.column_index_by_name('url'), url_lbl)
-                else:
-                    # url is empty, so display value as normal text
-                    self.set_table_value(row, 'url', prop)
+            if not widths_initialized:
+                self.propsView.resizeColumnsToContents()
 
-                self.set_table_value(row, 'payment_address', prop)
-                self.set_table_value(row, 'type', prop)
-                self.set_table_value(row, 'hash', prop)
-                self.set_table_value(row, 'collateral_hash', prop)
-                self.set_table_value(row, 'fBlockchainValidity', prop)
-                self.set_table_value(row, 'fCachedValid', prop)
-                self.set_table_value(row, 'fCachedDelete', prop)
-                self.set_table_value(row, 'fCachedFunding', prop)
-                self.set_table_value(row, 'fCachedEndorsed', prop)
-                self.set_table_value(row, 'ObjectType', prop)
-                self.set_table_value(row, 'IsValidReason', prop)
-
-                # display voting results columns"
-                for col_idx, col in enumerate(self.columns):
-                    if col.voting_mn == True:
-                        self.set_table_value(row, col.name, prop)
-
-                row += 1
-
-            self.tableWidget.resizeColumnsToContents()
-            self.lblMessage.setVisible(False)
-            self.centerByWindow(self.main_wnd)
-
+            logging.debug("Display proposals' data time: " + str(time.time() - tm_begin))
         except Exception as e:
             logging.exception("Exception occurred while displaing proposals.")
             self.lblMessage.setVisible(False)
             raise Exception('Error occurred while displaying proposals: ' + str(e))
-
-        self.updateUi()
 
     @pyqtSlot()
     def on_buttonBox_accepted(self):
@@ -847,4 +921,172 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     @pyqtSlot()
     def on_tableWidget_itemSelectionChanged(self):
         self.updateUi()
+
+
+class ProposalFilterProxyModel(QSortFilterProxyModel):
+    """ Proxy for proposals sorting. """
+
+    def __init__(self, parent, proposals, columns):
+        super().__init__(parent)
+        self.columns = columns
+        self.proposals = proposals
+
+    def lessThan(self, left, right):
+        """ Custom comparison method: for comparing data from columns which have custom widget controls
+          associated with it, such as hyperlink columns (name, url). Such "widget" columns
+          can't be compared with the use of default method, because data to be compared is hidden
+          behind widget.
+        """
+        col_index = left.column()
+        col = self.columns[col_index]
+        left_row_index = left.row()
+        if col.name in ('name', 'url'):
+            # compare hyperlink columns
+            if left_row_index >= 0 and left_row_index < len(self.proposals):
+                left_prop = self.proposals[left_row_index]
+                right_row_index = right.row()
+
+                if right_row_index >= 0 and right_row_index < len(self.proposals):
+                    right_prop = self.proposals[right_row_index]
+                    left_value = left_prop.get_value(col.name).lower()
+                    if not left_value:
+                        left_value = ""
+                    right_value = right_prop.get_value(col.name).lower()
+                    if not right_value:
+                        right_value = ""
+                    return left_value < right_value
+
+        elif col.name == 'voting_status_caption':
+            # compare status column by its status code, not status text
+            if left_row_index >= 0 and left_row_index < len(self.proposals):
+                left_prop = self.proposals[left_row_index]
+                right_row_index = right.row()
+
+                if right_row_index >= 0 and right_row_index < len(self.proposals):
+                    right_prop = self.proposals[right_row_index]
+                    left_value = left_prop.voting_status
+                    right_value = right_prop.voting_status
+
+                    if left_value == right_value:
+                        # for even statuses, order by creation time (newest first)
+                        diff = right_prop.get_value('creation_time') < left_prop.get_value('creation_time')
+                    else:
+                        diff = left_value < right_value
+
+                    return diff
+
+        return super().lessThan(left, right)
+
+
+class ProposalsModel(QAbstractTableModel):
+    def __init__(self, parent, columns, proposals):
+        QAbstractTableModel.__init__(self, parent)
+        self.parent = parent
+        self.columns = columns
+        self.proposals = proposals
+
+    def columnCount(self, parent=None, *args, **kwargs):
+        return len(self.columns)
+
+    def rowCount(self, parent=None, *args, **kwargs):
+        return len(self.proposals)
+
+    def headerData(self, section, orientation, role=None):
+        if role != 0:
+            return QVariant()
+        if orientation == 0x1:
+            if section < len(self.columns):
+                return self.columns[section].caption
+            return ''
+        else:
+            return str(section + 1)
+
+    def setData(self, row, col, role=None):
+        index = self.index(row, col)
+        index = self.parent.proxyModel.mapFromSource(index)
+
+        self.dataChanged.emit(index, index)
+        return True
+
+    def flags(self, index):
+        ret = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+        return ret
+
+    def data(self, index, role=None):
+        if index.isValid():
+            col_idx = index.column()
+            row_idx = index.row()
+            if row_idx < len(self.proposals) and col_idx < len(self.columns):
+                prop = self.proposals[row_idx]
+                col = self.columns[col_idx]
+                value = prop.get_value(col.name)
+                if prop:
+                    if role == Qt.DisplayRole:
+                        if col.name not in ('url', 'name'):
+                            # Hyperlink cells will be processed within displaySpecialCells method
+                            if isinstance(value, datetime.datetime):
+                                return str(value)
+                            return value
+
+                    elif role == Qt.ForegroundRole:
+                        if col.name == 'voting_status_caption':
+                            if prop.voting_status == 1:
+                                return QtGui.QColor('white')
+                            elif prop.voting_status == 2:
+                                return QtGui.QColor('white')
+                            elif prop.voting_status == 3:
+                                return QtGui.QColor('green')
+                            elif prop.voting_status == 4:
+                                return QtGui.QColor('red')
+                        elif col.voting_mn:
+                            if value == 'YES':
+                                return QtGui.QColor('white')
+                            elif value == 'ABSTAIN':
+                                return QtGui.QColor('white')
+                            elif value == 'NO':
+                                return QtGui.QColor('white')
+
+                    elif role == Qt.BackgroundRole:
+                        if col.name == 'voting_status_caption':
+                            if prop.voting_status == 1:
+                                return QtGui.QColor('green')
+                            elif prop.voting_status == 2:
+                                return QtGui.QColor('orange')
+                        elif col.voting_mn:
+                            if value == 'YES':
+                                return QtGui.QColor('green')
+                            elif value == 'ABSTAIN':
+                                return QtGui.QColor('orange')
+                            elif value == 'NO':
+                                return QtGui.QColor('red')
+
+        return QVariant()
+
+    def sort(self, p_int, order=None):
+        pass
+
+    def displaySpecialCells(self):
+        col_url_idx = self.parent.column_index_by_name('url')
+        col_name_idx = self.parent.column_index_by_name('name')
+
+        for row_idx, prop in enumerate(self.proposals):
+            if not prop.url_col_widget:
+                index = self.index(row_idx, col_url_idx)
+                index = self.parent.proxyModel.mapFromSource(index)
+                url = prop.get_value('url')
+                prop.url_col_widget = QtWidgets.QLabel(self.parent.propsView)
+                prop.url_col_widget.setText('<a href="%s">%s</a>' % (url, url))
+                prop.url_col_widget.setOpenExternalLinks(True)
+                self.parent.propsView.setIndexWidget(index, prop.url_col_widget)
+
+            if not prop.name_col_widget:
+                index = self.index(row_idx, col_name_idx)
+                index = self.parent.proxyModel.mapFromSource(index)
+                name = prop.get_value('name')
+                prop.name_col_widget = QtWidgets.QLabel(self.parent.propsView)
+                url = prop.get_value('url')
+                prop.name_col_widget.setText('<a href="%s">%s</a>' % (url, name))
+                prop.name_col_widget.setOpenExternalLinks(True)
+                self.parent.propsView.setIndexWidget(index, prop.name_col_widget)
+
 
