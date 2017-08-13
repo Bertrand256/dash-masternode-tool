@@ -30,6 +30,10 @@ PROPOSALS_CACHE_VALID_SECONDS = 3600
 # Number of seconds after which voting will be reloaded for active proposals:
 VOTING_RELOAD_TIME = 3600
 
+# definition of symbols' for DB live configuration (tabel LIVE_CONFIG)
+CFG_PROPOSALS_LAST_READ_TIME = 'proposals_last_read_time'
+CFG_PROPOSALS_VOTES_MAX_DATE = 'prop_votes_max_date'  # maximum date of vote(s), read last time
+
 
 class ProposalColumn(AttrsProtected):
     def __init__(self, name, caption, visible, voting_mn=False):
@@ -207,6 +211,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.governanceinfo = None
         self.last_superblock_time = None
         self.next_superblock_time = None
+        self.proposals_last_read_time = 0
 
         # open and initialize database for caching proposals data
         db_conn = None
@@ -226,9 +231,21 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             # masternodes we use masternode_id (db identifier)
             cur.execute("CREATE TABLE IF NOT EXISTS VOTING_RESULTS(id INTEGER PRIMARY KEY, proposal_id INTEGER,"
                         " masternode_id INTEGER, masternode_ident TEXT, voting_time TEXT, voting_result TEXT)")
+            # cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_1 ON VOTING_RESULTS(proposal_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_2 ON VOTING_RESULTS(masternode_id)")
+            # cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_3 ON VOTING_RESULTS(masternode_ident)")
+            # cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_4 ON VOTING_RESULTS(voting_time)")
+            cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_3 ON VOTING_RESULTS(proposal_id, voting_time, "
+                        "masternode_id, masternode_ident)")  # for finding if vote already exists in the DB
 
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_PROPOSAL_ID ON VOTING_RESULTS(proposal_id)")
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_MASTERNODE_ID ON VOTING_RESULTS(masternode_id)")
+            # Create table for storing live data for example last read time of proposals
+            cur.execute("CREATE TABLE IF NOT EXISTS LIVE_CONFIG(symbol text PRIMARY KEY, value TEXT)")
+            cur.execute("CREATE INDEX IF NOT EXISTS IDX_LIVE_CONFIG_SYMBOL ON LIVE_CONFIG(symbol)")
+
+            cur.execute("SELECT value FROM LIVE_CONFIG WHERE symbol=?", (CFG_PROPOSALS_LAST_READ_TIME,))
+            row = cur.fetchone()
+            if row:
+                self.proposals_last_read_time = int(row[0])
 
             self.db_active = True
         except Exception as e:
@@ -245,7 +262,15 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.setWindowTitle('Proposals')
 
             self.resize(self.get_cache_value('WindowWidth', self.size().width(), int),
-                        self.get_cache_value('WindowHeight', self.size().width(), int))
+                        self.get_cache_value('WindowHeight', self.size().height(), int))
+
+            self.splitter.setStretchFactor(0, 1)
+            self.splitter.setStretchFactor(1, 0)
+            # s1 = self.tabDetails.size()
+            # s2 = self.propsView.size()
+
+            self.tabDetails.resize(self.tabDetails.size().width(),
+                                   self.get_cache_value('DetailsHeight', 200, int))
 
             # let's define "dynamic" columns that show voting results for user's masternodes
             for idx, mn in enumerate(self.main_wnd.config.masternodes):
@@ -317,12 +342,27 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.propsView.verticalHeader().setDefaultSectionSize(
                 self.propsView.verticalHeader().fontMetrics().height() + 6)
 
-            def read_proposals_from_network():
+            ##################################
+            def finished_read_proposals_from_network():
+                """ Called after finished reading proposals data from the Dash network. It invokes a thread
+                  reading voting data from the Dash network.  """
                 self.runInThread(self.read_voting_from_network_thread, (False,), self.sort_proposals_initially)
-                pass
+
+            ##################################
+            def finished_read_data_thread():
+                """ Called after finished reading initial data from the DB. Funtion executes reading proposals'
+                   data from network if needed.
+                """
+
+                if int(time.time()) - self.proposals_last_read_time > PROPOSALS_CACHE_VALID_SECONDS or \
+                                len(self.proposals) == 0:
+                    # read proposals from network only after a configured time
+                    self.read_proposals_from_network()
+                    self.runInThread(self.read_proposals_from_network_thread, (),
+                                     on_thread_finish=finished_read_proposals_from_network)
 
             # read initial data (from db) inside a thread and then read data from network if needed
-            self.runInThread(self.read_data_thread, (False,), on_thread_finish=read_proposals_from_network)
+            self.runInThread(self.read_data_thread, (), on_thread_finish=finished_read_data_thread)
             self.updateUi()
         except:
             logging.exception('Exception occurred')
@@ -353,6 +393,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.set_cache_value('ColumnsCfg', cfg)
             self.set_cache_value('WindowWidth', self.size().width())
             self.set_cache_value('WindowHeight', self.size().height())
+
+            self.set_cache_value('DetailsHeight', self.tabDetails.size().height())
+            pass
+
         except Exception as e:
             logging.exception('Exception while saving dialog configuration to cache.')
 
@@ -414,6 +458,16 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 return pc
         raise Exception('Invalid column name: ' + name)
 
+    def sort_proposals_initially(self):
+        # make the initial proposals' sorting - with active voting first
+        cur_tm = time.time()
+        def cmp(prop):
+            # sort by voting_status asc, creation_time desc:
+            ret = (cur_tm * prop.voting_status) + cur_tm - prop.get_value('creation_time').timestamp()
+            return ret
+
+        self.proposals.sort(key=cmp)
+
     def read_proposals_from_network(self):
         """ Reads proposals from the Dash network. """
 
@@ -432,7 +486,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         try:
             self.display_message('Reading proposals data, please wait...')
             logging.debug('Reading proposals from the Dash network.')
-            proposals = self.dashd_intf.gobject("list", "valid", "proposals")
+            proposals_new = self.dashd_intf.gobject("list", "valid", "proposals")
             rows_added = False
 
             # reset marker value in all existing Proposal object - we'll use it to check which
@@ -441,8 +495,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 prop.marker = False
                 prop.modified = False  # all modified proposals will be saved to DB cache
 
-            for pro_key in proposals:
-                prop_raw = proposals[pro_key]
+            for pro_key in proposals_new:
+                prop_raw = proposals_new[pro_key]
 
                 prop_dstr = prop_raw.get("DataString")
                 prop_data_json = json.loads(prop_dstr)
@@ -486,7 +540,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     rows_added = True
 
             db_conn = None
-            db_modified = False
             try:
                 db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
                 cur = db_conn.cursor()
@@ -528,7 +581,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                          None))
                             prop.db_id = cur.lastrowid
                             self.proposals_by_db_id[prop.db_id] = prop
-                            db_modified = True
                         else:
                             # proposal's db record already exists, check if should be updated
                             if prop.modified:
@@ -564,7 +616,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                                 prop.get_value('IsValidReason'),
                                                 prop.db_id
                                             ))
-                                db_modified = True
 
                 # delete proposals which no longer exists in tha Dash network
                 for prop_idx in reversed(range(len(self.proposals))):
@@ -579,37 +630,40 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         self.proposals_by_hash.pop(prop.get_value('hash'), 0)
                         self.proposals_by_db_id.pop(prop.db_id)
                         del self.proposals[prop_idx]
-                        db_modified = True
+
+                # self.set_cache_value('ProposalsLastReadTime', int(time.time()))  # save when proposals has been
+                cur.execute("UPDATE LIVE_CONFIG SET value=? WHERE symbol=?",
+                            (int(time.time()), CFG_PROPOSALS_LAST_READ_TIME))
+                if cur.rowcount == 0:
+                    cur.execute("INSERT INTO LIVE_CONFIG(symbol, value) VALUES(?, ?)",
+                                (CFG_PROPOSALS_LAST_READ_TIME, int(time.time())))
 
             except Exception as e:
                 logging.exception('Exception while saving proposals to db.')
             finally:
                 if db_conn:
-                    if db_modified:
-                        db_conn.commit()
+                    db_conn.commit()
                     db_conn.close()
 
-            self.set_cache_value('ProposalsLastReadTime', int(time.time()))  # save when proposals has been
             logging.debug('Finished updating proposals data.')
 
         except Exception as e:
             logging.exception('Exception wile reading proposals from Dash network.')
 
-    def sort_proposals_initially(self):
-        # make the initial proposals' sorting - with active voting first
-        cur_tm = time.time()
-        def cmp(prop):
-            # sort by voting_status asc, creation_time desc:
-            ret = (cur_tm * prop.voting_status) + cur_tm - prop.get_value('creation_time').timestamp()
-            return ret
-
-        self.proposals.sort(key=cmp)
-
-    def read_data_thread(self, ctrl, force_reload):
-        """ Reads proposals data from Dash daemon.
+    def read_proposals_from_network_thread(self, ctrl):
+        """ Reads proposals data from netowrk (Dash daemon).
         :param ctrl:
-        :param force_reload: if running
         :return:
+        """
+        try:
+            logging.info('Started thread read_proposals_from_network_thread')
+            self.read_proposals_from_network()
+        except Exception as e:
+            logging.exception('Exception while reading proposals from network.')
+
+    def read_data_thread(self, ctrl):
+        """ Reads data from the database.
+        :param ctrl:
         """
 
         try:
@@ -722,13 +776,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             if db_conn:
                                 db_conn.close()
 
-                    # read voting data from DB, only for "voting" columns
+                    # read voting data from DB (only for "voting" columns)
                     self.read_voting_from_db(self.columns)
 
-                    last_read_time = self.get_cache_value('ProposalsLastReadTime', 0, int)
-                    if force_reload or int(time.time()) - last_read_time > PROPOSALS_CACHE_VALID_SECONDS or \
-                       len(self.proposals) == 0:
-                        self.read_proposals_from_network()
                 except DashdIndexException as e:
                     self.errorMsg(str(e))
 
@@ -783,14 +833,30 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         :return:
         """
 
+        last_vote_max_date = 0
+        cur_vote_max_date = 0
+        db_conn = None
+        db_modified = False
         try:
-            votes_added = []  # list of tuples proposal-vote, that has been added (will be saved to database cache)
+            # read the date/time of the last vote, read from the DB the last time, to initially filter out
+            # of all older votes from finding if it has its record in the DB:
+            db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
+            cur = db_conn.cursor()
+            cur.execute("SELECT value from LIVE_CONFIG WHERE symbol=?", (CFG_PROPOSALS_VOTES_MAX_DATE,))
+            row = cur.fetchone()
+            if row:
+                last_vote_max_date = int(row[0])
+
+            votes_added = []  # list of tuples (proposal, masternode, voting_time, voting_result, masternode ident),
+                              # that has been added (will be saved to the database cache)
 
             if not self.dashd_intf.open():
                 self.errorMsg('Dash daemon not connected')
             else:
                 try:
                     proposals_updated = []  # list of proposals for which votes were loaded
+                    db_oper_duration = 0.0
+                    db_oper_count = 0
 
                     for row_idx, prop in enumerate(self.proposals):
 
@@ -805,70 +871,93 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             logging.debug('Reading votes for proposal ' + prop.get_value('hash'))
                             votes = self.dashd_intf.gobject("getvotes", prop.get_value('hash'))
                             logging.debug('Votes read finished')
+
                             for v_key in votes:
                                 v = votes[v_key]
                                 match = re.search("CTxIn\(COutPoint\(([A-Fa-f0-9]+)\s*\,\s*(\d+).+\:(\d+)\:(\w+)", v)
                                 if len(match.groups()) == 4:
                                     mn_ident = match.group(1) + '-' + match.group(2)
-                                    voting_time = datetime.datetime.fromtimestamp(int(match.group(3)))
+                                    voting_timestamp = int(match.group(3))
+                                    voting_time = datetime.datetime.fromtimestamp(voting_timestamp)
                                     voting_result = match.group(4)
                                     mn = self.masternodes_by_ident.get(mn_ident)
-                                    if not prop.vote_exists(mn, mn_ident, voting_time):
-                                        v = Vote(mn, voting_time, voting_result, mn_ident)
-                                        prop.add_vote(v)
-                                        votes_added.append((prop, v))
 
-                                    # check if voting masternode has its column in the main grid's;
-                                    # if so, pass the voting result to a corresponding proposal field
-                                    for col_idx, col in enumerate(self.columns):
-                                        if col.voting_mn == True and col.name == mn_ident:
-                                            if prop.get_value(col.name) != voting_result:
-                                                prop.set_value(col.name, voting_result)
-                                            break
+                                    if voting_timestamp > cur_vote_max_date:
+                                        cur_vote_max_date = voting_timestamp
+
+                                    if voting_timestamp > last_vote_max_date:
+                                        # check if vote exists in the database
+                                        if db_conn:
+                                            tm_begin = time.time()
+                                            cur.execute("SELECT id from VOTING_RESULTS WHERE proposal_id=? AND "
+                                                        "voting_time=? and (masternode_id=? or masternode_ident=?)",
+                                                        (prop.db_id, voting_time, mn.db_id if mn else None, mn_ident))
+
+                                            row = cur.fetchone()
+                                            db_oper_duration += (time.time() - tm_begin)
+                                            db_oper_count += 1
+                                            if not row:
+                                                votes_added.append((prop, mn, voting_time, voting_result, mn_ident))
+                                        else:
+                                            # no chance to check wherher record exists in the DB, so assume it's not
+                                            # to have it displayed on the grid
+                                            votes_added.append((prop, mn, voting_time, voting_result, mn_ident))
+
                                 else:
                                     logging.warning('Proposal %s, parsing unsuccessful for voting: %s' % (prop.hash, v))
 
                             proposals_updated.append(prop)
                         else:
-                            logging.debug("Proposal %d voting data valid - no need to load data from Dash network." % prop.db_id)
+                            logging.debug("Proposal %d voting data valid - no need to load data from Dash network." %
+                                          prop.db_id)
 
                     # display data from dynamic (voting) columns
                     # WndUtils.callFunInTheMainThread(self.update_grid_data, cells_to_update)
+                    logging.debug('DB oper duration (stage 1): %s, SQL count: %d' % (str(db_oper_duration),
+                                                                                     db_oper_count))
 
                     # save voting results to the database cache
+                    for prop, mn, voting_time, voting_result, mn_ident in votes_added:
+                        if self.db_active:
+                            tm_begin = time.time()
+                            cur.execute("INSERT INTO VOTING_RESULTS(proposal_id, masternode_id, masternode_ident,"
+                                    " voting_time, voting_result) VALUES(?,?,?,?,?)",
+                                    (prop.db_id,
+                                     mn.db_id if mn else None,
+                                     mn_ident,
+                                     voting_time,
+                                     voting_result))
+                            db_modified = True
+                            db_oper_duration += (time.time() - tm_begin)
+
+                        # check if voting masternode has its column in the main grid's;
+                        # if so, pass the voting result to a corresponding proposal field
+                        for col_idx, col in enumerate(self.columns):
+                            if col.voting_mn == True and col.name == mn_ident:
+                                if prop.get_value(col.name) != voting_result:
+                                    prop.set_value(col.name, voting_result)
+                                break
+
                     if self.db_active:
-                        db_conn = None
-                        db_modified = False
-                        try:
-                            db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
-                            cur = db_conn.cursor()
+                        # update proposals' voting_last_read_time
+                        for prop in proposals_updated:
+                            prop.voting_last_read_time = time.time()
+                            tm_begin = time.time()
+                            cur.execute("UPDATE PROPOSALS set dmt_voting_last_read_time=? where id=?",
+                                        (int(time.time()), prop.db_id))
+                            db_modified = True
+                            db_oper_duration += (time.time() - tm_begin)
 
-                            for prop, v in votes_added:
-                                cur.execute("INSERT INTO VOTING_RESULTS(proposal_id, masternode_id, masternode_ident,"
-                                            " voting_time, voting_result) VALUES(?,?,?,?,?)",
-                                            (prop.db_id,
-                                             v.voting_masternode.db_id if v.voting_masternode else None,
-                                             v.voting_masternode_ident,
-                                             v.voting_time,
-                                             v.voting_result))
+                        logging.debug('DB oper duration (stage 2): %s' % str(db_oper_duration))
 
-                                db_modified = True
-
-                            # update proposals' voting_last_read_time
-                            for prop in proposals_updated:
-                                prop.voting_last_read_time = time.time()
-                                cur.execute("UPDATE PROPOSALS set dmt_voting_last_read_time=? where id=?",
-                                            (int(time.time()), prop.db_id))
-                                db_modified = True
-
-                        except Exception as e:
-                            logging.exception('Exception while saving voting results to the database cache.')
-
-                        finally:
-                            if db_conn:
-                                if db_modified:
-                                    db_conn.commit()
-                                db_conn.close()
+                        if cur_vote_max_date > last_vote_max_date:
+                            # save max vot date to the DB
+                            db_modified = True
+                            cur.execute("UPDATE LIVE_CONFIG SET value=? WHERE symbol=?",
+                                        (cur_vote_max_date, CFG_PROPOSALS_VOTES_MAX_DATE))
+                            if not cur.rowcount:
+                                cur.execute("INSERT INTO LIVE_CONFIG(symbol, value) VALUES(?, ?)",
+                                            (CFG_PROPOSALS_VOTES_MAX_DATE, cur_vote_max_date))
 
                 except DashdIndexException as e:
                     logging.exception('Exception while retrieving voting data.')
@@ -877,9 +966,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 except Exception as e:
                     logging.exception('Exception while retrieving voting data.')
                     self.errorMsg('Error while retrieving voting data: ' + str(e))
+
         except Exception as e:
             logging.exception('Exception while retrieving voting data.')
         finally:
+            if db_conn:
+                if db_modified:
+                    db_conn.commit()
+                db_conn.close()
             self.display_message(None)
 
     def display_proposals_data(self):
