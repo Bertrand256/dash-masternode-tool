@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>786</width>
-    <height>569</height>
+    <width>785</width>
+    <height>505</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -108,23 +108,145 @@
      </widget>
      <widget class="QTabWidget" name="tabDetails">
       <property name="currentIndex">
-       <number>0</number>
+       <number>1</number>
       </property>
       <widget class="QWidget" name="tabVoting">
        <attribute name="title">
         <string>Voting &amp;&amp; Details</string>
        </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <property name="sizeConstraint">
+         <enum>QLayout::SetDefaultConstraint</enum>
+        </property>
+       </layout>
       </widget>
       <widget class="QWidget" name="tabVoteList">
        <attribute name="title">
         <string>Vote List</string>
        </attribute>
-       <zorder>propsView</zorder>
+       <layout class="QVBoxLayout" name="verticalLayout_4">
+        <item>
+         <widget class="QSplitter" name="votesSplitter">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <widget class="QWidget" name="layoutWidget">
+           <layout class="QVBoxLayout" name="layoutVotesView">
+            <property name="spacing">
+             <number>2</number>
+            </property>
+            <item>
+             <layout class="QHBoxLayout" name="horizontalLayout_2">
+              <property name="spacing">
+               <number>-1</number>
+              </property>
+              <item>
+               <widget class="QPushButton" name="btnReloadVotes">
+                <property name="toolTip">
+                 <string>Reads new votes from the Dash network</string>
+                </property>
+                <property name="text">
+                 <string>Read new votes</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="chbOnlyMyVotes">
+                <property name="toolTip">
+                 <string/>
+                </property>
+                <property name="text">
+                 <string>Only my votes</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="horizontalSpacer_2">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="layoutVotesViewFilter">
+              <item>
+               <widget class="QLabel" name="label_2">
+                <property name="text">
+                 <string>Filter:</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLineEdit" name="edtVotesViewFilter"/>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnApplyVotesViewFilter">
+                <property name="text">
+                 <string>Apply</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QTableView" name="votesView">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="widget" native="true"/>
+         </widget>
+        </item>
+       </layout>
       </widget>
       <widget class="QWidget" name="tabWebPreview">
        <attribute name="title">
         <string>Webpage Preview</string>
        </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_3">
+        <item>
+         <layout class="QVBoxLayout" name="layoutWebPreview">
+          <item>
+           <layout class="QHBoxLayout" name="layoutURL">
+            <item>
+             <widget class="QLabel" name="label">
+              <property name="text">
+               <string>URL: </string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="edtURL">
+              <property name="readOnly">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </item>
+       </layout>
       </widget>
      </widget>
     </widget>

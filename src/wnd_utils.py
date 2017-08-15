@@ -109,11 +109,11 @@ class WndUtils():
         """
         thread = None
 
-        def on_thread_finished_int(on_thread_finish_ext, nr):
+        def on_thread_finished_int():
             if thread.worker_exception:
                 raise thread.worker_exception
-            if on_thread_finish_ext:
-                on_thread_finish_ext()
+            if on_thread_finish:
+                on_thread_finish()
 
         if threading.current_thread() != threading.main_thread():
             # starting thread from another thread causes an issue of not passing arguments'
@@ -123,7 +123,7 @@ class WndUtils():
 
         logging.debug('runInThread')
         thread = WorkerThread(worker_fun=worker_fun, worker_fun_args=worker_fun_args)
-        thread.finished.connect(lambda: on_thread_finished_int(on_thread_finish, 22))
+        thread.finished.connect(on_thread_finished_int)
         thread.start()
         return thread
 
