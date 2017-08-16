@@ -217,9 +217,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.last_superblock_time = None
         self.next_superblock_time = None
         self.proposals_last_read_time = 0
-
-        # self.current_proposal = None
-        # self.details_html_last = None  # last proposal, which web-page is displayed in the details preview
+        self.current_proposal = None
 
         # open and initialize database for caching proposals data
         db_conn = None
@@ -357,26 +355,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.votesView.verticalHeader().setDefaultSectionSize(
                 self.votesView.verticalHeader().fontMetrics().height() + 6)
 
-            def finished_read_proposals_from_network():
-                """ Called after finished reading proposals data from the Dash network. It invokes a thread
-                  reading voting data from the Dash network.  """
-                self.runInThread(self.read_voting_from_network_thread, (False, self.proposals), self.sort_proposals_initially)
-
-            def finished_read_data_thread():
-                """ Called after finished reading initial data from the DB. Funtion executes reading proposals'
-                   data from network if needed.
-                """
-
-                if int(time.time()) - self.proposals_last_read_time > PROPOSALS_CACHE_VALID_SECONDS or \
-                                len(self.proposals) == 0:
-                    # read proposals from network only after a configured time
-                    self.read_proposals_from_network()
-                    self.runInThread(self.read_proposals_from_network_thread, (),
-                                     on_thread_finish=finished_read_proposals_from_network)
-
-            # read initial data (from db) inside a thread and then read data from network if needed
-            self.runInThread(self.read_data_thread, (), on_thread_finish=finished_read_data_thread)
-
             self.webView = QWebEngineView(self.tabWebPreview)
             self.webView.settings().setAttribute(QWebEngineSettings.FocusOnNavigationEnabled, False)
             sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
@@ -386,7 +364,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.layoutWebPreview.addWidget(self.webView)
             self.tabDetails.resize(self.tabDetails.size().width(),
                                    self.get_cache_value('DetailsHeight', 200, int))
-
 
             # setting up a view with voting history
             self.votesView.setSortingEnabled(True)
@@ -417,12 +394,37 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.edtVotesViewFilter.setText(filter_text)
             if filter_text:
                 self.votesProxyModel.set_filter_text(filter_text)
+            self.btnApplyVotesViewFilter.setEnabled(False)
 
             idx = self.get_cache_value('TabDetailsCurrentIndex', self.tabDetails.currentIndex(), int)
             if idx >= 0 and idx < self.tabDetails.count():
                 self.tabDetails.setCurrentIndex(idx)
 
-            self.updateUi()
+            def finished_read_proposals_from_network():
+                """ Called after finished reading proposals data from the Dash network. It invokes a thread
+                  reading voting data from the Dash network.  """
+
+                if self.current_proposal is None and len(self.proposals) > 0:
+                    self.propsView.selectRow(0)
+
+                self.runInThread(self.read_voting_from_network_thread, (False, self.proposals), self.sort_proposals_initially)
+
+            def finished_read_data_thread():
+                """ Called after finished reading initial data from the DB. Funtion executes reading proposals'
+                   data from network if needed.
+                """
+                if self.current_proposal is None and len(self.proposals) > 0:
+                    self.propsView.selectRow(0)
+
+                if int(time.time()) - self.proposals_last_read_time > PROPOSALS_CACHE_VALID_SECONDS or \
+                                len(self.proposals) == 0:
+                    # read proposals from network only after a configured time
+                    self.read_proposals_from_network()
+                    self.runInThread(self.read_proposals_from_network_thread, (),
+                                     on_thread_finish=finished_read_proposals_from_network)
+
+            # read initial data (from db) inside a thread and then read data from network if needed
+            self.runInThread(self.read_data_thread, (), on_thread_finish=finished_read_data_thread)
         except:
             logging.exception('Exception occurred')
             raise
@@ -920,6 +922,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         cur_vote_max_date = 0
         db_conn = None
         db_modified = False
+        refresh_preview_votes = False
         try:
             # read the date/time of the last vote, read from the DB the last time, to initially filter out
             # of all older votes from finding if it has its record in the DB:
@@ -943,8 +946,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                     for row_idx, prop in enumerate(proposals):
 
-                        if (prop.voting_in_progress or prop.voting_last_read_time == 0) and \
-                           (force_reload or (time.time() - prop.voting_last_read_time) > VOTING_RELOAD_TIME):
+                        if force_reload or \
+                           (((time.time() - prop.voting_last_read_time) > VOTING_RELOAD_TIME) and
+                            (prop.voting_in_progress or prop.voting_last_read_time == 0)):
                            # read voting results from the Dash network if:
                            #  - haven't ever read voting results for this proposal
                            #  - if voting for this proposal is still open , but VOTING_RELOAD_TIME of seconds have
@@ -968,7 +972,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                     if voting_timestamp > cur_vote_max_date:
                                         cur_vote_max_date = voting_timestamp
 
-                                    if voting_timestamp > last_vote_max_date:
+                                    if (voting_timestamp >= last_vote_max_date or force_reload):
                                         # check if vote exists in the database
                                         if db_conn:
                                             tm_begin = time.time()
@@ -1014,13 +1018,17 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             db_modified = True
                             db_oper_duration += (time.time() - tm_begin)
 
-                        # check if voting masternode has its column in the main grid's;
+                        # check if voting masternode has its column in the main grid;
                         # if so, pass the voting result to a corresponding proposal field
                         for col_idx, col in enumerate(self.columns):
                             if col.voting_mn == True and col.name == mn_ident:
                                 if prop.get_value(col.name) != voting_result:
                                     prop.set_value(col.name, voting_result)
                                 break
+
+                        # check if currently selected proposal got new votes; if so, update details panel
+                        if prop == self.current_proposal:
+                            refresh_preview_votes = True
 
                     if self.db_active:
                         # update proposals' voting_last_read_time
@@ -1060,14 +1068,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 db_conn.close()
             self.display_message(None)
 
-    @pyqtSlot()
-    def on_btnReloadVotes_clicked(self):
-        def display_votes():
-            self.votesModel.refresh_view()
+        try:
+            if refresh_preview_votes:
+                def refresh_votes_view():
+                    self.votesModel.refresh_view()
+                WndUtils.callFunInTheMainThread(refresh_votes_view)
+        except Exception as e:
+            logging.exception('Exception while refreshing voting data grid.')
 
-        if self.current_proposal:
-            self.runInThread(self.read_voting_from_network_thread, (True,[self.current_proposal]),
-                             on_thread_finish=display_votes)
 
     def display_proposals_data(self):
         try:
@@ -1138,16 +1146,25 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 self.webView.load(QUrl(url))
                 self.edtURL.setText(url)
 
+    def apply_votes_filter(self):
+        changed_chb = self.votesProxyModel.set_only_my_votes(self.chbOnlyMyVotes.isChecked())
+        changed_text = self.votesProxyModel.set_filter_text(self.edtVotesViewFilter.text())
+        if changed_chb or changed_text:
+            self.votesProxyModel.invalidateFilter()
+        self.btnApplyVotesViewFilter.setEnabled(False)
+
+    @pyqtSlot()
+    def on_btnReloadVotes_clicked(self):
+        if self.current_proposal:
+            self.runInThread(self.read_voting_from_network_thread, (True,[self.current_proposal]))
+
     @pyqtSlot(int)
     def on_chbOnlyMyVotes_stateChanged(self, state):
-        self.votesProxyModel.set_only_my_votes(state == Qt.Checked)
-        self.votesProxyModel.invalidateFilter()
+        self.apply_votes_filter()
 
-    def apply_votes_filter(self):
-        filter_text = self.edtVotesViewFilter.text()
-        changed = self.votesProxyModel.set_filter_text(filter_text)
-        if changed:
-            self.votesProxyModel.invalidateFilter()
+    @pyqtSlot(str)
+    def on_edtVotesViewFilter_textEdited(self, text):
+        self.btnApplyVotesViewFilter.setEnabled(True)
 
     def on_edtVotesViewFilter_returnPressed(self):
         self.apply_votes_filter()
@@ -1273,11 +1290,11 @@ class ProposalsModel(QAbstractTableModel):
                                 return QtGui.QColor('red')
                         elif col.voting_mn:
                             if value == 'YES':
-                                return QtGui.QColor('white')
+                                return QtGui.QColor('green')
                             elif value == 'ABSTAIN':
-                                return QtGui.QColor('white')
+                                return QtGui.QColor('orange')
                             elif value == 'NO':
-                                return QtGui.QColor('white')
+                                return QtGui.QColor('red')
 
                     elif role == Qt.BackgroundRole:
                         if col.name == 'voting_status_caption':
@@ -1285,13 +1302,19 @@ class ProposalsModel(QAbstractTableModel):
                                 return QtGui.QColor('green')
                             elif prop.voting_status == 2:
                                 return QtGui.QColor('orange')
-                        elif col.voting_mn:
-                            if value == 'YES':
-                                return QtGui.QColor('green')
-                            elif value == 'ABSTAIN':
-                                return QtGui.QColor('orange')
-                            elif value == 'NO':
-                                return QtGui.QColor('red')
+                        # elif col.voting_mn:
+                        #     if value == 'YES':
+                        #         return QtGui.QColor('green')
+                        #     elif value == 'ABSTAIN':
+                        #         return QtGui.QColor('orange')
+                        #     elif value == 'NO':
+                        #         return QtGui.QColor('red')
+
+                    elif role == Qt.FontRole:
+                        if col.voting_mn:
+                            font = QtGui.QFont()
+                            font.setBold(True)
+                            return font
 
         return QVariant()
 
@@ -1334,6 +1357,9 @@ class VotesFilterProxyModel(QSortFilterProxyModel):
     def set_only_my_votes(self, only_my_votes):
         if only_my_votes != self.only_my_votes:
             self.only_my_votes = only_my_votes
+            return True
+        else:
+            return False
 
     def set_filter_text(self, filter_text):
         if self.filter_text != filter_text:
