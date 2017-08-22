@@ -35,7 +35,7 @@ from app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG, APP_NAME_SHOR
 from dash_utils import bip32_path_n_to_string
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_common import HardwareWalletCancelException, HardwareWalletPinException
-from hw_intf import connect_hw, hw_get_address, disconnect_hw, ping
+from hw_intf import connect_hw, hw_get_address, disconnect_hw, ping, expand_path
 from hw_setup_dlg import HwSetupDlg
 from psw_cache import SshPassCache
 from sign_message_dlg import SignMessageDlg
@@ -1125,7 +1125,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if not self.hw_client:
                 return
             if self.curMasternode and self.curMasternode.collateralBip32Path:
-                address_n = self.hw_client.expand_path(self.curMasternode.collateralBip32Path)
+                address_n = expand_path(self, self.curMasternode.collateralBip32Path)
                 dash_addr = hw_get_address(self, address_n)
                 self.edtMnCollateralAddress.setText(dash_addr)
                 self.curMasternode.collateralAddress = dash_addr
@@ -1237,7 +1237,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 ipv6map += i.to_bytes(1, byteorder='big')[::-1].hex()
             ipv6map += int(self.curMasternode.port).to_bytes(2, byteorder='big').hex()
 
-            address_n = self.hw_client.expand_path(self.curMasternode.collateralBip32Path)
+            address_n = expand_path(self, self.curMasternode.collateralBip32Path)
             dash_addr = hw_get_address(self, address_n)
             if not self.curMasternode.collateralAddress:
                 # if mn config's collateral address is empty, assign that from hardware wallet

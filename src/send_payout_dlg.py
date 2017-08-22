@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox
 import app_cache as cache
 from app_config import MIN_TX_FEE, DATETIME_FORMAT
 from dashd_intf import DashdInterface, DashdIndexException
-from hw_intf import prepare_transfer_tx, hw_get_address
+from hw_intf import prepare_transfer_tx, hw_get_address, expand_path
 from wnd_utils import WndUtils
 from ui import ui_send_payout_dlg
 from hw_common import HardwareWalletPinException
@@ -365,7 +365,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
                     addr_hw = bip32_to_address.get(bip32_path, None)
                     if not addr_hw:
-                        address_n = self.main_ui.hw_client.expand_path(bip32_path)
+                        address_n = expand_path(self.main_ui, bip32_path)
                         addr_hw = hw_get_address(self.main_ui, address_n)
                         bip32_to_address[bip32_path] = addr_hw
                     if addr_hw != utxo['address']:
@@ -510,7 +510,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             if path:
                 # check if address mathes address read from bip32 path
                 try:
-                    address_n = self.main_ui.hw_client.expand_path(path)
+                    address_n = expand_path(self.main_ui, path)
                     address = hw_get_address(self.main_ui, address_n)
                     if not address:
                         self.errorMsg("Couldn't read address for the specified BIP32 path: %s." % path)

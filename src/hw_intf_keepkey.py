@@ -116,6 +116,15 @@ class MyTxApiInsight(TxApiInsight):
         return j
 
 
+def clean_bip32_path(bip32_path):
+    # Keepkey doesn't allow BIP32 "m/" prefix
+    bip32_path.strip()
+    if bip32_path.lower().find('m/') >= 0:
+        # removing m/ prefix because of keepkey library
+        bip32_path = bip32_path[2:]
+    return bip32_path
+
+
 def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
     """
     Creates a signed transaction.
@@ -134,7 +143,7 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
     for utxo in utxos_to_spend:
         if not utxo.get('bip32_path', None):
             raise Exception('No BIP32 path for UTXO ' + utxo['txid'])
-        address_n = client.expand_path(utxo['bip32_path'])
+        address_n = client.expand_path(clean_bip32_path(utxo['bip32_path']))
         it = proto_types.TxInputType(address_n=address_n, prev_hash=binascii.unhexlify(utxo['txid']),
                                      prev_index=utxo['outputIndex'])
         inputs.append(it)
@@ -161,7 +170,7 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
 
 def sign_message(main_ui, bip32path, message):
     client = main_ui.hw_client
-    address_n = client.expand_path(bip32path)
+    address_n = client.expand_path(clean_bip32_path(bip32path))
     return client.sign_message('Dash', address_n, message)
 
 
