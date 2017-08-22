@@ -1,9 +1,9 @@
 python-bitcoinrpc>=1.0
 bitcoin>=1.1.42
-trezor>=0.7.15
+trezor>=0.7.16
 PyQt5
 pyinstaller
-paramiko
-requests
+paramiko>=2.2.1
+requests>=2.18.4
 -e git+https://github.com/chaeplin/python-keepkey#egg=keepkey
 cryptography

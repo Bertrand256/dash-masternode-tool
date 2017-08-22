@@ -69,12 +69,6 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.lblStatus.setOpenExternalLinks(True)
         self.disable_cfg_update = True
 
-        if sys.platform == 'win32':
-            a_link = 'Log file: <a href="file:///' + self.config.log_file + '">' + self.config.log_file + ' </a>'
-        else:
-            a_link = 'Log file: <a href="file://' + self.config.log_file + '">' + self.config.log_file + '</a>'
-        self.lblOpenLogFile.setText(a_link)
-
         # display all connection configs
         self.displayConnsConfigs()
 
@@ -169,6 +163,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.chbHwKeepKey.setChecked(True)
         self.chbCheckForUpdates.setChecked(self.local_config.check_for_updates)
         self.chbBackupConfigFile.setChecked(self.local_config.backup_config_file)
+        self.chbDontUseFileDialogs.setChecked(self.local_config.dont_use_file_dialogs)
         idx = {
                 'CRITICAL': 0,
                 'ERROR': 1,
@@ -281,6 +276,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                 self.config.hw_type = self.local_config.hw_type
             self.config.check_for_updates = self.local_config.check_for_updates
             self.config.backup_config_file = self.local_config.backup_config_file
+            self.config.dont_use_file_dialogs = self.local_config.dont_use_file_dialogs
             self.config.set_log_level(self.local_config.log_level_str)
             self.config.modified = True
             self.main_window.connsCfgChanged()
@@ -344,6 +340,11 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
     @pyqtSlot(bool)
     def on_chbBackupConfigFile_toggled(self, checked):
         self.local_config.backup_config_file = checked
+        self.set_modified()
+
+    @pyqtSlot(bool)
+    def on_chbDontUseFileDialogs_toggled(self, checked):
+        self.local_config.dont_use_file_dialogs = checked
         self.set_modified()
 
     @pyqtSlot()

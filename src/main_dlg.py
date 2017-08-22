@@ -21,7 +21,7 @@ from PyQt5 import QtWidgets
 from PyQt5.QtCore import QSize, pyqtSlot, QEventLoop, QMutex, QWaitCondition, QUrl
 from PyQt5.QtGui import QFont, QIcon, QDesktopServices
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle
+from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle, QInputDialog
 from PyQt5.QtWidgets import QMessageBox
 from config_dlg import ConfigDlg
 from find_coll_tx_dlg import FindCollateralTxDlg
@@ -814,18 +814,25 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
         Imports masternodes configuration from masternode.conf file.
         """
-        fileName = QFileDialog.getOpenFileName(self,
-                                               caption='Open masternode configuration file',
-                                               directory='',
-                                               filter="All Files (*);;Conf files (*.conf)",
-                                               initialFilter="Conf files (*.conf)"
-                                               )
+
+        if self.config.dont_use_file_dialogs:
+            fileName, ok = QInputDialog.getText(self, 'File name query', 'Enter the path to the masternode.conf file:')
+            if ok:
+                fileName = [fileName, fileName]
+            else:
+                fileName = []
+        else:
+            fileName = QFileDialog.getOpenFileName(self,
+                                                   caption='Open masternode configuration file',
+                                                   directory='',
+                                                   filter="All Files (*);;Conf files (*.conf)",
+                                                   initialFilter="Conf files (*.conf)")
 
         if fileName and len(fileName) > 0 and fileName[1]:
-            if not self.editingEnabled:
-                self.on_btnEditMn_clicked()
-
             if os.path.exists(fileName[0]):
+                if not self.editingEnabled:
+                    self.on_btnEditMn_clicked()
+
                 try:
                     with open(fileName[0], 'r') as f_ptr:
                         modified = False
