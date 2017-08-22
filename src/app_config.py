@@ -53,6 +53,7 @@ class AppConfig(object):
 
         self.check_for_updates = True
         self.backup_config_file = True
+        self.dont_use_file_dialogs = False
 
         self.masternodes = []
         self.last_bip32_base_path = ''
@@ -165,9 +166,12 @@ class AppConfig(object):
                 self.hw_type = config.get(section, 'hw_type', fallback="TREZOR")
                 if self.hw_type not in ('TREZOR', 'KEEPKEY'):
                     self.hw_type = 'TREZOR'
-                self.random_dash_net_config = self.value_to_bool(config.get(section, 'random_dash_net_config', fallback='1'))
+                self.random_dash_net_config = self.value_to_bool(config.get(section, 'random_dash_net_config',
+                                                                            fallback='1'))
                 self.check_for_updates = self.value_to_bool(config.get(section, 'check_for_updates', fallback='1'))
                 self.backup_config_file = self.value_to_bool(config.get(section, 'backup_config_file', fallback='1'))
+                self.dont_use_file_dialogs = self.value_to_bool(config.get(section, 'dont_use_file_dialogs',
+                                                                          fallback='0'))
 
                 for section in config.sections():
                     if re.match('MN\d', section):
@@ -244,6 +248,7 @@ class AppConfig(object):
         config.set(section, 'random_dash_net_config', '1' if self.random_dash_net_config else '0')
         config.set(section, 'check_for_updates', '1' if self.check_for_updates else '0')
         config.set(section, 'backup_config_file', '1' if self.backup_config_file else '0')
+        config.set(section, 'dont_use_file_dialogs', '1' if self.dont_use_file_dialogs else '0')
 
         # save mn configuration
         for idx, mn in enumerate(self.masternodes):

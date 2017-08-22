@@ -42,7 +42,7 @@ The main purpose of the application is to give masternode owners (MNOs) the abil
 - [x] KeepKey
 - [ ] Ledger Nano S (in the future)
 
-Most ot the application features are accessible from tha main program window:  
+Most ot the application features are accessible from the main program window:  
 ![Main window](doc/img/dmt-main-window.png)
 
 ## Configuration
@@ -50,7 +50,7 @@ Most ot the application features are accessible from tha main program window:
 ### Setting up the hardware wallet type
  * Click the `Configure` button.
  * In the configuration dialog that will open, select the `Miscellaneous` tab.
- * Depending on the type of your hardware wallet, select the `Trezor` or `Keepkey` option.      
+ * Depending on the type of your hard ware wallet, select the `Trezor` or `Keepkey` option.      
  ![1](doc/img/dmt-config-dlg-misc.png)
 
 ### Connection setup
@@ -131,9 +131,9 @@ In the case of failure, the message text may vary, depending on the problem natu
 
 
 ### Transferring of masternode earnings
-Beginning with version 0.9.4 DMT you can transfer your masternode earnings. This works in a bit different way than with other Dash wallets - DMT gives you a 100% control on which _unspent transaction outputs_ (utxo) you wish to transfer. This has the same effect as the _Coin control_ functionality implemented in _Dash Core wallet_. 
+Beginning with version 0.9.4 of DMT you can transfer your masternode earnings. Unlike other Dash wallets, DMT gives you a 100% control on which _unspent transaction outputs_ (utxo) you wish to transfer. This has the same effect as the _Coin control_ functionality implemented in _Dash Core wallet_. 
 
-`Transfer funds` window lists all _UTXOs_ of a currently selected Masternode (mode 1), all Masternodes in configuration (mode 2) or of any address controlled by the hardware wallet (mode 3). By default, all _UTXOs_ not used as MN collateral are checked. MN collateral's _UTXOs_ (1000 Dash) are initially hidden, just to avoid unintentional sending its funds and thus breaking MN. You can show those hidden entries by unchecking `Hide collateral utxos` option.
+`Transfer funds` window shows all _UTXOs_ of a currently selected Masternode (mode 1), all Masternodes in current configuration (mode 2) or any address controlled by a hardware wallet (mode 3). All _UTXOs_, not used as collateral are initially checked. Additionally, collaterals' _UTXOs_ (1000 Dash) are initially hidden, just to avoid unintentional sending its funds and thus breaking MN. You can show those hidden entries by unchecking `Hide collateral utxos` option.
 
 To show up the `Transfer funds` window, click the `Tools` button. Then, from popup menu choose:
  - `Transfer funds from current Masternode's address` (mode 1)
@@ -143,14 +143,14 @@ To show up the `Transfer funds` window, click the `Tools` button. Then, from pop
 Sending masternodes' payouts:  
 ![1](doc/img/dmt-transfer-funds.png)
 
-Transferring of funds from any address controlled by a hardware wallet:
+Transferring of funds from any address controlled by a hardware wallet:  
 ![1](doc/img/dmt-transfer-funds-any-address.png) 
 
-Select all _UTXOs_ you wish to include in your transaction, verify transaction fee and click the `Send` button. After signing the transaction with your hardware wallet, the app will ask you if you want do broadcast the transaction to Dash network. 
+Select all _UTXOs_ you wish to include in your transaction, verify transaction fee and click the `Send` button. After signing the transaction with your hardware wallet, application will ask you if you wish to broadcast it to the Dash network. 
 
 ![1](doc/img/dmt-transfer-funds-broadcast.png)
 
-After the user's confirmation application broadcasts the transaction and displays a message box with the transaction ID:
+After clicking `Yes`, application broadcasts the transaction and then shows a message box with a transaction ID as a hyperlink directing to a Dash block explorer: 
 
 ![1](doc/img/dmt-transfer-funds-confirmation.png)
 
