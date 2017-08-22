@@ -159,3 +159,14 @@ def ping(main_ui, message, button_protection, pin_protection, passphrase_protect
         return client.ping(message, button_protection=button_protection, pin_protection=pin_protection,
                             passphrase_protection=passphrase_protection)
 
+
+@control_hw_call
+def expand_path(main_ui, bip32_path):
+    client = main_ui.hw_client
+    if client:
+        bip32_path.strip()
+        if bip32_path.lower().find('m/') >= 0:
+            # removing m/ prefix because of keepkey library
+            bip32_path = bip32_path[2:]
+        return client.expand_path(bip32_path)
+
