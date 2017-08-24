@@ -21,16 +21,40 @@ def control_hw_call(func):
         if not client:
             raise Exception('Not connected to Hardware Wallet')
         try:
-            ret = func(*args, **kwargs)
+
+            if main_ui.config.hw_type == 'TREZOR':
+
+                import hw_intf_trezor as trezor
+                import trezorlib.client as client
+                try:
+                    ret = func(*args, **kwargs)
+                except client.PinException as e:
+                    raise HardwareWalletPinException(e.args[1])
+
+            elif main_ui.config.hw_type == 'KEEPKEY':
+
+                import hw_intf_keepkey as keepkey
+                import keepkeylib.client as client
+                try:
+                    ret = func(*args, **kwargs)
+                except client.PinException as e:
+                    raise HardwareWalletPinException(e.args[1])
+
         except OSError as e:
             logging.exception('Exception calling %s function' % func.__name__)
             logging.info('Disconnecting HW after OSError occurred')
             main_ui.disconnectHardwareWallet()
             raise
+
+        except HardwareWalletPinException:
+            raise
+
         except Exception as e:
             logging.exception('Exception calling %s function' % func.__name__)
             raise
+
         return ret
+
     return catch_hw_client
 
 
@@ -54,6 +78,7 @@ def connect_hw(hw_type, ask_for_pin_fun, ask_for_pass_fun):
             logging.error('Unsupported HW type: ' + str(hw_type))
     except:
         logging.exception('Exception occurred')
+        raise
 
 
 def disconnect_hw(client):
@@ -125,3 +150,23 @@ def change_pin(main_ui, remove=False):
         return keepkey.change_pin(main_ui, remove)
     else:
         logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
+
+
+@control_hw_call
+def ping(main_ui, message, button_protection, pin_protection, passphrase_protection):
+    client = main_ui.hw_client
+    if client:
+        return client.ping(message, button_protection=button_protection, pin_protection=pin_protection,
+                            passphrase_protection=passphrase_protection)
+
+
+@control_hw_call
+def expand_path(main_ui, bip32_path):
+    client = main_ui.hw_client
+    if client:
+        bip32_path.strip()
+        if bip32_path.lower().find('m/') >= 0:
+            # removing m/ prefix because of keepkey library
+            bip32_path = bip32_path[2:]
+        return client.expand_path(bip32_path)
+
