@@ -37,7 +37,7 @@ CFG_PROPOSALS_VOTES_MAX_DATE = 'prop_votes_max_date'  # maximum date of vote(s),
 
 
 class ProposalColumn(AttrsProtected):
-    def __init__(self, name, caption, visible, voting_mn=False):
+    def __init__(self, name, caption, visible, column_for_vote=False):
         """
         Constructor.
         :param name: Column name. There are: 1) static columns that display some piece of information about
@@ -45,13 +45,13 @@ class ProposalColumn(AttrsProtected):
             For dynamic column, name attribute equals to masternode identifier.
         :param caption: Column's caption.
         :param visible: True, if column is visible
-        :param voting_mn: True for (dynamic) columns related to mn voting.
+        :param column_for_vote: True for (dynamic) columns related to mn voting.
         """
         AttrsProtected.__init__(self)
         self.name = name
         self.caption = caption
         self.visible = visible
-        self.voting_mn = voting_mn
+        self.column_for_vote = column_for_vote
         self.my_masternode = None  # True, if column for masternode vote relates to user's masternode; such columns
                                    # can not be removed
         self.initial_width = None
@@ -72,17 +72,18 @@ class Vote(AttrsProtected):
 
 
 class Proposal(AttrsProtected):
-    def __init__(self, columns):
+    def __init__(self, columns, vote_columns_by_mn_ident):
         super().__init__()
         self.visible = True
         self.columns = columns
         self.values = {}  # dictionary of proposal values (key: ProposalColumn)
-        self.votes = []
         self.db_id = None
         self.marker = None
         self.modified = False
         self.voting_last_read_time = 0
         self.voting_in_progress = True
+        self.vote_columns_by_mn_ident = vote_columns_by_mn_ident
+        self.votes_by_masternode_ident = {}  # list of tuples: vote_timestamp, vote_result
 
         # voting_status:
         #   1: voting in progress, funding
@@ -121,18 +122,21 @@ class Proposal(AttrsProtected):
                 return self.values.get(col)
         raise AttributeError('Invalid Proposal value name: ' + name)
 
-    def vote_exists(self, masternode, masternode_ident, voting_time):
-        """ Check if the specified vote is on the list of votes for this proposal. Votes are identified by masternode
-            reference and the time it has been made.
-        """
-        for v in self.votes:
-            if (v.voting_masternode == masternode or v.voting_masternode_ident == masternode_ident) and \
-               v.voting_time == voting_time:
-                return True
-        return False
+    def apply_vote(self, mn_ident, vote_timestamp, vote_result):
+        """ Apply vote result if a masternode is in the column list or is a user's masternode. """
+        modified = False
+        if mn_ident in self.votes_by_masternode_ident:
+            if vote_timestamp > self.votes_by_masternode_ident[mn_ident][0]:
+                self.votes_by_masternode_ident[mn_ident][1] = vote_result
+                modified = True
+        else:
+            self.votes_by_masternode_ident[mn_ident] = [vote_timestamp, vote_result]
+            modified = True
 
-    def add_vote(self, vote):
-        self.votes.append(vote)
+        if modified and mn_ident in self.vote_columns_by_mn_ident:
+            # this vote shoud be shown in the dynamic column for vote results
+            self.set_value(mn_ident, vote_result)
+
 
     def apply_values(self, masternodes, last_suberblock_time, next_superblock_datetime):
         """ Calculate voting_in_progress and voting_status values, based on colums' values.
@@ -201,6 +205,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             ProposalColumn('ObjectType', 'ObjectType', True),
             ProposalColumn('IsValidReason', 'IsValidReason', True)
         ]
+        self.vote_columns_by_mn_ident = {}
         self.proposals = []
         self.proposals_by_hash = {}  #  dict of Proposal object indexed by proposal hash
         self.proposals_by_db_id = {}
@@ -208,7 +213,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.masternodes_by_ident = {}
         self.masternodes_by_db_id = {}
 
-        # masternodes in the user's configuration; dict of tuples: (dashd_inf.Masternode, app_config.MasterNodeConfig):
+        # masternodes existing in the user's configuration; list and dict of
+        # tuples: (dashd_inf.Masternode, app_config.MasterNodeConfig):
+        self.users_masternodes = []
         self.users_masternodes_by_ident = {}
 
         self.mn_count = None
@@ -302,7 +309,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 {
                     name: Masternode ident (str),
                     visible: (bool),
-                    voting_mn: True if the column relates to masternode voting (bool),
+                    column_for_vote: True if the column relates to masternode voting (bool),
                     caption: Column's caption (str)
                 }
             """
@@ -311,13 +318,13 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 for col_saved_index, c in enumerate(cfg_cols):
                     name = c.get('name')
                     visible = c.get('visible', True)
-                    voting_mn = c.get('voting_mn')
+                    column_for_vote = c.get('column_for_vote')
                     caption = c.get('caption')
                     initial_width = c.get('width')
                     if not isinstance(initial_width, int):
                         initial_width = None
 
-                    if isinstance(name, str) and isinstance(visible, bool) and isinstance(voting_mn, bool):
+                    if isinstance(name, str) and isinstance(visible, bool) and isinstance(column_for_vote, bool):
                         found = False
                         for col in self.columns:
                             if col.name == name:
@@ -326,7 +333,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 col.initial_order_no = col_saved_index
                                 found = True
                                 break
-                        if not found and voting_mn and caption:
+                        if not found and column_for_vote and caption:
                             # add voting column defined by the user
                             self.add_voting_column(name, caption, my_masternode=False,
                                                    insert_before_column=self.column_index_by_name('payment_start'))
@@ -446,7 +453,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 c = {
                     'name': col.name,
                     'visible': col.visible,
-                    'voting_mn': col.voting_mn,
+                    'column_for_vote': col.column_for_vote,
                     'caption': col.caption,
                     'width': self.propsView.columnWidth(col_idx)
                 }
@@ -480,14 +487,15 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         """
         # first check if this masternode is already added to voting columns
         for col in self.columns:
-            if col.voting_mn == True and col.name == mn_ident:
+            if col.column_for_vote == True and col.name == mn_ident:
                 return  # column for this masternode is already added
 
-        col = ProposalColumn(mn_ident, mn_label, visible=True, voting_mn=True)
+        col = ProposalColumn(mn_ident, mn_label, visible=True, column_for_vote=True)
         if isinstance(insert_before_column, int) and insert_before_column < len(self.columns):
             self.columns.insert(insert_before_column, col)
         else:
             self.columns.append(col)
+        self.vote_columns_by_mn_ident[mn_ident] = col
 
         if my_masternode is None:
             # check if the specified masternode is in the user configuration; if so, mark the column
@@ -580,7 +588,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 prop = self.proposals_by_hash.get(prop_raw['Hash'])
                 if not prop:
                     is_new = True
-                    prop = Proposal(self.columns)
+                    prop = Proposal(self.columns, self.vote_columns_by_mn_ident)
                 else:
                     is_new = False
                 prop.marker = True
@@ -794,7 +802,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                         mn_cfg = users_mn_configs_by_ident.get(mn.ident)
                         if mn_cfg:
-                            self.users_masternodes_by_ident[mn.ident] = (mn, mn_cfg)
+                            if not mn.ident in self.users_masternodes_by_ident:
+                                self.users_masternodes.append((mn, mn_cfg))
+                                self.users_masternodes_by_ident[mn.ident] = (mn, mn_cfg)
 
                     if self.db_active:
                         db_conn = None
@@ -814,11 +824,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 " is_valid_reason, dmt_active, dmt_create_time, dmt_deactivation_time, id,"
                                 " dmt_voting_last_read_time "
                                 "FROM PROPOSALS where dmt_active=1"
-                                # " LIMIT 20"  #todo: testing only
                             )
 
                             for row in cur.fetchall():
-                                prop = Proposal(self.columns)
+                                prop = Proposal(self.columns, self.vote_columns_by_mn_ident)
                                 prop.set_value('name', row[0])
                                 prop.set_value('payment_start', datetime.datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S'))
                                 prop.set_value('payment_end',  datetime.datetime.strptime(row[2], '%Y-%m-%d %H:%M:%S'))
@@ -888,7 +897,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             cur = db_conn.cursor()
 
             for col in columns:
-                if col.voting_mn:
+                if col.column_for_vote:
                     mn_ident = col.name
                     mn = self.masternodes_by_ident.get(mn_ident)
                     if mn:
@@ -897,8 +906,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         for row in cur.fetchall():
                             prop = self.proposals_by_db_id.get(row[0])
                             if prop:
-                                if prop.set_value(col.name, row[2]):
-                                    pass
+                                prop.apply_vote(mn_ident, datetime.datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S'),
+                                                row[2])
 
         except Exception as e:
             logging.exception('Exception while saving proposals to db.')
@@ -1018,10 +1027,13 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             db_modified = True
                             db_oper_duration += (time.time() - tm_begin)
 
+                        if mn_ident in self.vote_columns_by_mn_ident:
+                            prop.apply_vote(mn_ident, voting_time, voting_result)
+
                         # check if voting masternode has its column in the main grid;
                         # if so, pass the voting result to a corresponding proposal field
                         for col_idx, col in enumerate(self.columns):
-                            if col.voting_mn == True and col.name == mn_ident:
+                            if col.column_for_vote == True and col.name == mn_ident:
                                 if prop.get_value(col.name) != voting_result:
                                     prop.set_value(col.name, voting_result)
                                 break
@@ -1075,7 +1087,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 WndUtils.callFunInTheMainThread(refresh_votes_view)
         except Exception as e:
             logging.exception('Exception while refreshing voting data grid.')
-
 
     def display_proposals_data(self):
         try:
@@ -1288,7 +1299,7 @@ class ProposalsModel(QAbstractTableModel):
                                 return QtGui.QColor('green')
                             elif prop.voting_status == 4:
                                 return QtGui.QColor('red')
-                        elif col.voting_mn:
+                        elif col.column_for_vote:
                             if value == 'YES':
                                 return QtGui.QColor('green')
                             elif value == 'ABSTAIN':
@@ -1302,7 +1313,7 @@ class ProposalsModel(QAbstractTableModel):
                                 return QtGui.QColor('green')
                             elif prop.voting_status == 2:
                                 return QtGui.QColor('orange')
-                        # elif col.voting_mn:
+                        # elif col.column_for_vote:
                         #     if value == 'YES':
                         #         return QtGui.QColor('green')
                         #     elif value == 'ABSTAIN':
@@ -1311,7 +1322,7 @@ class ProposalsModel(QAbstractTableModel):
                         #         return QtGui.QColor('red')
 
                     elif role == Qt.FontRole:
-                        if col.voting_mn:
+                        if col.column_for_vote:
                             font = QtGui.QFont()
                             font.setBold(True)
                             return font
@@ -1394,13 +1405,13 @@ class VotesFilterProxyModel(QSortFilterProxyModel):
 
 
 class VotesModel(QAbstractTableModel):
-    def __init__(self, parent, masternodes, masternodes_by_db_id, users_masteernodes_by_ident, db_cache_file_name):
+    def __init__(self, parent, masternodes, masternodes_by_db_id, users_masternodes_by_ident, db_cache_file_name):
         QAbstractTableModel.__init__(self, parent)
         self.parent = parent
         self.masternodes = masternodes
         self.masternodes_by_db_id = masternodes_by_db_id
         self.db_cache_file_name = db_cache_file_name
-        self.users_masternodes_by_ident = users_masteernodes_by_ident
+        self.users_masternodes_by_ident = users_masternodes_by_ident
         self.only_my_votes = False
         self.proposal = None
         self.votes = []  # list of tuples: voting time (datetime), vote, masternode_label, users_masternode_name
