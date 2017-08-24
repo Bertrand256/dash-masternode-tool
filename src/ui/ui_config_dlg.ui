@@ -342,6 +342,16 @@
         </widget>
        </item>
        <item>
+        <widget class="QCheckBox" name="chbDontUseFileDialogs">
+         <property name="toolTip">
+          <string/>
+         </property>
+         <property name="text">
+          <string>Don't use file dialogs</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <layout class="QHBoxLayout" name="hlLogLevel">
          <item>
           <widget class="QLabel" name="lblLogLevel">
@@ -377,19 +387,6 @@
              <string>Debug</string>
             </property>
            </item>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLabel" name="lblOpenLogFile">
-           <property name="text">
-            <string/>
-           </property>
-           <property name="openExternalLinks">
-            <bool>true</bool>
-           </property>
-           <property name="textInteractionFlags">
-            <set>Qt::LinksAccessibleByKeyboard|Qt::LinksAccessibleByMouse|Qt::TextBrowserInteraction|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
-           </property>
           </widget>
          </item>
          <item>
