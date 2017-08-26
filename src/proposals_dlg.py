@@ -285,6 +285,37 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.votesSplitter.setStretchFactor(0, 0)
             self.votesSplitter.setStretchFactor(1, 1)
 
+            self.lblDetailsName.setProperty('data', True)
+            self.lblDetailsUrl.setProperty('data', True)
+            self.lblDetailsVotingStatus.setProperty('data', True)
+            self.lblDetailsYesCount.setProperty('data', True)
+            self.lblDetailsNoCount.setProperty('data', True)
+            self.lblDetailsAbstainCount.setProperty('data', True)
+            self.lblDetailsCreationTime.setProperty('data', True)
+            self.lblDetailsPaymentAmount.setProperty('data', True)
+            self.lblDetailsPaymentAddress.setProperty('data', True)
+            self.lblDetailsPaymentStart.setProperty('data', True)
+            self.lblDetailsPaymentEnd.setProperty('data', True)
+            self.lblDetailsProposalHash.setProperty('data', True)
+            self.lblDetailsCollateralHash.setProperty('data', True)
+
+            self.lblDetailsNameLabel.setProperty('label', True)
+            self.lblDetailsUrlLabel.setProperty('label', True)
+            self.lblDetailsVotingStatusLabel.setProperty('label', True)
+            self.lblDetailsYesCountLabel.setProperty('label', True)
+            self.lblDetailsNoCountLabel.setProperty('label', True)
+            self.lblDetailsAbstainCountLabel.setProperty('label', True)
+            self.lblDetailsCreationTimeLabel.setProperty('label', True)
+            self.lblDetailsPaymentAmountLabel.setProperty('label', True)
+            self.lblDetailsPaymentAddressLabel.setProperty('label', True)
+            self.lblDetailsPaymentStartLabel.setProperty('label', True)
+            self.lblDetailsPaymentEndLabel.setProperty('label', True)
+            self.lblDetailsProposalHashLabel.setProperty('label', True)
+            self.lblDetailsCollateralHashLabel.setProperty('label', True)
+
+            # self.tabDetails.setStyleSheet('QLabel[data="true"]{border:1px solid lightgray;padding:2px;background-color:white}')
+            self.tabDetails.setStyleSheet('QLabel[label="true"]{font-weight:bold}')
+
             # assign a new curretnChanged handler; not very pretty solution but there is no
             # signal for this purpose in QTableView
             self.propsView.currentChanged = self.on_propsView_currentChanged
@@ -369,7 +400,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             sizePolicy.setVerticalStretch(0)
             self.webView.setSizePolicy(sizePolicy)
             self.layoutWebPreview.addWidget(self.webView)
-            self.tabDetails.resize(self.tabDetails.size().width(),
+            self.tabsDetails.resize(self.tabsDetails.size().width(),
                                    self.get_cache_value('DetailsHeight', 200, int))
 
             # setting up a view with voting history
@@ -402,10 +433,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             if filter_text:
                 self.votesProxyModel.set_filter_text(filter_text)
             self.btnApplyVotesViewFilter.setEnabled(False)
-
-            idx = self.get_cache_value('TabDetailsCurrentIndex', self.tabDetails.currentIndex(), int)
-            if idx >= 0 and idx < self.tabDetails.count():
-                self.tabDetails.setCurrentIndex(idx)
+            self.tabsDetails.setCurrentIndex(0)
 
             def finished_read_proposals_from_network():
                 """ Called after finished reading proposals data from the Dash network. It invokes a thread
@@ -472,10 +500,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             self.set_cache_value('WindowWidth', self.size().width())
             self.set_cache_value('WindowHeight', self.size().height())
-            self.set_cache_value('DetailsHeight', self.tabDetails.size().height())
+            self.set_cache_value('DetailsHeight', self.tabsDetails.size().height())
             self.set_cache_value('VotesHistoryShowOnlyMyVotes', self.chbOnlyMyVotes.isChecked())
             self.set_cache_value('VotesHistoryFilterText', self.edtVotesViewFilter.text())
-            self.set_cache_value('TabDetailsCurrentIndex', self.tabDetails.currentIndex())
+            self.set_cache_value('TabDetailsCurrentIndex', self.tabsDetails.currentIndex())
 
         except Exception as e:
             logging.exception('Exception while saving dialog configuration to cache.')
@@ -1156,6 +1184,29 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             if url:
                 self.webView.load(QUrl(url))
                 self.edtURL.setText(url)
+                self.lblDetailsUrl.setText('<a href="%s">%s</a>' % (url, url))
+            else:
+                self.lblDetailsUrl.setText('')
+            self.lblDetailsName.setText(self.current_proposal.get_value('name'))
+            self.lblDetailsVotingStatus.setText(self.current_proposal.get_value('voting_status_caption'))
+            self.lblDetailsYesCount.setText(str(self.current_proposal.get_value('yes_count')))
+            self.lblDetailsNoCount.setText(str(self.current_proposal.get_value('no_count')))
+            self.lblDetailsAbstainCount.setText(str(self.current_proposal.get_value('abstain_count')))
+            self.lblDetailsCreationTime.setText(str(self.current_proposal.get_value('creation_time')))
+            self.lblDetailsPaymentAmount.setText(str(self.current_proposal.get_value('payment_amount')))
+            addr = self.current_proposal.get_value('payment_address')
+            if self.main_wnd.config.block_explorer_addr:
+                url = self.main_wnd.config.block_explorer_addr.replace('%ADDRESS%', addr)
+                addr = '<a href="%s">%s</a>' % (url, addr)
+            self.lblDetailsPaymentAddress.setText(addr)
+            self.lblDetailsPaymentStart.setText(str(self.current_proposal.get_value('payment_start')))
+            self.lblDetailsPaymentEnd.setText(str(self.current_proposal.get_value('payment_end')))
+            self.lblDetailsProposalHash.setText(self.current_proposal.get_value('hash'))
+            hash = self.current_proposal.get_value('collateral_hash')
+            if self.main_wnd.config.block_explorer_tx:
+                url = self.main_wnd.config.block_explorer_tx.replace('%TXID%', hash)
+                hash = '<a href="%s">%s</a>' % (url, hash)
+            self.lblDetailsCollateralHash.setText(hash)
 
     def apply_votes_filter(self):
         changed_chb = self.votesProxyModel.set_only_my_votes(self.chbOnlyMyVotes.isChecked())

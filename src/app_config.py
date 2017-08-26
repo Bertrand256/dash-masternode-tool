@@ -51,6 +51,7 @@ class AppConfig(object):
 
         self.hw_type = 'TREZOR'  # TREZOR or KEEPKEY
         self.block_explorer_tx = 'https://chainz.cryptoid.info/dash/tx.dws?%TXID%'
+        self.block_explorer_addr = 'https://chainz.cryptoid.info/dash/address.dws?%ADDRESS%'
 
         self.check_for_updates = True
         self.backup_config_file = True
