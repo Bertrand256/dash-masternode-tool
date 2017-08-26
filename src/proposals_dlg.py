@@ -313,10 +313,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.lblDetailsProposalHashLabel.setProperty('label', True)
             self.lblDetailsCollateralHashLabel.setProperty('label', True)
 
-            # self.tabDetails.setStyleSheet('QLabel[data="true"]{border:1px solid lightgray;padding:2px;background-color:white}')
+            # self.tabDetails.setStyleSheet('QLabel[data="true"]{border:1px solid lightgray;padding:2px;
+            # background-color:white}')
             self.tabDetails.setStyleSheet('QLabel[label="true"]{font-weight:bold}')
 
-            # assign a new curretnChanged handler; not very pretty solution but there is no
+            # assign a new currentChanged handler; solution not very pretty, but there is no
             # signal for this purpose in QTableView
             self.propsView.currentChanged = self.on_propsView_currentChanged
 
@@ -374,7 +375,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             self.propsView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
             self.propsView.setSortingEnabled(True)
-            self.propsView.sortByColumn(self.column_index_by_name('voting_status_caption'), Qt.AscendingOrder)
 
             # create model serving data to the view
             self.propsModel = ProposalsModel(self, self.columns, self.proposals)
@@ -442,7 +442,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 if self.current_proposal is None and len(self.proposals) > 0:
                     self.propsView.selectRow(0)
 
-                self.runInThread(self.read_voting_from_network_thread, (False, self.proposals), self.sort_proposals_initially)
+                self.runInThread(self.read_voting_from_network_thread, (False, self.proposals))
 
             def finished_read_data_thread():
                 """ Called after finished reading initial data from the DB. Funtion executes reading proposals'
@@ -454,7 +454,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 if int(time.time()) - self.proposals_last_read_time > PROPOSALS_CACHE_VALID_SECONDS or \
                                 len(self.proposals) == 0:
                     # read proposals from network only after a configured time
-                    self.read_proposals_from_network()
                     self.runInThread(self.read_proposals_from_network_thread, (),
                                      on_thread_finish=finished_read_proposals_from_network)
 
@@ -566,16 +565,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             if pc.name == name:
                 return pc
         raise Exception('Invalid column name: ' + name)
-
-    def sort_proposals_initially(self):
-        # make the initial proposals' sorting - with active voting first
-        cur_tm = time.time()
-        def cmp(prop):
-            # sort by voting_status asc, creation_time desc:
-            ret = (cur_tm * prop.voting_status) + cur_tm - prop.get_value('creation_time').timestamp()
-            return ret
-
-        self.proposals.sort(key=cmp)
 
     def read_proposals_from_network(self):
         """ Reads proposals from the Dash network. """
@@ -727,6 +716,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                             ))
 
                 # delete proposals which no longer exists in tha Dash network
+                rows_removed = False
                 for prop_idx in reversed(range(len(self.proposals))):
                     prop = self.proposals[prop_idx]
 
@@ -739,6 +729,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         self.proposals_by_hash.pop(prop.get_value('hash'), 0)
                         self.proposals_by_db_id.pop(prop.db_id)
                         del self.proposals[prop_idx]
+                        rows_removed = True
 
                 # self.set_cache_value('ProposalsLastReadTime', int(time.time()))  # save when proposals has been
                 cur.execute("UPDATE LIVE_CONFIG SET value=? WHERE symbol=?",
@@ -746,6 +737,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 if cur.rowcount == 0:
                     cur.execute("INSERT INTO LIVE_CONFIG(symbol, value) VALUES(?, ?)",
                                 (CFG_PROPOSALS_LAST_READ_TIME, int(time.time())))
+
+                if rows_added or rows_removed:
+                    WndUtils.callFunInTheMainThread(self.display_proposals_data)
 
             except Exception as e:
                 logging.exception('Exception while saving proposals to db.')
@@ -887,9 +881,13 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                             logging.debug("Finished reading proposals' data from DB")
 
+                            def disp():
+                                self.propsView.sortByColumn(self.column_index_by_name('voting_status_caption'),
+                                                            Qt.AscendingOrder)
+                                self.display_proposals_data()
+
                             # display data, now without voting results, which will be read below
-                            self.sort_proposals_initially()
-                            WndUtils.callFunInTheMainThread(self.display_proposals_data)
+                            WndUtils.callFunInTheMainThread(disp)
 
                         except Exception as e:
                             logging.exception('Exception while saving proposals to db.')
@@ -1145,6 +1143,25 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             raise Exception('Error occurred while displaying proposals: ' + str(e))
 
     @pyqtSlot()
+    def on_btnRefreshProposals_clicked(self):
+        def finished_read_proposals_from_network():
+            """ Called after finished reading proposals data from the Dash network. It invokes a thread
+              reading voting data from the Dash network.  """
+
+            if self.current_proposal is None and len(self.proposals) > 0:
+                self.propsView.selectRow(0)
+
+            live_proposals = []  # refresh "live" proposals only
+            for prop in self.proposals:
+                if prop.voting_in_progress:
+                    live_proposals.append(prop)
+
+            self.runInThread(self.read_voting_from_network_thread, (True, live_proposals))
+
+        self.runInThread(self.read_proposals_from_network_thread, (),
+                         on_thread_finish=finished_read_proposals_from_network)
+
+    @pyqtSlot()
     def on_buttonBox_accepted(self):
         self.accept()
 
@@ -1152,28 +1169,57 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def on_buttonBox_rejected(self):
         self.reject()
 
-    @pyqtSlot(int)
-    def on_tabDetails_currentChanged(self, index):
-        pass
-
     def on_propsView_currentChanged(self, newIndex, oldIndex):
+        """ Triggered when changing focused row in proposals' grid. """
+
+        def correct_hyperlink_color_focused(prop):
+            """ On proposals' grid there are some columns displaying hyperlinks. When rows are focused though, default
+            colors make it hard to read: both, background and font are blue. To make it readable, set font's color to
+            white."""
+            if prop:
+                url = prop.get_value('url')
+                if url:
+                    if prop.name_col_widget:
+                        prop.name_col_widget.setText('<a href="%s" style="color:white">%s</a>' %
+                                                     (url, prop.get_value('name')))
+                    if prop.url_col_widget:
+                        prop.url_col_widget.setText('<a href="%s" style="color:white">%s</a>' % (url, url))
+
+        def correct_hyperlink_color_nonfocused(prop):
+            """ After loosing focus, restore hyperlink's font color."""
+            if prop:
+                url = prop.get_value('url')
+                if url:
+                    if prop.name_col_widget:
+                        prop.name_col_widget.setText('<a href="%s">%s</a>' % (url, prop.get_value('name')))
+                    if prop.url_col_widget:
+                        prop.url_col_widget.setText('<a href="%s">%s</a>' % (url, url))
+
         try:
+
+            new_row = None
+            old_row = None
+
             if newIndex:
-                new_row = newIndex.row()
-            else:
-                new_row = None
+                newIndex = self.proxyModel.mapToSource(newIndex)
+                if newIndex:
+                    new_row = newIndex.row()
             if oldIndex:
-                old_row = oldIndex.row()
-            else:
-                old_row = None
+                oldIndex = self.proxyModel.mapToSource(oldIndex)
+                if oldIndex:
+                    old_row = oldIndex.row()
+
             if new_row != old_row:
                 if new_row is None:
                     self.current_proposal = None  # hide the details
                     self.votesModel.set_proposal(self.current_proposal)
                 else:
                     if new_row >= 0 and new_row < len(self.proposals):
+                        correct_hyperlink_color_nonfocused(self.current_proposal)
                         self.current_proposal = self.proposals[new_row]  # show the details
                         self.votesModel.set_proposal(self.current_proposal)
+                        correct_hyperlink_color_focused(self.current_proposal)
+
                 self.refresh_preview_panel()
         except Exception:
             logging.exception('Exception while changing proposal selected.')
@@ -1358,19 +1404,16 @@ class ProposalsModel(QAbstractTableModel):
                             elif value == 'NO':
                                 return QtGui.QColor('red')
 
+                    # elif role == Qt.TextColorRole:
+                    #     if col.name == 'name':
+                    #         QtGui.QColor('green')
+
                     elif role == Qt.BackgroundRole:
                         if col.name == 'voting_status_caption':
                             if prop.voting_status == 1:
                                 return QtGui.QColor('green')
                             elif prop.voting_status == 2:
                                 return QtGui.QColor('orange')
-                        # elif col.column_for_vote:
-                        #     if value == 'YES':
-                        #         return QtGui.QColor('green')
-                        #     elif value == 'ABSTAIN':
-                        #         return QtGui.QColor('orange')
-                        #     elif value == 'NO':
-                        #         return QtGui.QColor('red')
 
                     elif role == Qt.FontRole:
                         if col.column_for_vote:
