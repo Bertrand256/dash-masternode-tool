@@ -45,12 +45,25 @@
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout">
      <property name="spacing">
-      <number>0</number>
+      <number>6</number>
      </property>
      <item>
-      <widget class="QPushButton" name="pushButton">
+      <widget class="QPushButton" name="btnRefreshProposals">
        <property name="text">
-        <string>Columns</string>
+        <string>Refresh</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnColumnsProposals">
+       <property name="text">
+        <string>Columns...</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
        </property>
       </widget>
      </item>
@@ -94,10 +107,10 @@
        <bool>true</bool>
       </property>
       <property name="sortingEnabled">
-       <bool>false</bool>
+       <bool>true</bool>
       </property>
       <attribute name="verticalHeaderVisible">
-       <bool>false</bool>
+       <bool>true</bool>
       </attribute>
       <attribute name="verticalHeaderCascadingSectionResizes">
        <bool>false</bool>
@@ -511,12 +524,12 @@
       </widget>
       <widget class="QWidget" name="tabVoting">
        <attribute name="title">
-        <string>Voting</string>
+        <string>Vote</string>
        </attribute>
       </widget>
       <widget class="QWidget" name="tabVoteList">
        <attribute name="title">
-        <string>Vote List</string>
+        <string>Voting History</string>
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_4">
         <item>
@@ -546,7 +559,7 @@
                  <string>Reads new votes from the Dash network</string>
                 </property>
                 <property name="text">
-                 <string>Read new votes</string>
+                 <string>Refresh</string>
                 </property>
                </widget>
               </item>
@@ -618,7 +631,7 @@
       </widget>
       <widget class="QWidget" name="tabWebPreview">
        <attribute name="title">
-        <string>Webpage Preview</string>
+        <string>Web Page Preview</string>
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_3">
         <item>
