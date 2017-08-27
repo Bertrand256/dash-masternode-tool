@@ -6,15 +6,19 @@ import datetime
 import json
 import logging
 import os
+import random
 import re
 import threading
 import time
+from functools import partial
+
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtCore import Qt, pyqtSlot, QModelIndex, QVariant, QAbstractTableModel, QSortFilterProxyModel, QUrl
 from PyQt5.QtGui import QColor
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings
-from PyQt5.QtWidgets import QDialog, QTableWidgetItem, QDialogButtonBox, QHeaderView
+from PyQt5.QtWidgets import QDialog, QTableWidgetItem, QDialogButtonBox, QHeaderView, QMessageBox
 import src.wnd_utils as wnd_utils
+from src import dash_utils
 from src.app_config import DATE_FORMAT, DATETIME_FORMAT
 from src.dashd_intf import DashdIndexException
 from src.ui import ui_proposals
@@ -30,6 +34,10 @@ PROPOSALS_CACHE_VALID_SECONDS = 3600
 
 # Number of seconds after which voting will be reloaded for active proposals:
 VOTING_RELOAD_TIME = 3600
+
+VOTE_CODE_YES = '1'
+VOTE_CODE_NO = '2'
+VOTE_CODE_ABSTAIN = '3'
 
 # definition of symbols' for DB live configuration (tabel LIVE_CONFIG)
 CFG_PROPOSALS_LAST_READ_TIME = 'proposals_last_read_time'
@@ -127,6 +135,7 @@ class Proposal(AttrsProtected):
         modified = False
         if mn_ident in self.votes_by_masternode_ident:
             if vote_timestamp > self.votes_by_masternode_ident[mn_ident][0]:
+                self.votes_by_masternode_ident[mn_ident][0] = vote_timestamp
                 self.votes_by_masternode_ident[mn_ident][1] = vote_result
                 modified = True
         else:
@@ -175,6 +184,22 @@ class Proposal(AttrsProtected):
                 self.set_value('voting_status_caption', 'Not funded')
 
 
+class VotingMasternode(AttrsProtected):
+    def __init__(self, masternode, masternode_config):
+        """ Stores information about masternodes for which user has ability to vote.
+        :param masternode: ref to an object storing mn information read from the network (dashd_intf.Masternode)
+        :param masternode_config: ref to an object storing mn user's configuration (app_config.MasterNodeConfig)
+        """
+        super().__init__()
+        self.masternode = masternode
+        self.masternode_config = masternode_config
+        self.btn_vote_yes = None  # dynamically created button for voting YES on behalf of this masternode
+        self.btn_vote_no = None  # ... for voting NO
+        self.btn_vote_abstain = None  # ... for voting ABSTAIN
+        self.lbl_last_vote = None  # label to display last voting results for this masternode and currently focused prop
+        self.set_attr_protection()
+
+
 class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def __init__(self, parent, dashd_intf):
         QDialog.__init__(self, parent=parent)
@@ -184,16 +209,16 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.columns = [
             ProposalColumn('name', 'Name', True),
             ProposalColumn('voting_status_caption', 'Voting Status', True),
-            ProposalColumn('payment_start', 'Payment Start', True),
-            ProposalColumn('payment_end', 'Payment End', True),
             ProposalColumn('payment_amount', 'Amount', True),
-            ProposalColumn('yes_count', 'YES Count', True),
             ProposalColumn('absolute_yes_count', 'Absolute YES Count', True),
+            ProposalColumn('yes_count', 'YES Count', True),
             ProposalColumn('no_count', 'NO Count', True),
             ProposalColumn('abstain_count', 'Abstain Count', True),
+            ProposalColumn('payment_start', 'Payment Start', True),
+            ProposalColumn('payment_end', 'Payment End', True),
+            ProposalColumn('payment_address', 'Payment Address', True),
             ProposalColumn('creation_time', 'Creation Time', True),
             ProposalColumn('url', 'URL', True),
-            ProposalColumn('payment_address', 'Payment Address', True),
             ProposalColumn('type', 'Type', False),
             ProposalColumn('hash', 'Hash', True),
             ProposalColumn('collateral_hash', 'Collateral Hash', True),
@@ -213,8 +238,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.masternodes_by_ident = {}
         self.masternodes_by_db_id = {}
 
-        # masternodes existing in the user's configuration; list and dict of
-        # tuples: (dashd_inf.Masternode, app_config.MasterNodeConfig):
+        # masternodes existing in the user's configuration, which can vote - list of VotingMasternode objects
         self.users_masternodes = []
         self.users_masternodes_by_ident = {}
 
@@ -326,7 +350,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 mn_ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
                 if mn_ident:
                     self.add_voting_column(mn_ident, 'Vote (' + mn.name + ')', my_masternode=True,
-                                           insert_before_column=self.column_index_by_name('payment_start'))
+                                           insert_before_column=self.column_index_by_name('absolute_yes_count'))
 
             """ Read configuration of grid columns such as: display order, visibility. Also read configuration
              of dynamic columns: when user decides to display voting results of a masternode, which is not 
@@ -345,7 +369,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     caption: Column's caption (str)
                 }
             """
-            cfg_cols = self.get_cache_value('ColumnsCfg', [], list)
+            cfg_cols = self.get_cache_value('ProposalsColumnsCfg', [], list)
             if isinstance(cfg_cols, list):
                 for col_saved_index, c in enumerate(cfg_cols):
                     name = c.get('name')
@@ -370,7 +394,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             self.add_voting_column(name, caption, my_masternode=False,
                                                    insert_before_column=self.column_index_by_name('payment_start'))
             else:
-                logging.warning('Invalid type of cached ColumnsCfg')
+                logging.warning('Invalid type of cached ProposalsColumnsCfg')
             self.columns.sort(key = lambda x: x.initial_order_no if x.initial_order_no is not None else 100)
 
             self.propsView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
@@ -393,6 +417,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.votesView.verticalHeader().setDefaultSectionSize(
                 self.votesView.verticalHeader().fontMetrics().height() + 6)
 
+            # setup a proposal's web-page preview
             self.webView = QWebEngineView(self.tabWebPreview)
             self.webView.settings().setAttribute(QWebEngineSettings.FocusOnNavigationEnabled, False)
             sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
@@ -424,7 +449,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     if initial_width and col_saved_index < self.votesModel.columnCount():
                         self.votesView.setColumnWidth(col_saved_index, initial_width)
             else:
-                logging.warning('Invalid type of cached ColumnsCfg')
+                logging.warning('Invalid type of cached VotesColumnsCfg')
             self.votesSplitter.setSizes([self.get_cache_value('VotesGridWidth', 600, int)])
             self.chbOnlyMyVotes.setChecked(self.get_cache_value('VotesHistoryShowOnlyMyVotes', False, bool))
 
@@ -434,6 +459,49 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 self.votesProxyModel.set_filter_text(filter_text)
             self.btnApplyVotesViewFilter.setEnabled(False)
             self.tabsDetails.setCurrentIndex(0)
+
+            def setup_user_voting_controls():
+                # setup a user-voting tab
+                mn_index = 0
+                self.btnVoteYesForAll.setProperty('yes', True)
+                self.btnVoteNoForAll.setProperty('no', True)
+                self.btnVoteAbstainForAll.setProperty('abstain', True)
+                self.btnVoteYesForAll.setEnabled(False)
+                self.btnVoteNoForAll.setEnabled(False)
+                self.btnVoteAbstainForAll.setEnabled(False)
+                for user_mn in self.users_masternodes:
+                    lbl = QtWidgets.QLabel(self.tabVoting)
+                    lbl.setText('<b>%s</b> (%s)' % (user_mn.masternode_config.name, user_mn.masternode.IP))
+                    lbl.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
+                    self.layoutUserVoting.addWidget(lbl, mn_index + 1, 0, 1, 1)
+
+                    user_mn.btn_vote_yes = QtWidgets.QPushButton(self.tabVoting)
+                    user_mn.btn_vote_yes.setText("Vote Yes")
+                    user_mn.btn_vote_yes.setProperty('yes', True)
+                    user_mn.btn_vote_yes.setEnabled(False)
+                    user_mn.btn_vote_yes.clicked.connect(partial(self.on_btnVoteYes_clicked, user_mn))
+                    self.layoutUserVoting.addWidget(user_mn.btn_vote_yes, mn_index + 1, 1, 1, 1)
+
+                    user_mn.btn_vote_no = QtWidgets.QPushButton(self.tabVoting)
+                    user_mn.btn_vote_no.setText("Vote No")
+                    user_mn.btn_vote_no.setProperty('no', True)
+                    user_mn.btn_vote_no.setEnabled(False)
+                    user_mn.btn_vote_no.clicked.connect(partial(self.on_btnVoteNo_clicked, user_mn))
+                    self.layoutUserVoting.addWidget(user_mn.btn_vote_no, mn_index + 1, 2, 1, 1)
+
+                    user_mn.btn_vote_abstain = QtWidgets.QPushButton(self.tabVoting)
+                    user_mn.btn_vote_abstain.setText("Vote Abstain")
+                    user_mn.btn_vote_abstain.setProperty('abstain', True)
+                    user_mn.btn_vote_abstain.setEnabled(False)
+                    user_mn.btn_vote_abstain.clicked.connect(partial(self.on_btnVoteAbstain_clicked, user_mn))
+                    self.layoutUserVoting.addWidget(user_mn.btn_vote_abstain, mn_index + 1, 3, 1, 1)
+
+                    user_mn.lbl_last_vote = QtWidgets.QLabel(self.tabVoting)
+                    user_mn.lbl_last_vote.setText('')
+                    self.layoutUserVoting.addWidget(user_mn.lbl_last_vote, mn_index + 1, 4, 1, 1)
+                    mn_index += 1
+                self.tabVoting.setStyleSheet('QPushButton[yes="true"]{color:green} QPushButton[no="true"]{color:red}'
+                                             'QPushButton[abstain="true"]{color:orange}')
 
             def finished_read_proposals_from_network():
                 """ Called after finished reading proposals data from the Dash network. It invokes a thread
@@ -448,6 +516,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 """ Called after finished reading initial data from the DB. Funtion executes reading proposals'
                    data from network if needed.
                 """
+                setup_user_voting_controls()
+
                 if self.current_proposal is None and len(self.proposals) > 0:
                     self.propsView.selectRow(0)
 
@@ -485,7 +555,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     'width': self.propsView.columnWidth(col_idx)
                 }
                 cfg.append(c)
-            self.set_cache_value('ColumnsCfg', cfg)
+            self.set_cache_value('ProposalsColumnsCfg', cfg)
 
             # save voting-results tab configuration
             # columns' withds
@@ -825,8 +895,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         mn_cfg = users_mn_configs_by_ident.get(mn.ident)
                         if mn_cfg:
                             if not mn.ident in self.users_masternodes_by_ident:
-                                self.users_masternodes.append((mn, mn_cfg))
-                                self.users_masternodes_by_ident[mn.ident] = (mn, mn_cfg)
+                                vmn = VotingMasternode(mn, mn_cfg)
+                                self.users_masternodes.append(vmn)
+                                self.users_masternodes_by_ident[mn.ident] = vmn
 
                     if self.db_active:
                         db_conn = None
@@ -1169,6 +1240,36 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def on_buttonBox_rejected(self):
         self.reject()
 
+    def refresh_vote_tab(self):
+        """ Refresh data displayed on the user-voting tab. Executed after changing focused proposal and after
+        submitting a new votes. """
+
+        if self.current_proposal is None:
+            for user_mn in self.users_masternodes:
+                # setup voting buttons for each of user's masternodes
+                user_mn.btn_vote_yes.setEnabled(False)
+                user_mn.btn_vote_no.setEnabled(False)
+                user_mn.btn_vote_abstain.setEnabled(False)
+            self.btnVoteYesForAll.setEnabled(False)
+            self.btnVoteNoForAll.setEnabled(False)
+            self.btnVoteAbstainForAll.setEnabled(False)
+        else:
+            self.btnVoteYesForAll.setEnabled(True)
+            self.btnVoteNoForAll.setEnabled(True)
+            self.btnVoteAbstainForAll.setEnabled(True)
+
+            for user_mn in self.users_masternodes:
+                # setup voting buttons for each of user's masternodes
+                user_mn.btn_vote_yes.setEnabled(True)
+                user_mn.btn_vote_no.setEnabled(True)
+                user_mn.btn_vote_abstain.setEnabled(True)
+                vote = self.current_proposal.votes_by_masternode_ident.get(user_mn.masternode.ident)
+                if vote:
+                    user_mn.lbl_last_vote.setText('Last voted ' + vote[1] + ' on ' +
+                                                  vote[0].strftime(DATETIME_FORMAT))
+                else:
+                    user_mn.lbl_last_vote.setText('No votes for this masternode')
+
     def on_propsView_currentChanged(self, newIndex, oldIndex):
         """ Triggered when changing focused row in proposals' grid. """
 
@@ -1219,6 +1320,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         self.current_proposal = self.proposals[new_row]  # show the details
                         self.votesModel.set_proposal(self.current_proposal)
                         correct_hyperlink_color_focused(self.current_proposal)
+                self.refresh_vote_tab()
 
                 self.refresh_preview_panel()
         except Exception:
@@ -1239,7 +1341,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.lblDetailsNoCount.setText(str(self.current_proposal.get_value('no_count')))
             self.lblDetailsAbstainCount.setText(str(self.current_proposal.get_value('abstain_count')))
             self.lblDetailsCreationTime.setText(str(self.current_proposal.get_value('creation_time')))
-            self.lblDetailsPaymentAmount.setText(str(self.current_proposal.get_value('payment_amount')))
+            self.lblDetailsPaymentAmount.setText(str(self.current_proposal.get_value('payment_amount')) + ' Dash')
             addr = self.current_proposal.get_value('payment_address')
             if self.main_wnd.config.block_explorer_addr:
                 url = self.main_wnd.config.block_explorer_addr.replace('%ADDRESS%', addr)
@@ -1279,6 +1381,143 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
     def on_btnApplyVotesViewFilter_clicked(self):
         self.apply_votes_filter()
+
+    @pyqtSlot()
+    def on_btnVoteYesForAll_clicked(self):
+        if self.main_wnd.config.dont_confirm_when_voting or \
+            self.queryDlg('Vote YES for all masternodes?',
+                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                          default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+            vl = []
+            for mn_info in self.users_masternodes:
+                vl.append((mn_info, VOTE_CODE_YES))
+            if vl:
+                self.vote(vl)
+
+    @pyqtSlot()
+    def on_btnVoteNoForAll_clicked(self):
+        if self.main_wnd.config.dont_confirm_when_voting or \
+            self.queryDlg('Vote NO for all masternodes?',
+                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                          default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+            vl = []
+            for mn_info in self.users_masternodes:
+                vl.append((mn_info, VOTE_CODE_NO))
+            if vl:
+                self.vote(vl)
+
+    @pyqtSlot()
+    def on_btnVoteAbstainForAll_clicked(self):
+        if self.main_wnd.config.dont_confirm_when_voting or \
+            self.queryDlg('Vote ABSTAIN for all masternodes?',
+                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                          default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+            vl = []
+            for mn_info in self.users_masternodes:
+                vl.append((mn_info, VOTE_CODE_ABSTAIN))
+            if vl:
+                self.vote(vl)
+
+    def on_btnVoteYes_clicked(self, mn_info):
+        if self.main_wnd.config.dont_confirm_when_voting or \
+           self.queryDlg('Vote YES for masternode %s?' % mn_info.masternode_config.name,
+                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                          default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+            self.vote([(mn_info, VOTE_CODE_YES)])
+
+    def on_btnVoteNo_clicked(self, mn_info):
+        if self.main_wnd.config.dont_confirm_when_voting or \
+           self.queryDlg('Vote NO for masternode %s?' % mn_info.masternode_config.name,
+                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                          default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+            self.vote([(mn_info, VOTE_CODE_NO)])
+
+    def on_btnVoteAbstain_clicked(self, mn_info):
+        if self.main_wnd.config.dont_confirm_when_voting or \
+           self.queryDlg('Vote ABSTAIN for masternode %s?' % mn_info.masternode_config.name,
+                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                          default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+            self.vote([(mn_info, VOTE_CODE_ABSTAIN)])
+
+    def vote(self, vote_list):
+        """ Process votes for currently focused proposal. """
+
+        if self.current_proposal:
+            if not self.dashd_intf.open():
+                self.errorMsg('Dash daemon not connected')
+            else:
+                prop_hash = self.current_proposal.get_value('hash')
+
+                step = 1
+                successful_votes = 0
+                unsuccessful_votes = 0
+
+                for vote_idx, v in enumerate(vote_list):
+                    mn_info = None
+                    try:
+                        mn_info = v[0]
+                        vote_code = v[1]
+                        vote = {VOTE_CODE_YES: 'yes', VOTE_CODE_NO: 'no', VOTE_CODE_ABSTAIN: 'abstain'}[vote_code]
+
+                        sig_time = int(time.time())
+                        if self.main_wnd.config.add_random_affset_to_vote_time:
+                            sig_time += random.randint(-1800, 1800)
+
+                        serialize_for_sig = mn_info.masternode.ident + '|' \
+                                            + prop_hash + '|' \
+                                            + '1' + '|' \
+                                            + vote_code + '|' \
+                                            + str(sig_time)
+
+                        step = 2
+                        vote_sig = dash_utils.ecdsa_sign(serialize_for_sig, mn_info.masternode_config.privateKey)
+
+                        self.current_proposal.apply_vote(mn_ident=mn_info.masternode.ident,
+                                                         vote_timestamp=datetime.datetime.fromtimestamp(sig_time),
+                                                         vote_result=vote.upper())
+
+                        # step =3
+                        # v_res = self.dashd_intf.voteraw(masternode_tx_hash=mn_info.masternode_config.collateralTx,
+                        #                         masternode_tx_index=int(mn_info.masternode_config.collateralTxIndex),
+                        #                         governance_hash=prop_hash,
+                        #                         vote_signal='funding',
+                        #                         vote=vote, sig_time=sig_time, vote_sig=vote_sig)
+                        v_res = 'Voted successfully'
+
+                        if v_res == 'Voted successfully':
+                            self.current_proposal.apply_vote(mn_ident=mn_info.masternode.ident,
+                                                             vote_timestamp=datetime.datetime.fromtimestamp(sig_time),
+                                                             vote_result=vote.upper())
+                            successful_votes += 1
+                        else:
+                            self.warnMsg(v_res)
+                            unsuccessful_votes += 1
+
+                    except Exception as e:
+                        if step == 1:
+                            msg = "Error for masternode %s: %s " %  (mn_info.masternode_config.name, str(e))
+                        elif step == 2:
+                            msg = "Error while signing voting message with masternode's %s private key." % \
+                                  mn_info.masternode_config.name
+                        else:
+                            msg = "Error while broadcasting vote message for masternode %s: %s" % \
+                            (mn_info.masternode_config.name, str(e))
+                        unsuccessful_votes += 1
+
+                        logging.exception(msg)
+                        if vote_idx < len(vote_list) - 1:
+                            if self.queryDlg(msg, buttons=QMessageBox.Ok | QMessageBox.Abort,
+                                          default_button=QMessageBox.Cancel, icon=QMessageBox.Critical) ==\
+                               QMessageBox.Abort:
+                                break
+                        else:
+                            self.errorMsg(msg)
+
+                if successful_votes > 0:
+                    self.refresh_vote_tab()
+
+                if unsuccessful_votes == 0 and successful_votes > 0:
+                    self.infoMsg('Voted successfully')
 
 
 class ProposalFilterProxyModel(QSortFilterProxyModel):
@@ -1584,10 +1823,9 @@ class VotesModel(QAbstractTableModel):
                     mn = self.masternodes_by_db_id.get(row[2])
                     if mn:
                         # check if this masternode is in the user's configuration
-                        mn_cfg_pair = self.users_masternodes_by_ident.get(mn.ident)
-                        if mn_cfg_pair:
-                            _, mn_cfg = mn_cfg_pair
-                            users_mn_name = mn_cfg.name
+                        users_mn = self.users_masternodes_by_ident.get(mn.ident)
+                        if users_mn:
+                            users_mn_name = users_mn.masternode_config.name
 
                 self.votes.append((datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S'),
                                    row[1], mn_label, users_mn_name ))
