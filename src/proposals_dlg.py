@@ -1477,12 +1477,12 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                                          vote_result=vote.upper())
 
                         # step =3
-                        # v_res = self.dashd_intf.voteraw(masternode_tx_hash=mn_info.masternode_config.collateralTx,
-                        #                         masternode_tx_index=int(mn_info.masternode_config.collateralTxIndex),
-                        #                         governance_hash=prop_hash,
-                        #                         vote_signal='funding',
-                        #                         vote=vote, sig_time=sig_time, vote_sig=vote_sig)
-                        v_res = 'Voted successfully'
+                        v_res = self.dashd_intf.voteraw(masternode_tx_hash=mn_info.masternode_config.collateralTx,
+                                                masternode_tx_index=int(mn_info.masternode_config.collateralTxIndex),
+                                                governance_hash=prop_hash,
+                                                vote_signal='funding',
+                                                vote=vote, sig_time=sig_time, vote_sig=vote_sig)
+                        # v_res = 'Voted successfully'
 
                         if v_res == 'Voted successfully':
                             self.current_proposal.apply_vote(mn_ident=mn_info.masternode.ident,

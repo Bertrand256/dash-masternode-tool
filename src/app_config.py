@@ -57,7 +57,7 @@ class AppConfig(object):
         self.backup_config_file = True
         self.dont_use_file_dialogs = False
         self.dont_confirm_when_voting = False
-        self.add_random_affset_to_vote_time = False  # To avoid identifying one user's masternodes by vote time
+        self.add_random_affset_to_vote_time = True  # To avoid identifying one user's masternodes by vote time
 
         self.masternodes = []
         self.last_bip32_base_path = ''
