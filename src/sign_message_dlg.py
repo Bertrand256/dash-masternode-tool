@@ -13,7 +13,7 @@ import logging
 class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.WndUtils):
     def __init__(self, main_ui, bip32path, address):
         QDialog.__init__(self)
-        wnd_utils.WndUtils.__init__(self, main_ui.app_path)
+        wnd_utils.WndUtils.__init__(self, main_ui.config)
         self.main_ui = main_ui
         self.bip32path = bip32path
         self.address = address

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+import argparse
 import datetime
 import json
 import os
@@ -14,6 +15,7 @@ from random import randint
 from shutil import copyfile
 import logging
 import bitcoin
+from PyQt5.QtCore import QLocale
 from dash_utils import encrypt, decrypt
 import app_cache as cache
 import default_config
@@ -31,6 +33,7 @@ class AppConfig(object):
     def __init__(self, app_path):
         self.app_path = app_path
         self.log_level_str = 'WARNING'
+        QLocale.setDefault(self.get_default_locale())
 
         # List of Dash network configurations. Multiple conn configs advantage is to give the possibility to use
         # another config if particular one is not functioning (when using "public" RPC service, it could be node's
@@ -56,8 +59,9 @@ class AppConfig(object):
         self.check_for_updates = True
         self.backup_config_file = True
         self.dont_use_file_dialogs = False
-        self.dont_confirm_when_voting = False
-        self.add_random_affset_to_vote_time = True  # To avoid identifying one user's masternodes by vote time
+        self.confirm_when_voting = True
+        self.add_random_offset_to_vote_time = True  # To avoid identifying one user's masternodes by vote time
+        self.csv_delimiter =';'
 
         self.masternodes = []
         self.last_bip32_base_path = ''
@@ -70,8 +74,21 @@ class AppConfig(object):
         self.cache_dir = os.path.join(app_user_dir, 'cache')
         if not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir)
-        self.app_config_file_name = os.path.join(app_user_dir, 'config.ini')
         cache.init(self.cache_dir)
+        self.app_config_file_name = ''
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--config', help="Path to a configuration file", dest='config')
+        args = parser.parse_args()
+        if args.config is not None:
+            self.app_config_file_name = args.config
+            if not os.path.exists(self.app_config_file_name):
+                msg = 'Config file "%s" does not exist.' % self.app_config_file_name
+                print(msg)
+                raise Exception(msg)
+
+        if not self.app_config_file_name:
+            self.app_config_file_name = os.path.join(app_user_dir, 'config.ini')
 
         # database (SQLITE) cache for caching bigger datasets:
         self.db_cache_file_name = os.path.join(self.cache_dir, 'dmt_cache.db')
@@ -105,6 +122,12 @@ class AppConfig(object):
         self.cfg_backup_dir = os.path.join(app_user_dir, 'backup')
         if not os.path.exists(self.cfg_backup_dir):
             os.makedirs(self.cfg_backup_dir)
+
+    def get_default_locale(self):
+        if SCREENSHOT_MODE:
+            return QLocale(QLocale.English)
+        else:
+            return QLocale.system()
 
     def read_from_file(self):
         ini_version = None
@@ -185,6 +208,10 @@ class AppConfig(object):
                 self.backup_config_file = self.value_to_bool(config.get(section, 'backup_config_file', fallback='1'))
                 self.dont_use_file_dialogs = self.value_to_bool(config.get(section, 'dont_use_file_dialogs',
                                                                           fallback='0'))
+                self.confirm_when_voting = self.value_to_bool(config.get(section, 'confirm_when_voting',
+                                                                          fallback='1'))
+                self.add_random_offset_to_vote_time = \
+                    self.value_to_bool(config.get(section, 'add_random_offset_to_vote_time', fallback='1'))
 
                 for section in config.sections():
                     if re.match('MN\d', section):
@@ -264,6 +291,8 @@ class AppConfig(object):
         config.set(section, 'check_for_updates', '1' if self.check_for_updates else '0')
         config.set(section, 'backup_config_file', '1' if self.backup_config_file else '0')
         config.set(section, 'dont_use_file_dialogs', '1' if self.dont_use_file_dialogs else '0')
+        config.set(section, 'confirm_when_voting', '1' if self.confirm_when_voting else '0')
+        config.set(section, 'add_random_offset_to_vote_time', '1' if self.add_random_offset_to_vote_time else '0')
 
         # save mn configuration
         for idx, mn in enumerate(self.masternodes):
@@ -412,7 +441,7 @@ class AppConfig(object):
                             cfg.ssh_conn_cfg.port = conn_raw['ssh_user']
                     connn_list.append(cfg)
             except Exception as e:
-                print(str(e))
+                logging.exception('Exception while decoding connections.')
         return connn_list
 
     def decode_connections_json(self, conns_json):
@@ -678,7 +707,7 @@ class DashNetworkConnectionCfg(object):
 
     @method.setter
     def method(self, method):
-        if method not in ('rpc'):
+        if method != 'rpc':
             raise Exception('Not allowed method type: %s' % method)
         self.__method = method
 

@@ -11,7 +11,7 @@ class HardwareWalletPinDlg(QDialog, ui_hw_pin_dlg.Ui_HardwareWalletPinDlg, WndUt
     def __init__(self, message):
         QDialog.__init__(self)
         ui_hw_pin_dlg.Ui_HardwareWalletPinDlg.__init__(self)
-        WndUtils.__init__(self, app_path='')
+        WndUtils.__init__(self, app_config=None)
         self.pin = ''
         self.message = message
         self.setupUi()

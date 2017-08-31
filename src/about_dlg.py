@@ -13,18 +13,17 @@ import os
 
 
 class AboutDlg(QDialog, ui_about_dlg.Ui_AboutDlg, WndUtils):
-    def __init__(self, parent, app_path, app_version_str):
+    def __init__(self, parent, app_version_str):
         QDialog.__init__(self, parent)
         ui_about_dlg.Ui_AboutDlg.__init__(self)
-        WndUtils.__init__(self, app_path)
-        self.app_path = app_path
+        WndUtils.__init__(self, parent.config)
         self.app_version_str = app_version_str
         self.setupUi()
 
     def setupUi(self):
         ui_about_dlg.Ui_AboutDlg.setupUi(self, self)
         self.setWindowTitle("About")
-        img = QPixmap(os.path.join(self.app_path, "img/dmt.png"))
+        img = QPixmap(os.path.join(self.app_config.app_path, "img/dmt.png"))
         img = img.scaled(QSize(64, 64))
         self.lblImage.setPixmap(img)
         self.lblAppName.setText('Dash Masternode Tool ' + self.app_version_str)

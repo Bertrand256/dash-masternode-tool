@@ -15,7 +15,7 @@ from ui import ui_find_coll_tx_dlg
 class FindCollateralTxDlg(QDialog, ui_find_coll_tx_dlg.Ui_FindCollateralTxDlg, wnd_utils.WndUtils):
     def __init__(self, parent, dashd_intf, dash_address):
         QDialog.__init__(self, parent=parent)
-        wnd_utils.WndUtils.__init__(self, app_path=parent.app_path)
+        wnd_utils.WndUtils.__init__(self, parent.config)
         self.main_wnd = parent
         self.dashd_intf = dashd_intf
         self.dash_address = dash_address
