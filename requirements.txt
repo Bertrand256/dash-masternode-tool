@@ -5,5 +5,6 @@ PyQt5
 pyinstaller
 paramiko>=2.2.1
 requests>=2.18.4
+simplejson
 -e git+https://github.com/chaeplin/python-keepkey#egg=keepkey
 cryptography

@@ -379,7 +379,13 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                 try:
                     if self.dashd_intf.validateaddress(address).get('isvalid', False):
                         fee = self.edtTxFee.value() * 1e8
-                        serialized_tx, amount_to_send = prepare_transfer_tx(self.main_ui, utxos, address, fee)
+
+                        try:
+                            serialized_tx, amount_to_send = prepare_transfer_tx(self.main_ui, utxos, address, fee)
+                        except Exception:
+                            logging.exception('Exception when preparing the transaction.')
+                            raise
+
                         tx_hex = serialized_tx.hex()
                         if len(tx_hex) > 90000:
                             self.errorMsg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
