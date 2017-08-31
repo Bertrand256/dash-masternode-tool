@@ -11,6 +11,8 @@ import threading
 import time
 
 import logging
+
+import simplejson
 from PyQt5.QtCore import QThread
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from paramiko import AuthenticationException, PasswordRequiredException, SSHException
@@ -351,6 +353,33 @@ def control_rpc_call(func):
     return catch_timeout_wrapper
 
 
+def json_cache_wrapper(func, intf, cache_file_ident):
+    """
+    Wrapper for saving/restoring rpc-call results inside cache files.
+    """
+    def json_call_wrapper(*args, **kwargs):
+        cache_file = intf.config.cache_dir + '/insight_dash_' + cache_file_ident + '.json'
+
+        try:  # looking into cache first
+            j = simplejson.load(open(cache_file))
+            logging.debug('Loaded data from existing cache file: ' + cache_file)
+            return j
+        except:
+            pass
+
+        # if not found, call the function
+        j = func(*args, **kwargs)
+
+        try:
+            simplejson.dump(j, open(cache_file, 'w'))
+        except Exception as e:
+            logging.exception('Cannot save data to a cache file')
+            pass
+        return j
+
+    return json_call_wrapper
+
+
 class DashdInterface(WndUtils):
     def __init__(self, config, window, connection=None, on_connection_begin_callback=None,
                  on_connection_try_fail_callback=None, on_connection_finished_callback=None):
@@ -591,13 +620,6 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
-    def getblockhash(self, block):
-        if self.open():
-            return self.proxy.getblockhash(block)
-        else:
-            raise Exception('Not connected')
-
-    @control_rpc_call
     def getinfo(self):
         if self.open():
             return self.proxy.getinfo()
@@ -665,21 +687,21 @@ class DashdInterface(WndUtils):
     @control_rpc_call
     def getrawtransaction(self, txid, verbose):
         if self.open():
-            return self.proxy.getrawtransaction(txid, verbose)
+            return json_cache_wrapper(self.proxy.getrawtransaction, self, 'tx-' + str(verbose) + '-' + txid)(txid, verbose)
         else:
             raise Exception('Not connected')
 
     @control_rpc_call
     def getblockhash(self, blockid):
         if self.open():
-            return self.proxy.getblockhash(blockid)
+            return json_cache_wrapper(self.proxy.getblockhash, self, 'blockhash-' + str(blockid))(blockid)
         else:
             raise Exception('Not connected')
 
     @control_rpc_call
     def getblockheader(self, blockhash):
         if self.open():
-            return self.proxy.getblockheader(blockhash)
+            return json_cache_wrapper(self.proxy.getblockheader, self, 'blockheader-' + str(blockhash))(blockhash)
         else:
             raise Exception('Not connected')
 
@@ -691,9 +713,9 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
-    def decoderawtransaction(self, tx):
+    def decoderawtransaction(self, rawtx):
         if self.open():
-            return self.proxy.decoderawtransaction(tx)
+            return self.proxy.decoderawtransaction(rawtx)
         else:
             raise Exception('Not connected')
 
@@ -703,4 +725,5 @@ class DashdInterface(WndUtils):
             return self.proxy.sendrawtransaction(tx)
         else:
             raise Exception('Not connected')
+
 
