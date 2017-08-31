@@ -12,7 +12,7 @@ from ui import ui_hw_setup_dlg
 class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
     def __init__(self, main_ui):
         QDialog.__init__(self)
-        wnd_utils.WndUtils.__init__(self, main_ui.app_path)
+        wnd_utils.WndUtils.__init__(self, main_ui.config)
         self.main_ui = main_ui
         self.main_ui.connectHardwareWallet()
         self.hw_client = self.main_ui.hw_client

@@ -10,7 +10,7 @@ from ui import ui_hw_pass_dlg
 class HardwareWalletPassDlg(QDialog, ui_hw_pass_dlg.Ui_HardwareWalletPassDlg, WndUtils):
     def __init__(self):
         QDialog.__init__(self)
-        WndUtils.__init__(self, app_path='')
+        WndUtils.__init__(self, app_config=None)
         ui_hw_pass_dlg.Ui_HardwareWalletPassDlg.__init__(self)
         self.passphrase = ''
         self.setupUi()

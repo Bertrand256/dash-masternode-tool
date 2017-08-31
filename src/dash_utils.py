@@ -81,6 +81,18 @@ def wif_to_privkey(string):
         return None
 
 
+def privkey_valid(privkey):
+    try:
+        pk = bitcoin.decode_privkey(privkey, 'wif')
+        pkhex = bitcoin.encode_privkey(pk, 'hex')
+        if len(pkhex) in (62, 64):
+            return True
+        else:
+            return False
+    except Exception as e:
+        return False
+
+
 def from_string_to_bytes(a):
     """
     Based on project: https://github.com/chaeplin/dashmnb.
@@ -178,7 +190,7 @@ def decrypt(input_str, key):
     return h
 
 
-def seconds_to_human(number_of_seconds, out_seconds=True):
+def seconds_to_human(number_of_seconds, out_seconds=True, out_minutes=True, out_hours=True):
     """
     Converts number of seconds to string representation.
     :param out_seconds: False, if seconds part in output is to be trucated
@@ -187,6 +199,9 @@ def seconds_to_human(number_of_seconds, out_seconds=True):
     """
     human_strings = []
 
+    weeks = 0
+    days = 0
+    hours = 0
     if number_of_seconds > 604800:
         # days
         weeks = int(number_of_seconds / 604800)
@@ -205,7 +220,7 @@ def seconds_to_human(number_of_seconds, out_seconds=True):
             elem_str += 's'
         human_strings.append(elem_str)
 
-    if number_of_seconds > 3600:
+    if (out_hours and weeks + days > 0) and number_of_seconds > 3600:
         hours = int(number_of_seconds / 3600)
         number_of_seconds = number_of_seconds - (hours * 3600)
         elem_str = str(int(hours)) + ' hour'
@@ -213,7 +228,7 @@ def seconds_to_human(number_of_seconds, out_seconds=True):
             elem_str += 's'
         human_strings.append(elem_str)
 
-    if number_of_seconds > 60:
+    if (out_minutes and weeks + days + hours > 0) and number_of_seconds > 60:
         minutes = int(number_of_seconds / 60)
         number_of_seconds = number_of_seconds - (minutes * 60)
         elem_str = str(int(minutes)) + ' minute'

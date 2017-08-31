@@ -37,6 +37,7 @@ add_files = [
  ('img/tools.png','/img'),
  ('img/uncheck.png','/img'),
  ('img/wallet.png','/img'),
+ ('img/thumb-up.png','/img'),
  ('version.txt', '')
 ]
 

@@ -325,13 +325,16 @@ def control_rpc_call(func):
         for try_nr in range(1, 5):
             try:
                 try:
+                    logging.info('Beginning call of "' + str(func) + '"')
                     ret = func(*args, **kwargs)
+                    logging.info('Ended call of "' + str(func) + '"' )
                     last_exception = None
                     self.mark_cur_conn_cfg_is_ok()
                     break
                 except (ConnectionResetError, ConnectionAbortedError, httplib.CannotSendRequest, BrokenPipeError) as e:
                     last_exception = e
                     self.http_conn.close()
+                    logging.info('Error while calling of "' + str(func) + '". Details: ' + str(e))
                 except JSONRPCException as e:
                     if e.code == -5 and e.message == 'No information available for address':
                         raise DashdIndexException(e)
@@ -340,10 +343,12 @@ def control_rpc_call(func):
                         raise DashdConnectionError(e)
                     else:
                         self.http_conn.close()
+                    logging.info('Error while calling of "' + str(func) + '". Details: ' + str(e))
 
                 except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
                     # exceptions raised by not likely functioning dashd node; try to switch to another node
                     # if there is any in the config
+                    logging.info('Error while calling of "' + str(func) + '". Details: ' + str(e))
                     raise DashdConnectionError(e)
 
             except DashdConnectionError as e:
@@ -385,7 +390,6 @@ class Masternode(AttrsProtected):
         super().__setattr__(name, value)
 
 
-
 def json_cache_wrapper(func, intf, cache_file_ident):
     """
     Wrapper for saving/restoring rpc-call results inside cache files.
@@ -416,7 +420,7 @@ def json_cache_wrapper(func, intf, cache_file_ident):
 class DashdInterface(WndUtils):
     def __init__(self, config, window, connection=None, on_connection_begin_callback=None,
                  on_connection_try_fail_callback=None, on_connection_finished_callback=None):
-        WndUtils.__init__(self, app_path=config.app_path)
+        WndUtils.__init__(self, app_config=config)
         assert isinstance(config, AppConfig)
 
         self.config = config

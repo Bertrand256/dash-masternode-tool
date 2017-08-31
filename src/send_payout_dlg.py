@@ -228,7 +228,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             is assigned to mn's collateral 
         """
         QDialog.__init__(self)
-        WndUtils.__init__(self, main_ui.app_path)
+        WndUtils.__init__(self, main_ui.config)
         assert isinstance(utxos_source, list)
         assert isinstance(main_ui.dashd_intf, DashdInterface)
         self.utxos_source = utxos_source

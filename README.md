@@ -14,11 +14,13 @@
    * [Masternode setup](#masternode-setup)
      * [Scenario A: movig masternode management from Dash Core](doc/config-masternodes-a.md)
      * [Scenario B: configuration of a new masternode](doc/config-masternodes-b.md)
+   * [Commandline parameters](#commandline-parameters)
  * [Features](#features)
    * [Starting masternode](#starting-masternode)
    * [Transferring of masternode earnings](#transferring-of-masternode-earnings)
    * [Signing messages with hardware wallet](#signing-messages-with-hardware-wallet)
    * [Changing hardware wallet's PIN/passphrase](#changing-hardware-wallets-pinpassphrase)
+   * [Proposals: browsing and voting on](doc/proposals.md)
  * [Downloads](https://github.com/Bertrand256/dash-masternode-tool/releases/latest)
 
 ## Masternodes
@@ -74,6 +76,11 @@ Further configuration steps depend on whether you already have a masternode cont
 [Scenario A - moving masternode management from Dash Core](doc/config-masternodes-a.md)  
 [Scenario B - configuration of a new masternode](doc/config-masternodes-b.md)  
 
+### Commandline parameters
+Currently the application supports one command-line parameter: `--config`, which can be used to pass a non-standard path to a configuration file. Example:
+```
+DashMasternodeTool.exe --config=C:\dmt-configs\config1.ini 
+```
 
 ## Features
 ### Starting Masternode

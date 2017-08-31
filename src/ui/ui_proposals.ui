@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>785</width>
-    <height>505</height>
+    <width>928</width>
+    <height>605</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -18,7 +18,7 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="spacing">
-    <number>2</number>
+    <number>4</number>
    </property>
    <property name="leftMargin">
     <number>3</number>
@@ -48,7 +48,7 @@
       <number>6</number>
      </property>
      <item>
-      <widget class="QPushButton" name="btnRefreshProposals">
+      <widget class="QPushButton" name="btnProposalsRefresh">
        <property name="text">
         <string>Refresh</string>
        </property>
@@ -58,12 +58,35 @@
       </widget>
      </item>
      <item>
-      <widget class="QPushButton" name="btnColumnsProposals">
+      <widget class="QPushButton" name="btnProposalsSaveToCSV">
+       <property name="text">
+        <string>Save to CSV...</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnProposalsColumns">
        <property name="text">
         <string>Columns...</string>
        </property>
        <property name="autoDefault">
         <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="lblBudgetSummary">
+       <property name="text">
+        <string>   </string>
+       </property>
+       <property name="openExternalLinks">
+        <bool>true</bool>
+       </property>
+       <property name="textInteractionFlags">
+        <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
        </property>
       </widget>
      </item>
@@ -83,7 +106,7 @@
     </layout>
    </item>
    <item>
-    <widget class="QSplitter" name="splitter">
+    <widget class="QSplitter" name="detailsSplitter">
      <property name="orientation">
       <enum>Qt::Vertical</enum>
      </property>
@@ -177,59 +200,6 @@
              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
             </property>
            </widget>
-          </item>
-          <item row="6" column="1">
-           <layout class="QHBoxLayout" name="horizontalLayout_8">
-            <item>
-             <widget class="QLabel" name="lblDetailsPaymentStart">
-              <property name="text">
-               <string>--</string>
-              </property>
-              <property name="openExternalLinks">
-               <bool>true</bool>
-              </property>
-              <property name="textInteractionFlags">
-               <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="lblDetailsPaymentEndLabel">
-              <property name="text">
-               <string>end:</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="lblDetailsPaymentEnd">
-              <property name="text">
-               <string>--</string>
-              </property>
-              <property name="openExternalLinks">
-               <bool>true</bool>
-              </property>
-              <property name="textInteractionFlags">
-               <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <spacer name="horizontalSpacer_5">
-              <property name="orientation">
-               <enum>Qt::Horizontal</enum>
-              </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>40</width>
-                <height>20</height>
-               </size>
-              </property>
-             </spacer>
-            </item>
-           </layout>
           </item>
           <item row="0" column="1">
            <widget class="QLabel" name="lblDetailsName">
@@ -337,16 +307,6 @@
            <widget class="QLabel" name="lblDetailsCreationTime">
             <property name="text">
              <string>--</string>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="0">
-           <widget class="QLabel" name="lblDetailsPaymentStartLabel">
-            <property name="text">
-             <string>Payment start:</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
             </property>
            </widget>
           </item>
@@ -459,7 +419,7 @@
             </item>
            </layout>
           </item>
-          <item row="7" column="0">
+          <item row="6" column="0">
            <widget class="QLabel" name="lblDetailsProposalHashLabel">
             <property name="text">
              <string>Proposal hash:</string>
@@ -469,7 +429,7 @@
             </property>
            </widget>
           </item>
-          <item row="8" column="0">
+          <item row="7" column="0">
            <widget class="QLabel" name="lblDetailsCollateralHashLabel">
             <property name="text">
              <string>Collateral hash:</string>
@@ -479,7 +439,7 @@
             </property>
            </widget>
           </item>
-          <item row="7" column="1">
+          <item row="6" column="1">
            <widget class="QLabel" name="lblDetailsProposalHash">
             <property name="text">
              <string>--</string>
@@ -492,7 +452,7 @@
             </property>
            </widget>
           </item>
-          <item row="8" column="1">
+          <item row="7" column="1">
            <widget class="QLabel" name="lblDetailsCollateralHash">
             <property name="text">
              <string>--</string>
@@ -502,6 +462,69 @@
             </property>
             <property name="textInteractionFlags">
              <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_8">
+            <item>
+             <widget class="QLabel" name="lblDetailsPaymentStart">
+              <property name="text">
+               <string>--</string>
+              </property>
+              <property name="openExternalLinks">
+               <bool>true</bool>
+              </property>
+              <property name="textInteractionFlags">
+               <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblDetailsPaymentEndLabel">
+              <property name="text">
+               <string>end:</string>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblDetailsPaymentEnd">
+              <property name="text">
+               <string>--</string>
+              </property>
+              <property name="openExternalLinks">
+               <bool>true</bool>
+              </property>
+              <property name="textInteractionFlags">
+               <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="horizontalSpacer_5">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="lblDetailsPaymentStartLabel">
+            <property name="text">
+             <string>Payment start:</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
             </property>
            </widget>
           </item>
@@ -642,12 +665,25 @@
                <number>8</number>
               </property>
               <item>
-               <widget class="QPushButton" name="btnReloadVotes">
+               <widget class="QPushButton" name="btnVotesRefresh">
                 <property name="toolTip">
                  <string>Reads new votes from the Dash network</string>
                 </property>
                 <property name="text">
                  <string>Refresh</string>
+                </property>
+                <property name="autoDefault">
+                 <bool>false</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btnVotesSaveToCSV">
+                <property name="text">
+                 <string>Save to CSV...</string>
+                </property>
+                <property name="autoDefault">
+                 <bool>false</bool>
                 </property>
                </widget>
               </item>
@@ -696,6 +732,9 @@
                 <property name="text">
                  <string>Apply</string>
                 </property>
+                <property name="autoDefault">
+                 <bool>false</bool>
+                </property>
                </widget>
               </item>
              </layout>
@@ -708,41 +747,59 @@
                 <verstretch>0</verstretch>
                </sizepolicy>
               </property>
+              <attribute name="verticalHeaderVisible">
+               <bool>false</bool>
+              </attribute>
              </widget>
             </item>
            </layout>
           </widget>
-          <widget class="QWidget" name="widget" native="true"/>
-         </widget>
-        </item>
-       </layout>
-      </widget>
-      <widget class="QWidget" name="tabWebPreview">
-       <attribute name="title">
-        <string>Web Page Preview</string>
-       </attribute>
-       <layout class="QVBoxLayout" name="verticalLayout_3">
-        <item>
-         <layout class="QVBoxLayout" name="layoutWebPreview">
-          <item>
-           <layout class="QHBoxLayout" name="layoutURL">
+          <widget class="QWidget" name="verticalLayoutWidget">
+           <layout class="QVBoxLayout" name="layoutVotesChart">
             <item>
-             <widget class="QLabel" name="label">
-              <property name="text">
-               <string>URL: </string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="edtURL">
-              <property name="readOnly">
-               <bool>true</bool>
-              </property>
-             </widget>
+             <layout class="QHBoxLayout" name="horizontalLayout_3">
+              <item>
+               <widget class="QRadioButton" name="rbVotesChartIncremental">
+                <property name="text">
+                 <string>Votes by date (incremental)</string>
+                </property>
+                <property name="checked">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QRadioButton" name="rbVotesChartFinal">
+                <property name="text">
+                 <string>Votes summary</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QRadioButton" name="rbVotesChartChanges">
+                <property name="text">
+                 <string>Vote changes by date</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="horizontalSpacer_8">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
             </item>
            </layout>
-          </item>
-         </layout>
+          </widget>
+         </widget>
         </item>
        </layout>
       </widget>

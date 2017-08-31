@@ -98,8 +98,8 @@
                <widget class="QToolButton" name="btnNewConn">
                 <property name="minimumSize">
                  <size>
-                  <width>16</width>
-                  <height>16</height>
+                  <width>26</width>
+                  <height>26</height>
                  </size>
                 </property>
                 <property name="toolTip">
@@ -114,8 +114,8 @@
                <widget class="QToolButton" name="btnDeleteConn">
                 <property name="minimumSize">
                  <size>
-                  <width>20</width>
-                  <height>20</height>
+                  <width>26</width>
+                  <height>26</height>
                  </size>
                 </property>
                 <property name="toolTip">
@@ -130,8 +130,8 @@
                <widget class="QToolButton" name="btnMoveUpConn">
                 <property name="minimumSize">
                  <size>
-                  <width>20</width>
-                  <height>20</height>
+                  <width>26</width>
+                  <height>26</height>
                  </size>
                 </property>
                 <property name="toolTip">
@@ -146,12 +146,28 @@
                <widget class="QToolButton" name="btnMoveDownConn">
                 <property name="minimumSize">
                  <size>
-                  <width>20</width>
-                  <height>20</height>
+                  <width>26</width>
+                  <height>26</height>
                  </size>
                 </property>
                 <property name="toolTip">
                  <string>Move Down Current Connection</string>
+                </property>
+                <property name="text">
+                 <string/>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QToolButton" name="btnRestoreDefault">
+                <property name="minimumSize">
+                 <size>
+                  <width>26</width>
+                  <height>26</height>
+                 </size>
+                </property>
+                <property name="toolTip">
+                 <string>Restore Default Connections</string>
                 </property>
                 <property name="text">
                  <string/>
@@ -338,6 +354,20 @@
          </property>
          <property name="text">
           <string>Backup config file</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="chbConfirmWhenVoting">
+         <property name="text">
+          <string>Ask for confirmation when voting</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="chbAddRandomOffsetToVotingTime">
+         <property name="text">
+          <string>Add random offset to new vote time to enhance privacy</string>
          </property>
         </widget>
        </item>

@@ -53,9 +53,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def __init__(self, app_path):
         QMainWindow.__init__(self)
-        WndUtils.__init__(self, app_path=app_path)
+        WndUtils.__init__(self, None)
         ui_main_dlg.Ui_MainWindow.__init__(self)
+
         self.config = AppConfig(app_path)
+        WndUtils.set_app_config(self, self.config)
         self.dashd_intf = DashdInterface(self.config, window=None,
                                          on_connection_begin_callback=self.on_connection_begin,
                                          on_connection_try_fail_callback=self.on_connection_failed,
@@ -159,7 +161,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.actHwSetup.triggered.connect(self.on_actHwSetup_triggered)
 
         # proposals
-        self.actProposals = mnu.addAction("Proposals/voting...")
+        self.actProposals = mnu.addAction("Proposals...")
+        self.setIcon(self.actProposals, "thumb-up.png")
         self.actProposals.triggered.connect(self.on_actProposals_triggered)
 
         mnu.addSeparator()
@@ -177,15 +180,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.cboMasternodes.clear()
         for mn in self.config.masternodes:
             self.cboMasternodes.addItem(mn.name, mn)
-        if not self.config.masternodes:
-            self.newMasternodeConfig()
-        else:
+        if self.config.masternodes:
             # get last masternode selected
             idx = cache.get_value('WndMainCurMasternodeIndex', 0, int)
             if idx >= len(self.config.masternodes):
                 idx = 0
             self.curMasternode = self.config.masternodes[idx]
             self.displayMasternodeConfig(True)
+        else:
+            self.curMasternode = None
 
         # after loading whole configuration, reset 'modified' variable
         self.config.modified = False
@@ -297,7 +300,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         if self.configModified():
             if self.queryDlg('Configuration modified. Save?',
-                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                             buttons=QMessageBox.Yes | QMessageBox.No,
                              default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
                 self.on_btnSaveConfiguration_clicked()
 
@@ -340,7 +343,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_btnAbout_clicked(self):
-        ui = about_dlg.AboutDlg(self, self.app_path, self.version_str)
+        ui = about_dlg.AboutDlg(self, self.version_str)
         ui.exec_()
 
     def on_connection_begin(self):
@@ -454,7 +457,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 event_loop.exit()
 
         if self.config.is_config_complete():
-            if (not hasattr(self, 'check_conn_thread') or self.check_conn_thread is None):
+            if not hasattr(self, 'check_conn_thread') or self.check_conn_thread is None:
 
                 if hasattr(self, 'wait_for_dashd_synced_thread') and self.wait_for_dashd_synced_thread is not None:
                     if call_on_check_finished is not None:
@@ -820,26 +823,17 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         Imports masternodes configuration from masternode.conf file.
         """
 
-        if self.config.dont_use_file_dialogs:
-            fileName, ok = QInputDialog.getText(self, 'File name query', 'Enter the path to the masternode.conf file:')
-            if ok:
-                fileName = [fileName, fileName]
-            else:
-                fileName = []
-        else:
-            fileName = QFileDialog.getOpenFileName(self,
-                                                   caption='Open masternode configuration file',
-                                                   directory='',
-                                                   filter="All Files (*);;Conf files (*.conf)",
-                                                   initialFilter="Conf files (*.conf)")
+        file_name = self.open_file_query(message='Enter the path to the masternode.conf configuration file',
+                                        directory='', filter="All Files (*);;Conf files (*.conf)",
+                                        initial_filter="Conf files (*.conf)")
 
-        if fileName and len(fileName) > 0 and fileName[1]:
-            if os.path.exists(fileName[0]):
+        if file_name:
+            if os.path.exists(file_name):
                 if not self.editingEnabled:
                     self.on_btnEditMn_clicked()
 
                 try:
-                    with open(fileName[0], 'r') as f_ptr:
+                    with open(file_name, 'r') as f_ptr:
                         modified = False
                         imported_cnt = 0
                         skipped_cnt = 0
@@ -953,11 +947,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 except Exception as e:
                     self.errorMsg('Reading file failed: ' + str(e))
             else:
-                if fileName[0]:
-                    self.errorMsg("File '" + fileName[0] + "' does not exist")
+                if file_name:
+                    self.errorMsg("File '" + file_name + "' does not exist")
 
     @pyqtSlot(bool)
-    def on_btnSaveConfiguration_clicked(self):
+    def on_btnSaveConfiguration_clicked(self, clicked):
+        self.save_configuration()
+
+    def save_configuration(self):
         self.config.save_to_file()
         self.editingEnabled = False
         self.updateControlsState()
@@ -978,11 +975,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                               self.curMasternode.collateralAddress != '')
             self.btnHwBip32ToAddress.setEnabled(editing)
             self.btnHwAddressToBip32.setEnabled(editing)
-            self.btnEditMn.setEnabled(editing)
             self.btnDeleteMn.setEnabled(self.curMasternode is not None)
-            self.btnEditMn.setEnabled(not self.editingEnabled)
+            self.btnEditMn.setEnabled(not self.editingEnabled and self.curMasternode is not None)
             self.btnSaveConfiguration.setEnabled(self.configModified())
             self.btnHwDisconnect.setEnabled(True if self.hw_client else False)
+            self.btnRefreshMnStatus.setEnabled(self.curMasternode is not None)
+            self.btnBroadcastMn.setEnabled(self.curMasternode is not None)
 
         if threading.current_thread() != threading.main_thread():
             self.callFunInTheMainThread(update_fun)
@@ -1118,6 +1116,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         wif = dash_utils.generate_privkey()
         self.curMasternode.privateKey = wif
         self.edtMnPrivateKey.setText(wif)
+        self.curMnModified()
 
     @pyqtSlot(bool)
     def on_btnHwBip32ToAddress_clicked(self):
@@ -1400,44 +1399,56 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             a few more informations related to the masternode
         :return: masternode's status
         """
+
         if self.dashd_connection_ok:
             addr_ip = self.curMasternode.ip + ':' + self.curMasternode.port
             collateral_id = self.curMasternode.collateralTx + '-' + self.curMasternode.collateralTxIndex
 
+            if not self.curMasternode.collateralTx:
+                return '<span style="color:red">Enter the collateral TX ID</span>'
+
+            if not self.curMasternode.collateralTxIndex:
+                return '<span style="color:red">Enter the collateral TX index</span>'
+
             # (status, protocol, payee, lastseen, activeseconds, lastpaidtime, pastpaidblock, ip) =
             mns_info = self.dashd_intf.get_masternodelist('full', collateral_id, skip_cache=True)
             if mns_info:
-                mn_info = mns_info[0]  # there shold be the only our masternode in the list
+                if len(mns_info) == 1:
+                    mn_info = mns_info[0]  # there shold be the only our masternode in the list
 
-                if extended:
-                    lastseen_str = datetime.datetime.fromtimestamp(float(mn_info.lastseen)).strftime(DATETIME_FORMAT)
-                    lastseen_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastseen))
-                    lastpaid_str = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime)).strftime(DATETIME_FORMAT)
-                    lastpaid_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastpaidtime), out_seconds=False)
-                    activeseconds_str = dash_utils.seconds_to_human(int(mn_info.activeseconds), out_seconds=False)
-                    if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
-                        color = 'green'
+                    if extended:
+                        lastseen_str = datetime.datetime.fromtimestamp(float(mn_info.lastseen)).strftime(DATETIME_FORMAT)
+                        lastseen_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastseen))
+                        lastpaid_str = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime)).strftime(DATETIME_FORMAT)
+                        lastpaid_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastpaidtime), out_seconds=False)
+                        activeseconds_str = dash_utils.seconds_to_human(int(mn_info.activeseconds), out_seconds=False)
+                        if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
+                            color = 'green'
+                        else:
+                            color = 'red'
+                        status = '<style>td {white-space:nowrap;padding-right:8px}' \
+                                 '.title {text-align:right;font-weight:bold}' \
+                                 '.ago {font-style:italic}' \
+                                 '.value {color:navy}' \
+                                 '</style>' \
+                                 '<table>' \
+                                 '<tr><td class="title">Status:</td><td class="value"><span style="color:%s">%s</span></td></tr>' \
+                                 '<tr><td class="title">Last Seen:</td><td class="value">%s</td><td class="ago">%s ago</td></tr>' \
+                                 '<tr><td class="title">Last Paid:</td><td class="value">%s</td><td class="ago">%s ago</td></tr>' \
+                                 '<tr><td class="title">Active Duration:</td><td class="value" colspan="2">%s</td></tr>' \
+                                 '</table>' % \
+                                 (color, mn_info.status, lastseen_str, lastseen_ago, lastpaid_str, lastpaid_ago,
+                                  activeseconds_str)
                     else:
-                        color = 'red'
-                    status = '<style>td {white-space:nowrap;padding-right:8px}' \
-                             '.title {text-align:right;font-weight:bold}' \
-                             '.ago {font-style:italic}' \
-                             '.value {color:navy}' \
-                             '</style>' \
-                             '<table>' \
-                             '<tr><td class="title">Status:</td><td class="value"><span style="color:%s">%s</span></td></tr>' \
-                             '<tr><td class="title">Last Seen:</td><td class="value">%s</td><td class="ago">%s ago</td></tr>' \
-                             '<tr><td class="title">Last Paid:</td><td class="value">%s</td><td class="ago">%s ago</td></tr>' \
-                             '<tr><td class="title">Active Duration:</td><td class="value" colspan="2">%s</td></tr>' \
-                             '</table>' % \
-                             (color, mn_info.status, lastseen_str, lastseen_ago, lastpaid_str, lastpaid_ago,
-                              activeseconds_str)
+                        status = mn_info.status
                 else:
-                    status = mn_info.status
+                    msg = 'Dash daemon returned more than one masternode info. Check the collateral TX ID.'
+                    self.errorMsg(msg)
+                    status = '<span style="color:red">%s</span>' % msg
             else:
-                status = '<span style="color:red">Masternode not found</span>'
+                status = '<span style="color:red">Masternode not found.</span>'
         else:
-            status = '<span style="color:red">Problem with connection to dashd</span>'
+            status = '<span style="color:red">Problem with connection to dashd.</span>'
         return status
 
     @pyqtSlot(bool)
@@ -1457,7 +1468,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 src_addresses.append((self.curMasternode.collateralAddress, self.curMasternode.collateralBip32Path))
                 self.executeTransferFundsDialog(src_addresses)
             else:
-                self.errorMsg("Empty Masternpde collateral's BIP32 path and/or address")
+                self.errorMsg("Empty Masternode collateral's BIP32 path and/or address")
         else:
             self.errorMsg('No masternode selected')
 
@@ -1538,13 +1549,5 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_actProposals_triggered(self):
-        """
-        Open dialog with list of utxos of collateral dash address.
-        :return:
-        """
-        if self.curMasternode and self.curMasternode.collateralAddress:
-            ui = ProposalsDlg(self, self.dashd_intf)
-            if ui.exec_():
-                pass
-        else:
-            logging.warning("curMasternode or collateralAddress empty")
+        ui = ProposalsDlg(self, self.dashd_intf)
+        ui.exec_()

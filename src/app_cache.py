@@ -6,6 +6,7 @@
 """
 Handles caching different data from application forms.   
 """
+import copy
 import json
 import os
 import threading
@@ -38,7 +39,7 @@ class AppCache(object):
     def set_value(self, symbol, value):
         modified = self.__data.get(symbol, None) != value
         if modified:
-            self.__data[symbol] = value
+            self.__data[symbol] = copy.deepcopy(value)
             self.data_changed()
 
     def get_value(self, symbol, default_value, type):

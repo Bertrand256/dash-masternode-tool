@@ -19,6 +19,8 @@ from ui.ui_conn_rpc_wdg import Ui_RpcConnection
 from ui.ui_conn_ssh_wdg import Ui_SshConnection
 from wnd_utils import WndUtils
 
+from src import default_config
+
 
 class SshConnectionWidget(QWidget, Ui_SshConnection):
     def __init__(self, parent):
@@ -30,11 +32,10 @@ class SshConnectionWidget(QWidget, Ui_SshConnection):
         Ui_SshConnection.setupUi(self, self)
 
 
-class RpcConnectionWidget(QWidget, Ui_RpcConnection, WndUtils):
+class RpcConnectionWidget(QWidget, Ui_RpcConnection):
     def __init__(self, parent):
         QWidget.__init__(self, parent=parent)
         Ui_RpcConnection.__init__(self)
-        WndUtils.__init__(self, app_path='')
         self.setupUi()
 
     def setupUi(self):
@@ -45,7 +46,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
     def __init__(self, parent, config):
         QDialog.__init__(self, parent=parent)
         Ui_ConfigDlg.__init__(self)
-        WndUtils.__init__(self, config.app_path)
+        WndUtils.__init__(self, config)
         self.config = config
         self.main_window = parent
         self.local_config = copy.deepcopy(config)
@@ -61,6 +62,8 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         self.accepted.connect(self.on_accepted)
+        self.tabWidget.setCurrentIndex(0)
+
         if sys.platform == 'win32':
             a_link = '<a href="file:///' + self.config.app_config_file_name + '">' + self.config.app_config_file_name + '</a>'
         else:
@@ -150,6 +153,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.btnDeleteConn.setText("\u2796")
         self.btnMoveDownConn.setText("\u2B07")
         self.btnMoveUpConn.setText("\u2B06")
+        self.btnRestoreDefault.setText('\u2606')
         self.rpc_cfg_widget.btnShowPassword.setText("\u29BF")
         self.rpc_cfg_widget.btnShowPassword.pressed.connect(self.on_btnShowPassword_pressed)
         self.rpc_cfg_widget.btnShowPassword.released.connect(self.on_btnShowPassword_released)
@@ -164,6 +168,9 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.chbCheckForUpdates.setChecked(self.local_config.check_for_updates)
         self.chbBackupConfigFile.setChecked(self.local_config.backup_config_file)
         self.chbDontUseFileDialogs.setChecked(self.local_config.dont_use_file_dialogs)
+        self.chbConfirmWhenVoting.setChecked(self.local_config.confirm_when_voting)
+        self.chbAddRandomOffsetToVotingTime.setChecked(self.local_config.add_random_offset_to_vote_time)
+
         idx = {
                 'CRITICAL': 0,
                 'ERROR': 1,
@@ -180,7 +187,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
     def closeEvent(self, event):
         if self.is_modified:
             if self.queryDlg('Configuration modified. Save?',
-                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                             buttons=QMessageBox.Yes | QMessageBox.No,
                              default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
                 self.applyConfigChanges()
 
@@ -258,6 +265,26 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         except Exception as e:
             self.errorMsg(str(e))
 
+    @pyqtSlot()
+    def on_btnRestoreDefault_clicked(self):
+        if self.queryDlg('Do you really want to restore default connection(s)?',
+                         buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                         default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+            cfgs = self.local_config.decode_connections(default_config.dashd_default_connections)
+            if cfgs:
+                # force import default connections if there is no any in the configuration
+                added, updated = self.local_config.import_connections(cfgs, force_import=True)
+                if added or updated:
+                    row_selected = self.lstConns.currentRow()
+                    self.displayConnsConfigs()
+                    self.set_modified()
+                    self.lstConns.setCurrentRow(row_selected)
+                    self.infoMsg('Defualt connections successfully restored.')
+                else:
+                    self.infoMsg('All default connections are already in the connection list.')
+            else:
+                self.warnMsg('Unknown error occurred while restoring default connections.')
+
     def set_modified(self):
         if not self.disable_cfg_update:
             self.is_modified = True
@@ -277,9 +304,12 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.config.check_for_updates = self.local_config.check_for_updates
             self.config.backup_config_file = self.local_config.backup_config_file
             self.config.dont_use_file_dialogs = self.local_config.dont_use_file_dialogs
+            self.config.confirm_when_voting = self.local_config.confirm_when_voting
+            self.config.add_random_offset_to_vote_time = self.local_config.add_random_offset_to_vote_time
             self.config.set_log_level(self.local_config.log_level_str)
             self.config.modified = True
             self.main_window.connsCfgChanged()
+            self.main_window.save_configuration()
 
     def on_accepted(self):
         self.applyConfigChanges()
@@ -345,6 +375,16 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
     @pyqtSlot(bool)
     def on_chbDontUseFileDialogs_toggled(self, checked):
         self.local_config.dont_use_file_dialogs = checked
+        self.set_modified()
+
+    @pyqtSlot(bool)
+    def on_chbConfirmWhenVoting_toggled(self, checked):
+        self.local_config.confirm_when_voting = checked
+        self.set_modified()
+
+    @pyqtSlot(bool)
+    def on_chbAddRandomOffsetToVotingTime_toggled(self, checked):
+        self.local_config.add_random_offset_to_vote_time = checked
         self.set_modified()
 
     @pyqtSlot()

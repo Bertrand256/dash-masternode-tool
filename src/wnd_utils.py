@@ -10,22 +10,24 @@ import traceback
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt, QObject
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap
-from PyQt5.QtWidgets import QMessageBox, QWidget
+from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog
 import math
 import message_dlg
 from thread_fun_dlg import ThreadFunDlg, WorkerThread
 import app_cache as app_cache
 
 
-class WndUtils():
+class WndUtils:
 
-    def __init__(self, app_path=''):
-        self.app_path = app_path
-        pass
+    def __init__(self, app_config=None):
+        self.app_config = app_config
 
     def messageDlg(self, message):
         ui = message_dlg.MessageDlg(self, message)
         ui.exec_()
+
+    def set_app_config(self, app_config):
+        self.app_config = app_config
 
     @staticmethod
     def displayMessage(type, message):
@@ -130,7 +132,9 @@ class WndUtils():
         thread = None
 
         def on_thread_finished_int():
+            logging.info('on_thread_finished_int for: ' + str(worker_fun))
             if thread.worker_exception:
+                logging.info('exception for: ' + str(worker_fun))
                 raise thread.worker_exception
             if on_thread_finish:
                 on_thread_finish()
@@ -141,10 +145,11 @@ class WndUtils():
             st = traceback.format_stack()
             logging.error('Running thread from inside another thread. Stack: \n' + ''.join(st))
 
-        logging.debug('runInThread')
+        logging.info('Begin WorkerThread for: ' + str(worker_fun))
         thread = WorkerThread(worker_fun=worker_fun, worker_fun_args=worker_fun_args)
         thread.finished.connect(on_thread_finished_int)
         thread.start()
+        logging.info('Started WorkerThread for: ' + str(worker_fun))
         return thread
 
     @staticmethod
@@ -154,7 +159,7 @@ class WndUtils():
     def setIcon(self, widget, ico):
         if isinstance(ico, str):
             icon = QIcon()
-            icon.addPixmap(QPixmap(os.path.join(self.app_path, "img/" + ico)))
+            icon.addPixmap(QPixmap(os.path.join(self.app_config.app_path if self.app_config else '', "img/" + ico)))
         else:
             icon = self.style().standardIcon(ico)
         widget.setIcon(icon)
@@ -164,6 +169,71 @@ class WndUtils():
 
     def get_cache_value(self, name, default_value, type):
         return app_cache.get_value(self.__class__.__name__ + '_' + name, default_value, type)
+
+    def open_file_query(self, message, directory='', filter='', initial_filter=''):
+        """
+        Creates an open file dialog for selecting a file or if the user configures not to use graphical dialogs
+          (on some linuxes there are problems with graphic libs and app crashes) - normal input dialog for entering
+          the full path to the file opens instead.
+        :param message:
+        :param directory:
+        :param filter: example: "All Files (*);;Conf files (*.conf)"
+        :param initial_filter: example: "Conf files (*.conf)"
+        :return:
+        """
+        sip_dialog = self.app_config.dont_use_file_dialogs if self.app_config else False
+        file_name = ''
+
+        if sip_dialog:
+            file_name, ok = QInputDialog.getText(self, 'File name query', message)
+            if not ok:
+                file_name = ''
+        else:
+            file = QFileDialog.getOpenFileName(self,
+                                                   caption=message,
+                                                   directory=directory,
+                                                   filter=filter,
+                                                   initialFilter=initial_filter)
+            if len(file) >= 2:
+                file_name = file[0]
+        return file_name
+
+    def save_file_query(self, message, directory='', filter='', initial_filter=''):
+        """
+        Creates an open file dialog for selecting a file or if the user configures not to use graphical dialogs
+          (on some linuxes there are problems with graphic libs and app crashes) - normal input dialog for entering
+          the full path to the file opens instead.
+        :param message:
+        :param directory:
+        :param filter: example: "All Files (*);;Conf files (*.conf)"
+        :param initial_filter: example: "Conf files (*.conf)"
+        :return:
+        """
+        sip_dialog = self.app_config.dont_use_file_dialogs if self.app_config else False
+        file_name = ''
+
+        if sip_dialog:
+            file_name, ok = QInputDialog.getText(self, 'File name query', message)
+            if not ok:
+                file_name = ''
+        else:
+            file = QFileDialog.getSaveFileName(self,
+                                                   caption=message,
+                                                   directory=directory,
+                                                   filter=filter,
+                                                   initialFilter=initial_filter)
+            if len(file) >= 2:
+                file_name = file[0]
+        return file_name
+
+    def write_csv_row(self, file_ptr, elems):
+        """ Writes list of values as a CSV row, converting values as cencessary (if value contains a character used
+        as a CSV ddelimiter).  """
+
+        delim = self.app_config.csv_delimiter if self.app_config else ';'
+        delim_replacement = '_' if delim != '_' else '-'
+        elems = [str(elem if elem is not None else '').replace(delim, delim_replacement) for elem in elems]
+        file_ptr.write(delim.join(elems) + '\n')
 
 
 class ThreadWndUtils(QObject):
