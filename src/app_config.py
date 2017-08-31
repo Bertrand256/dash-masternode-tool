@@ -90,7 +90,6 @@ class AppConfig(object):
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
 
-
         self.log_level_str = 'INFO'
         logging.basicConfig(filename=self.log_file, format='%(asctime)s %(levelname)s | %(funcName)s | %(message)s',
                             level=self.log_level_str, filemode='w', datefmt='%Y-%m-%d %H:%M:%S')
@@ -108,7 +107,6 @@ class AppConfig(object):
             os.makedirs(self.cfg_backup_dir)
 
     def read_from_file(self):
-
         ini_version = None
         was_default_ssh_in_ini_v1 = False
         was_default_direct_localhost_in_ini_v1 = False
@@ -220,7 +218,9 @@ class AppConfig(object):
         try:
             cfgs = self.decode_connections(default_config.dashd_default_connections)
             if cfgs:
-                added, updated = self.import_connections(cfgs, force_import=False)
+                # force import default connections if there is no any in the configuration
+                force_import = (len(self.dash_net_configs) == 0)
+                added, updated = self.import_connections(cfgs, force_import=force_import)
                 if not ini_version or (ini_version == 1 and len(added) > 0):
                     # we are migrating from config.ini version 1
                     if was_default_ssh_in_ini_v1:

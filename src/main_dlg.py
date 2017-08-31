@@ -615,7 +615,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 logging.info('Connecting to hardware wallet device')
                 self.hw_client = connect_hw(self.config.hw_type, self.askForPinCallback, self.askForPassCallback)
                 if self.hw_client:
-                    logging.info('Connected do hardware wallet')
+                    logging.info('Connected to a hardware wallet')
                     self.setStatus2Text('<b>HW status:</b> connected to %s' % self.hw_client.features.label, 'green')
                     self.updateControlsState()
                     return True
