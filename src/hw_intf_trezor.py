@@ -3,6 +3,7 @@
 # Author: Bertrand256
 # Created on: 2017-03
 import json
+import simplejson
 import binascii
 from trezorlib.client import TextUIMixin as trezor_TextUIMixin
 from trezorlib.client import ProtocolMixin as trezor_ProtocolMixin
@@ -70,7 +71,14 @@ def connect_trezor(ask_for_pin_fun, ask_for_pass_fun):
         if transport:
             logging.info('Transport is OK')
             client = MyTrezorClient(transport, ask_for_pin_fun, ask_for_pass_fun)
-            logging.info('Returning client')
+            logging.info('Trezor connected. Firmware version: %s.%s.%s, vendor: %s, initialized: %s, '
+                         'pp_protection: %s, pp_cached: %s, bootloader_mode: %s ' %
+                         (str(client.features.major_version),
+                          str(client.features.minor_version),
+                          str(client.features.patch_version), str(client.features.vendor),
+                          str(client.features.initialized),
+                          str(client.features.passphrase_protection), str(client.features.passphrase_cached),
+                          str(client.features.bootloader_mode)))
             return client
         else:
             logging.warning('Transport is None')
@@ -103,7 +111,8 @@ class MyTxApiInsight(TxApiInsight):
         if self.cache_dir:
             cache_file = '%s/%s_%s_%s.json' % (self.cache_dir, self.network, resource, resourceid)
             try: # looking into cache first
-                j = json.load(open(cache_file))
+                j = simplejson.load(open(cache_file))
+                logging.info('Loaded transaction from existing file: ' + cache_file)
                 return j
             except:
                 pass
@@ -113,7 +122,7 @@ class MyTxApiInsight(TxApiInsight):
             raise
         if cache_file:
             try: # saving into cache
-                json.dump(j, open(cache_file, 'w'))
+                simplejson.dump(j, open(cache_file, 'w'))
             except Exception as e:
                 pass
         return j
@@ -134,12 +143,19 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
     inputs = []
     outputs = []
     amt = 0
-    for utxo in utxos_to_spend:
+    for utxo_index, utxo in enumerate(utxos_to_spend):
         if not utxo.get('bip32_path', None):
             raise Exception('No BIP32 path for UTXO ' + utxo['txid'])
         address_n = client.expand_path(utxo['bip32_path'])
         it = proto_types.TxInputType(address_n=address_n, prev_hash=binascii.unhexlify(utxo['txid']),
-                                     prev_index=utxo['outputIndex'])
+                                     prev_index=int(utxo['outputIndex']))
+        logging.info('BIP32 path: %s, address_n: %s, utxo_index: %s, prev_hash: %s, prev_index %s' %
+                      (utxo['bip32_path'],
+                       str(address_n),
+                       str(utxo_index),
+                       utxo['txid'],
+                       str(utxo['outputIndex'])
+                      ))
         inputs.append(it)
         amt += utxo['satoshis']
     amt -= tx_fee
@@ -149,16 +165,20 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
     # https://github.com/dashpay/dash/blob/master/src/chainparams.cpp#L140
     if dest_address.startswith('7'):
         stype = proto_types.PAYTOSCRIPTHASH
+        logging.info('Transaction type: PAYTOSCRIPTHASH' + str(stype))
     else:
         stype = proto_types.PAYTOADDRESS
+        logging.info('Transaction type: PAYTOADDRESS ' + str(stype))
 
     ot = proto_types.TxOutputType(
         address=dest_address,
         amount=amt,
         script_type=stype
     )
+    logging.info('dest_address length: ' + str(len(dest_address)))
     outputs.append(ot)
     signed = client.sign_tx('Dash', inputs, outputs)
+    logging.info('Signed transaction')
     return signed[1], amt
 
 
