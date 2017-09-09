@@ -7,6 +7,7 @@ import os
 import threading
 import traceback
 
+import time
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt, QObject
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap
@@ -242,7 +243,7 @@ class ThreadWndUtils(QObject):
     """
 
     # signal for calling specified function in the main thread
-    fun_call_signal = QtCore.pyqtSignal(object, object, object)
+    fun_call_signal = QtCore.pyqtSignal(object, object)
 
     def __init__(self):
         QObject.__init__(self)
@@ -251,10 +252,9 @@ class ThreadWndUtils(QObject):
         self.fun_call_ret_value = None
         self.fun_call_exception = None
 
-    def funCallSignalled(self, wait_condition, fun_to_call, args):
+    def funCallSignalled(self, fun_to_call, args):
         """
         Function-event executed in the main thread as a result of emiting signal fun_call_signal from BG threads.
-        :param wait_condition: QtCore.QWaitCondition - calling thread waits on this object until function  
         :param fun_to_call: ref to a function which is to be called
         :param args: args passed to the function fun_to_call
         :return: return value from fun_to_call
@@ -262,10 +262,10 @@ class ThreadWndUtils(QObject):
         try:
             self.fun_call_ret_value = fun_to_call(*args)
         except Exception as e:
-            print('ThreadWndUtils.funCallSignal error: %s' % str(e))
+            logging.exception('ThreadWndUtils.funCallSignal error: %s' % str(e))
             self.fun_call_exception = e
         finally:
-            wait_condition.wakeAll()
+            self.mutex.unlock()
 
     def callFunInTheMainThread(self, fun_to_call, *args):
         """
@@ -279,27 +279,32 @@ class ThreadWndUtils(QObject):
         ret = None
         try:
             if threading.current_thread() != threading.main_thread():
-                waitCondition = QtCore.QWaitCondition()
                 self.mutex.lock()
+                locked = False
                 try:
                     self.fun_call_exception = None
                     self.fun_call_ret_value = None
 
                     # emit signal to call the function fun in the main thread
-                    self.fun_call_signal.emit(waitCondition, fun_to_call, args)
+                    self.fun_call_signal.emit(fun_to_call, args)
 
-                    # wait for the function to finish
-                    waitCondition.wait(self.mutex)
+                    # wait for the function to finish; lock will be successful only when the first lock
+                    # made a few lines above is released in the funCallSignalled method
+                    locked = self.mutex.tryLock(5000)  # wait 5 seconds max
+                    if not locked:
+                        logging.exception("Problem communicating with the main thread - couldn't lock mutex.")
+                        raise Exception("Problem communicating with the main thread - couldn't lock mutex.")
                     ret = self.fun_call_ret_value
                 finally:
-                    self.mutex.unlock()
+                    if locked:
+                        self.mutex.unlock()
                 if self.fun_call_exception:
                     # if there was an exception in the fun, pass it to the calling code
                     exception_to_rethrow = self.fun_call_exception
             else:
                 return fun_to_call(*args)
         except Exception as e:
-            print('ThreadWndUtils.callFunInTheMainThread error: %s' % str(e))
+            logging.exception('ThreadWndUtils.callFunInTheMainThread error: %s' % str(e))
             raise
 
         if exception_to_rethrow:

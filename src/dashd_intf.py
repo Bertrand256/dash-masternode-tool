@@ -326,16 +326,19 @@ def control_rpc_call(func):
             try:
                 try:
                     logging.info('Beginning call of "' + str(func) + '"')
+                    begin_time = time.time()
                     ret = func(*args, **kwargs)
-                    logging.info('Ended call of "' + str(func) + '"' )
+                    logging.info('Ended call of "' + str(func) + '". Call time: ' + str(time.time() - begin_time)
+                                 + 's.')
                     last_exception = None
                     self.mark_cur_conn_cfg_is_ok()
                     break
                 except (ConnectionResetError, ConnectionAbortedError, httplib.CannotSendRequest, BrokenPipeError) as e:
+                    logging.error('Error while calling of "' + str(func) + '". Details: ' + str(e))
                     last_exception = e
                     self.http_conn.close()
-                    logging.info('Error while calling of "' + str(func) + '". Details: ' + str(e))
                 except JSONRPCException as e:
+                    logging.error('Error while calling of "' + str(func) + '". Details: ' + str(e))
                     if e.code == -5 and e.message == 'No information available for address':
                         raise DashdIndexException(e)
                     elif e.error.get('message','').find('403 Forbidden'):
@@ -343,21 +346,24 @@ def control_rpc_call(func):
                         raise DashdConnectionError(e)
                     else:
                         self.http_conn.close()
-                    logging.info('Error while calling of "' + str(func) + '". Details: ' + str(e))
 
                 except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
                     # exceptions raised by not likely functioning dashd node; try to switch to another node
                     # if there is any in the config
-                    logging.info('Error while calling of "' + str(func) + '". Details: ' + str(e))
+                    logging.error('Error while calling of "' + str(func) + '". Details: ' + str(e))
                     raise DashdConnectionError(e)
 
             except DashdConnectionError as e:
                 # try another net config if possible
+                logging.error('Error while calling of "' + str(func) + '". Details: ' + str(e))
                 if not self.switch_to_next_config():
                     self.last_error_message = str(e.org_exception)
                     raise e.org_exception  # couldn't use another conn config, raise last exception
                 else:
                     try_nr -= 1  # another config retries do not count
+            except:
+                logging.exception('Error while calling of "' + str(func) + '". Details: ' + str(e))
+                raise
 
         if last_exception:
             raise last_exception

@@ -18,7 +18,7 @@ from PyQt5.QtChart import QChart, QChartView, QLineSeries, QDateTimeAxis, QValue
 from PyQt5.QtCore import Qt, pyqtSlot, QVariant, QAbstractTableModel, QSortFilterProxyModel, \
     QDateTime, QLocale
 from PyQt5.QtGui import QColor, QPainter, QPen
-from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QMessageBox
+from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QMessageBox, QTableView, QAbstractItemView
 import wnd_utils as wnd_utils
 import dash_utils
 from app_config import DATETIME_FORMAT
@@ -266,6 +266,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.votesProxyModel = None
         self.last_chart_type = None
         self.last_chart_proposal = None
+        self.controls_initialized = False
         self.vote_chart = QChart()
         self.vote_chart_view = QChartView(self.vote_chart)
 
@@ -429,6 +430,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.propsView.setSortingEnabled(True)
             self.propsView.horizontalHeader().setSectionsMovable(True)
             self.propsView.horizontalHeader().sectionMoved.connect(self.on_propsViewColumnMoved)
+            self.propsView.focusInEvent = self.focusInEvent
+            self.propsView.focusOutEvent = self.focusOutEvent
 
             # create model serving data to the view
             self.propsModel = ProposalsModel(self, self.columns, self.proposals)
@@ -549,6 +552,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                              (COLOR_YES, COLOR_NO, COLOR_ABSTAIN))
                 if len(self.users_masternodes) > 0:
                     self.tabsDetails.setTabEnabled(1, True)
+                self.controls_initialized = True
 
             def read_voting_from_network():
                 """ Called after finished reading proposals data from the Dash network. It invokes a thread
@@ -1102,6 +1106,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     self.errorMsg('Error while retrieving proposals data: ' + str(e))
         except Exception as e:
             logging.exception('Exception while reading data.')
+            self.errorMsg(str(e))
         finally:
             self.display_message("")
 
@@ -1179,9 +1184,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     for row_idx, prop in enumerate(proposals):
 
                         self.display_message('Reading voting data %d of %d' % (row_idx+1, len(proposals)))
-                        logging.debug('Reading votes for proposal ' + prop.get_value('hash'))
                         votes = self.dashd_intf.gobject("getvotes", prop.get_value('hash'))
-                        logging.debug('Votes read finished')
 
                         for v_key in votes:
                             v = votes[v_key]
@@ -1295,13 +1298,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             if refresh_preview_votes:
                 def refresh_votes_view():
                     self.votesModel.refresh_view()
+                    self.draw_chart(force=True)
 
                 logging.info('WndUtils.callFunInTheMainThread(refresh_votes_view) 1')
                 WndUtils.callFunInTheMainThread(refresh_votes_view)
                 logging.info('WndUtils.callFunInTheMainThread(refresh_votes_view) 2')
         except Exception as e:
             logging.exception('Exception while refreshing voting data grid.')
-        logging.info('Finishing reading voting data from network.')
+        logging.info('Finished reading voting data from network.')
 
     def display_proposals_data(self):
         try:
@@ -1348,7 +1352,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             live_proposals = []  # refresh "live" proposals only
             for prop in self.proposals:
-                if prop.voting_in_progress:
+                if prop.voting_in_progress or prop.voting_last_read_time == 0:
                     live_proposals.append(prop)
 
             if len(live_proposals) > 0:
@@ -1373,6 +1377,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def refresh_vote_tab(self):
         """ Refresh data displayed on the user-voting tab. Executed after changing focused proposal and after
         submitting a new votes. """
+        if not self.controls_initialized:
+            return
 
         if self.current_proposal is None or not self.current_proposal.voting_in_progress:
             for user_mn in self.users_masternodes:
@@ -1403,29 +1409,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def on_propsView_currentChanged(self, new_index, old_index):
         """ Triggered when changing focused row in proposals' grid. """
 
-        def correct_hyperlink_color_focused(prop):
-            """ On proposals' grid there are some columns displaying hyperlinks. When rows are focused though, default
-            colors make it hard to read: both, background and font are blue. To make it readable, set font's color to
-            white."""
-            if prop:
-                url = prop.get_value('url')
-                if url:
-                    if prop.name_col_widget:
-                        prop.name_col_widget.setText('<a href="%s" style="color:white">%s</a>' %
-                                                     (url, prop.get_value('name')))
-                    if prop.url_col_widget:
-                        prop.url_col_widget.setText('<a href="%s" style="color:white">%s</a>' % (url, url))
-
-        def correct_hyperlink_color_nonfocused(prop):
-            """ After loosing focus, restore hyperlink's font color."""
-            if prop:
-                url = prop.get_value('url')
-                if url:
-                    if prop.name_col_widget:
-                        prop.name_col_widget.setText('<a href="%s">%s</a>' % (url, prop.get_value('name')))
-                    if prop.url_col_widget:
-                        prop.url_col_widget.setText('<a href="%s">%s</a>' % (url, url))
-
         try:
             new_row = None
             old_row = None
@@ -1445,16 +1428,62 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     self.votesModel.set_proposal(self.current_proposal)
                 else:
                     if 0 <= new_row < len(self.proposals):
-                        correct_hyperlink_color_nonfocused(self.current_proposal)
+                        prev_proposal = self.current_proposal
                         self.current_proposal = self.proposals[new_row]  # show the details
                         self.votesModel.set_proposal(self.current_proposal)
-                        correct_hyperlink_color_focused(self.current_proposal)
+                        self.correct_proposal_hyperlink_color(self.current_proposal)
+                        self.correct_proposal_hyperlink_color(prev_proposal)
                 self.refresh_vote_tab()
 
                 self.refresh_preview_panel()
         except Exception as e:
             logging.exception('Exception while changing proposal selected.')
             self.errorMsg('Problem while refreshing data in the details panel: ' + str(e))
+
+    def correct_proposal_hyperlink_color(self, proposal):
+        """ When:
+              a) proposal is active and
+                a1) props grid is focused, font color of hyperlinks is white
+                a2) props grid is not focused, color of hyperlinks is default
+              b) proposal is inactive (not selected), font color of hyperlinks is default
+        """
+        def correct_hyperlink_color_active_row(prop):
+            """ On proposals' grid there are some columns displaying hyperlinks. When rows are focused though, default
+            colors make it hard to read: both, background and font are blue. To make it readable, set font's color to
+            white."""
+            if prop:
+                url = prop.get_value('url')
+                if url:
+                    if prop.name_col_widget:
+                        prop.name_col_widget.setText('<a href="%s" style="color:white">%s</a>' %
+                                                     (url, prop.get_value('name')))
+                    if prop.url_col_widget:
+                        prop.url_col_widget.setText('<a href="%s" style="color:white">%s</a>' % (url, url))
+
+        def correct_hyperlink_color_inactive_row(prop):
+            """ After loosing focus, restore hyperlink's font color."""
+            if prop:
+                url = prop.get_value('url')
+                if url:
+                    if prop.name_col_widget:
+                        prop.name_col_widget.setText('<a href="%s">%s</a>' % (url, prop.get_value('name')))
+                    if prop.url_col_widget:
+                        prop.url_col_widget.setText('<a href="%s">%s</a>' % (url, url))
+
+        if proposal == self.current_proposal and self.propsView.hasFocus():
+            correct_hyperlink_color_active_row(proposal)
+        else:
+            correct_hyperlink_color_inactive_row(proposal)
+
+    def focusInEvent(self, event):
+        QTableView.focusInEvent(self.propsView, event)
+        if self.current_proposal:
+            self.correct_proposal_hyperlink_color(self.current_proposal)
+
+    def focusOutEvent(self, event):
+        QTableView.focusOutEvent(self.propsView, event)
+        if self.current_proposal:
+            self.correct_proposal_hyperlink_color(self.current_proposal)
 
     def refresh_preview_panel(self):
         if self.current_proposal:
@@ -1485,7 +1514,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.lblDetailsCollateralHash.setText(hash)
         self.draw_chart()
 
-    def draw_chart(self):
+    def draw_chart(self, force=False):
         try:
             if self.rbVotesChartIncremental.isChecked():
                 new_chart_type = 1
@@ -1496,7 +1525,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             else:
                 new_chart_type = -1
 
-            if self.last_chart_proposal == self.current_proposal and self.last_chart_type == new_chart_type:
+            if (self.last_chart_proposal == self.current_proposal and self.last_chart_type == new_chart_type) \
+                and force is False:
                 return
 
             self.last_chart_proposal = self.current_proposal
@@ -2368,7 +2398,7 @@ class VotesModel(QAbstractTableModel):
 
         return QVariant()
 
-    def th_read_votes(self):
+    def read_votes(self):
         db_conn = None
         try:
             self.votes.clear()
@@ -2415,7 +2445,7 @@ class VotesModel(QAbstractTableModel):
             self.th_read_votes()
 
     def refresh_view(self):
-        self.th_read_votes()
+        self.read_votes()
         self.beginResetModel()
         self.endResetModel()
 

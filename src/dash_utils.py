@@ -203,7 +203,7 @@ def seconds_to_human(number_of_seconds, out_seconds=True, out_minutes=True, out_
     days = 0
     hours = 0
     if number_of_seconds > 604800:
-        # days
+        # weeks
         weeks = int(number_of_seconds / 604800)
         number_of_seconds = number_of_seconds - (weeks * 604800)
         elem_str = str(int(weeks)) + ' week'
@@ -220,7 +220,7 @@ def seconds_to_human(number_of_seconds, out_seconds=True, out_minutes=True, out_
             elem_str += 's'
         human_strings.append(elem_str)
 
-    if (out_hours and weeks + days > 0) and number_of_seconds > 3600:
+    if out_hours and number_of_seconds > 3600:
         hours = int(number_of_seconds / 3600)
         number_of_seconds = number_of_seconds - (hours * 3600)
         elem_str = str(int(hours)) + ' hour'
@@ -228,7 +228,7 @@ def seconds_to_human(number_of_seconds, out_seconds=True, out_minutes=True, out_
             elem_str += 's'
         human_strings.append(elem_str)
 
-    if (out_minutes and weeks + days + hours > 0) and number_of_seconds > 60:
+    if out_minutes and number_of_seconds > 60:
         minutes = int(number_of_seconds / 60)
         number_of_seconds = number_of_seconds - (minutes * 60)
         elem_str = str(int(minutes)) + ' minute'
