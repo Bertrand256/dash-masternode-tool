@@ -465,11 +465,13 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
                 try:
                     # for each utxo read block time
+                    cur_block_height = self.dashd_intf.getblockcount()
+
                     for idx, utxo in enumerate(self.utxos):
                         blockhash = self.dashd_intf.getblockhash(utxo.get('height'))
                         bh = self.dashd_intf.getblockheader(blockhash)
                         utxo['time_str'] = datetime.datetime.fromtimestamp(bh['time']).strftime(DATETIME_FORMAT)
-                        utxo['confirmations'] = bh.get('confirmations')
+                        utxo['confirmations'] = cur_block_height - bh.get('height') + 1
                         utxo['coinbase_locked'] = False
 
                         try:
