@@ -290,10 +290,14 @@ class ThreadWndUtils(QObject):
 
                     # wait for the function to finish; lock will be successful only when the first lock
                     # made a few lines above is released in the funCallSignalled method
-                    locked = self.mutex.tryLock(5000)  # wait 5 seconds max
+                    tm_begin = time.time()
+                    locked = self.mutex.tryLock(3600)  # wait 1h max
+                    tm_diff = time.time() - tm_begin
                     if not locked:
-                        logging.exception("Problem communicating with the main thread - couldn't lock mutex.")
-                        raise Exception("Problem communicating with the main thread - couldn't lock mutex.")
+                        logging.exception("Problem communicating with the main thread - couldn't lock mutex. Lock "
+                                          "wait time: %ss." % str(tm_diff))
+                        raise Exception("Problem communicating with the main thread - couldn't lock mutex. Lock "
+                                        "wait time: %ss." % str(tm_diff))
                     ret = self.fun_call_ret_value
                 finally:
                     if locked:

@@ -174,12 +174,15 @@ class Proposal(AttrsProtected):
             self.voting_in_progress = False
 
         abs_yes_count = self.get_value('absolute_yes_count')
-        mns_count = len(masternodes)
+        mns_count = 0
+        for mn in masternodes:
+            if mn.status in ('ENABLED', 'PRE_ENABLED'):
+                mns_count += 1
         if self.voting_in_progress:
             if abs_yes_count >= mns_count * 0.1:
                 self.voting_status = 1  # will be funded
-                self.set_value('voting_status_caption', 'Will be funded (%d of %d needed)' %
-                               (abs_yes_count, int(mns_count * 0.1)))
+                self.set_value('voting_status_caption', 'Passing +%d (%d of %d needed)' %
+                               (abs_yes_count - int(mns_count * 0.1), abs_yes_count, int(mns_count * 0.1)))
             else:
                 self.voting_status = 2  # needs additional votes
                 self.set_value('voting_status_caption', 'Needs additional %d votes' % (int(mns_count * 0.1) -
