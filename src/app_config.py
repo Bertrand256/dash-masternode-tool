@@ -108,7 +108,7 @@ class AppConfig(object):
             os.makedirs(self.log_dir)
 
         self.log_level_str = 'INFO'
-        logging.basicConfig(filename=self.log_file, format='%(asctime)s %(levelname)s | %(funcName)s | %(message)s',
+        logging.basicConfig(filename=self.log_file, format='%(asctime)s %(levelname)s |%(threadName)s| %(funcName)s | %(message)s',
                             level=self.log_level_str, filemode='w', datefmt='%Y-%m-%d %H:%M:%S')
         logging.info('App started')
 

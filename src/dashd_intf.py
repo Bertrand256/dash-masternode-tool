@@ -322,48 +322,55 @@ def control_rpc_call(func):
         last_exception = None
         self = args[0]
         self.mark_call_begin()
-        for try_nr in range(1, 5):
-            try:
+        try:
+            logging.info('Trying to acquire http_lock')
+            self.http_lock.acquire()
+            logging.info('Acquired http_lock')
+            for try_nr in range(1, 5):
                 try:
-                    logging.info('Beginning call of "' + str(func) + '"')
-                    begin_time = time.time()
-                    ret = func(*args, **kwargs)
-                    logging.info('Ended call of "' + str(func) + '". Call time: ' + str(time.time() - begin_time)
-                                 + 's.')
-                    last_exception = None
-                    self.mark_cur_conn_cfg_is_ok()
-                    break
-                except (ConnectionResetError, ConnectionAbortedError, httplib.CannotSendRequest, BrokenPipeError) as e:
-                    logging.error('Error while calling of "' + str(func) + '". Details: ' + str(e))
-                    last_exception = e
-                    self.http_conn.close()
-                except JSONRPCException as e:
-                    logging.error('Error while calling of "' + str(func) + '". Details: ' + str(e))
-                    if e.code == -5 and e.message == 'No information available for address':
-                        raise DashdIndexException(e)
-                    elif e.error.get('message','').find('403 Forbidden'):
+                    try:
+                        logging.info('Beginning call of "' + str(func) + '"')
+                        begin_time = time.time()
+                        ret = func(*args, **kwargs)
+                        logging.info('Ended call of "' + str(func) + '". Call time: ' + str(time.time() - begin_time)
+                                     + 's.')
+                        last_exception = None
+                        self.mark_cur_conn_cfg_is_ok()
+                        break
+                    except (ConnectionResetError, ConnectionAbortedError, httplib.CannotSendRequest, BrokenPipeError) as e:
+                        logging.error('Error while calling of "' + str(func) + '". Details: ' + str(e))
+                        last_exception = e
                         self.http_conn.close()
+                    except JSONRPCException as e:
+                        logging.error('Error while calling of "' + str(func) + '". Details: ' + str(e))
+                        if e.code == -5 and e.message == 'No information available for address':
+                            raise DashdIndexException(e)
+                        elif e.error.get('message','').find('403 Forbidden'):
+                            self.http_conn.close()
+                            raise DashdConnectionError(e)
+                        else:
+                            self.http_conn.close()
+
+                    except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
+                        # exceptions raised by not likely functioning dashd node; try to switch to another node
+                        # if there is any in the config
+                        logging.error('Error while calling of "' + str(func) + '". Details: ' + str(e))
                         raise DashdConnectionError(e)
-                    else:
-                        self.http_conn.close()
 
-                except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
-                    # exceptions raised by not likely functioning dashd node; try to switch to another node
-                    # if there is any in the config
+                except DashdConnectionError as e:
+                    # try another net config if possible
                     logging.error('Error while calling of "' + str(func) + '". Details: ' + str(e))
-                    raise DashdConnectionError(e)
-
-            except DashdConnectionError as e:
-                # try another net config if possible
-                logging.error('Error while calling of "' + str(func) + '". Details: ' + str(e))
-                if not self.switch_to_next_config():
-                    self.last_error_message = str(e.org_exception)
-                    raise e.org_exception  # couldn't use another conn config, raise last exception
-                else:
-                    try_nr -= 1  # another config retries do not count
-            except:
-                logging.exception('Error while calling of "' + str(func) + '". Details: ' + str(e))
-                raise
+                    if not self.switch_to_next_config():
+                        self.last_error_message = str(e.org_exception)
+                        raise e.org_exception  # couldn't use another conn config, raise last exception
+                    else:
+                        try_nr -= 1  # another config retries do not count
+                except Exception as e:
+                    logging.exception('Error while calling of "' + str(func) + '". Details: ' + str(e))
+                    raise
+        finally:
+            self.http_lock.release()
+            logging.info('Released http_lock')
 
         if last_exception:
             raise last_exception
@@ -462,6 +469,7 @@ class DashdInterface(WndUtils):
         self.last_error_message = None
         self.db_active = False
         self.governanceinfo = None  # cached result of getgovernanceinfo query
+        self.http_lock = threading.Lock()
 
         # open and initialize database for caching masternode data
         db_conn = None
