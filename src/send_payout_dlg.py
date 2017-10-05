@@ -22,8 +22,7 @@ from hw_intf import prepare_transfer_tx, hw_get_address, expand_path
 from wnd_utils import WndUtils
 from ui import ui_send_payout_dlg
 from hw_common import HardwareWalletPinException
-
-from src.app_config import SCREENSHOT_MODE
+from app_config import SCREENSHOT_MODE
 
 
 class PaymentTableModel(QAbstractTableModel):

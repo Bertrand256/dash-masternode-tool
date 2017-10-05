@@ -326,6 +326,13 @@
           </widget>
          </item>
          <item>
+          <widget class="QRadioButton" name="chbHwLedgerNanoS">
+           <property name="text">
+            <string>Ledger Nano S (starting mn)</string>
+           </property>
+          </widget>
+         </item>
+         <item>
           <spacer name="horizontalSpacer_2">
            <property name="orientation">
             <enum>Qt::Horizontal</enum>

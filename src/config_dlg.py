@@ -3,9 +3,7 @@
 # Author: Bertrand256
 # Created on: 2017-05
 import copy
-
 import sys
-
 import logging
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt, pyqtSlot, QPoint
@@ -18,8 +16,8 @@ from ui.ui_config_dlg import Ui_ConfigDlg
 from ui.ui_conn_rpc_wdg import Ui_RpcConnection
 from ui.ui_conn_ssh_wdg import Ui_SshConnection
 from wnd_utils import WndUtils
-
-from src import default_config
+import default_config
+from app_config import HWType
 
 
 class SshConnectionWidget(QWidget, Ui_SshConnection):
@@ -161,10 +159,12 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         if len(self.local_config.dash_net_configs):
             self.lstConns.setCurrentRow(0)
 
-        if self.local_config.hw_type == 'TREZOR':
+        if self.local_config.hw_type == HWType.trezor:
             self.chbHwTrezor.setChecked(True)
-        else:
+        elif self.local_config.hw_type == HWType.keepkey:
             self.chbHwKeepKey.setChecked(True)
+        else:
+            self.chbHwLedgerNanoS.setChecked(True)
         self.chbCheckForUpdates.setChecked(self.local_config.check_for_updates)
         self.chbBackupConfigFile.setChecked(self.local_config.backup_config_file)
         self.chbDontUseFileDialogs.setChecked(self.local_config.dont_use_file_dialogs)
@@ -201,13 +201,26 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             item.checkState()
             self.lstConns.addItem(item)
 
+    def on_HwType_toggled(self):
+        if self.chbHwTrezor.isChecked():
+            self.local_config.hw_type = HWType.trezor
+        elif self.chbHwKeepKey.isChecked():
+            self.local_config.hw_type = HWType.keepkey
+        else:
+            self.local_config.hw_type = HWType.ledger_nano_s
+        self.set_modified()
+
     @pyqtSlot(bool)
     def on_chbHwTrezor_toggled(self):
-        if self.chbHwTrezor.isChecked():
-            self.local_config.hw_type = 'TREZOR'
-        else:
-            self.local_config.hw_type = 'KEEPKEY'
-        self.set_modified()
+        self.on_HwType_toggled()
+
+    @pyqtSlot(bool)
+    def on_chbHwKeepKey_toggled(self):
+        self.on_HwType_toggled()
+
+    @pyqtSlot(bool)
+    def on_chbHwLedgerNanoS_toggled(self):
+        self.on_HwType_toggled()
 
     @pyqtSlot(QPoint)
     def on_lstConns_customContextMenuRequested(self, point):

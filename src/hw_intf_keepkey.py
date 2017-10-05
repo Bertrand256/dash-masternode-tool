@@ -53,29 +53,31 @@ class MyKeepkeyClient(keepkey_ProtocolMixin, MyKeepkeyTextUIMixin, keepkey_BaseC
 
 
 def connect_keepkey(ask_for_pin_fun, ask_for_pass_fun):
-    try:
-        def get_transport():
-            from keepkeylib.transport_hid import HidTransport
-            count = len(HidTransport.enumerate())
-            if not count:
-                logging.warning('Number of Keepkey devices: 0')
-            for d in HidTransport.enumerate():
-                transport = HidTransport(d)
-                return transport
+    """
+    Connect to a Keepkey device.
+    :param ask_for_pin_fun: ref to a function displaying a dialog asking the user for a pin (Trezor and Keepkey)
+    :param ask_for_pass_fun: ref to a function displaying a dialog asking the user for a passphrase (Trezor and Keepkey)
+    :return: ref to a keepkey client if connection successfull or None if we are sure that no Keepkey device connected.
+    """
 
-        # HidTransport.enumerate() has to be called in the main thread - second call from bg thread
-        # causes SIGSEGV
-        transport = WndUtils.callFunInTheMainThread(get_transport)
+    def get_transport():
+        from keepkeylib.transport_hid import HidTransport
+        count = len(HidTransport.enumerate())
+        if not count:
+            logging.warning('Number of Keepkey devices: 0')
+        for d in HidTransport.enumerate():
+            transport = HidTransport(d)
+            return transport
 
-        if transport:
-            client = MyKeepkeyClient(transport, ask_for_pin_fun, ask_for_pass_fun)
-            return client
-        else:
-            return None
+    # HidTransport.enumerate() has to be called in the main thread - second call from bg thread
+    # causes SIGSEGV
+    transport = WndUtils.callFunInTheMainThread(get_transport)
 
-    except Exception as e:
-        logging.exception("Exception occurred")
-        raise
+    if transport:
+        client = MyKeepkeyClient(transport, ask_for_pin_fun, ask_for_pass_fun)
+        return client
+    else:
+        logging.warning('Transport is None')
 
 
 def reconnect_keepkey(client, ask_for_pin_fun, ask_for_pass_fun):

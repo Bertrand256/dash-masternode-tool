@@ -7,8 +7,8 @@ from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import QSize, pyqtSlot
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QDialog, QLayout, QStyle
-from src.ui import ui_columns_cfg_dlg
-from src.wnd_utils import WndUtils
+from ui import ui_columns_cfg_dlg
+from wnd_utils import WndUtils
 
 
 class ColumnsConfigDlg(QDialog, ui_columns_cfg_dlg.Ui_ColumnsConfigDlg, WndUtils):

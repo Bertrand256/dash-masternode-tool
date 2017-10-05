@@ -32,20 +32,18 @@ import hw_pass_dlg
 import hw_pin_dlg
 import send_payout_dlg
 from proposals_dlg import ProposalsDlg
-from app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG, APP_NAME_SHORT, DATE_FORMAT, DATETIME_FORMAT
+from app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG, APP_NAME_SHORT, DATE_FORMAT, DATETIME_FORMAT, \
+    PROJECT_URL
 from dash_utils import bip32_path_n_to_string
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_common import HardwareWalletCancelException, HardwareWalletPinException
-from hw_intf import connect_hw, hw_get_address, disconnect_hw, ping, expand_path
+import hw_intf
 from hw_setup_dlg import HwSetupDlg
 from psw_cache import SshPassCache
 from sign_message_dlg import SignMessageDlg
 from wnd_utils import WndUtils
 from ui import ui_main_dlg
-from message_dlg import MessageDlg
-
-
-PROJECT_URL = 'https://github.com/Bertrand256/dash-masternode-tool'
+from app_config import HWType
 
 
 class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
@@ -586,10 +584,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             set_message(text, color, style)
 
     def getHwName(self):
-        if self.config.hw_type == 'TREZOR':
+        if self.config.hw_type == HWType.trezor:
             return 'Trezor'
-        else:
+        elif self.config.hw_type == HWType.keepkey:
             return 'KeepKey'
+        elif self.config.hw_type == HWType.ledger_nano_s:
+            return 'Ledger Nano S'
+        else:
+            return 'Unknown HW Type'
 
     def connectHardwareWallet(self):
         """
@@ -597,29 +599,26 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         :return: True, if successfully connected, False if not
         """
         if self.hw_client:
-            t = type(self.hw_client).__name__
-            cur_hw_type = ''
-            if t.lower().find('trezor') >= 0:
-                cur_hw_type = 'TREZOR'
-            elif t.lower().find('keepkey') >= 0:
-                cur_hw_type = 'KEEPKEY'
+            cur_hw_type = hw_intf.get_hw_type(self.hw_client)
             if self.config.hw_type != cur_hw_type:
                 self.on_btnHwDisconnect_clicked()
 
         if not self.hw_client:
             try:
                 if sys.platform == 'linux':
-                    if (self.config.hw_type == 'TREZOR' and 'keepkeylib' in sys.modules.keys()) or \
-                       (self.config.hw_type == 'KEEPKEY' and 'trezorlib' in sys.modules.keys()):
+                    if (self.config.hw_type == HWType.trezor and 'keepkeylib' in sys.modules.keys()) or \
+                       (self.config.hw_type == HWType.keepkey and 'trezorlib' in sys.modules.keys()):
                         self.warnMsg('On linux OS switching between hardware wallets requires reastarting the '
                                      'application.\n\nPlease restart the application to continue.')
                         return False
 
                 logging.info('Connecting to hardware wallet device')
-                self.hw_client = connect_hw(self.config.hw_type, self.askForPinCallback, self.askForPassCallback)
+                self.hw_client = hw_intf.connect_hw(self.config.hw_type, self.askForPinCallback,
+                                                    self.askForPassCallback)
                 if self.hw_client:
                     logging.info('Connected to a hardware wallet')
-                    self.setStatus2Text('<b>HW status:</b> connected to %s' % self.hw_client.features.label, 'green')
+                    self.setStatus2Text('<b>HW status:</b> connected to %s' % hw_intf.get_hw_label(self, self.hw_client),
+                                        'green')
                     self.updateControlsState()
                     return True
                 else:
@@ -653,18 +652,23 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.updateControlsState()
         if self.hw_client:
             try:
-                features = self.hw_client.features
-                ping(self, 'Hello, press the button', button_protection=False,
-                      pin_protection=features.pin_protection,
-                      passphrase_protection=features.passphrase_protection)
-                self.infoMsg('Connection to %s device (%s) successful.' % (self.getHwName(), features.label))
+                if self.config.hw_type in (HWType.trezor, HWType.keepkey):
+                    features = self.hw_client.features
+                    hw_intf.ping(self, 'Hello, press the button', button_protection=False,
+                          pin_protection=features.pin_protection,
+                          passphrase_protection=features.passphrase_protection)
+                    self.infoMsg('Connection to %s device (%s) successful.' %
+                                 (self.getHwName(), hw_intf.get_hw_label(self, self.hw_client)))
+                elif self.config.hw_type == HWType.ledger_nano_s:
+                    self.infoMsg('Connection to %s device successful.' %
+                                 (self.getHwName(),))
             except HardwareWalletCancelException:
                 if self.hw_client:
                     self.hw_client.init_device()
 
     def disconnectHardwareWallet(self):
         if self.hw_client:
-            disconnect_hw(self.hw_client)
+            hw_intf.disconnect_hw(self.hw_client)
             del self.hw_client
             self.hw_client = None
             self.setStatus2Text('<b>HW status:</b> idle', 'black')
@@ -726,7 +730,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 address_n = [2147483692,  # 44'
                              2147483653,  # 5'
                             ]
-                addr_of_cur_path = hw_get_address(self, address_n)
+                addr_of_cur_path = hw_intf.hw_get_address(self, address_n)
                 b32cache = self.bip32_cache.get(addr_of_cur_path, None)
                 modified_b32cache = False
                 cache_file = os.path.join(self.config.cache_dir, 'bip32cache_%s.json' % addr_of_cur_path)
@@ -780,7 +784,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                     # first, find dash address in cache by bip32 path
                                     addr_of_cur_path = b32cache.get(cur_bip32_path, None)
                                     if not addr_of_cur_path:
-                                        addr_of_cur_path = hw_get_address(self, address_n)
+                                        addr_of_cur_path = hw_intf.hw_get_address(self, address_n)
                                         b32cache[cur_bip32_path] = addr_of_cur_path
                                         modified_b32cache = True
 
@@ -1129,8 +1133,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if not self.hw_client:
                 return
             if self.curMasternode and self.curMasternode.collateralBip32Path:
-                address_n = expand_path(self, self.curMasternode.collateralBip32Path)
-                dash_addr = hw_get_address(self, address_n)
+                address_n = hw_intf.expand_path(self, self.curMasternode.collateralBip32Path)
+                dash_addr = hw_intf.hw_get_address(self, address_n)
                 self.edtMnCollateralAddress.setText(dash_addr)
                 self.curMasternode.collateralAddress = dash_addr
                 self.updateControlsState()
@@ -1241,8 +1245,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 ipv6map += i.to_bytes(1, byteorder='big')[::-1].hex()
             ipv6map += int(self.curMasternode.port).to_bytes(2, byteorder='big').hex()
 
-            address_n = expand_path(self, self.curMasternode.collateralBip32Path)
-            dash_addr = hw_get_address(self, address_n)
+            address_n = hw_intf.expand_path(self, self.curMasternode.collateralBip32Path)
+            dash_addr = hw_intf.hw_get_address(self, address_n)
             if not self.curMasternode.collateralAddress:
                 # if mn config's collateral address is empty, assign that from hardware wallet
                 self.curMasternode.collateralAddress = dash_addr
@@ -1316,7 +1320,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 binascii.unhexlify(bitcoin.hash160(bytes.fromhex(mn_pubkey)))[::-1].hex() + \
                                 str(info['protocolversion'])
 
-            sig = self.hw_client.sign_message('Dash', address_n, serialize_for_sig)
+            sig = hw_intf.sign_message(self, self.curMasternode.collateralBip32Path, serialize_for_sig)
             if sig.address != dash_addr:
                 self.errorMsg('%s address mismatch after signing.' % self.getHwName())
                 return

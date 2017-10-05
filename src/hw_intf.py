@@ -4,6 +4,7 @@
 # Created on: 2017-03
 from hw_common import HardwareWalletPinException
 import logging
+from app_config import HWType
 
 
 def control_hw_call(func):
@@ -22,7 +23,7 @@ def control_hw_call(func):
             raise Exception('Not connected to Hardware Wallet')
         try:
 
-            if main_ui.config.hw_type == 'TREZOR':
+            if main_ui.config.hw_type == HWType.trezor:
 
                 import hw_intf_trezor as trezor
                 import trezorlib.client as client
@@ -31,7 +32,7 @@ def control_hw_call(func):
                 except client.PinException as e:
                     raise HardwareWalletPinException(e.args[1])
 
-            elif main_ui.config.hw_type == 'KEEPKEY':
+            elif main_ui.config.hw_type == HWType.keepkey:
 
                 import hw_intf_keepkey as keepkey
                 import keepkeylib.client as client
@@ -39,6 +40,13 @@ def control_hw_call(func):
                     ret = func(*args, **kwargs)
                 except client.PinException as e:
                     raise HardwareWalletPinException(e.args[1])
+
+            elif main_ui.config.hw_type == HWType.ledger_nano_s:
+
+                ret = func(*args, **kwargs)
+
+            else:
+                raise Exception('Uknown hardware wallet type: ' + main_ui.config.hw_type)
 
         except OSError as e:
             logging.exception('Exception calling %s function' % func.__name__)
@@ -59,35 +67,82 @@ def control_hw_call(func):
 
 
 def connect_hw(hw_type, ask_for_pin_fun, ask_for_pass_fun):
-    try:
-        if hw_type == 'TREZOR':
-            import hw_intf_trezor as trezor
-            import trezorlib.client as client
-            try:
-                return trezor.connect_trezor(ask_for_pin_fun, ask_for_pass_fun)
-            except client.PinException as e:
-                raise HardwareWalletPinException(e.args[1])
-        elif hw_type == 'KEEPKEY':
-            import hw_intf_keepkey as keepkey
-            import keepkeylib.client as client
-            try:
-                return keepkey.connect_keepkey(ask_for_pin_fun, ask_for_pass_fun)
-            except client.PinException as e:
-                raise HardwareWalletPinException(e.args[1])
+    if hw_type == HWType.trezor:
+        import hw_intf_trezor as trezor
+        import trezorlib.client as client
+        try:
+            return trezor.connect_trezor(ask_for_pin_fun, ask_for_pass_fun)
+        except client.PinException as e:
+            raise HardwareWalletPinException(e.args[1])
+
+    elif hw_type == HWType.keepkey:
+        import hw_intf_keepkey as keepkey
+        import keepkeylib.client as client
+        try:
+            return keepkey.connect_keepkey(ask_for_pin_fun, ask_for_pass_fun)
+        except client.PinException as e:
+            raise HardwareWalletPinException(e.args[1])
+
+    elif hw_type == HWType.ledger_nano_s:
+        import hw_intf_ledgernano as ledger
+        return ledger.connect_ledgernano()
+
+    else:
+        raise Exception('Unsupported HW type: ' + str(hw_type))
+
+
+def get_hw_type(hw_client):
+    """
+    Return hardware wallet type (HWType) based on reference to a hw client.
+    """
+    if hw_client:
+        t = type(hw_client).__name__
+
+        if t.lower().find('trezor') >= 0:
+            return HWType.trezor
+        elif t.lower().find('keepkey') >= 0:
+            return HWType.keepkey
+        elif t.lower().find('btchip') >= 0:
+            return HWType.ledger_nano_s
         else:
-            logging.error('Unsupported HW type: ' + str(hw_type))
-    except:
-        logging.exception('Exception occurred')
-        raise
+            raise Exception('Unknown hardware wallet type')
+    else:
+        raise Exception('Hardware wallet not connected')
 
 
-def disconnect_hw(client):
+def disconnect_hw(hw_client):
     try:
-        client.clear_session()
-        client.close()
+        hw_type = get_hw_type(hw_client)
+        if hw_type in (HWType.trezor, HWType.keepkey):
+            hw_client.clear_session()
+            hw_client.close()
+        elif hw_type == HWType.ledger_nano_s:
+            hw_client.dongle.close()
     except Exception as e:
-        # HW must have been disconnected before
+        # probably already disconnected
         logging.exception('Disconnect HW error')
+
+
+@control_hw_call
+def get_hw_label(main_ui, hw_client):
+    hw_type = get_hw_type(hw_client)
+    if hw_type in (HWType.trezor, HWType.keepkey):
+        return hw_client.features.label
+    elif hw_type == HWType.ledger_nano_s:
+        return 'Ledger Nano S'
+
+
+@control_hw_call
+def get_hw_firmware_version(main_ui, hw_client):
+    hw_type = get_hw_type(hw_client)
+    if hw_type in (HWType.trezor, HWType.keepkey):
+
+        return str(hw_client.features.major_version) + '.' + str(hw_client.features.minor_version) + '.' + \
+                   str(hw_client.features.patch_version)
+
+    elif hw_type == HWType.ledger_nano_s:
+
+        return hw_client.getFirmwareVersion().get('version')
 
 
 @control_hw_call
@@ -107,15 +162,19 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
     :param tx_fee: transaction fee
     :return: tuple (serialized tx, total transaction amount in satoshis)
     """
-    if main_ui.config.hw_type == 'TREZOR':
+    if main_ui.config.hw_type == HWType.trezor:
         import hw_intf_trezor as trezor
 
         return trezor.prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee)
 
-    elif main_ui.config.hw_type == 'KEEPKEY':
+    elif main_ui.config.hw_type == HWType.keepkey:
         import hw_intf_keepkey as keepkey
 
         return keepkey.prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee)
+
+    elif main_ui.config.hw_type == HWType.ledger_nano_s:
+        #todo: not implemented
+        pass
 
     else:
         logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
@@ -123,31 +182,40 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
 
 @control_hw_call
 def sign_message(main_ui, bip32path, message):
-    if main_ui.config.hw_type == 'TREZOR':
+    if main_ui.config.hw_type == HWType.trezor:
         import hw_intf_trezor as trezor
 
         return trezor.sign_message(main_ui, bip32path, message)
 
-    elif main_ui.config.hw_type == 'KEEPKEY':
+    elif main_ui.config.hw_type == HWType.keepkey:
         import hw_intf_keepkey as keepkey
 
         return keepkey.sign_message(main_ui, bip32path, message)
 
+    elif main_ui.config.hw_type == HWType.ledger_nano_s:
+        import hw_intf_ledgernano as ledger
+
+        return ledger.sign_message(main_ui, bip32path, message)
     else:
         logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
 
 
 @control_hw_call
 def change_pin(main_ui, remove=False):
-    if main_ui.config.hw_type == 'TREZOR':
+    if main_ui.config.hw_type == HWType.trezor:
         import hw_intf_trezor as trezor
 
         return trezor.change_pin(main_ui, remove)
 
-    elif main_ui.config.hw_type == 'KEEPKEY':
+    elif main_ui.config.hw_type == HWType.keepkey:
         import hw_intf_keepkey as keepkey
 
         return keepkey.change_pin(main_ui, remove)
+
+    elif main_ui.config.hw_type == HWType.ledger_nano_s:
+        # todo: not implemented
+        pass
+
     else:
         logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
 

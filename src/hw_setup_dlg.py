@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-04
-
+from PyQt5.QtCore import pyqtSlot
 from PyQt5.QtWidgets import QMessageBox, QDialog, QLayout
 import hw_intf as hw_intf
 import wnd_utils as wnd_utils
+from app_config import HWType
 from ui import ui_hw_setup_dlg
 
 
@@ -16,96 +17,122 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
         self.main_ui = main_ui
         self.main_ui.connectHardwareWallet()
         self.hw_client = self.main_ui.hw_client
-        self.features = None
         self.version = '?'
+        self.pin_protection = None
+        self.passphrase_protection = None
         if self.hw_client:
-            self.features = self.hw_client.features
-            self.version = str(self.features.major_version) + '.' + str(self.features.minor_version) + '.' + \
-                           str(self.features.patch_version)
+            self.version = hw_intf.get_hw_firmware_version(main_ui, self.hw_client)
+            self.read_hw_features()
         self.setupUi()
 
     def setupUi(self):
         ui_hw_setup_dlg.Ui_HwSetupDlg.setupUi(self, self)
         self.setWindowTitle('Hardware Wallet Setup')
         self.lblVersion.setText(self.version)
-        self.btnClose.clicked.connect(self.close)
-        self.btnEnDisPin.clicked.connect(self.btnEnDisPinClick)
-        self.btnChangePin.clicked.connect(self.btnChangePinClick)
-        self.btnEnDisPass.clicked.connect(self.btnEnDisPassClick)
+        # self.btnEnDisPin.clicked.connect(self.btnEnDisPinClick)
+        # self.btnChangePin.clicked.connect(self.btnChangePinClick)
+        # self.btnEnDisPass.clicked.connect(self.btnEnDisPassClick)
         self.updateControlsState()
+        if self.main_ui.config.hw_type == HWType.ledger_nano_s:
+            self.lblMessage.setVisible(True)
+        else:
+            self.lblMessage.setVisible(False)
         self.layout().setSizeConstraint(QLayout.SetFixedSize)
 
     def updateControlsState(self):
         if self.hw_client:
-            if self.features.pin_protection:
+            if self.pin_protection is True:
                 self.lblPinStatus.setText('enabled')
                 self.btnEnDisPin.setText('Disable')
                 self.btnChangePin.setEnabled(True)
                 self.lblPinStatus.setStyleSheet('QLabel{color: green}')
-            else:
+            elif self.pin_protection is False:
                 self.lblPinStatus.setText('disabled')
                 self.btnEnDisPin.setText('Enable')
                 self.btnChangePin.setEnabled(False)
                 self.lblPinStatus.setStyleSheet('QLabel{color: red}')
+            else:
+                self.lblPinStatus.setVisible(False)
+                self.lblPinStatusLabel.setVisible(False)
+                self.btnEnDisPin.setVisible(False)
+                self.btnChangePin.setVisible(False)
 
-            if self.features.passphrase_protection:
+            if self.passphrase_protection is True:
                 self.lblPassStatus.setText('enabled')
                 self.lblPassStatus.setStyleSheet('QLabel{color: green}')
                 self.btnEnDisPass.setText('Disable')
-            else:
+            elif self.passphrase_protection is False:
                 self.lblPassStatus.setText('disabled')
                 self.lblPassStatus.setStyleSheet('QLabel{color: red}')
                 self.btnEnDisPass.setText('Enable')
+            else:
+                self.lblPassStatus.setVisible(False)
+                self.lblPassStatusLabel.setVisible(False)
+                self.lblPassStatus.setVisible(False)
+                self.btnEnDisPass.setVisible(False)
 
-    def btnEnDisPinClick(self):
+    def read_hw_features(self):
+        if self.main_ui.config.hw_type in (HWType.trezor, HWType.keepkey):
+            features = self.hw_client.features
+            self.pin_protection = features.pin_protection
+            self.passphrase_protection = features.passphrase_protection
+
+    @pyqtSlot()
+    def on_btnEnDisPin_clicked(self):
         try:
             if self.hw_client:
-                if self.features.pin_protection:
+                if self.pin_protection is True:
                     # disable
                     if self.queryDlg('Do you really want to disable PIN protection of your %s?' % self.main_ui.getHwName(),
                                      buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
                                      icon=QMessageBox.Warning) == QMessageBox.Yes:
                         hw_intf.change_pin(self.main_ui, remove=True)
-                        self.features = self.hw_client.features
+                        self.read_hw_features()
                         self.updateControlsState()
-                else:
+                elif self.pin_protection is False:
                     # enable PIN
                     hw_intf.change_pin(self.main_ui, remove=False)
-                    self.features = self.hw_client.features
+                    self.read_hw_features()
                     self.updateControlsState()
 
         except Exception as e:
             self.errorMsg(str(e))
 
-    def btnChangePinClick(self):
+    @pyqtSlot()
+    def on_btnChangePin_clicked(self):
         try:
-            if self.hw_client and self.features.pin_protection:
+            if self.hw_client and self.pin_protection is True:
                 hw_intf.change_pin(self.main_ui, remove=False)
-                self.features = self.hw_client.features
+                self.read_hw_features()
                 self.updateControlsState()
 
         except Exception as e:
             self.errorMsg(str(e))
 
-    def btnEnDisPassClick(self):
+    @pyqtSlot()
+    def on_btnEnDisPass_clicked(self):
         try:
             if self.hw_client:
-                if self.features.passphrase_protection:
+                if self.passphrase_protection is True:
                     # disable passphrase
                     if self.queryDlg('Do you really want to disable passphrase protection of your %s?' % self.main_ui.getHwName(),
                                      buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
                                      icon=QMessageBox.Warning) == QMessageBox.Yes:
                         self.hw_client.apply_settings(use_passphrase=False)
-                        self.features = self.hw_client.features
+                        self.read_hw_features()
                         self.updateControlsState()
-                else:
+                elif self.passphrase_protection is False:
                     # enable passphrase
                     if self.queryDlg('Do you really want to enable passphrase protection of your %s?' % self.main_ui.getHwName(),
                                      buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
                                      icon=QMessageBox.Warning) == QMessageBox.Yes:
                         self.hw_client.apply_settings(use_passphrase=True)
-                        self.features = self.hw_client.features
+                        self.read_hw_features()
                         self.updateControlsState()
 
         except Exception as e:
             self.errorMsg(str(e))
+
+    @pyqtSlot()
+    def on_buttonBox_accepted(self):
+        self.accept()
