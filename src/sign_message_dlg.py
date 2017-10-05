@@ -6,7 +6,7 @@
 import base64
 from PyQt5.QtWidgets import QDialog
 import wnd_utils as wnd_utils
-from hw_intf import sign_message
+import hw_intf
 from ui import ui_sign_message_dlg
 import logging
 
@@ -30,7 +30,7 @@ class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.W
         try:
             msg_to_sign = self.edtMessageToSign.toPlainText()
             if msg_to_sign:
-                sig = sign_message(self.main_ui, self.bip32path, msg_to_sign)
+                sig = hw_intf.sign_message(self.main_ui, self.bip32path, msg_to_sign)
                 signed = base64.b64encode(sig.signature)
                 # hex_message = binascii.hexlify(sig.signature).decode('base64')
                 self.edtSignedMessage.setPlainText(signed.decode('ascii'))

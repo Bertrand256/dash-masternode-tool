@@ -777,6 +777,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 else:
                     is_new = False
                 prop.marker = True
+                h = prop_raw['Hash']
 
                 prop.set_value('name', prop_data['name'])
                 prop.set_value('payment_start', datetime.datetime.fromtimestamp(int(prop_data['start_epoch'])))

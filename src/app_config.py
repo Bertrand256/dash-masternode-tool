@@ -15,6 +15,7 @@ from random import randint
 from shutil import copyfile
 import logging
 import bitcoin
+from enum import Enum
 from PyQt5.QtCore import QLocale
 from dash_utils import encrypt, decrypt
 import app_cache as cache
@@ -23,11 +24,19 @@ import default_config
 
 APP_NAME_SHORT = 'DashMasternodeTool'
 APP_NAME_LONG = 'Dash Masternode Tool'
+PROJECT_URL = 'https://github.com/Bertrand256/dash-masternode-tool'
 MIN_TX_FEE = 10000
 APP_CFG_CUR_VERSION = 2  # current version of configuration file format
 DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
 DATE_FORMAT = '%Y-%m-%d'
 SCREENSHOT_MODE = False
+
+
+class HWType:
+    trezor = 'TREZOR'
+    keepkey = 'KEEPKEY'
+    ledger_nano_s = 'LEDGERNANOS'
+
 
 class AppConfig(object):
     def __init__(self, app_path):
@@ -52,7 +61,7 @@ class AppConfig(object):
         # connections
         self.defective_net_configs = []
 
-        self.hw_type = 'TREZOR'  # TREZOR or KEEPKEY
+        self.hw_type = HWType.trezor  # TREZOR, KEEPKEY, LEDGERNANOS
         self.block_explorer_tx = 'https://chainz.cryptoid.info/dash/tx.dws?%TXID%'
         self.block_explorer_addr = 'https://chainz.cryptoid.info/dash/address.dws?%ADDRESS%'
 
@@ -199,9 +208,11 @@ class AppConfig(object):
                 if not self.last_bip32_base_path:
                     self.last_bip32_base_path = "44'/5'/0'/0/0"
                 self.bip32_recursive_search = config.getboolean(section, 'bip32_recursive', fallback=True)
-                self.hw_type = config.get(section, 'hw_type', fallback="TREZOR")
-                if self.hw_type not in ('TREZOR', 'KEEPKEY'):
-                    self.hw_type = 'TREZOR'
+                self.hw_type = config.get(section, 'hw_type', fallback=HWType.trezor)
+                if self.hw_type not in (HWType.trezor, HWType.keepkey, HWType.ledger_nano_s):
+                    logging.warning('Invalid hardware wallet type: ' + self.hw_type)
+                    self.hw_type = HWType.trezor
+
                 self.random_dash_net_config = self.value_to_bool(config.get(section, 'random_dash_net_config',
                                                                             fallback='1'))
                 self.check_for_updates = self.value_to_bool(config.get(section, 'check_for_updates', fallback='1'))
