@@ -1,8 +1,7 @@
 from btchip.btchip import *
 from btchip.btchipComm import getDongle
 import logging
-
-from dash_utils import pubkey_to_address
+from btchip.btchipUtils import compress_public_key
 
 
 def connect_ledgernano():
@@ -44,3 +43,15 @@ def sign_message(main_ui, bip32path, message):
         pubkey.get('address').decode('ascii'),
         bytes(chr(27 + 4 + (signature[0] & 0x01)), "utf-8") + r + s
     )
+
+def get_address_and_pubkey(client, bip32_path):
+    bip32_path.strip()
+    if bip32_path.lower().find('m/') >= 0:
+        bip32_path = bip32_path[2:]
+
+    nodedata = client.getWalletPublicKey(bip32_path)
+
+    return {
+        'address': nodedata.get('address').decode('utf-8'),
+        'publicKey': compress_public_key(nodedata.get('publicKey'))
+    }

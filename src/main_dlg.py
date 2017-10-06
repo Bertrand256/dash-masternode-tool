@@ -462,19 +462,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         # if a thread waiting for dashd to finish synchronizing is running, call the callback function
                         call_on_check_finished()
                 else:
-                    #todo: sometimes thre is deadlock in gui so now we are turning off threading until finding a solution
-
-                    # logging.info("starting connect_finished")
-                    # self.check_conn_thread = self.runInThread(connect_thread, (), on_thread_finish=connect_finished)
-                    # if wait_for_check_finish:
-                    #     logging.info("entering event_loop")
-                    #     event_loop.exec()
-                    #     logging.info("left event_loop")
-
-                    # todo: temporary non threaded version:
-                    connect_thread({})
-                    if call_on_check_finished:
-                        call_on_check_finished()
+                    self.check_conn_thread = self.runInThread(connect_thread, (), on_thread_finish=connect_finished)
+                    if wait_for_check_finish:
+                        logging.info("entering event_loop")
+                        event_loop.exec()
+                        logging.info("left event_loop")
+                    # connect_thread({})
+                    # if call_on_check_finished:
+                    #     call_on_check_finished()
         else:
             # configuration is not complete
             logging.warning("config not complete")
@@ -1245,8 +1240,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 ipv6map += i.to_bytes(1, byteorder='big')[::-1].hex()
             ipv6map += int(self.curMasternode.port).to_bytes(2, byteorder='big').hex()
 
-            address_n = hw_intf.expand_path(self, self.curMasternode.collateralBip32Path)
-            dash_addr = hw_intf.hw_get_address(self, address_n)
+            addr = hw_intf.get_address_and_pubkey(self, self.curMasternode.collateralBip32Path)
+            dash_addr = addr.get('address')
+            collateral_pubkey = addr.get('publicKey')
+
             if not self.curMasternode.collateralAddress:
                 # if mn config's collateral address is empty, assign that from hardware wallet
                 self.curMasternode.collateralAddress = dash_addr
@@ -1309,22 +1306,24 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
                     return
 
-            collateral_pubkey = self.hw_client.get_public_node(address_n).node.public_key.hex()
-            collateral_in = dash_utils.num_to_varint(len(collateral_pubkey) / 2).hex() + collateral_pubkey
+            collateral_in = dash_utils.num_to_varint(len(collateral_pubkey)).hex() + collateral_pubkey.hex()
             delegate_in = dash_utils.num_to_varint(len(mn_pubkey) / 2).hex() + mn_pubkey
             info = self.dashd_intf.getinfo()
             sig_time = int(time.time())
 
             serialize_for_sig = self.curMasternode.ip + ':' + self.curMasternode.port + str(int(sig_time)) + \
-                                binascii.unhexlify(bitcoin.hash160(bytes.fromhex(collateral_pubkey)))[::-1].hex() + \
+                                binascii.unhexlify(bitcoin.hash160(collateral_pubkey))[::-1].hex() + \
                                 binascii.unhexlify(bitcoin.hash160(bytes.fromhex(mn_pubkey)))[::-1].hex() + \
                                 str(info['protocolversion'])
 
             sig = hw_intf.sign_message(self, self.curMasternode.collateralBip32Path, serialize_for_sig)
+
             if sig.address != dash_addr:
                 self.errorMsg('%s address mismatch after signing.' % self.getHwName())
                 return
             sig1 = sig.signature.hex()
+            logging.debug('Start MN message signature: ' + sig.signature.hex())
+            logging.debug('Start MN message sig_time: ' + str(sig_time))
 
             work_sig_time = sig_time.to_bytes(8, byteorder='big')[::-1].hex()
             work_protoversion = int(info['protocolversion']).to_bytes(4, byteorder='big')[::-1].hex()
@@ -1338,6 +1337,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
             r = dash_utils.ecdsa_sign(last_ping_serialize_for_sig, self.curMasternode.privateKey)
             sig2 = (base64.b64decode(r).hex())
+            logging.debug('Start MN message signature2: ' + sig2)
 
             work = vintx + vinno + vinsig + vinseq \
                    + ipv6map + collateral_in + delegate_in \
@@ -1386,7 +1386,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 else:
                     self.errorMsg('Failed to start masternode.\n\nResponse from Dash daemon: %s.' % errorMessage)
             else:
-                self.errorMsg(ret['overall'])
+                logging.error('Start MN error: ' + str(ret))
+                errorMessage = ret[list(ret.keys())[0]].get('errorMessage')
+                self.errorMsg(errorMessage)
 
         except HardwareWalletCancelException:
             if self.hw_client:

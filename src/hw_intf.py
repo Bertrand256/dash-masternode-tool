@@ -173,31 +173,38 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
         return keepkey.prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee)
 
     elif main_ui.config.hw_type == HWType.ledger_nano_s:
-        #todo: not implemented
-        pass
-
+        raise Exception('Ledger Nano S not supported yet.')
     else:
         logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
 
 
 @control_hw_call
 def sign_message(main_ui, bip32path, message):
-    if main_ui.config.hw_type == HWType.trezor:
-        import hw_intf_trezor as trezor
+    def sign(ctrl):
+        ctrl.dlg_config_fun(dlg_title="Click the confirmation button.", show_progress_bar=False)
+        ctrl.display_msg_fun('Confirm message signing on your hardware wallet...')
 
-        return trezor.sign_message(main_ui, bip32path, message)
+        if main_ui.config.hw_type == HWType.trezor:
+            import hw_intf_trezor as trezor
 
-    elif main_ui.config.hw_type == HWType.keepkey:
-        import hw_intf_keepkey as keepkey
+            return trezor.sign_message(main_ui, bip32path, message)
 
-        return keepkey.sign_message(main_ui, bip32path, message)
+        elif main_ui.config.hw_type == HWType.keepkey:
+            import hw_intf_keepkey as keepkey
 
-    elif main_ui.config.hw_type == HWType.ledger_nano_s:
-        import hw_intf_ledgernano as ledger
+            return keepkey.sign_message(main_ui, bip32path, message)
 
-        return ledger.sign_message(main_ui, bip32path, message)
-    else:
-        logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
+        elif main_ui.config.hw_type == HWType.ledger_nano_s:
+            import hw_intf_ledgernano as ledger
+
+            return ledger.sign_message(main_ui, bip32path, message)
+        else:
+            logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
+
+    # execute the 'sign' function, but due to the fact that the call blocks the UI until the user clicks the HW
+    # button, it's done inside a thread within a dialog that shows an appropriate message to the user
+    sig = main_ui.threadFunctionDialog(sign, (), True, center_by_window=main_ui)
+    return sig
 
 
 @control_hw_call
@@ -213,8 +220,8 @@ def change_pin(main_ui, remove=False):
         return keepkey.change_pin(main_ui, remove)
 
     elif main_ui.config.hw_type == HWType.ledger_nano_s:
-        # todo: not implemented
-        pass
+
+        raise Exception('Ledger Nano S not supported yet.')
 
     else:
         logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
@@ -238,3 +245,27 @@ def expand_path(main_ui, bip32_path):
             bip32_path = bip32_path[2:]
         return client.expand_path(bip32_path)
 
+
+@control_hw_call
+def get_address_and_pubkey(main_ui, bip32_path):
+    client = main_ui.hw_client
+    if client:
+        bip32_path.strip()
+        if bip32_path.lower().find('m/') >= 0:
+            # removing m/ prefix because of keepkey library
+            bip32_path = bip32_path[2:]
+
+        if main_ui.config.hw_type in (HWType.trezor, HWType.keepkey):
+            address_n = client.expand_path(bip32_path)
+
+            return {
+                'address': client.get_address('Dash', address_n, False),
+                'publicKey': client.get_public_node(address_n).node.public_key
+            }
+
+        elif main_ui.config.hw_type == HWType.ledger_nano_s:
+            import hw_intf_ledgernano as ledger
+
+            return ledger.get_address_and_pubkey(client, bip32_path)
+        else:
+            raise Exception('Unknown hwardware wallet type: ' + main_ui.config.hw_type)
