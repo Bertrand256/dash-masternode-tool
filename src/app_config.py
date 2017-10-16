@@ -7,8 +7,7 @@ import datetime
 import json
 import os
 import re
-import sqlite3
-import sys
+import copy
 from configparser import ConfigParser
 from os.path import expanduser
 from random import randint
@@ -20,7 +19,7 @@ from PyQt5.QtCore import QLocale
 from dash_utils import encrypt, decrypt
 import app_cache as cache
 import default_config
-
+from db_intf import DBCache
 
 APP_NAME_SHORT = 'DashMasternodeTool'
 APP_NAME_LONG = 'Dash Masternode Tool'
@@ -39,8 +38,9 @@ class HWType:
 
 
 class AppConfig(object):
-    def __init__(self, app_path):
-        self.app_path = app_path
+    def __init__(self):
+        self.initialized = False
+        self.app_path = ''  # will be passed in the init method
         self.log_level_str = 'WARNING'
         QLocale.setDefault(self.get_default_locale())
 
@@ -76,6 +76,18 @@ class AppConfig(object):
         self.last_bip32_base_path = ''
         self.bip32_recursive_search = True
         self.modified = False
+        self.cache_dir = ''
+        self.app_config_file_name = ''
+        self.log_dir = ''
+        self.log_file = ''
+        self.log_level_str = ''
+        self.db_cache_file_name = ''
+        self.cfg_backup_dir = ''
+
+    def init(self, app_path):
+        """ Initialize configuration after openning the application. """
+        self.app_path = app_path
+
         home_dir = expanduser('~')
         app_user_dir = os.path.join(home_dir, APP_NAME_SHORT)
         if not os.path.exists(app_user_dir):
@@ -99,17 +111,6 @@ class AppConfig(object):
         if not self.app_config_file_name:
             self.app_config_file_name = os.path.join(app_user_dir, 'config.ini')
 
-        # database (SQLITE) cache for caching bigger datasets:
-        self.db_cache_file_name = os.path.join(self.cache_dir, 'dmt_cache.db')
-        db_conn = None
-        try:
-            db_conn = sqlite3.connect(self.db_cache_file_name)
-        except Exception as e:
-            logging.exception('SQLite initialization error')
-        finally:
-            if db_conn:
-                db_conn.close()
-
         # setup logging
         self.log_dir = os.path.join(app_user_dir, 'logs')
         self.log_file = os.path.join(self.log_dir, 'dmt.log')
@@ -117,9 +118,17 @@ class AppConfig(object):
             os.makedirs(self.log_dir)
 
         self.log_level_str = 'INFO'
-        logging.basicConfig(filename=self.log_file, format='%(asctime)s %(levelname)s |%(threadName)s| %(funcName)s | %(message)s',
+        logging.basicConfig(filename=self.log_file, format='%(asctime)s %(levelname)s |%(threadName)s |%(filename)s |%(funcName)s |%(message)s',
                             level=self.log_level_str, filemode='w', datefmt='%Y-%m-%d %H:%M:%S')
         logging.info('App started')
+
+        # database (SQLITE) cache for caching bigger datasets:
+        self.db_cache_file_name = os.path.join(self.cache_dir, 'dmt_cache.db')
+
+        try:
+            self.db_intf = DBCache(self.db_cache_file_name)
+        except Exception as e:
+            logging.exception('SQLite initialization error')
 
         try:
             # read configuration from a file
@@ -131,6 +140,30 @@ class AppConfig(object):
         self.cfg_backup_dir = os.path.join(app_user_dir, 'backup')
         if not os.path.exists(self.cfg_backup_dir):
             os.makedirs(self.cfg_backup_dir)
+        self.initialized = True
+
+    def close(self):
+        self.db_intf.close()
+
+    def copy_from(self, src_config):
+        self.dash_net_configs = copy.deepcopy(src_config.dash_net_configs)
+        self.random_dash_net_config = src_config.random_dash_net_config
+        self.hw_type = src_config.hw_type
+        self.block_explorer_tx = src_config.block_explorer_tx
+        self.block_explorer_addr = src_config.block_explorer_addr
+        self.check_for_updates = src_config.check_for_updates
+        self.backup_config_file = src_config.backup_config_file
+        self.dont_use_file_dialogs = src_config.dont_use_file_dialogs
+        self.confirm_when_voting = src_config.confirm_when_voting
+        self.add_random_offset_to_vote_time = src_config.add_random_offset_to_vote_time
+        self.csv_delimiter = src_config.csv_delimiter
+        if self.initialized:
+            # self.set_log_level reconfigures the logger configuration so call this function
+            # if this object is the main AppConfig object (it's initialized)
+            self.set_log_level(src_config.log_level_str)
+        else:
+            # ... otherwise just copy attribute without reconfiguring logger
+            self.log_level_str = src_config.log_level_str
 
     def get_default_locale(self):
         if SCREENSHOT_MODE:

@@ -41,9 +41,9 @@ add_files = [
  ('version.txt', '')
 ]
 
+lib_path = next(p for p in sys.path if 'site-packages' in p)
 if os_type == 'win32':
 
-    lib_path = os.path.join(base_dir, 'venv\\win%s\\Lib\\site-packages' % no_bits)
     qt5_path = os.path.join(lib_path, 'PyQt5\\Qt\\bin')
     sys.path.append(qt5_path)
 
@@ -58,17 +58,6 @@ if os_type == 'win32':
             break
     if not found:
         raise Exception('File vcruntime140.dll not found in the system path.')
-
-elif os_type == 'darwin':
-
-    lib_path = os.path.join(base_dir, 'venv/mac/lib/python3.5/site-packages')
-
-elif os_type == 'linux':
-
-    lib_path = os.path.join(base_dir, 'venv/linux/lib/python3.5/site-packages')
-
-else:
-    raise Exception('Unsupported OS: %s' % os_type)
 
 # add bitcoin library data file
 add_files.append( (os.path.join(lib_path, 'bitcoin/english.txt'),'/bitcoin') )
@@ -125,7 +114,7 @@ if os_type == 'win32':
     os.system('"C:\\Program Files\\7-Zip\\7z.exe" a %s %s -mx0' % (os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.win' + no_bits + '.zip'),  'DashMasternodeTool.exe'))
 elif os_type == 'darwin':
     print('Compressing Mac executable')
-    os.system('zip -r %s %s' % (os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.mac.zip'),  'DashMasternodeTool.app'))
+    os.system('zip -r "%s" "%s"' % (os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.mac.zip'),  'DashMasternodeTool.app'))
 elif os_type == 'linux':
     print('Compressing Linux executable')
     os.system('tar -zcvf %s %s' % (os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.linux.tar.gz'),  'DashMasternodeTool'))

@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_ProposalsDlg(object):
     def setupUi(self, ProposalsDlg):
         ProposalsDlg.setObjectName("ProposalsDlg")
-        ProposalsDlg.resize(928, 605)
+        ProposalsDlg.resize(932, 605)
         ProposalsDlg.setModal(True)
         self.verticalLayout = QtWidgets.QVBoxLayout(ProposalsDlg)
         self.verticalLayout.setContentsMargins(3, 3, 3, 3)
@@ -51,7 +51,7 @@ class Ui_ProposalsDlg(object):
         self.detailsSplitter.setObjectName("detailsSplitter")
         self.propsView = QtWidgets.QTableView(self.detailsSplitter)
         self.propsView.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContentsOnFirstShow)
-        self.propsView.setEditTriggers(QtWidgets.QAbstractItemView.AnyKeyPressed|QtWidgets.QAbstractItemView.DoubleClicked|QtWidgets.QAbstractItemView.EditKeyPressed)
+        self.propsView.setEditTriggers(QtWidgets.QAbstractItemView.AnyKeyPressed|QtWidgets.QAbstractItemView.CurrentChanged|QtWidgets.QAbstractItemView.DoubleClicked|QtWidgets.QAbstractItemView.EditKeyPressed)
         self.propsView.setAlternatingRowColors(False)
         self.propsView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         self.propsView.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)

@@ -54,7 +54,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         WndUtils.__init__(self, None)
         ui_main_dlg.Ui_MainWindow.__init__(self)
 
-        self.config = AppConfig(app_path)
+        self.config = AppConfig()
+        self.config.init(app_path)
         WndUtils.set_app_config(self, self.config)
         self.dashd_intf = DashdInterface(self.config, window=None,
                                          on_connection_begin_callback=self.on_connection_begin,
@@ -300,7 +301,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if self.queryDlg('Configuration modified. Save?',
                              buttons=QMessageBox.Yes | QMessageBox.No,
                              default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
-                self.on_btnSaveConfiguration_clicked()
+                self.on_btnSaveConfiguration_clicked(True)
+        self.config.close()
 
     def displayMasternodeConfig(self, set_mn_list_index):
         if self.curMasternode and set_mn_list_index:
@@ -626,6 +628,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.hw_client.clear_session()
                 self.updateControlsState()
             except OSError as e:
+                logging.exception('Exception occurred')
                 self.errorMsg('Cannot open %s device.' % self.getHwName())
                 self.updateControlsState()
             except Exception as e:
@@ -725,7 +728,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 address_n = [2147483692,  # 44'
                              2147483653,  # 5'
                             ]
-                addr_of_cur_path = hw_intf.hw_get_address(self, address_n)
+                addr_of_cur_path = hw_intf.get_address(self, address_n)
                 b32cache = self.bip32_cache.get(addr_of_cur_path, None)
                 modified_b32cache = False
                 cache_file = os.path.join(self.config.cache_dir, 'bip32cache_%s.json' % addr_of_cur_path)
@@ -779,7 +782,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                     # first, find dash address in cache by bip32 path
                                     addr_of_cur_path = b32cache.get(cur_bip32_path, None)
                                     if not addr_of_cur_path:
-                                        addr_of_cur_path = hw_intf.hw_get_address(self, address_n)
+                                        addr_of_cur_path = hw_intf.get_address(self, address_n)
                                         b32cache[cur_bip32_path] = addr_of_cur_path
                                         modified_b32cache = True
 
@@ -1128,11 +1131,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if not self.hw_client:
                 return
             if self.curMasternode and self.curMasternode.collateralBip32Path:
-                address_n = hw_intf.expand_path(self, self.curMasternode.collateralBip32Path)
-                dash_addr = hw_intf.hw_get_address(self, address_n)
+                dash_addr = hw_intf.get_address(self, self.curMasternode.collateralBip32Path)
                 self.edtMnCollateralAddress.setText(dash_addr)
                 self.curMasternode.collateralAddress = dash_addr
-                self.updateControlsState()
+                self.curMnModified()
         except HardwareWalletCancelException:
             if self.hw_client:
                 self.hw_client.init_device()
@@ -1159,6 +1161,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     else:
                         self.edtMnCollateralBip32Path.setText(paths.get(self.curMasternode.collateralAddress, ''))
                         self.curMasternode.collateralBip32Path = paths.get(self.curMasternode.collateralAddress, '')
+                        self.curMnModified()
 
         except HardwareWalletCancelException:
             if self.hw_client:

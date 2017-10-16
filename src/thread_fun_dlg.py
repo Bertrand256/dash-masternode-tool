@@ -4,7 +4,7 @@
 # Created on: 2017-04
 
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import QThread, QObject
+from PyQt5.QtCore import QThread
 from ui import ui_thread_fun_dlg
 
 
@@ -65,8 +65,8 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         :param text: initial text to display
         :param center_by_window: True, if this dialog is to be centered by window 'center_by_window'
         """
+        QtWidgets.QDialog.__init__(self, parent=center_by_window)
         ui_thread_fun_dlg.Ui_ThreadFunDlg.__init__(self)
-        QObject.__init__(self)
         self.worker_fun = worker_fun
         self.worker_args = worker_args
         self.close_after_finish = close_after_finish
@@ -102,19 +102,24 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
                     continue
                 if btn.get('callback'):
                     b.clicked.connect(btn.get('callback'))
-        self.work = WorkerDlgThread(self, self.worker_fun, self.worker_args,
-                                    display_msg_signal=self.display_msg_signal,
-                                    set_progress_value_signal=self.set_progress_value_signal,
-                                    dlg_config_signal=self.dlg_config_signal)
-        self.work.finished.connect(self.threadFinished)
+        if self.worker_fun:
+            self.work = WorkerDlgThread(self, self.worker_fun, self.worker_args,
+                                        display_msg_signal=self.display_msg_signal,
+                                        set_progress_value_signal=self.set_progress_value_signal,
+                                        dlg_config_signal=self.dlg_config_signal)
+            self.work.finished.connect(self.threadFinished)
+
         self.worker_result = None
         self.worker_exception = None
-        self.thread_runnung = True
         if self.text:
             self.setText(self.text)
         if self.center_by_window:
             self.centerByWindow(self.center_by_window)
-        self.work.start()
+        if self.worker_fun:
+            self.thread_runnung = True
+            self.work.start()
+        else:
+            self.thread_runnung = False
 
     def getResult(self):
         return self.worker_result
@@ -252,7 +257,6 @@ class WorkerDlgThread(QThread):
             self.dialog.setWorkerResults(worker_result, None)
         except Exception as e:
             self.dialog.setWorkerResults(None, e)
-            print('Exception in WorkerDlgThread: %s' % str(e))
 
 
 class WorkerThread(QThread):
@@ -272,9 +276,6 @@ class WorkerThread(QThread):
         self.ctrl_obj.finish = False
         self.worker_result = None
         self.worker_exception = None
-        # self.mutex = QtCore.QMutex()
-        # self.wait_condition = QtCore.QWaitCondition()
-        # self.mutex.lock()
 
     def stop(self):
         """
@@ -282,10 +283,6 @@ class WorkerThread(QThread):
         Finish attribute should be checked by a thread periodically.
         """
         self.ctrl_obj.finish = True
-
-    # def w(self):
-    #     self.mutex.lock()
-    #     self.wait_condition.wait(self.mutex)
 
     def run(self):
         try:

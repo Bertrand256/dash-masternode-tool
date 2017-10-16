@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+from dash_utils import bip32_path_n_to_string
 from hw_common import HardwareWalletPinException
 import logging
 from app_config import HWType
@@ -18,7 +19,8 @@ def control_hw_call(func):
         main_ui = args[0]
         client = main_ui.hw_client
         if not client:
-            client = main_ui.connectHardwareWallet()
+            if not main_ui.connectHardwareWallet():
+                return
         if not client:
             raise Exception('Not connected to Hardware Wallet')
         try:
@@ -146,13 +148,6 @@ def get_hw_firmware_version(main_ui, hw_client):
 
 
 @control_hw_call
-def hw_get_address(main_ui, address_n):
-    client = main_ui.hw_client
-    if client:
-        return client.get_address('Dash', address_n, False)
-
-
-@control_hw_call
 def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
     """
     Creates a signed transaction.
@@ -181,8 +176,8 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
 @control_hw_call
 def sign_message(main_ui, bip32path, message):
     def sign(ctrl):
-        ctrl.dlg_config_fun(dlg_title="Click the confirmation button.", show_progress_bar=False)
-        ctrl.display_msg_fun('Confirm message signing on your hardware wallet...')
+        ctrl.dlg_config_fun(dlg_title="Confirm message signing.", show_progress_bar=False)
+        ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet...</b>')
 
         if main_ui.config.hw_type == HWType.trezor:
             import hw_intf_trezor as trezor
@@ -236,14 +231,35 @@ def ping(main_ui, message, button_protection, pin_protection, passphrase_protect
 
 
 @control_hw_call
-def expand_path(main_ui, bip32_path):
+def get_address(main_ui, bip32_path):
     client = main_ui.hw_client
     if client:
-        bip32_path.strip()
-        if bip32_path.lower().find('m/') >= 0:
-            # removing m/ prefix because of keepkey library
-            bip32_path = bip32_path[2:]
-        return client.expand_path(bip32_path)
+        if isinstance(bip32_path, str):
+            bip32_path.strip()
+            if bip32_path.lower().find('m/') >= 0:
+                # removing m/ prefix because of keepkey library
+                bip32_path = bip32_path[2:]
+
+        if main_ui.config.hw_type in (HWType.trezor, HWType.keepkey):
+            if isinstance(bip32_path, str):
+                # trezor/keepkey require bip32 path argument as an array of integers
+                bip32_path = client.expand_path(bip32_path)
+
+            return client.get_address('Dash', bip32_path, False)
+
+        elif main_ui.config.hw_type == HWType.ledger_nano_s:
+            import hw_intf_ledgernano as ledger
+
+            if isinstance(bip32_path, list):
+                # ledger requires bip32 path argument as a string
+                bip32_path = bip32_path_n_to_string(bip32_path)
+
+            adr_pubkey = ledger.get_address_and_pubkey(client, bip32_path)
+            return adr_pubkey.get('address')
+        else:
+            raise Exception('Unknown hwardware wallet type: ' + main_ui.config.hw_type)
+    else:
+        raise Exception('HW client not open.')
 
 
 @control_hw_call
@@ -256,15 +272,21 @@ def get_address_and_pubkey(main_ui, bip32_path):
             bip32_path = bip32_path[2:]
 
         if main_ui.config.hw_type in (HWType.trezor, HWType.keepkey):
-            address_n = client.expand_path(bip32_path)
+            if isinstance(bip32_path, str):
+                # trezor/keepkey require bip32 path argument as an array of integers
+                bip32_path = client.expand_path(bip32_path)
 
             return {
-                'address': client.get_address('Dash', address_n, False),
-                'publicKey': client.get_public_node(address_n).node.public_key
+                'address': client.get_address('Dash', bip32_path, False),
+                'publicKey': client.get_public_node(bip32_path).node.public_key
             }
 
         elif main_ui.config.hw_type == HWType.ledger_nano_s:
             import hw_intf_ledgernano as ledger
+
+            if isinstance(bip32_path, list):
+                # ledger requires bip32 path argument as a string
+                bip32_path = bip32_path_n_to_string(bip32_path)
 
             return ledger.get_address_and_pubkey(client, bip32_path)
         else:

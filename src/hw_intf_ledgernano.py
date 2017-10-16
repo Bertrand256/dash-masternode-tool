@@ -4,17 +4,37 @@ import logging
 from btchip.btchipUtils import compress_public_key
 
 
+def process_ledger_exceptions(func):
+    """
+    Catch exceptions for known user errors and expand the exception message with some suggestions.
+    :param func: function decorated.
+    """
+    def process_ledger_exceptions_int(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except BTChipException as e:
+            logging.exception('Error communicating with Ledger hardware wallet.')
+            if (e.sw == 0x6d00):
+                e.message += '\n\nMake sure the Dash app is running on your Ledger device.'
+            elif (e.sw == 0x6982):
+                e.message += '\n\nMake sure you have entered the PIN on your Ledger device.'
+            raise
+    return process_ledger_exceptions_int
+
+
+@process_ledger_exceptions
 def connect_ledgernano():
+    dongle = getDongle()
+    app = btchip(dongle)
     try:
-        dongle = getDongle()
-        app = btchip(dongle)
         ver = app.getFirmwareVersion()
         logging.info('Ledger Nano S connected. Firmware version: %s, specialVersion: %s, compressedKeys: %s' %
                      (str(ver.get('version')), str(ver.get('specialVersion')), ver.get('compressedKeys')))
 
         client = btchip(dongle)
         return client
-    except Exception as e:
+    except:
+        dongle.close()
         raise
 
 
@@ -24,8 +44,12 @@ class MessageSignature:
         self.signature = signature
 
 
+@process_ledger_exceptions
 def sign_message(main_ui, bip32path, message):
     client = main_ui.hw_client
+    # Ledger doesn'n accept characters other that ascii printable:
+    # https://ledgerhq.github.io/btchip-doc/bitcoin-technical.html#_sign_message
+    message = message.encode('ascii', 'ignore')
     info = client.signMessagePrepare(bip32path, message)
     signature = client.signMessageSign()
     pubkey = client.getWalletPublicKey(bip32path)
@@ -44,6 +68,8 @@ def sign_message(main_ui, bip32path, message):
         bytes(chr(27 + 4 + (signature[0] & 0x01)), "utf-8") + r + s
     )
 
+
+@process_ledger_exceptions
 def get_address_and_pubkey(client, bip32_path):
     bip32_path.strip()
     if bip32_path.lower().find('m/') >= 0:
