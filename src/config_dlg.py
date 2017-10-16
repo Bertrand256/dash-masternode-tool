@@ -47,7 +47,8 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         WndUtils.__init__(self, config)
         self.config = config
         self.main_window = parent
-        self.local_config = copy.deepcopy(config)
+        self.local_config = AppConfig()
+        self.local_config.copy_from(config)
 
         # block ui controls -> cur config data copying while setting ui controls initial values
         self.disable_cfg_update = False
@@ -308,17 +309,8 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
 
     def applyConfigChanges(self):
         if self.is_modified:
-            self.config.dash_net_configs = copy.deepcopy(self.local_config.dash_net_configs)
+            self.config.copy_from(self.local_config)
             self.config.conn_config_changed()
-            self.config.random_dash_net_config = self.local_config.random_dash_net_config
-            if self.config.hw_type != self.local_config.hw_type:
-                # in the main app window, hw session must be reconnected
-                self.config.hw_type = self.local_config.hw_type
-            self.config.check_for_updates = self.local_config.check_for_updates
-            self.config.backup_config_file = self.local_config.backup_config_file
-            self.config.dont_use_file_dialogs = self.local_config.dont_use_file_dialogs
-            self.config.confirm_when_voting = self.local_config.confirm_when_voting
-            self.config.add_random_offset_to_vote_time = self.local_config.add_random_offset_to_vote_time
             self.config.set_log_level(self.local_config.log_level_str)
             self.config.modified = True
             self.main_window.connsCfgChanged()

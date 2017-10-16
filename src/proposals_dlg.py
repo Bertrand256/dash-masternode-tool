@@ -135,9 +135,12 @@ class Proposal(AttrsProtected):
         """
         Returns value of for a specified column name.
         """
-        for col in self.columns:
-            if col.name == name:
-                return self.values.get(col)
+        if name == 'no':
+            return self.initial_order_no + 1
+        else:
+            for col in self.columns:
+                if col.name == name:
+                    return self.values.get(col)
         raise AttributeError('Invalid Proposal value name: ' + name)
 
     def apply_vote(self, mn_ident, vote_timestamp, vote_result):
@@ -169,7 +172,7 @@ class Proposal(AttrsProtected):
             payment_start = payment_start.timestamp()
             payment_end = payment_end.timestamp()
             self.voting_in_progress = (payment_start > last_suberblock_time) or \
-                                      (payment_end > next_superblock_datetime and funding_enabled)
+                                      (payment_end > next_superblock_datetime)
         else:
             self.voting_in_progress = False
 
@@ -218,6 +221,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         wnd_utils.WndUtils.__init__(self, parent.config)
         self.main_wnd = parent
         self.dashd_intf = dashd_intf
+        self.db_intf = parent.config.db_intf
         self.columns = [
             ProposalColumn('no', 'No', True),
             ProposalColumn('name', 'Name', True),
@@ -274,42 +278,15 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.vote_chart_view = QChartView(self.vote_chart)
 
         # open and initialize database for caching proposals data
-        db_conn = None
         try:
-            db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
-            cur = db_conn.cursor()
-            cur.execute("CREATE TABLE IF NOT EXISTS PROPOSALS(id INTEGER PRIMARY KEY, name TEXT, payment_start TEXT," 
-                        " payment_end TEXT, payment_amount REAL, yes_count INTEGER, absolute_yes_count INTEGER,"
-                        " no_count INTEGER, abstain_count INTEGER, creation_time TEXT, url TEXT, payment_address TEXT,"
-                        " type INTEGER, hash TEXT,  collateral_hash TEXT, f_blockchain_validity INTEGER,"
-                        " f_cached_valid INTEGER, f_cached_delete INTEGER, f_cached_funding INTEGER, "
-                        " f_cached_endorsed INTEGER, object_type INTEGER, "
-                        " is_valid_reason TEXT, dmt_active INTEGER, dmt_create_time TEXT, dmt_deactivation_time TEXT,"
-                        " dmt_voting_last_read_time INTEGER)")
-
-            # Below: masternode_ident column is for identifying votes of no longer existing masternodes. For existing
-            # masternodes we use masternode_id (db identifier)
-            cur.execute("CREATE TABLE IF NOT EXISTS VOTING_RESULTS(id INTEGER PRIMARY KEY, proposal_id INTEGER,"
-                        " masternode_id INTEGER, masternode_ident TEXT, voting_time TEXT, voting_result TEXT,"
-                        "hash TEXT)")
-            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_HASH ON VOTING_RESULTS(hash)")
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_1 ON VOTING_RESULTS(proposal_id)")
-
-            # Create table for storing live data for example last read time of proposals
-            cur.execute("CREATE TABLE IF NOT EXISTS LIVE_CONFIG(symbol text PRIMARY KEY, value TEXT)")
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_LIVE_CONFIG_SYMBOL ON LIVE_CONFIG(symbol)")
-
+            cur = self.db_intf.get_cursor()
             cur.execute("SELECT value FROM LIVE_CONFIG WHERE symbol=?", (CFG_PROPOSALS_LAST_READ_TIME,))
             row = cur.fetchone()
             if row:
                 self.proposals_last_read_time = int(row[0])
-
             self.db_active = True
-        except Exception as e:
-            logging.exception('SQLite initialization error')
         finally:
-            if db_conn:
-                db_conn.close()
+            self.db_intf.release_cursor()
 
         self.setupUi()
 
@@ -466,7 +443,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             # create model serving data to the view
             self.votesModel = VotesModel(self, self.masternodes, self.masternodes_by_db_id,
                                          self.users_masternodes_by_ident,
-                                         self.main_wnd.config.db_cache_file_name)
+                                         self.db_intf)
             self.votesProxyModel = VotesFilterProxyModel(self)
             self.votesProxyModel.setSourceModel(self.votesModel)
             self.votesView.setModel(self.votesProxyModel)
@@ -807,10 +784,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     rows_added = True
 
             if len(proposals_new) > 0:
-                db_conn = None
                 try:
-                    db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
-                    cur = db_conn.cursor()
+                    cur = self.db_intf.get_cursor()
 
                     for prop in self.proposals:
                         if prop.marker:
@@ -913,13 +888,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                 except Exception as e:
                     logging.exception('Exception while saving proposals to db.')
-                    if db_conn:
-                        db_conn.rollback()
+                    self.db_intf.rollback()
                     raise
                 finally:
-                    if db_conn:
-                        db_conn.commit()
-                        db_conn.close()
+                    self.db_intf.commit()
+                    self.db_intf.release_cursor()
                     self.display_message('')
             else:
                 # no proposals read from network - skip deactivating records because probably
@@ -953,7 +926,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 self.errorMsg('Dash daemon not connected')
             else:
                 try:
-
                     try:
                         self.display_message('Reading governance data, please wait...')
 
@@ -1032,13 +1004,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 self.users_masternodes_by_ident[mn.ident] = vmn
 
                     if self.db_active:
-                        db_conn = None
                         try:
                             self.display_message('Reading proposals data from DB, please wait...')
 
                             # read all proposals from DB cache
-                            db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
-                            cur = db_conn.cursor()
+                            cur = self.db_intf.get_cursor()
 
                             logging.debug("Reading proposals' data from DB")
                             cur.execute(
@@ -1096,8 +1066,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             logging.exception('Exception while saving proposals to db.')
                             self.errorMsg('Error while saving proposals data to db. Details: ' + str(e))
                         finally:
-                            if db_conn:
-                                db_conn.close()
+                            self.db_intf.release_cursor()
 
                     # read voting data from DB (only for "voting" columns)
                     self.read_voting_from_db(self.columns)
@@ -1119,13 +1088,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         :param columns list of voting columns for which data will be loaded from db; it is used when user adds
           a new column - wee want read data only for this column
         """
-        db_conn = None
         self.display_message('Reading voting data from DB, please wait...')
         begin_time = time.time()
 
         try:
-            db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
-            cur = db_conn.cursor()
+            cur = self.db_intf.get_cursor()
 
             for col in columns:
                 if col.column_for_vote:
@@ -1133,7 +1100,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     mn = self.masternodes_by_ident.get(mn_ident)
                     if mn:
                         cur.execute("SELECT proposal_id, voting_time, voting_result "
-                                    "FROM VOTING_RESULTS WHERE masternode_id=?", (mn.db_id,))
+                                    "FROM VOTING_RESULTS vr WHERE masternode_id=? AND EXISTS "
+                                    "(SELECT 1 FROM PROPOSALS p where p.id=vr.proposal_id and p.dmt_active=1)",
+                                    (mn.db_id,))
                         for row in cur.fetchall():
                             prop = self.proposals_by_db_id.get(row[0])
                             if prop:
@@ -1143,8 +1112,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         except Exception as e:
             logging.exception('Exception while saving proposals to db.')
         finally:
-            if db_conn:
-                db_conn.close()
+            self.db_intf.release_cursor()
             time_diff = time.time() - begin_time
             logging.info('Voting data read from database time: %s seconds' % str(time_diff))
 
@@ -1160,19 +1128,20 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
         last_vote_max_date = 0
         cur_vote_max_date = 0
-        db_conn = None
         db_modified = False
         refresh_preview_votes = False
         logging.info('Begin reading voting data from network.')
         try:
             # read the date/time of the last vote, read from the DB the last time, to initially filter out
             # of all older votes from finding if it has its record in the DB:
-            db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
-            cur = db_conn.cursor()
-            cur.execute("SELECT value from LIVE_CONFIG WHERE symbol=?", (CFG_PROPOSALS_VOTES_MAX_DATE,))
-            row = cur.fetchone()
-            if row:
-                last_vote_max_date = int(row[0])
+            if self.db_intf.is_active():
+                cur = self.db_intf.get_cursor()
+                cur.execute("SELECT value from LIVE_CONFIG WHERE symbol=?", (CFG_PROPOSALS_VOTES_MAX_DATE,))
+                row = cur.fetchone()
+                if row:
+                    last_vote_max_date = int(row[0])
+            else:
+                cur = None
 
             votes_added = []  # list of tuples (proposal, masternode, voting_time, voting_result, masternode ident),
             # that has been added (will be saved to the database cache)
@@ -1205,18 +1174,23 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                                 if voting_timestamp >= (last_vote_max_date - 3600) or force_reload_all:
                                     # check if vote exists in the database
-                                    if db_conn:
+                                    if cur:
                                         tm_begin = time.time()
-                                        cur.execute("SELECT id from VOTING_RESULTS WHERE hash=?",
+                                        cur.execute("SELECT id, proposal_id from VOTING_RESULTS WHERE hash=?",
                                                     (v_key,))
 
-                                        row = cur.fetchone()
+                                        found = False
+                                        for row in cur.fetchall():
+                                            if row[1] == prop.db_id:
+                                                found = True
+                                                break
+
                                         db_oper_duration += (time.time() - tm_begin)
                                         db_oper_count += 1
-                                        if not row:
+                                        if not found:
                                             votes_added.append((prop, mn, voting_time, voting_result, mn_ident, v_key))
                                     else:
-                                        # no chance to check wherher record exists in the DB, so assume it's not
+                                        # no chance to check whether record exists in the DB, so assume it's not
                                         # to have it displayed on the grid
                                         votes_added.append((prop, mn, voting_time, voting_result, mn_ident, v_key))
 
@@ -1232,10 +1206,23 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                     # save voting results to the database cache
                     for prop, mn, voting_time, voting_result, mn_ident, hash in votes_added:
-                        if self.db_active:
+                        if cur:
                             tm_begin = time.time()
-                            cur.execute("INSERT INTO VOTING_RESULTS(proposal_id, masternode_id, masternode_ident,"
-                                        " voting_time, voting_result, hash) VALUES(?,?,?,?,?,?)",
+                            try:
+                                cur.execute("INSERT INTO VOTING_RESULTS(proposal_id, masternode_id, masternode_ident,"
+                                            " voting_time, voting_result, hash) VALUES(?,?,?,?,?,?)",
+                                            (prop.db_id,
+                                             mn.db_id if mn else None,
+                                             mn_ident,
+                                             voting_time,
+                                             voting_result,
+                                             hash))
+                            except sqlite3.IntegrityError as e:
+                                if e.args and e.args[0].find('UNIQUE constraint failed') >= 0:
+                                    # this vote is assigned to the same proposal but inactive one; correct this
+                                    cur.execute("UPDATE VOTING_RESULTS"
+                                        " set proposal_id=?, masternode_id=?, masternode_ident=?,"
+                                        " voting_time=?, voting_result=? WHERE hash=?",
                                         (prop.db_id,
                                          mn.db_id if mn else None,
                                          mn_ident,
@@ -1260,7 +1247,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         if prop == self.current_proposal:
                             refresh_preview_votes = True
 
-                    if self.db_active:
+                    if cur:
                         # update proposals' voting_last_read_time
                         for prop in proposals_updated:
                             prop.voting_last_read_time = time.time()
@@ -1292,10 +1279,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         except Exception as e:
             logging.exception('Exception while retrieving voting data.')
         finally:
-            if db_conn:
-                if db_modified:
-                    db_conn.commit()
-                db_conn.close()
+            if db_modified:
+                self.db_intf.commit()
+            self.db_intf.release_cursor()
             self.display_message(None)
 
         try:
@@ -1993,20 +1979,17 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                 if successful_votes > 0:
                     self.refresh_vote_tab()
-                    db_conn = None
                     try:
                         # move back the 'last read' time to force reading vote data from the network
                         # next time and save it to the db
-                        db_conn = sqlite3.connect(self.main_wnd.config.db_cache_file_name)
-                        cur = db_conn.cursor()
+                        cur = self.db_intf.get_cursor()
                         cur.execute("UPDATE PROPOSALS set dmt_voting_last_read_time=? where id=?",
                                     (int(time.time()) - VOTING_RELOAD_TIME, self.current_proposal.db_id))
                     except Exception:
                         logging.exception('Exception while saving configuration data.')
                     finally:
-                        if db_conn:
-                            db_conn.commit()
-                            db_conn.close()
+                        self.db_intf.commit()
+                        self.db_intf.release_cursor()
 
                 if unsuccessful_votes == 0 and successful_votes > 0:
                     self.infoMsg('Voted successfully')
@@ -2022,7 +2005,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 with open(file_name, 'w') as f_ptr:
                     elems = [col.caption for col in self.columns]
                     self.write_csv_row(f_ptr, elems)
-                    for prop in self.proposals:
+                    for prop in sorted(self.proposals, key = lambda p: p.initial_order_no):
                         elems = [prop.get_value(col.name) for col in self.columns]
                         self.write_csv_row(f_ptr, elems)
                 self.infoMsg('Proposals data successfully saved.')
@@ -2340,12 +2323,12 @@ class VotesFilterProxyModel(QSortFilterProxyModel):
 
 
 class VotesModel(QAbstractTableModel):
-    def __init__(self, parent, masternodes, masternodes_by_db_id, users_masternodes_by_ident, db_cache_file_name):
+    def __init__(self, parent, masternodes, masternodes_by_db_id, users_masternodes_by_ident, db_intf):
         QAbstractTableModel.__init__(self, parent)
         self.parent = parent
         self.masternodes = masternodes
         self.masternodes_by_db_id = masternodes_by_db_id
-        self.db_cache_file_name = db_cache_file_name
+        self.db_intf = db_intf
         self.users_masternodes_by_ident = users_masternodes_by_ident
         self.only_my_votes = False
         self.proposal = None
@@ -2403,12 +2386,10 @@ class VotesModel(QAbstractTableModel):
         return QVariant()
 
     def read_votes(self):
-        db_conn = None
         try:
             self.votes.clear()
             tm_begin = time.time()
-            db_conn = sqlite3.connect(self.db_cache_file_name)
-            cur = db_conn.cursor()
+            cur = self.db_intf.get_cursor()
             logging.debug('Get votes fot proposal id: ' + str(self.proposal.db_id))
             cur.execute("SELECT voting_time, voting_result, masternode_id, masternode_ident, m.ip "
                         "FROM VOTING_RESULTS v "
@@ -2435,8 +2416,7 @@ class VotesModel(QAbstractTableModel):
         except Exception as e:
             logging.exception('SQLite error')
         finally:
-            if db_conn:
-                db_conn.close()
+            self.db_intf.release_cursor()
 
     def set_proposal(self, proposal):
         if self.proposal != proposal:

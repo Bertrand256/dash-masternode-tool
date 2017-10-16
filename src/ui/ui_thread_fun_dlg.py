@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'X:\src\ui\ui_thread_fun_dlg.ui'
+# Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_thread_fun_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.8.2
+# Created by: PyQt5 UI code generator 5.9
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -11,7 +11,9 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_ThreadFunDlg(object):
     def setupUi(self, ThreadFunDlg):
         ThreadFunDlg.setObjectName("ThreadFunDlg")
+        ThreadFunDlg.setWindowModality(QtCore.Qt.NonModal)
         ThreadFunDlg.resize(400, 99)
+        ThreadFunDlg.setModal(True)
         self.verticalLayout = QtWidgets.QVBoxLayout(ThreadFunDlg)
         self.verticalLayout.setSpacing(3)
         self.verticalLayout.setObjectName("verticalLayout")

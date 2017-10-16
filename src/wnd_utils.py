@@ -7,9 +7,12 @@ import os
 import threading
 import traceback
 
+import sys
+
+import thread_utils
 import time
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import Qt, QObject
+from PyQt5.QtCore import Qt, QObject, QLocale
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap
 from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog
 import math
@@ -233,8 +236,19 @@ class WndUtils:
 
         delim = self.app_config.csv_delimiter if self.app_config else ';'
         delim_replacement = '_' if delim != '_' else '-'
-        elems = [str(elem if elem is not None else '').replace(delim, delim_replacement) for elem in elems]
-        file_ptr.write(delim.join(elems) + '\n')
+        # elems = [str(elem if elem is not None else '').replace(delim, delim_replacement) for elem in elems]
+        csv_row = []
+        for elem in elems:
+            if elem is None:
+                elem = ''
+            elif not isinstance(elem, str):
+                elem = QLocale.toString(self.app_config.get_default_locale(), elem if elem is not None else '')
+            csv_row.append(elem.replace(delim, delim_replacement))
+        file_ptr.write(delim.join(csv_row) + '\n')
+
+
+class DeadlockException(Exception):
+    pass
 
 
 class ThreadWndUtils(QObject):
@@ -243,20 +257,21 @@ class ThreadWndUtils(QObject):
     """
 
     # signal for calling specified function in the main thread
-    fun_call_signal = QtCore.pyqtSignal(object, object)
+    fun_call_signal = QtCore.pyqtSignal(object, object, object)
 
     def __init__(self):
         QObject.__init__(self)
         self.fun_call_signal.connect(self.funCallSignalled)
-        self.mutex = QtCore.QMutex()
         self.fun_call_ret_value = None
         self.fun_call_exception = None
 
-    def funCallSignalled(self, fun_to_call, args):
+    def funCallSignalled(self, fun_to_call, args, mutex):
         """
         Function-event executed in the main thread as a result of emiting signal fun_call_signal from BG threads.
         :param fun_to_call: ref to a function which is to be called
         :param args: args passed to the function fun_to_call
+        :param mutex: mutex object (QMutex) which is used in the calling thread to wait until
+            function 'fun_to_call' terminates; calling mutex.unlock() will signal that
         :return: return value from fun_to_call
         """
         try:
@@ -265,7 +280,7 @@ class ThreadWndUtils(QObject):
             logging.exception('ThreadWndUtils.funCallSignal error: %s' % str(e))
             self.fun_call_exception = e
         finally:
-            self.mutex.unlock()
+            mutex.unlock()
 
     def callFunInTheMainThread(self, fun_to_call, *args):
         """
@@ -279,19 +294,44 @@ class ThreadWndUtils(QObject):
         ret = None
         try:
             if threading.current_thread() != threading.main_thread():
-                self.mutex.lock()
+
+                # check whether the main thread waits for the lock acquired by the current thread
+                # if so, raise deadlock detected exception
+                dl_check = thread_utils.EnhRLock.detect_deadlock(threading.main_thread())
+                if dl_check is not None:
+
+                    # find a caller of the current method (skip callers from the current module)
+                    caller_file = ''
+                    caller_line = ''
+                    for si in reversed(traceback.extract_stack()):
+                        if si.name != 'callFunInTheMainThread':
+                            caller_file = si.filename
+                            caller_line = si.lineno
+                            break
+                    raise DeadlockException('Deadlock detected. Trying to synchronize with the main thread (c), which '
+                                            'is waiting (b) for a lock acquired by this thread (a).\n'
+                                            '  CURRENT_THREAD ->(a)[LOCK]--->(c)[MAIN_THREAD]\n'
+                                            '  MAIN_THREAD ---->(b)[LOCK]\n'
+                                            '    a. file "%s", line %s\n'
+                                            '    b. file "%s", line %s\n'
+                                            '    c. file "%s", line %s' %
+                                            (dl_check[2], dl_check[3], dl_check[0], dl_check[1], caller_file,
+                                             caller_line))
+
+                mutex = QtCore.QMutex()
+                mutex.lock()
                 locked = False
                 try:
                     self.fun_call_exception = None
                     self.fun_call_ret_value = None
 
                     # emit signal to call the function fun in the main thread
-                    self.fun_call_signal.emit(fun_to_call, args)
+                    self.fun_call_signal.emit(fun_to_call, args, mutex)
 
                     # wait for the function to finish; lock will be successful only when the first lock
                     # made a few lines above is released in the funCallSignalled method
                     tm_begin = time.time()
-                    locked = self.mutex.tryLock(3600)  # wait 1h max
+                    locked = mutex.tryLock(3600000)  # wait 1h max
                     tm_diff = time.time() - tm_begin
                     if not locked:
                         logging.exception("Problem communicating with the main thread - couldn't lock mutex. Lock "
@@ -301,12 +341,15 @@ class ThreadWndUtils(QObject):
                     ret = self.fun_call_ret_value
                 finally:
                     if locked:
-                        self.mutex.unlock()
+                        mutex.unlock()
+                    del mutex
                 if self.fun_call_exception:
                     # if there was an exception in the fun, pass it to the calling code
                     exception_to_rethrow = self.fun_call_exception
             else:
                 return fun_to_call(*args)
+        except DeadlockException:
+            raise
         except Exception as e:
             logging.exception('ThreadWndUtils.callFunInTheMainThread error: %s' % str(e))
             raise

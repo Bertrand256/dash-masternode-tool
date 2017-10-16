@@ -7,18 +7,16 @@ import datetime
 import logging
 import random
 from operator import itemgetter
-
 import binascii
-
 import os
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSlot
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox
 import app_cache as cache
-from app_config import MIN_TX_FEE, DATETIME_FORMAT
+from app_config import MIN_TX_FEE, DATETIME_FORMAT, HWType
 from dashd_intf import DashdInterface, DashdIndexException
-from hw_intf import prepare_transfer_tx, hw_get_address, expand_path
+from hw_intf import prepare_transfer_tx, get_address
 from wnd_utils import WndUtils
 from ui import ui_send_payout_dlg
 from hw_common import HardwareWalletPinException
@@ -191,10 +189,6 @@ class PaymentTableModel(QAbstractTableModel):
 
         self.utxos = sorted(utxos, key=itemgetter('height'), reverse=True)
 
-        # if SCREENSHOT_MODE and len(self.utxos):
-        #     self.utxos[0]['confirmations'] = random.randint(1, 99)
-        #     self.utxos[0]['coinbase_locked'] = True
-
         for utxo in utxos:
             if utxo_assigned_to_collateral(utxo):
                 utxo['collateral'] = True
@@ -267,7 +261,14 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.chbHideCollateralTx.toggled.connect(self.chbHideCollateralTxToggled)
         self.resizeEvent = self.resizeEvent
 
-        if len(self.utxos_source):
+        if self.main_ui.config.hw_type == HWType.ledger_nano_s:
+            self.pnlSourceAddress.setVisible(False)
+            self.org_message = '<span style="color:red">Sending funds controlled by Ledger Nano S wallets not ' \
+                               'supported yet.</span>'
+            self.setMessage(self.org_message)
+            self.load_utxos()
+            self.btnSend.setEnabled(False)
+        elif len(self.utxos_source):
             self.pnlSourceAddress.setVisible(False)
             self.org_message = 'List of Unspent Transaction Outputs <i>(UTXOs)</i> for specified address(es). ' \
                                'Select checkboxes for the UTXOs you wish to transfer.'
@@ -364,8 +365,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
                     addr_hw = bip32_to_address.get(bip32_path, None)
                     if not addr_hw:
-                        address_n = expand_path(self.main_ui, bip32_path)
-                        addr_hw = hw_get_address(self.main_ui, address_n)
+                        addr_hw = get_address(self.main_ui, bip32_path)
                         bip32_to_address[bip32_path] = addr_hw
                     if addr_hw != utxo['address']:
                         self.errorMsg("Dash address inconsistency between UTXO (%d) and a HW's path: %s.\n\n"
@@ -517,8 +517,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             if path:
                 # check if address mathes address read from bip32 path
                 try:
-                    address_n = expand_path(self.main_ui, path)
-                    address = hw_get_address(self.main_ui, address_n)
+                    address = get_address(self.main_ui, path)
                     if not address:
                         self.errorMsg("Couldn't read address for the specified BIP32 path: %s." % path)
                     self.utxos_source = [(address, path)]

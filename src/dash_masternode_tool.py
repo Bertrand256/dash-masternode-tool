@@ -15,9 +15,10 @@ if __name__ == '__main__':
     def my_excepthook(type, value, tback):
         print('=========================')
         traceback.print_tb(tback)
-        traceback.print_stack()
-        sys.__excepthook__(type, value, tback)
-        logging.exception('Exception occurred')
+        for fh in logging.RootLogger.root.handlers:
+            if isinstance(fh, logging.FileHandler):
+                traceback.print_exception(type, value, tback, file=fh.stream)
+                fh.flush()
         WndUtils.errorMsg(str(value))
 
     sys.excepthook = my_excepthook

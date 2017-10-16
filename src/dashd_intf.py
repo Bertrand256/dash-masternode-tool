@@ -323,16 +323,16 @@ def control_rpc_call(func):
         self = args[0]
         self.mark_call_begin()
         try:
-            logging.info('Trying to acquire http_lock')
+            logging.debug('Trying to acquire http_lock')
             self.http_lock.acquire()
-            logging.info('Acquired http_lock')
+            logging.debug('Acquired http_lock')
             for try_nr in range(1, 5):
                 try:
                     try:
-                        logging.info('Beginning call of "' + str(func) + '"')
+                        logging.debug('Beginning call of "' + str(func) + '"')
                         begin_time = time.time()
                         ret = func(*args, **kwargs)
-                        logging.info('Ended call of "' + str(func) + '". Call time: ' + str(time.time() - begin_time)
+                        logging.debug('Ended call of "' + str(func) + '". Call time: ' + str(time.time() - begin_time)
                                      + 's.')
                         last_exception = None
                         self.mark_cur_conn_cfg_is_ok()
@@ -370,7 +370,7 @@ def control_rpc_call(func):
                     raise
         finally:
             self.http_lock.release()
-            logging.info('Released http_lock')
+            logging.debug('Released http_lock')
 
         if last_exception:
             raise last_exception
@@ -437,6 +437,8 @@ class DashdInterface(WndUtils):
         assert isinstance(config, AppConfig)
 
         self.config = config
+        self.db_intf = self.config.db_intf
+
         # conn configurations are used from the first item in the list; if one fails, then next is taken
         if connection:
             # this parameter is used for testing specific connection
@@ -471,18 +473,9 @@ class DashdInterface(WndUtils):
         self.governanceinfo = None  # cached result of getgovernanceinfo query
         self.http_lock = threading.Lock()
 
-        # open and initialize database for caching masternode data
-        db_conn = None
+        cur = self.db_intf.get_cursor()
         try:
             tm_start = time.time()
-            db_conn = sqlite3.connect(self.config.db_cache_file_name)
-            cur = db_conn.cursor()
-            cur.execute("CREATE TABLE IF NOT EXISTS MASTERNODES(id INTEGER PRIMARY KEY, ident TEXT, status TEXT," 
-                        " protocol TEXT, payee TEXT, last_seen INTEGER, active_seconds INTEGER,"
-                        " last_paid_time INTEGER, last_paid_block INTEGER, ip TEXT,"
-                        " dmt_active INTEGER, dmt_create_time TEXT, dmt_deactivation_time TEXT)")
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_MASTERNODES_DMT_ACTIVE ON MASTERNODES(dmt_active)")
-
             logging.debug("Reading masternodes' data from DB")
             cur.execute("SELECT id, ident, status, protocol, payee, last_seen, active_seconds,"
                         " last_paid_time, last_paid_block, IP from MASTERNODES where dmt_active=1")
@@ -507,9 +500,7 @@ class DashdInterface(WndUtils):
         except Exception as e:
             logging.exception('SQLite initialization error')
         finally:
-            if db_conn:
-                db_conn.close()
-
+            self.db_intf.release_cursor()
 
     def apply_new_cfg(self):
         """
@@ -819,11 +810,9 @@ class DashdInterface(WndUtils):
 
                     if self.db_active:
                         # save masternodes to db cache
-                        db_conn = None
                         db_modified = False
                         try:
-                            db_conn = sqlite3.connect(self.config.db_cache_file_name)
-                            cur = db_conn.cursor()
+                            cur = self.db_intf.get_cursor()
 
                             # mark already cached masternodes to identify those to delete
                             for mn in self.masternodes:
@@ -869,10 +858,9 @@ class DashdInterface(WndUtils):
                         except Exception as e:
                             logging.exception('SQLite initialization error')
                         finally:
-                            if db_conn:
-                                if db_modified:
-                                    db_conn.commit()
-                                db_conn.close()
+                            if db_modified:
+                                self.db_intf.commit()
+                            self.db_intf.release_cursor()
                     else:
                         # cache database is not availabale, apply retrieved data to self.masternodes list
                         for mn in mns:
