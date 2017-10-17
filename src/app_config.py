@@ -14,7 +14,7 @@ from random import randint
 from shutil import copyfile
 import logging
 import bitcoin
-from enum import Enum
+from logging.handlers import RotatingFileHandler
 from PyQt5.QtCore import QLocale
 from dash_utils import encrypt, decrypt
 import app_cache as cache
@@ -118,8 +118,16 @@ class AppConfig(object):
             os.makedirs(self.log_dir)
 
         self.log_level_str = 'INFO'
-        logging.basicConfig(filename=self.log_file, format='%(asctime)s %(levelname)s |%(threadName)s |%(filename)s |%(funcName)s |%(message)s',
-                            level=self.log_level_str, filemode='w', datefmt='%Y-%m-%d %H:%M:%S')
+        log_exists = os.path.exists(self.log_file)
+        handler = RotatingFileHandler(filename=self.log_file, mode='a', backupCount=30)
+        logger = logging.getLogger()
+        formatter = logging.Formatter(fmt='%(asctime)s %(levelname)s |%(threadName)s |%(filename)s |%(funcName)s '
+                                          '|%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(self.log_level_str)
+        if log_exists:
+            handler.doRollover()
         logging.info('App started')
 
         # database (SQLITE) cache for caching bigger datasets:

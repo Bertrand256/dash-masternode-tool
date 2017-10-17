@@ -115,6 +115,7 @@ class DBCache(object):
                     " f_cached_endorsed INTEGER, object_type INTEGER, "
                     " is_valid_reason TEXT, dmt_active INTEGER, dmt_create_time TEXT, dmt_deactivation_time TEXT,"
                     " dmt_voting_last_read_time INTEGER)")
+        cur.execute("CREATE INDEX IF NOT EXISTS IDX_PROPOSALS_HASH ON PROPOSALS(hash)")
 
         # masternode_ident column is for identifying votes of no longer existing masternodes. For existing
         # masternodes we use masternode_id (db identifier)

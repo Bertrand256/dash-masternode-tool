@@ -125,12 +125,16 @@ class WndUtils:
         return ret
 
     @staticmethod
-    def runInThread(worker_fun, worker_fun_args, on_thread_finish=None, on_thread_exception=None):
+    def runInThread(worker_fun, worker_fun_args, on_thread_finish=None, on_thread_exception=None,
+                    skip_raise_exception=False):
         """
         Run a function inside a thread.
         :param worker_fun: reference to function to be executed inside a thread
         :param worker_fun_args: arguments passed to a thread function
         :param on_thread_finish: function to be called after thread finishes its execution
+        :param skip_raise_exception: Exception raised inside the 'worker_fun' will be passed to the calling thread if:
+            - on_thread_exception is a valid function (it's exception handler)
+            - skip_raise_exception is False
         :return: reference to a thread object
         """
         thread = None
@@ -139,9 +143,14 @@ class WndUtils:
             logging.info('on_thread_finished_int for: ' + str(worker_fun))
             if thread.worker_exception:
                 logging.info('exception for: ' + str(worker_fun))
-                raise thread.worker_exception
-            if on_thread_finish:
-                on_thread_finish()
+                if on_thread_exception:
+                    on_thread_exception(thread.worker_exception)
+                else:
+                    if not skip_raise_exception:
+                        raise thread.worker_exception
+            else:
+                if on_thread_finish:
+                    on_thread_finish()
 
         if threading.current_thread() != threading.main_thread():
             # starting thread from another thread causes an issue of not passing arguments'
