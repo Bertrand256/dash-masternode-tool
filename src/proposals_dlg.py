@@ -25,6 +25,7 @@ from app_config import DATETIME_FORMAT
 from columns_cfg_dlg import ColumnsConfigDlg
 from common import AttrsProtected
 from dashd_intf import DashdIndexException
+from thread_utils import EnhRLock
 from ui import ui_proposals
 from wnd_utils import WndUtils
 
@@ -220,6 +221,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         QDialog.__init__(self, parent=parent)
         wnd_utils.WndUtils.__init__(self, parent.config)
         self.main_wnd = parent
+        self.finishing = False  # True if the dialog is closing (all thread operations will be stopped)
         self.dashd_intf = dashd_intf
         self.db_intf = parent.config.db_intf
         self.columns = [
@@ -276,6 +278,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.controls_initialized = False
         self.vote_chart = QChart()
         self.vote_chart_view = QChartView(self.vote_chart)
+        self.refresh_details_event = threading.Event()
+        self.current_chart_type = -1  # converted from UI radio buttons:
+                                      #   1: incremental by date, 2: summary, 3: vote change
 
         # open and initialize database for caching proposals data
         try:
@@ -566,12 +571,15 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                    len(self.proposals) == 0:
                     # read proposals from network only after a configured time
                     self.runInThread(self.read_proposals_from_network_thread, (),
-                                     on_thread_finish=read_voting_from_network)
+                                     on_thread_finish=read_voting_from_network, skip_raise_exception=True)
                 else:
                     read_voting_from_network()
 
             # read initial data (from db) inside a thread and then read data from network if needed
             self.runInThread(self.read_data_thread, (), on_thread_finish=finished_read_data_thread)
+
+            # run thread reloading proposal details when the selected proposal changes
+            self.runInThread(self.th_refresh_preview_panel, ())
         except:
             logging.exception('Exception occurred')
             raise
@@ -580,6 +588,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         pass
 
     def closeEvent(self, event):
+        self.finishing = True
+        self.refresh_details_event.set()
+        self.votesModel.finish()
         self.save_config()
 
     def save_config(self):
@@ -904,16 +915,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             logging.exception('Exception wile reading proposals from Dash network.')
             self.display_message('')
             self.errorMsg('Error while reading proposals data from the Dash network: ' + str(e))
+            raise
 
     def read_proposals_from_network_thread(self, ctrl):
-        """ Reads proposals data from netowrk (Dash daemon).
+        """ Reads proposals data from the Dash network (Dash daemon).
         :param ctrl:
         :return:
         """
-        try:
-            self.read_proposals_from_network()
-        except Exception as e:
-            logging.exception('Exception while reading proposals from network.')
+        self.read_proposals_from_network()
 
     def read_data_thread(self, ctrl):
         """ Reads data from the database.
@@ -1009,8 +1018,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                             # read all proposals from DB cache
                             cur = self.db_intf.get_cursor()
+                            cur_fix = self.db_intf.get_cursor()
+                            cur_fix_upd = self.db_intf.get_cursor()
 
-                            logging.debug("Reading proposals' data from DB")
+                            logging.info("Reading proposals' data from DB")
+                            tm_begin = time.time()
                             cur.execute(
                                 "SELECT name, payment_start, payment_end, payment_amount,"
                                 " yes_count, absolute_yes_count, no_count, abstain_count, creation_time,"
@@ -1021,7 +1033,21 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 "FROM PROPOSALS where dmt_active=1"
                             )
 
+                            data_modified = False
                             for row in cur.fetchall():
+                                # fix the problem of duplicated proposals with the same hash, which could be
+                                # deactivated due to some problems with previuos executions
+                                # select all proposals with the same hash and move their votes to the current one
+                                cur_fix.execute('select id from PROPOSALS where hash=? and id<>?',
+                                                (row[12], row[24]))
+                                for fix_row in cur_fix.fetchall():
+                                    cur_fix_upd.execute('UPDATE VOTING_RESULTS set proposal_id=? where proposal_id=?',
+                                                        (row[24], fix_row[0]))
+                                    cur_fix_upd.execute('DELETE FROM PROPOSALS WHERE id=?', (fix_row[0],))
+                                    data_modified = True
+                                    logging.warning('Deleted duplicated proposal from DB. ID: %s, HASH: %s' %
+                                                    (str(fix_row[0]), row[12]))
+
                                 prop = Proposal(self.columns, self.vote_columns_by_mn_ident)
                                 prop.set_value('name', row[0])
                                 prop.set_value('payment_start', datetime.datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S'))
@@ -1052,7 +1078,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 self.proposals_by_hash[prop.get_value('hash')] = prop
                                 self.proposals_by_db_id[prop.db_id] = prop
 
-                            logging.debug("Finished reading proposals' data from DB")
+                            if data_modified:
+                                self.db_intf.commit()
+
+                            logging.info("Finished reading proposals' data from DB. Time: %s s" %
+                                         str(time.time() - tm_begin))
 
                             def disp():
                                 self.propsView.sortByColumn(self.column_index_by_name('no'),
@@ -1066,6 +1096,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             logging.exception('Exception while saving proposals to db.')
                             self.errorMsg('Error while saving proposals data to db. Details: ' + str(e))
                         finally:
+                            self.db_intf.release_cursor()
+                            self.db_intf.release_cursor()
                             self.db_intf.release_cursor()
 
                     # read voting data from DB (only for "voting" columns)
@@ -1284,17 +1316,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.db_intf.release_cursor()
             self.display_message(None)
 
-        try:
-            if refresh_preview_votes:
-                def refresh_votes_view():
-                    self.votesModel.refresh_view()
-                    self.draw_chart(force=True)
-
-                logging.info('WndUtils.callFunInTheMainThread(refresh_votes_view) 1')
-                WndUtils.callFunInTheMainThread(refresh_votes_view)
-                logging.info('WndUtils.callFunInTheMainThread(refresh_votes_view) 2')
-        except Exception as e:
-            logging.exception('Exception while refreshing voting data grid.')
+        if refresh_preview_votes:
+            self.refresh_details_event.set()
         logging.info('Finished reading voting data from network.')
 
     def display_proposals_data(self):
@@ -1354,7 +1377,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.btnProposalsRefresh.setEnabled(False)
         self.btnVotesRefresh.setEnabled(False)
         self.runInThread(self.read_proposals_from_network_thread, (),
-                         on_thread_finish=read_voting_from_network)
+                         on_thread_finish=read_voting_from_network, skip_raise_exception=True)
 
     @pyqtSlot()
     def on_buttonBox_accepted(self):
@@ -1502,9 +1525,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 url = self.main_wnd.config.block_explorer_tx.replace('%TXID%', hash)
                 hash = '<a href="%s">%s</a>' % (url, hash)
             self.lblDetailsCollateralHash.setText(hash)
-        self.draw_chart()
+            self.refresh_details_event.set()
 
-    def draw_chart(self, force=False):
+    def draw_chart(self):
+        """Draws a voting chart if proposal has changed.
+        """
         try:
             if self.rbVotesChartIncremental.isChecked():
                 new_chart_type = 1
@@ -1515,22 +1540,17 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             else:
                 new_chart_type = -1
 
-            if (self.last_chart_proposal == self.current_proposal and self.last_chart_type == new_chart_type) \
-                and force is False:
-                return
-
             self.last_chart_proposal = self.current_proposal
             for s in self.vote_chart.series():
                 self.vote_chart.removeSeries(s)
 
             if self.last_chart_type != new_chart_type:
-                if self.vote_chart.axisX():
+                if self.vote_chart.axisX() is not None:
                     self.vote_chart.removeAxis(self.vote_chart.axisX())
-                if self.vote_chart.axisY():
+                if self.vote_chart.axisY() is not None:
                     self.vote_chart.removeAxis(self.vote_chart.axisY())
 
             if self.votesModel:
-
                 if new_chart_type == 1:
                     # draw chart - incremental votes count by date
 
@@ -1641,7 +1661,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         ser_abs_yes.attachAxis(self.vote_chart.axisX())
                         ser_abs_yes.attachAxis(self.vote_chart.axisY())
 
-                    self.vote_chart.axisX().setTickCount(min(len(dates), 10))
+                    try:
+                        self.vote_chart.axisX().setTickCount(min(len(dates), 10))
+                    except Exception as e:
+                        pass
+                        raise
                     if len(dates) > 0:
                         self.vote_chart.axisX().setMin(datetime.datetime.fromtimestamp(dates[0] / 1000))
                         self.vote_chart.axisX().setMax(datetime.datetime.fromtimestamp(dates[len(dates)-1] / 1000))
@@ -1802,17 +1826,57 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         except Exception:
             logging.exception('Exception while drawing vote chart.')
 
+    def th_refresh_preview_panel(self, ctrl):
+        """Thread reloading additional proposal data after changing current proposal. This is done in the background
+        to avoid blocking the UI when user jumps quickly between proposals - the work involves reading voting data
+        from the cache database, so it's relatively time-consuming operation.
+        """
+        last_proposal_read = None
+        last_chart_type = None
+
+        def apply_grid_data():
+            self.votesModel.refresh_view()
+            self.draw_chart()
+
+        while not self.finishing:
+            try:
+                if last_proposal_read != self.current_proposal:
+                    self.votesModel.read_votes()
+                    last_proposal_read = self.current_proposal
+                    last_chart_type = self.current_chart_type
+                    WndUtils.callFunInTheMainThread(apply_grid_data)
+                elif last_chart_type != self.current_chart_type:
+                    last_chart_type = self.current_chart_type
+                    WndUtils.callFunInTheMainThread(self.draw_chart)
+
+                wr = self.refresh_details_event.wait(20)
+                if self.refresh_details_event.is_set():
+                    self.refresh_details_event.clear()
+            except Exception:
+                logging.exception('Exception while refreshing preview panel')
+
+    def on_chart_type_change(self):
+        if self.rbVotesChartIncremental.isChecked():
+            self.current_chart_type = 1
+        elif self.rbVotesChartFinal.isChecked():
+            self.current_chart_type = 2
+        elif self.rbVotesChartChanges.isChecked():
+            self.current_chart_type = 3
+        else:
+            self.current_chart_type = -1
+        self.refresh_details_event.set()
+
     @pyqtSlot(bool)
     def on_rbVotesChartIncremental_toggled(self, checked):
-        self.draw_chart()
+        self.on_chart_type_change()
 
     @pyqtSlot(bool)
     def on_rbVotesChartFinal_toggled(self, checked):
-        self.draw_chart()
+        self.on_chart_type_change()
 
     @pyqtSlot(bool)
     def on_rbVotesChartChanges_toggled(self, checked):
-        self.draw_chart()
+        self.on_chart_type_change()
 
     def apply_votes_filter(self):
         changed_chb = self.votesProxyModel.set_only_my_votes(self.chbOnlyMyVotes.isChecked())
@@ -2323,9 +2387,9 @@ class VotesFilterProxyModel(QSortFilterProxyModel):
 
 
 class VotesModel(QAbstractTableModel):
-    def __init__(self, parent, masternodes, masternodes_by_db_id, users_masternodes_by_ident, db_intf):
-        QAbstractTableModel.__init__(self, parent)
-        self.parent = parent
+    def __init__(self, proposals_dlg, masternodes, masternodes_by_db_id, users_masternodes_by_ident, db_intf):
+        QAbstractTableModel.__init__(self, proposals_dlg)
+        self.proposals_dlg = proposals_dlg
         self.masternodes = masternodes
         self.masternodes_by_db_id = masternodes_by_db_id
         self.db_intf = db_intf
@@ -2390,13 +2454,15 @@ class VotesModel(QAbstractTableModel):
             self.votes.clear()
             tm_begin = time.time()
             cur = self.db_intf.get_cursor()
-            logging.debug('Get votes fot proposal id: ' + str(self.proposal.db_id))
+            logging.info('Get votes fot proposal id: ' + str(self.proposal.db_id))
             cur.execute("SELECT voting_time, voting_result, masternode_id, masternode_ident, m.ip "
                         "FROM VOTING_RESULTS v "
                         "LEFT OUTER JOIN MASTERNODES m on m.id = v.masternode_id "
                         "WHERE proposal_id=? order by voting_time desc", (self.proposal.db_id,))
 
             for row in cur.fetchall():
+                if self.proposals_dlg.finishing:
+                    break
                 users_mn_name = ''
                 mn_label = row[4]
                 if not mn_label:
@@ -2411,25 +2477,19 @@ class VotesModel(QAbstractTableModel):
                             users_mn_name = users_mn.masternode_config.name
 
                 self.votes.append((datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S'),
-                                   row[1], mn_label, users_mn_name ))
-            logging.debug('Reading votes time from DB: %s' % str(time.time() - tm_begin))
+                                   row[1], mn_label, users_mn_name))
+            logging.info('Reading votes time from DB: %s' % str(time.time() - tm_begin))
         except Exception as e:
             logging.exception('SQLite error')
         finally:
             self.db_intf.release_cursor()
 
     def set_proposal(self, proposal):
-        if self.proposal != proposal:
-            self.proposal = proposal
-            self.refresh_view()
-
-    def set_only_my_votes(self, only_my_votes):
-        if only_my_votes != self.only_my_votes:
-            self.only_my_votes = only_my_votes
-            self.th_read_votes()
+        self.proposal = proposal
 
     def refresh_view(self):
-        self.read_votes()
         self.beginResetModel()
         self.endResetModel()
 
+    def finish(self):
+        pass

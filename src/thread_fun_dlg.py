@@ -287,10 +287,7 @@ class WorkerThread(QThread):
     def run(self):
         try:
             self.worker_result = self.worker_fun(self.ctrl_obj, *self.worker_fun_args)
-            # self.wait_condition.wakeAll()
         except Exception as e:
             self.worker_exception = e
-            print('Exception in WorkerThread: %s' % str(e))
-            # self.wait_condition.wakeAll()
 
 
