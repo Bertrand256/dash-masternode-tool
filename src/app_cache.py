@@ -11,15 +11,32 @@ import json
 import os
 import threading
 
+import time
+
+from wnd_utils import WndUtils
+
 
 class AppCache(object):
-    def __init__(self, cache_dir):
+    def __init__(self, cache_dir, app_version):
         self.cache_file = os.path.join(cache_dir, 'dmt_cache.json')
+        self.app_version = app_version
+        self.finishing = False
+        self.last_data_change_time = 0
+        self.save_event = threading.Event()
         self.__data = {}
         self.load_data()
 
+    def start(self):
+        """ Run saving thread after GUI initializes. """
+        WndUtils.runInThread(self.save_data_thread, ())
+
+    def finish(self):
+        self.finishing = True
+        self.save_event.set()
+
     def save_data(self):
         try:
+            self.__data['app_version'] = self.app_version
             json.dump(self.__data, open(self.cache_file, 'w'))
         except Exception as e:
             log('Error writing cache: ' + str(e))
@@ -33,8 +50,7 @@ class AppCache(object):
             pass
 
     def data_changed(self):
-        # TODO: save asynchronously
-        self.save_data()
+        self.last_data_change_time = time.time()
 
     def set_value(self, symbol, value):
         modified = self.__data.get(symbol, None) != value
@@ -49,6 +65,16 @@ class AppCache(object):
         else:
             return default_value
 
+    def save_data_thread(self, ctrl):
+        last_save_date = 0
+        while not self.finishing:
+            self.save_event.wait(2)
+            if self.save_event.is_set():
+                self.save_event.clear()
+            if self.last_data_change_time > 0 and last_save_date < self.last_data_change_time:
+                self.save_data()
+                last_save_date = time.time()
+
 
 cache = None
 
@@ -57,10 +83,22 @@ def log(info):
     print(info)
 
 
-def init(cache_dir):
+def init(cache_dir, app_version):
     global cache
     if not cache:
-        cache = AppCache(cache_dir)
+        cache = AppCache(cache_dir, app_version)
+
+
+def start():
+    global cache
+    if cache:
+        cache.start()
+
+
+def finish():
+    global cache
+    if cache:
+        cache.finish()
 
 
 def set_value(symbol, value):

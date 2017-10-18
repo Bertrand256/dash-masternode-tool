@@ -3,7 +3,6 @@
 # Author: Bertrand256
 # Created on: 2017-03
 
-
 import base64
 import binascii
 import datetime
@@ -31,6 +30,7 @@ import dash_utils
 import hw_pass_dlg
 import hw_pin_dlg
 import send_payout_dlg
+import app_utils
 from proposals_dlg import ProposalsDlg
 from app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG, APP_NAME_SHORT, DATE_FORMAT, DATETIME_FORMAT, \
     PROJECT_URL
@@ -68,23 +68,16 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.curMasternode = None
         self.editingEnabled = False
         self.app_path = app_path
-        self.version_str = ''
 
         # bip32 cache:
         #   { "dash_address_of_the_parent": { bip32_path: dash_address }
         self.bip32_cache = { }
-        try:
-            with open(os.path.join(app_path, 'version.txt')) as fptr:
-                lines = fptr.read().splitlines()
-                self.version_str = self.extractAppVersion(lines)
-        except:
-            pass
         self.setupUi()
 
     def setupUi(self):
         ui_main_dlg.Ui_MainWindow.setupUi(self, self)
         self.setWindowTitle(APP_NAME_LONG + ' by Bertrand256' + (
-            ' (v. ' + self.version_str + ')' if self.version_str else ''))
+            ' (v. ' + self.config.app_version + ')' if self.config.app_version else ''))
 
         SshPassCache.set_parent_window(self)
         self.inside_setup_ui = True
@@ -197,38 +190,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.on_actCheckForUpdates_triggered(True, force_check=False)
 
         self.inside_setup_ui = False
+        self.config.start_cache()
         logging.info('Finished setup of the main dialog.')
-
-    @staticmethod
-    def extractAppVersion(lines):
-        """
-        Extracts version string from array of files (content of version.txt file)
-        :param lines:
-        :return: version string
-        """
-        for line in lines:
-            parts = [elem.strip() for elem in line.split('=')]
-            if len(parts) == 2 and parts[0].lower() == 'version_str':
-                return parts[1].strip("'")
-        return ''
-
-    @staticmethod
-    def versionStrToNumber(version_str):
-        elems = version_str.split('.')
-        if elems:
-            # last element of a version string can have a suffix
-            last_elem = elems[len(elems) - 1]
-            if not last_elem.isdigit():
-                res = re.findall(r'^\d+', last_elem)
-                if res:
-                    elems[len(elems) - 1] = res[0]
-                else:
-                    del elems[len(elems) - 1]
-
-        ver_list = [n.zfill(4) for n in elems]
-        version_nr_str = ''.join(ver_list)
-        version_nr = int(version_nr_str)
-        return version_nr
 
     @pyqtSlot(bool)
     def on_actCheckForUpdates_triggered(self, checked, force_check=True):
@@ -260,9 +223,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 'https://raw.githubusercontent.com/Bertrand256/dash-masternode-tool/master/version.txt')
             contents = response.read()
             lines = contents.decode().splitlines()
-            remote_version_str = self.extractAppVersion(lines)
-            remote_ver = self.versionStrToNumber(remote_version_str)
-            local_ver = self.versionStrToNumber(self.version_str)
+            remote_version_str = app_utils.extract_app_version(lines)
+            remote_ver = app_utils.version_str_to_number(remote_version_str)
+            local_ver = app_utils.version_str_to_number(self.config.app_version)
             cache.set_value('check_for_updates_last_date', cur_date_str)
 
             if remote_ver > local_ver:
@@ -343,7 +306,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_btnAbout_clicked(self):
-        ui = about_dlg.AboutDlg(self, self.version_str)
+        ui = about_dlg.AboutDlg(self, self.config.app_version)
         ui.exec_()
 
     def on_connection_begin(self):

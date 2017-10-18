@@ -19,6 +19,7 @@ from PyQt5.QtCore import QLocale
 from dash_utils import encrypt, decrypt
 import app_cache as cache
 import default_config
+import app_utils
 from db_intf import DBCache
 
 APP_NAME_SHORT = 'DashMasternodeTool'
@@ -42,6 +43,7 @@ class AppConfig(object):
         self.initialized = False
         self.app_path = ''  # will be passed in the init method
         self.log_level_str = 'WARNING'
+        self.app_version = ''
         QLocale.setDefault(self.get_default_locale())
 
         # List of Dash network configurations. Multiple conn configs advantage is to give the possibility to use
@@ -64,6 +66,7 @@ class AppConfig(object):
         self.hw_type = HWType.trezor  # TREZOR, KEEPKEY, LEDGERNANOS
         self.block_explorer_tx = 'https://chainz.cryptoid.info/dash/tx.dws?%TXID%'
         self.block_explorer_addr = 'https://chainz.cryptoid.info/dash/address.dws?%ADDRESS%'
+        self.dash_central_proposal_api = 'https://www.dashcentral.org/api/v1/proposal?hash=%HASH%'
 
         self.check_for_updates = True
         self.backup_config_file = True
@@ -71,6 +74,8 @@ class AppConfig(object):
         self.confirm_when_voting = True
         self.add_random_offset_to_vote_time = True  # To avoid identifying one user's masternodes by vote time
         self.csv_delimiter =';'
+        self.read_proposals_external_attributes = True  # if True, some additional attributes will be downloaded from
+                                                        # external sources
 
         self.masternodes = []
         self.last_bip32_base_path = ''
@@ -88,6 +93,13 @@ class AppConfig(object):
         """ Initialize configuration after openning the application. """
         self.app_path = app_path
 
+        try:
+            with open(os.path.join(app_path, 'version.txt')) as fptr:
+                lines = fptr.read().splitlines()
+                self.app_version = app_utils.extract_app_version(lines)
+        except:
+            pass
+
         home_dir = expanduser('~')
         app_user_dir = os.path.join(home_dir, APP_NAME_SHORT)
         if not os.path.exists(app_user_dir):
@@ -95,7 +107,7 @@ class AppConfig(object):
         self.cache_dir = os.path.join(app_user_dir, 'cache')
         if not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir)
-        cache.init(self.cache_dir)
+        cache.init(self.cache_dir, self.app_version)
         self.app_config_file_name = ''
 
         parser = argparse.ArgumentParser()
@@ -150,7 +162,12 @@ class AppConfig(object):
             os.makedirs(self.cfg_backup_dir)
         self.initialized = True
 
+    def start_cache(self):
+        """ Start cache save thread after GUI initializes. """
+        cache.start()
+
     def close(self):
+        cache.finish()
         self.db_intf.close()
 
     def copy_from(self, src_config):
@@ -159,6 +176,7 @@ class AppConfig(object):
         self.hw_type = src_config.hw_type
         self.block_explorer_tx = src_config.block_explorer_tx
         self.block_explorer_addr = src_config.block_explorer_addr
+        self.dash_central_proposal_api = src_config.random_dash_net_config
         self.check_for_updates = src_config.check_for_updates
         self.backup_config_file = src_config.backup_config_file
         self.dont_use_file_dialogs = src_config.dont_use_file_dialogs

@@ -6,9 +6,7 @@ import logging
 import os
 import threading
 import traceback
-
 import sys
-
 import thread_utils
 import time
 from PyQt5 import QtWidgets, QtCore
@@ -140,9 +138,8 @@ class WndUtils:
         thread = None
 
         def on_thread_finished_int():
-            logging.info('on_thread_finished_int for: ' + str(worker_fun))
+            logging.debug('Finished WorkerThread for: ' + str(worker_fun))
             if thread.worker_exception:
-                logging.info('exception for: ' + str(worker_fun))
                 if on_thread_exception:
                     on_thread_exception(thread.worker_exception)
                 else:
@@ -158,11 +155,10 @@ class WndUtils:
             st = traceback.format_stack()
             logging.error('Running thread from inside another thread. Stack: \n' + ''.join(st))
 
-        logging.info('Begin WorkerThread for: ' + str(worker_fun))
         thread = WorkerThread(worker_fun=worker_fun, worker_fun_args=worker_fun_args)
         thread.finished.connect(on_thread_finished_int)
         thread.start()
-        logging.info('Started WorkerThread for: ' + str(worker_fun))
+        logging.debug('Started WorkerThread for: ' + str(worker_fun))
         return thread
 
     @staticmethod
@@ -257,6 +253,11 @@ class WndUtils:
 
 
 class DeadlockException(Exception):
+    pass
+
+
+class CloseDialogException(Exception):
+    """ Raised when all processes executed inside a dialog must be aborted, because the dialog is being closing. """
     pass
 
 
