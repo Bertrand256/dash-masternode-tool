@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'X:\src\ui\ui_about_dlg.ui'
+# Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_about_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.8.2
+# Created by: PyQt5 UI code generator 5.9
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -94,8 +94,7 @@ class Ui_AboutDlg(object):
 "<li style=\" font-size:11pt;\" style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Andreas Antonopolous for his excellent technical book <a href=\"http://shop.oreilly.com/product/0636920049524.do\"><span style=\" text-decoration: underline; color:#0000ff;\">Mastering Bitcoin</span></a> (<a href=\"https://github.com/bitcoinbook/bitcoinbook/tree/develop\"><span style=\" text-decoration: underline; color:#0000ff;\">GitHub version</span></a>)</li>\n"
 "<li style=\" font-size:11pt;\" style=\" margin-top:0px; margin-bottom:6px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Vitalik Buterin for <a href=\"https://github.com/vbuterin/pybitcointools\"><span style=\" text-decoration: underline; color:#0000ff;\">pybitcointools</span></a> library, which is used inside this app</li></ul>\n"
 "<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:8.25pt;\"><br /></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">Author:</span><span style=\" font-size:11pt;\"> Bertrand256 </span></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">Dash address: XwZzf7yqYoUBnDFqE7r3zuNmpwKo1CYLMC</span></p></body></html>"))
+"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">Author:</span><span style=\" font-size:11pt;\"> Bertrand256 (</span><a href=\"mailto:blogin@protonmail.com\"><span style=\" text-decoration: underline; color:#0000ff;\">blogin@protonmail.com</span></a><span style=\" font-size:11pt;\">)</span></p></body></html>"))
         self.btnClose.setText(_translate("AboutDlg", "Close"))
 
 
