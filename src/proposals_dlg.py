@@ -144,6 +144,8 @@ class Proposal(AttrsProtected):
         """
         if name == 'no':
             return self.initial_order_no + 1
+        elif name == 'active':
+            return self.voting_in_progress
         else:
             for col in self.columns:
                 if col.name == name:
@@ -259,14 +261,15 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             ProposalColumn('title', 'Title', True),
             ProposalColumn('owner', 'Owner', True),
             ProposalColumn('voting_status_caption', 'Voting Status', True),
+            ProposalColumn('active', 'Active', True),
             ProposalColumn('payment_amount', 'Amount', True),
+            ProposalColumn('months', 'Months', True),
             ProposalColumn('payment_amount_total', 'Total Amount', True),  # payment_amount * months
+            ProposalColumn('current_month', 'Current Month', True),
             ProposalColumn('absolute_yes_count', 'Absolute Yes Count', True),
             ProposalColumn('yes_count', "Yes Count", True),
             ProposalColumn('no_count', 'No Count', True),
             ProposalColumn('abstain_count', 'Abstain Count', True),
-            ProposalColumn('months', 'Months', True),
-            ProposalColumn('current_month', 'Current Month', True),
             ProposalColumn('payment_start', 'Payment Start', True),
             ProposalColumn('payment_end', 'Payment End', True),
             ProposalColumn('payment_address', 'Payment Address', False),
@@ -1546,6 +1549,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             if not widths_initialized:
                 self.propsView.resizeColumnsToContents()
+
+                # 'title' can be a quite long string so after auto-sizing columns we'd like to correct the
+                # column's width to some reasonable value
+                col_idx = self.column_index_by_name('title')
+                col = self.columns[col_idx]
+                if col.visible and self.propsView.columnWidth(col_idx) > 430:
+                    self.propsView.setColumnWidth(col_idx, 430)
+
             self.update_proposals_order_no()
 
             logging.debug("Display proposals' data time: " + str(time.time() - tm_begin))
