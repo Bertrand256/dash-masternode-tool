@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_main_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.8.2
+# Created by: PyQt5 UI code generator 5.9
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -252,20 +252,25 @@ class Ui_MainWindow(object):
         self.horizontalLayout_12 = QtWidgets.QHBoxLayout()
         self.horizontalLayout_12.setSpacing(2)
         self.horizontalLayout_12.setObjectName("horizontalLayout_12")
+        spacerItem3 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.horizontalLayout_12.addItem(spacerItem3)
         self.btnBroadcastMn = QtWidgets.QPushButton(self.groupBox_3)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Maximum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.btnBroadcastMn.sizePolicy().hasHeightForWidth())
         self.btnBroadcastMn.setSizePolicy(sizePolicy)
-        self.btnBroadcastMn.setMinimumSize(QtCore.QSize(0, 40))
-        self.btnBroadcastMn.setMaximumSize(QtCore.QSize(16777215, 200))
+        self.btnBroadcastMn.setMinimumSize(QtCore.QSize(0, 0))
+        self.btnBroadcastMn.setMaximumSize(QtCore.QSize(16777215, 16777215))
+        self.btnBroadcastMn.setStyleSheet("font: 16pt;")
         self.btnBroadcastMn.setObjectName("btnBroadcastMn")
         self.horizontalLayout_12.addWidget(self.btnBroadcastMn)
-        self.horizontalLayout_12.setStretch(0, 3)
+        spacerItem4 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.horizontalLayout_12.addItem(spacerItem4)
+        self.horizontalLayout_12.setStretch(1, 3)
         self.verticalLayout_3.addLayout(self.horizontalLayout_12)
-        spacerItem3 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
-        self.verticalLayout_3.addItem(spacerItem3)
+        spacerItem5 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+        self.verticalLayout_3.addItem(spacerItem5)
         self.gridLayout_2.addLayout(self.verticalLayout_3, 7, 1, 1, 1)
         self.btnFindCollateral = QtWidgets.QPushButton(self.groupBox_3)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed)
@@ -361,8 +366,8 @@ class Ui_MainWindow(object):
         self.btnAbout.setFlat(False)
         self.btnAbout.setObjectName("btnAbout")
         self.layButtons.addWidget(self.btnAbout)
-        spacerItem4 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.layButtons.addItem(spacerItem4)
+        spacerItem6 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.layButtons.addItem(spacerItem6)
         self.verticalLayout_2.addLayout(self.layButtons)
         self.layHardwareWallet = QtWidgets.QHBoxLayout()
         self.layHardwareWallet.setContentsMargins(0, 3, -1, 3)
@@ -376,8 +381,8 @@ class Ui_MainWindow(object):
         self.btnHwDisconnect = QtWidgets.QPushButton(self.groupBox)
         self.btnHwDisconnect.setObjectName("btnHwDisconnect")
         self.layHardwareWallet.addWidget(self.btnHwDisconnect)
-        spacerItem5 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.layHardwareWallet.addItem(spacerItem5)
+        spacerItem7 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.layHardwareWallet.addItem(spacerItem7)
         self.verticalLayout_2.addLayout(self.layHardwareWallet)
         self.layMessage = QtWidgets.QHBoxLayout()
         self.layMessage.setContentsMargins(0, -1, -1, 0)

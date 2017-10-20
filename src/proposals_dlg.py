@@ -335,35 +335,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.votesSplitter.setStretchFactor(0, 0)
             self.votesSplitter.setStretchFactor(1, 1)
 
-            self.lblDetailsName.setProperty('data', True)
-            self.lblDetailsUrl.setProperty('data', True)
-            self.lblDetailsVotingStatus.setProperty('data', True)
-            self.lblDetailsYesCount.setProperty('data', True)
-            self.lblDetailsNoCount.setProperty('data', True)
-            self.lblDetailsAbstainCount.setProperty('data', True)
-            self.lblDetailsCreationTime.setProperty('data', True)
-            self.lblDetailsPaymentAmount.setProperty('data', True)
-            self.lblDetailsPaymentAddress.setProperty('data', True)
-            self.lblDetailsPaymentStart.setProperty('data', True)
-            self.lblDetailsPaymentEnd.setProperty('data', True)
-            self.lblDetailsProposalHash.setProperty('data', True)
-            self.lblDetailsCollateralHash.setProperty('data', True)
-
-            self.lblDetailsNameLabel.setProperty('label', True)
-            self.lblDetailsUrlLabel.setProperty('label', True)
-            self.lblDetailsVotingStatusLabel.setProperty('label', True)
-            self.lblDetailsYesCountLabel.setProperty('label', True)
-            self.lblDetailsNoCountLabel.setProperty('label', True)
-            self.lblDetailsAbstainCountLabel.setProperty('label', True)
-            self.lblDetailsCreationTimeLabel.setProperty('label', True)
-            self.lblDetailsPaymentAmountLabel.setProperty('label', True)
-            self.lblDetailsPaymentAddressLabel.setProperty('label', True)
-            self.lblDetailsPaymentStartLabel.setProperty('label', True)
-            self.lblDetailsPaymentEndLabel.setProperty('label', True)
-            self.lblDetailsProposalHashLabel.setProperty('label', True)
-            self.lblDetailsCollateralHashLabel.setProperty('label', True)
-            self.tabDetails.setStyleSheet('QLabel[label="true"]{font-weight:bold}')
-
             # assign a new currentChanged handler; solution not very pretty, but there is no
             # signal for this purpose in QTableView
             self.propsView.currentChanged = self.on_propsView_currentChanged
@@ -1720,33 +1691,123 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.correct_proposal_hyperlink_color(self.current_proposal)
 
     def refresh_preview_panel(self):
-        if self.current_proposal:
-            url = self.current_proposal.get_value('url')
-            if url:
-                self.lblDetailsUrl.setText('<a href="%s">%s</a>' % (url, url))
-            else:
-                self.lblDetailsUrl.setText('')
-            self.lblDetailsName.setText(self.current_proposal.get_value('name'))
-            self.lblDetailsVotingStatus.setText(self.current_proposal.get_value('voting_status_caption'))
-            self.lblDetailsYesCount.setText(str(self.current_proposal.get_value('yes_count')))
-            self.lblDetailsNoCount.setText(str(self.current_proposal.get_value('no_count')))
-            self.lblDetailsAbstainCount.setText(str(self.current_proposal.get_value('abstain_count')))
-            self.lblDetailsCreationTime.setText(str(self.current_proposal.get_value('creation_time')))
-            self.lblDetailsPaymentAmount.setText(str(self.current_proposal.get_value('payment_amount')) + ' Dash')
-            addr = self.current_proposal.get_value('payment_address')
-            if self.main_wnd.config.block_explorer_addr:
-                url = self.main_wnd.config.block_explorer_addr.replace('%ADDRESS%', addr)
-                addr = '<a href="%s">%s</a>' % (url, addr)
-            self.lblDetailsPaymentAddress.setText(addr)
-            self.lblDetailsPaymentStart.setText(str(self.current_proposal.get_value('payment_start')))
-            self.lblDetailsPaymentEnd.setText(str(self.current_proposal.get_value('payment_end')))
-            self.lblDetailsProposalHash.setText(self.current_proposal.get_value('hash'))
-            hash = self.current_proposal.get_value('collateral_hash')
-            if self.main_wnd.config.block_explorer_tx:
-                url = self.main_wnd.config.block_explorer_tx.replace('%TXID%', hash)
-                hash = '<a href="%s">%s</a>' % (url, hash)
-            self.lblDetailsCollateralHash.setText(hash)
-            self.refresh_details_event.set()
+        try:
+            if self.current_proposal:
+                prop = self.current_proposal
+                url = self.current_proposal.get_value('url')
+                status = str(self.current_proposal.voting_status)
+                payment_addr = self.current_proposal.get_value('payment_address')
+                if self.main_wnd.config.block_explorer_addr:
+                    payment_url = self.main_wnd.config.block_explorer_addr.replace('%ADDRESS%', payment_addr)
+                    payment_addr = '<a href="%s">%s</a>' % (payment_url, payment_addr)
+                col_hash = self.current_proposal.get_value('collateral_hash')
+                if self.main_wnd.config.block_explorer_tx:
+                    col_url = self.main_wnd.config.block_explorer_tx.replace('%TXID%', col_hash)
+                    col_hash = '<a href="%s">%s</a>' % (col_url, col_hash)
+
+                def get_date_str(d):
+                    if d is not None:
+                        return self.main_wnd.config.to_string(d.date())
+                    return None
+
+                owner = prop.get_value('owner')
+                if not owner:
+                    owner = "&lt;Unknown&gt;"
+
+                details = """
+    <html>
+    <head>
+    <style type="text/css">
+        td.first-col-label, td.padding {padding-top:2px;padding-bottom:2px;}
+        td {border-style: solid; border-color:gray}
+        .first-col-label {font-weight: bold; text-align: right; padding-right:6px; white-space:nowrap; valign: middle}
+        .inter-label {font-weight: bold;padding-right: 5px; padding-left: 5px; white-space:pre}
+        .status-1{background-color:%s;color:white}
+        .status-2{background-color:%s;color:white}
+        .status-3{color:%s}
+        .status-4{color:%s}
+    </style>
+    </head>
+    <body>
+    <table>
+        <tbody>
+            <tr class="main-row">
+                <td class="first-col-label">Name:</td>
+                <td class="padding">%s</td>
+            </tr>
+            <tr class="main-row">
+                <td class="first-col-label">Title:</td>
+                <td class="padding">%s</td>
+            </tr>
+            <tr class="main-row">
+                <td class="first-col-label">Owner:</td>
+                <td class="padding">%s</td>
+            </tr>
+            <tr class="main-row">
+                <td class="first-col-label">URL:</td>
+                <td class="padding"><a href="%s">%s</a></td>
+            </tr>
+            <tr class="main-row">
+                <td class="first-col-label">Voting:</td>
+                <td>
+                    <table>
+                        <tr >
+                            <td style="white-space:nowrap;padding-left:2px;padding-right:2px;" class="status-%s padding">%s</td>
+                            <td class="inter-label padding">Yes count:</td><td class="padding">%s</td>
+                            <td class="inter-label padding">No count:</td><td class="padding">%s</td>
+                            <td class="inter-label padding">Abstain count:</td><td class="padding">%s</td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+            <tr class="main-row">
+                <td class="first-col-label">Payment:</td>
+                <td class="padding"><span style="white-space:pre">%s Dash&#47;month,  <b>months:</b> %s,  <b>total amount:</b> %s Dash,  <b>address:</b> %s,  <b>date start&#47;end:</b> %s &#47; %s</span>
+                </td>
+            </tr>
+            <tr class="main-row">
+                <td class="first-col-label">Creation time:</td>
+                <td class="padding">%s</td>
+            </tr>
+            <tr class="main-row">
+                <td class="first-col-label">Proposal hash:</td>
+                <td class="padding">%s</td>
+            </tr>
+            <tr class="main-row">
+                <td class="first-col-label">Collateral hash:</td>
+                <td class="padding">%s</td>
+            </tr>
+        </tbody>
+    </table>
+     </body>
+    </html>﻿
+                """ % (
+                    COLOR_YES, COLOR_ABSTAIN, COLOR_YES, COLOR_NO,
+                    prop.get_value('name'),
+                    prop.get_value('title'),
+                    owner,
+                    url, url,
+                    status,
+                    prop.get_value('voting_status_caption'),
+                    str(prop.get_value('yes_count')),
+                    str(prop.get_value('no_count')),
+                    str(prop.get_value('abstain_count')),
+                    self.main_wnd.config.to_string(prop.get_value('payment_amount')),
+                    str(prop.get_value('months')),
+                    self.main_wnd.config.to_string(prop.get_value('payment_amount_total')),
+                    payment_addr,
+                    get_date_str(prop.get_value('payment_start')),
+                    get_date_str(prop.get_value('payment_end')),
+                    get_date_str(prop.get_value('creation_time')),
+                    prop.get_value('hash'),
+                    col_hash
+                )
+
+                self.edtDetails.setHtml(details)
+                self.refresh_details_event.set()
+        except Exception:
+            logging.exception('Exception while refreshing proposal details panel')
+            raise
 
     def draw_chart(self):
         """Draws a voting chart if proposal has changed.
