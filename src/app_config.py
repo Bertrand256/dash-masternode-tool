@@ -45,6 +45,8 @@ class AppConfig(object):
         self.log_level_str = 'WARNING'
         self.app_version = ''
         QLocale.setDefault(self.get_default_locale())
+        self.date_format = self.get_default_locale().dateFormat(QLocale.ShortFormat)
+        self.date_time_format = self.get_default_locale().dateTimeFormat(QLocale.ShortFormat)
 
         # List of Dash network configurations. Multiple conn configs advantage is to give the possibility to use
         # another config if particular one is not functioning (when using "public" RPC service, it could be node's
@@ -196,6 +198,17 @@ class AppConfig(object):
             return QLocale(QLocale.English)
         else:
             return QLocale.system()
+
+    def to_string(self, data):
+        """ Converts date/datetime or number to string using the current locale. """
+        if isinstance(data, datetime.date):
+            return self.get_default_locale().toString(data, self.date_format)
+        elif isinstance(data, datetime.datetime):
+            return self.get_default_locale().toString(data, self.date_time_format)
+        elif isinstance(data, float):
+            return self.get_default_locale().toString(data)
+        else:
+            raise Exception('Argument is not a datetime type')
 
     def read_from_file(self):
         ini_version = None
