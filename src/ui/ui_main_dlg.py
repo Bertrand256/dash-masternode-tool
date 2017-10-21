@@ -262,7 +262,7 @@ class Ui_MainWindow(object):
         self.btnBroadcastMn.setSizePolicy(sizePolicy)
         self.btnBroadcastMn.setMinimumSize(QtCore.QSize(0, 0))
         self.btnBroadcastMn.setMaximumSize(QtCore.QSize(16777215, 16777215))
-        self.btnBroadcastMn.setStyleSheet("font: 16pt;")
+        self.btnBroadcastMn.setStyleSheet("")
         self.btnBroadcastMn.setObjectName("btnBroadcastMn")
         self.horizontalLayout_12.addWidget(self.btnBroadcastMn)
         spacerItem4 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)

@@ -32,8 +32,7 @@ import hw_pin_dlg
 import send_payout_dlg
 import app_utils
 from proposals_dlg import ProposalsDlg
-from app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG, APP_NAME_SHORT, DATE_FORMAT, DATETIME_FORMAT, \
-    PROJECT_URL
+from app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG, APP_NAME_SHORT, PROJECT_URL
 from dash_utils import bip32_path_n_to_string
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_common import HardwareWalletCancelException, HardwareWalletPinException
@@ -196,7 +195,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot(bool)
     def on_actCheckForUpdates_triggered(self, checked, force_check=True):
         if self.config.check_for_updates:
-            cur_date = datetime.datetime.now().strftime(DATE_FORMAT)
+            cur_date = datetime.datetime.now().strftime('%Y-%m-%d')
             last_ver_check_date = cache.get_value('check_for_updates_last_date', '', str)
             if force_check or cur_date != last_ver_check_date:
                 self.runInThread(self.checkForUpdates, (cur_date, force_check))
@@ -382,11 +381,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             :param ctrl: control structure to communicate with WorkerThread object (not used here)
             """
             try:
-                logging.info("before call issynchronized")
                 synced = self.dashd_intf.issynchronized()
-                logging.info("after call issynchronized")
                 self.dashd_info = self.dashd_intf.getinfo()
-                logging.info("after call getinfo")
                 self.dashd_connection_ok = True
                 if not synced:
                     logging.info("dashd not synced")
@@ -411,7 +407,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             """
             Called after thread terminates.
             """
-            logging.info("connect_finished finished")
             del self.check_conn_thread
             self.check_conn_thread = None
             if call_on_check_finished:
@@ -886,6 +881,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 for mn in mns_imported:
                                     if not mn.collateralBip32Path and mn.collateralAddress:
                                         addresses_to_scan.append(mn.collateralAddress)
+                                self.disconnectHardwareWallet()  # forcing to enter the passphrase again
                                 found_paths, user_cancelled = self.hwScanForBip32Paths(addresses_to_scan)
 
                                 paths_missing = 0
@@ -1112,6 +1108,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
 
         try:
+            self.disconnectHardwareWallet()  # forcing to enter the passphrase again
             self.connectHardwareWallet()
             if not self.hw_client:
                 return
@@ -1276,11 +1273,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             delegate_in = dash_utils.num_to_varint(len(mn_pubkey) / 2).hex() + mn_pubkey
             info = self.dashd_intf.getinfo()
             sig_time = int(time.time())
+            protocol_version = info['protocolversion']
 
             serialize_for_sig = self.curMasternode.ip + ':' + self.curMasternode.port + str(int(sig_time)) + \
                                 binascii.unhexlify(bitcoin.hash160(collateral_pubkey))[::-1].hex() + \
                                 binascii.unhexlify(bitcoin.hash160(bytes.fromhex(mn_pubkey)))[::-1].hex() + \
-                                str(info['protocolversion'])
+                                str(protocol_version)
 
             sig = hw_intf.sign_message(self, self.curMasternode.collateralBip32Path, serialize_for_sig)
 
@@ -1292,7 +1290,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             logging.debug('Start MN message sig_time: ' + str(sig_time))
 
             work_sig_time = sig_time.to_bytes(8, byteorder='big')[::-1].hex()
-            work_protoversion = int(info['protocolversion']).to_bytes(4, byteorder='big')[::-1].hex()
+            work_protoversion = int(protocol_version).to_bytes(4, byteorder='big')[::-1].hex()
             last_ping_block_hash = bytes.fromhex(block_hash)[::-1].hex()
 
             last_ping_serialize_for_sig = dash_utils.serialize_input_str(
@@ -1314,6 +1312,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                    + dash_utils.num_to_varint(len(sig2) / 2).hex() + sig2
 
             work = '01' + work
+            if protocol_version >= 70208:
+                work = work + '0001000100'
+
             ret = self.dashd_intf.masternodebroadcast("decode", work)
             if ret['overall'].startswith('Successfully decoded broadcast messages for 1 masternodes'):
                 msg = QMessageBox()
@@ -1389,10 +1390,24 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     mn_info = mns_info[0]  # there shold be the only our masternode in the list
 
                     if extended:
-                        lastseen_str = datetime.datetime.fromtimestamp(float(mn_info.lastseen)).strftime(DATETIME_FORMAT)
-                        lastseen_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastseen))
-                        lastpaid_str = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime)).strftime(DATETIME_FORMAT)
-                        lastpaid_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastpaidtime), out_seconds=False)
+                        lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
+                        if mn_info.lastseen > 0:
+                            lastseen_str = self.config.to_string(lastseen)
+                            lastseen_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastseen),
+                                                                       out_seconds=False) + ' ago'
+                        else:
+                            lastseen_str = 'never'
+                            lastseen_ago = ''
+
+                        lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
+                        if mn_info.lastpaidtime > 0:
+                            lastpaid_str = self.config.to_string(lastpaid)
+                            lastpaid_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastpaidtime),
+                                                                       out_seconds=False) + ' ago'
+                        else:
+                            lastpaid_str = 'never'
+                            lastpaid_ago = ''
+
                         activeseconds_str = dash_utils.seconds_to_human(int(mn_info.activeseconds), out_seconds=False)
                         if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
                             color = 'green'
@@ -1400,13 +1415,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                             color = 'red'
                         status = '<style>td {white-space:nowrap;padding-right:8px}' \
                                  '.title {text-align:right;font-weight:bold}' \
-                                 '.ago {font-style:italic}' \
+                                 '.ago {font-style:normal}' \
                                  '.value {color:navy}' \
                                  '</style>' \
                                  '<table>' \
                                  '<tr><td class="title">Status:</td><td class="value"><span style="color:%s">%s</span></td></tr>' \
-                                 '<tr><td class="title">Last Seen:</td><td class="value">%s</td><td class="ago">%s ago</td></tr>' \
-                                 '<tr><td class="title">Last Paid:</td><td class="value">%s</td><td class="ago">%s ago</td></tr>' \
+                                 '<tr><td class="title">Last Seen:</td><td class="value">%s</td><td class="ago">%s</td></tr>' \
+                                 '<tr><td class="title">Last Paid:</td><td class="value">%s</td><td class="ago">%s</td></tr>' \
                                  '<tr><td class="title">Active Duration:</td><td class="value" colspan="2">%s</td></tr>' \
                                  '</table>' % \
                                  (color, mn_info.status, lastseen_str, lastseen_ago, lastpaid_str, lastpaid_ago,
@@ -1436,11 +1451,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
         if self.curMasternode:
             src_addresses = []
-            if self.curMasternode.collateralAddress and self.curMasternode.collateralBip32Path:
+            if not self.curMasternode.collateralBip32Path:
+                self.errorMsg("Enter the Masternode collateral BIP32 path. You can use the 'right arrow' button "
+                              "on the right of the 'Collateral' edit box.")
+            elif not self.curMasternode.collateralAddress:
+                self.errorMsg("Enter the Masternode collateral Dash address. You can use the 'left arrow' "
+                              "button on the left of the 'BIP32 path' edit box.")
+            else:
                 src_addresses.append((self.curMasternode.collateralAddress, self.curMasternode.collateralBip32Path))
                 self.executeTransferFundsDialog(src_addresses)
-            else:
-                self.errorMsg("Empty Masternode collateral's BIP32 path and/or address")
         else:
             self.errorMsg('No masternode selected')
 
@@ -1450,13 +1469,22 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         Shows tranfser funds window with utxos related to all masternodes. 
         """
         src_addresses = []
+        lacking_addresses  = 0
         for mn in self.config.masternodes:
             if mn.collateralAddress and mn.collateralBip32Path:
                 src_addresses.append((mn.collateralAddress, mn.collateralBip32Path))
+            else:
+                lacking_addresses += 1
         if len(src_addresses):
-            self.executeTransferFundsDialog(src_addresses)
+            if lacking_addresses == 0 or \
+                self.queryDlg("Some of your Masternodes lack the Dash addres and/or BIP32 path of the collateral "
+                              "in their configuration. Transactions for these Masternodes will not be listed.\n\n"
+                              "Continue?",
+                              buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                              default_button=QMessageBox.Yes, icon=QMessageBox.Warning) == QMessageBox.Yes:
+                self.executeTransferFundsDialog(src_addresses)
         else:
-            self.errorMsg('No masternode with set collateral BIP32 path and address')
+            self.errorMsg('No masternode with the BIP32 path and Dash address configured.')
 
     @pyqtSlot(bool)
     def on_actTransferFundsForAddress_triggered(self):

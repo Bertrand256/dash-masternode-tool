@@ -27,8 +27,6 @@ APP_NAME_LONG = 'Dash Masternode Tool'
 PROJECT_URL = 'https://github.com/Bertrand256/dash-masternode-tool'
 MIN_TX_FEE = 10000
 APP_CFG_CUR_VERSION = 2  # current version of configuration file format
-DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
-DATE_FORMAT = '%Y-%m-%d'
 SCREENSHOT_MODE = False
 
 
@@ -72,12 +70,12 @@ class AppConfig(object):
 
         self.check_for_updates = True
         self.backup_config_file = True
+        self.read_proposals_external_attributes = True  # if True, some additional attributes will be downloaded from
+                                                        # external sources
         self.dont_use_file_dialogs = False
         self.confirm_when_voting = True
         self.add_random_offset_to_vote_time = True  # To avoid identifying one user's masternodes by vote time
         self.csv_delimiter =';'
-        self.read_proposals_external_attributes = True  # if True, some additional attributes will be downloaded from
-                                                        # external sources
 
         self.masternodes = []
         self.last_bip32_base_path = ''
@@ -178,9 +176,10 @@ class AppConfig(object):
         self.hw_type = src_config.hw_type
         self.block_explorer_tx = src_config.block_explorer_tx
         self.block_explorer_addr = src_config.block_explorer_addr
-        self.dash_central_proposal_api = src_config.random_dash_net_config
+        self.dash_central_proposal_api = src_config.dash_central_proposal_api
         self.check_for_updates = src_config.check_for_updates
         self.backup_config_file = src_config.backup_config_file
+        self.read_proposals_external_attributes = src_config.read_proposals_external_attributes
         self.dont_use_file_dialogs = src_config.dont_use_file_dialogs
         self.confirm_when_voting = src_config.confirm_when_voting
         self.add_random_offset_to_vote_time = src_config.add_random_offset_to_vote_time
@@ -201,12 +200,16 @@ class AppConfig(object):
 
     def to_string(self, data):
         """ Converts date/datetime or number to string using the current locale. """
-        if isinstance(data, datetime.date):
-            return self.get_default_locale().toString(data, self.date_format)
-        elif isinstance(data, datetime.datetime):
+        if isinstance(data, datetime.datetime):
             return self.get_default_locale().toString(data, self.date_time_format)
+        elif isinstance(data, datetime.date):
+            return self.get_default_locale().toString(data, self.date_format)
         elif isinstance(data, float):
             return self.get_default_locale().toString(data)
+        elif isinstance(data, str):
+            return data
+        elif isinstance(data, int):
+            return str(data)
         else:
             raise Exception('Argument is not a datetime type')
 
@@ -289,6 +292,8 @@ class AppConfig(object):
                                                                             fallback='1'))
                 self.check_for_updates = self.value_to_bool(config.get(section, 'check_for_updates', fallback='1'))
                 self.backup_config_file = self.value_to_bool(config.get(section, 'backup_config_file', fallback='1'))
+                self.read_proposals_external_attributes = \
+                    self.value_to_bool(config.get(section, 'read_external_proposal_attributes', fallback='1'))
                 self.dont_use_file_dialogs = self.value_to_bool(config.get(section, 'dont_use_file_dialogs',
                                                                           fallback='0'))
                 self.confirm_when_voting = self.value_to_bool(config.get(section, 'confirm_when_voting',
@@ -374,6 +379,8 @@ class AppConfig(object):
         config.set(section, 'check_for_updates', '1' if self.check_for_updates else '0')
         config.set(section, 'backup_config_file', '1' if self.backup_config_file else '0')
         config.set(section, 'dont_use_file_dialogs', '1' if self.dont_use_file_dialogs else '0')
+        config.set(section, 'read_external_proposal_attributes',
+                   '1' if self.read_proposals_external_attributes else '0')
         config.set(section, 'confirm_when_voting', '1' if self.confirm_when_voting else '0')
         config.set(section, 'add_random_offset_to_vote_time', '1' if self.add_random_offset_to_vote_time else '0')
 
@@ -646,7 +653,7 @@ class MasterNodeConfig:
         self.ip = ''
         self.port = '9999'
         self.privateKey = ''
-        self.collateralBip32Path = "44'/5'/0'/0/0"
+        self.collateralBip32Path = ''
         self.collateralAddress = ''
         self.collateralTx = ''
         self.collateralTxIndex = ''

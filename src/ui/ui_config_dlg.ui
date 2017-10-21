@@ -328,7 +328,7 @@
          <item>
           <widget class="QRadioButton" name="chbHwLedgerNanoS">
            <property name="text">
-            <string>Ledger Nano S (starting mn)</string>
+            <string>Ledger Nano S (starting MN only)</string>
            </property>
           </widget>
          </item>
@@ -375,6 +375,13 @@
         <widget class="QCheckBox" name="chbAddRandomOffsetToVotingTime">
          <property name="text">
           <string>Add random offset to new vote time to enhance privacy</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="chbDownloadProposalExternalData">
+         <property name="text">
+          <string>Download external proposal attributes (DashCentral.org)</string>
          </property>
         </widget>
        </item>

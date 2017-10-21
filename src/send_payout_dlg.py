@@ -14,7 +14,7 @@ from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSlot
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox
 import app_cache as cache
-from app_config import MIN_TX_FEE, DATETIME_FORMAT, HWType
+from app_config import MIN_TX_FEE, HWType
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_intf import prepare_transfer_tx, get_address
 from wnd_utils import WndUtils
@@ -109,7 +109,7 @@ class PaymentTableModel(QAbstractTableModel):
                     elif role == Qt.DisplayRole:
                         field_name = self.columns[col-1][0]
                         if field_name == 'satoshis':
-                            return str(round(utxo['satoshis'] / 1e8, 8))
+                            return self.parent_wnd.main_ui.config.to_string(round(utxo['satoshis'] / 1e8, 8))
                         else:
                             if SCREENSHOT_MODE and field_name in ('address','txid'):
                                 if field_name == 'address':
@@ -117,7 +117,7 @@ class PaymentTableModel(QAbstractTableModel):
                                 elif field_name == 'txid':
                                     return binascii.b2a_hex(os.urandom(32)).decode('ascii')
                             else:
-                                return str(utxo.get(field_name, ''))
+                                return self.parent_wnd.main_ui.config.to_string(utxo.get(field_name, ''))
                     elif role == Qt.ForegroundRole:
                         if utxo['collateral']:
                             return QColor(Qt.red)
@@ -263,7 +263,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
         if self.main_ui.config.hw_type == HWType.ledger_nano_s:
             self.pnlSourceAddress.setVisible(False)
-            self.org_message = '<span style="color:red">Sending funds controlled by Ledger Nano S wallets not ' \
+            self.org_message = '<span style="color:red">Sending funds controlled by Ledger Nano S wallets is not ' \
                                'supported yet.</span>'
             self.setMessage(self.org_message)
             self.load_utxos()
@@ -307,7 +307,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.table_model.setHideCollateralsUtxos(self.chbHideCollateralTx.isChecked())
 
     def onUtxoCheckChanged(self):
-        self.lblAmount.setText(str(round(self.table_model.getCheckedSumAmount() / 1e8, 8)))
+        self.lblAmount.setText(self.main_ui.config.to_string(round(self.table_model.getCheckedSumAmount() / 1e8, 8)))
 
         # estimate transaction fee
         utxos = self.table_model.getSelectedUtxos()
@@ -469,7 +469,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     for idx, utxo in enumerate(self.utxos):
                         blockhash = self.dashd_intf.getblockhash(utxo.get('height'))
                         bh = self.dashd_intf.getblockheader(blockhash)
-                        utxo['time_str'] = datetime.datetime.fromtimestamp(bh['time']).strftime(DATETIME_FORMAT)
+                        utxo['time_str'] = self.main_ui.config.to_string(datetime.datetime.fromtimestamp(bh['time']))
                         utxo['confirmations'] = cur_block_height - bh.get('height') + 1
                         utxo['coinbase_locked'] = False
 
