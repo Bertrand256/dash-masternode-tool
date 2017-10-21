@@ -168,6 +168,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.chbHwLedgerNanoS.setChecked(True)
         self.chbCheckForUpdates.setChecked(self.local_config.check_for_updates)
         self.chbBackupConfigFile.setChecked(self.local_config.backup_config_file)
+        self.chbDownloadProposalExternalData.setChecked(self.local_config.read_proposals_external_attributes)
         self.chbDontUseFileDialogs.setChecked(self.local_config.dont_use_file_dialogs)
         self.chbConfirmWhenVoting.setChecked(self.local_config.confirm_when_voting)
         self.chbAddRandomOffsetToVotingTime.setChecked(self.local_config.add_random_offset_to_vote_time)
@@ -375,6 +376,11 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
     @pyqtSlot(bool)
     def on_chbBackupConfigFile_toggled(self, checked):
         self.local_config.backup_config_file = checked
+        self.set_modified()
+
+    @pyqtSlot(bool)
+    def on_chbDownloadProposalExternalData_toggled(self, checked):
+        self.local_config.read_proposals_external_attributes = checked
         self.set_modified()
 
     @pyqtSlot(bool)

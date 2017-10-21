@@ -662,7 +662,7 @@
                 <string>Broadcast information about the Masternode</string>
                </property>
                <property name="styleSheet">
-                <string notr="true">font: 16pt;</string>
+                <string notr="true"/>
                </property>
                <property name="text">
                 <string>Start Masternode using Hardware Wallet</string>

@@ -25,7 +25,6 @@ import app_cache
 import app_utils
 import wnd_utils as wnd_utils
 import dash_utils
-from app_config import DATETIME_FORMAT
 from columns_cfg_dlg import ColumnsConfigDlg
 from common import AttrsProtected
 from dashd_intf import DashdIndexException
@@ -354,6 +353,21 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     else:
                         logging.warning('Invalid private key for masternode ' + mn.name)
 
+            reset_columns_order = False
+            hide_name_column = False
+            try:
+                cache_app_version = app_cache.get_value('app_version', '0.9.10', str)
+                cache_app_version = app_utils.version_str_to_number(cache_app_version)
+
+                # version 0.9.11 introduced column 'title' which displays a proposal's title downloaded from
+                # external source as dashcentral; if it's not possible, a proposal's name is displayed instead
+                # column 'name' will be hidden only if the previously run version was lower than 0.9.11
+                if cache_app_version < app_utils.version_str_to_number('0.9.11'):
+                    hide_name_column = True
+                    reset_columns_order = True
+            except:
+                pass
+
             """ Read configuration of grid columns such as: display order, visibility. Also read configuration
              of dynamic columns: when user decides to display voting results of a masternode, which is not 
              in his configuration (because own mns are shown by defailt).
@@ -388,7 +402,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             if col.name == name:
                                 col.visible = visible
                                 col.initial_width = initial_width
-                                col.display_order_no = col_saved_index
+                                if not reset_columns_order:
+                                    col.display_order_no = col_saved_index
                                 found = True
                                 break
                         # user defined dynamic columns will be implemented in the future:
@@ -399,25 +414,15 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             else:
                 logging.warning('Invalid type of cached ProposalsColumnsCfg')
 
+            if hide_name_column:
+                self.columns[self.column_index_by_name('name')].visible = False
+
             # set the visual order of columns with none
             for idx, col in enumerate(self.columns):
                 if col.display_order_no is None:
                     col.display_order_no = idx
 
             self.columns.sort(key = lambda x: x.display_order_no if x.display_order_no is not None else 100)
-
-            try:
-                cache_app_version = app_cache.get_value('app_version', '0.9.10', str)
-                cache_app_version = app_utils.version_str_to_number(cache_app_version)
-
-                # version 0.9.11 introduced column 'title' which displays a proposal's title downloaded from
-                # external source as dashcentral; if it's not possible, a proposal's name is displayed instead
-                # column 'name' will be hidden only if the previously run version was lower than 0.9.11
-                if cache_app_version < app_utils.version_str_to_number('0.9.11'):
-                    idx = self.column_index_by_name('name')
-                    self.columns[idx].visible = False
-            except:
-                pass
 
             self.propsView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
             self.propsView.setSortingEnabled(True)
@@ -614,14 +619,65 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.tabsDetails.setTabEnabled(1, True)
         self.controls_initialized = True
 
+    def disable_refresh_buttons(self):
+        self.btnProposalsRefresh.setEnabled(False)
+        self.btnVotesRefresh.setEnabled(False)
+
     def enable_refresh_buttons(self, exception_in=None):
         if self.current_proposal is None and len(self.proposals) > 0:
             self.propsView.selectRow(0)
         self.btnProposalsRefresh.setEnabled(True)
         self.btnVotesRefresh.setEnabled(True)
 
+    def keyPressEvent(self, event):
+        mods = int(event.modifiers())
+        processed = False
+
+        if mods == int(Qt.ControlModifier) | int(Qt.AltModifier):
+
+            if ord('E') == event.key():
+                # CTR-ALT-E (Mac: CMD-ALT-E): reload all proposals external properties
+                self.special_action_reload_external_attributes()
+                processed = True
+
+        if not processed:
+            QDialog.keyPressEvent(self, event)
+
+    def special_action_reload_external_attributes(self):
+        """ Action invoked by the shortcut: CTRL/CMD-ALT-E: reload proposal external attributes. """
+        if self.btnProposalsRefresh.isEnabled():
+            if self.queryDlg('Do you really want to reload proposal external attributes?',
+                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                             default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+
+                def display_data():
+                    self.display_proposals_data()
+                    self.refresh_preview_panel()
+
+                def reload_ext_attrs_thread(ctrl):
+                    cur = self.db_intf.get_cursor()
+                    try:
+                        cur.execute("update PROPOSALS set title=null, owner=null, ext_attributes_loaded=0")
+                        self.db_intf.commit()
+                        if self.read_external_attibutes(self.proposals):
+                            WndUtils.callFunInTheMainThread(display_data)
+
+                    except CloseDialogException:
+                        pass
+                    except Exception as e:
+                        logging.exception('Exception while realoading proposal external attributes')
+                        self.errorMsg('Error while retrieving proposals data: ' + str(e))
+                    finally:
+                        self.db_intf.release_cursor()
+
+                self.disable_refresh_buttons()
+                self.runInThread(reload_ext_attrs_thread, (),
+                                 on_thread_finish=self.enable_refresh_buttons,
+                                 on_thread_exception=self.enable_refresh_buttons,
+                                 skip_raise_exception=True)
+
     def update_proposals_order_no(self):
-        """ Executed after each moment when number of proposals changed. """
+        """ Executed always when number of proposals changed. """
         for index, prop in enumerate(self.proposals):
             prop.initial_order_no = self.proxyModel.mapFromSource(self.propsModel.index(index, 0)).row()
 
@@ -883,10 +939,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             del self.proposals[prop_idx]
                             rows_removed = True
 
-                    if rows_removed:
-                        # log additional data (seems as if sometimes some proposals are not returned from the network)
-                        logging.info('Current proposals list returned from the network:\n' + str(proposals_new))
-
                     # self.set_cache_value('ProposalsLastReadTime', int(time.time()))  # save when proposals has been
                     cur.execute("UPDATE LIVE_CONFIG SET value=? WHERE symbol=?",
                                 (int(time.time()), CFG_PROPOSALS_LAST_READ_TIME))
@@ -923,13 +975,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.display_message('')
             self.errorMsg('Error while reading proposals data from the Dash network: ' + str(e))
             raise
-
-    def read_proposals_from_network_thread(self, ctrl):
-        """ Reads proposals data from the Dash network (Dash daemon).
-        :param ctrl:
-        :return:
-        """
-        self.read_proposals_from_network()
 
     def read_data_thread(self, ctrl):
         """ Reads data from the database.
@@ -977,7 +1022,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                         message = '<div style="display:inline-block;margin-left:6px"><b>Next superblock date:</b> %s&nbsp;&nbsp;&nbsp;' \
                                   '<b>Voting deadline:</b> %s%s</div>' % \
-                                  (str(next_sb_dt), str(voting_deadline_dt), dl_passed)
+                                  (self.main_wnd.config.to_string(next_sb_dt),
+                                   self.main_wnd.config.to_string(voting_deadline_dt),
+                                   dl_passed)
                         self.display_budget_message(message)
 
                     except Exception as e:
@@ -1191,6 +1238,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                     prop.modified = False
                     try:
+                        prop.marker = False
                         hash = prop.get_value('hash')
                         cur_url = url.replace('%HASH%', hash)
                         network_tm_begin = time.time()
@@ -1198,6 +1246,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         contents = response.read()
                         network_duration += time.time() - network_tm_begin
                         contents = json.loads(contents)
+                        prop.marker = True  # network operation went OK
                         p = contents.get('proposal')
                         if p is not None:
                             user_name = p.get('owner_username')
@@ -1207,7 +1256,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             if title:
                                 prop.set_value('title', title)
                         else:
-                            logging.error('Empty "proposal" attribute for proposal: ' + hash)
+                            err = contents.get('error_type')
+                            if err is not None:
+                                logging.error('Error returned for proposal "' + hash + '": ' + err)
+                            else:
+                                logging.error('Empty "proposal" attribute for proposal: ' + hash)
                     except CloseDialogException:
                         raise
 
@@ -1221,16 +1274,17 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             if self.finishing:
                                 raise CloseDialogException
 
-                            if prop.modified:
-                                cur.execute('UPDATE PROPOSALS set owner=?, title=?, ext_attributes_loaded=1 where id=?',
-                                            (prop.get_value('owner'), prop.get_value('title'), prop.db_id))
-                                modified_ext_attributes = True
-                            elif not prop.ext_attributes_loaded:
-                                # ext attributes loaded but empty; set ext_attributes_loaded to 1 to avoid reading
-                                # the same information the next time
-                                cur.execute('UPDATE PROPOSALS set ext_attributes_loaded=1 where id=?',
-                                            (prop.db_id,))
-                            prop.ext_attributes_loaded = True
+                            if prop.marker:
+                                if prop.modified:
+                                    cur.execute('UPDATE PROPOSALS set owner=?, title=?, ext_attributes_loaded=1 where id=?',
+                                                (prop.get_value('owner'), prop.get_value('title'), prop.db_id))
+                                    modified_ext_attributes = True
+                                elif not prop.ext_attributes_loaded:
+                                    # ext attributes loaded but empty; set ext_attributes_loaded to 1 to avoid reading
+                                    # the same information the next time
+                                    cur.execute('UPDATE PROPOSALS set ext_attributes_loaded=1 where id=?',
+                                                (prop.db_id,))
+                                prop.ext_attributes_loaded = True
 
                         self.db_intf.commit()
                     finally:
@@ -1248,18 +1302,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                          (str(time_diff), str(network_duration)))
             self.display_message('')
         return modified_ext_attributes
-
-    def read_external_attibutes_thread(self, ctrl, proposals, ret_modified_dict):
-        """
-        Thread reading external attributes of proposals.
-        :param ctrl: Thread control object.
-        :param proposals: list of proposals for which external attributes will be loaded.
-        :param modified_dict: dictionary ({'modified': True/False}) returning back the information whether
-            for any of the proposals, external properties has been seccessfully loaded. Caller uses this
-            information to update proposal grid.
-        """
-        modified = self.read_external_attibutes(proposals)
-        ret_modified_dict['modified'] = modified
 
     def read_voting_from_db(self, columns):
         """ Read voting results for specified voting columns
@@ -1602,9 +1644,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 vote = self.current_proposal.votes_by_masternode_ident.get(user_mn.masternode.ident)
                 if vote:
                     user_mn.lbl_last_vote.setText('Last voted ' + vote[1] + ' on ' +
-                                                  vote[0].strftime(DATETIME_FORMAT))
+                                                  self.main_wnd.config.to_string(vote[0]))
                 else:
-                    user_mn.lbl_last_vote.setText('No votes for this masternode')
+                    user_mn.lbl_last_vote.setText('No your votes for this masternode')
 
     def on_propsView_currentChanged(self, new_index, old_index):
         """ Triggered when changing focused row in proposals' grid. """
@@ -1696,10 +1738,12 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 prop = self.current_proposal
                 url = self.current_proposal.get_value('url')
                 status = str(self.current_proposal.voting_status)
+
                 payment_addr = self.current_proposal.get_value('payment_address')
                 if self.main_wnd.config.block_explorer_addr:
                     payment_url = self.main_wnd.config.block_explorer_addr.replace('%ADDRESS%', payment_addr)
                     payment_addr = '<a href="%s">%s</a>' % (payment_url, payment_addr)
+
                 col_hash = self.current_proposal.get_value('collateral_hash')
                 if self.main_wnd.config.block_explorer_tx:
                     col_url = self.main_wnd.config.block_explorer_tx.replace('%TXID%', col_hash)
@@ -1714,94 +1758,112 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 if not owner:
                     owner = "&lt;Unknown&gt;"
 
-                details = """
-    <html>
-    <head>
-    <style type="text/css">
-        td.first-col-label, td.padding {padding-top:2px;padding-bottom:2px;}
-        td {border-style: solid; border-color:gray}
-        .first-col-label {font-weight: bold; text-align: right; padding-right:6px; white-space:nowrap; valign: middle}
-        .inter-label {font-weight: bold;padding-right: 5px; padding-left: 5px; white-space:pre}
-        .status-1{background-color:%s;color:white}
-        .status-2{background-color:%s;color:white}
-        .status-3{color:%s}
-        .status-4{color:%s}
-    </style>
-    </head>
-    <body>
-    <table>
-        <tbody>
-            <tr class="main-row">
-                <td class="first-col-label">Name:</td>
-                <td class="padding">%s</td>
-            </tr>
-            <tr class="main-row">
-                <td class="first-col-label">Title:</td>
-                <td class="padding">%s</td>
-            </tr>
-            <tr class="main-row">
-                <td class="first-col-label">Owner:</td>
-                <td class="padding">%s</td>
-            </tr>
-            <tr class="main-row">
-                <td class="first-col-label">URL:</td>
-                <td class="padding"><a href="%s">%s</a></td>
-            </tr>
-            <tr class="main-row">
-                <td class="first-col-label">Voting:</td>
-                <td>
+                months = prop.get_value('months')
+                if months == 1:
+                    months_str = '1 month'
+                else:
+                    months_str = str(months) + ' months'
+
+                if prop.voting_in_progress:
+                    class_voting_activity = 'vo-active'
+                    voting_activity_str = 'Voting active'
+                else:
+                    class_voting_activity = 'vo-inactive'
+                    voting_activity_str = 'Voting inactive'
+
+                details = """<html>
+                    <head>
+                    <style type="text/css">
+                        td.first-col-label, td.padding {padding-top:2px;padding-bottom:2px;}
+                        td {border-style: solid; border-color:darkgray}
+                        .first-col-label {font-weight: bold; text-align: right; padding-right:6px; white-space:nowrap}
+                        .inter-label {font-weight: bold; padding-right: 5px; padding-left: 5px; white-space:nowrap}
+                        .status-1{background-color:%s;color:white}
+                        .status-2{background-color:%s;color:white}
+                        .status-3{color:%s}
+                        .status-4{color:%s}
+                        .vo-active{color:green;font-weight: bold}
+                        .vo-inactive{color:gray;font-weight: bold}
+                    </style>
+                    </head>
+                    <body>
                     <table>
-                        <tr >
-                            <td style="white-space:nowrap;padding-left:2px;padding-right:2px;" class="status-%s padding">%s</td>
-                            <td class="inter-label padding">Yes count:</td><td class="padding">%s</td>
-                            <td class="inter-label padding">No count:</td><td class="padding">%s</td>
-                            <td class="inter-label padding">Abstain count:</td><td class="padding">%s</td>
-                        </tr>
+                        <tbody>
+                            <tr class="main-row">
+                                <td class="first-col-label">Name:</td>
+                                <td class="padding">%s</td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">Title:</td>
+                                <td class="padding">%s</td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">Owner:</td>
+                                <td class="padding">%s</td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">URL:</td>
+                                <td class="padding"><a href="%s">%s</a></td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">Voting:</td>
+                                <td>
+                                    <table>
+                                        <tr >
+                                            <td class="padding" style="white-space:nowrap"><span class="status-%s padding">%s</span>
+                                            <br/><span class="%s">%s</span>
+                                            <br/><span class="inter-label padding">Absolute yes count: </span>%s
+                                            <span class="inter-label padding">&nbsp;&nbsp;Yes count: </span>%s
+                                            <span class="inter-label padding">&nbsp;&nbsp;No count: </span>%s
+                                            <span class="inter-label padding">&nbsp;&nbsp;Abstain count: </span>%s</td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">Payment:</td>
+                                <td class="padding" style="white-space:nowrap"><span>%s Dash&#47;month (%s, %s Dash total)
+                                    <br/><span class="inter-label">start - end:</span>&nbsp;&nbsp;%s - %s</span>
+                                    <br/><span class="inter-label">address:</span>&nbsp;&nbsp;%s
+                                </td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">Creation time:</td>
+                                <td class="padding">%s</td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">Proposal hash:</td>
+                                <td class="padding">%s</td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">Collateral hash:</td>
+                                <td class="padding">%s</td>
+                            </tr>
+                        </tbody>
                     </table>
-                </td>
-            </tr>
-            <tr class="main-row">
-                <td class="first-col-label">Payment:</td>
-                <td class="padding"><span style="white-space:pre">%s Dash&#47;month,  <b>months:</b> %s,  <b>total amount:</b> %s Dash,  <b>address:</b> %s,  <b>date start&#47;end:</b> %s &#47; %s</span>
-                </td>
-            </tr>
-            <tr class="main-row">
-                <td class="first-col-label">Creation time:</td>
-                <td class="padding">%s</td>
-            </tr>
-            <tr class="main-row">
-                <td class="first-col-label">Proposal hash:</td>
-                <td class="padding">%s</td>
-            </tr>
-            <tr class="main-row">
-                <td class="first-col-label">Collateral hash:</td>
-                <td class="padding">%s</td>
-            </tr>
-        </tbody>
-    </table>
-     </body>
-    </html>﻿
-                """ % (
-                    COLOR_YES, COLOR_ABSTAIN, COLOR_YES, COLOR_NO,
-                    prop.get_value('name'),
-                    prop.get_value('title'),
-                    owner,
-                    url, url,
-                    status,
-                    prop.get_value('voting_status_caption'),
-                    str(prop.get_value('yes_count')),
-                    str(prop.get_value('no_count')),
-                    str(prop.get_value('abstain_count')),
-                    self.main_wnd.config.to_string(prop.get_value('payment_amount')),
-                    str(prop.get_value('months')),
-                    self.main_wnd.config.to_string(prop.get_value('payment_amount_total')),
-                    payment_addr,
-                    get_date_str(prop.get_value('payment_start')),
-                    get_date_str(prop.get_value('payment_end')),
-                    get_date_str(prop.get_value('creation_time')),
-                    prop.get_value('hash'),
-                    col_hash
-                )
+                     </body>
+                    </html>""" % (
+                        COLOR_YES, COLOR_ABSTAIN, COLOR_YES, COLOR_NO,
+                        prop.get_value('name'),
+                        prop.get_value('title'),
+                        owner,
+                        url, url,
+                        status,
+                        prop.get_value('voting_status_caption'),
+                        class_voting_activity, voting_activity_str,
+                        str(prop.get_value('absolute_yes_count')),
+                        str(prop.get_value('yes_count')),
+                        str(prop.get_value('no_count')),
+                        str(prop.get_value('abstain_count')),
+                        self.main_wnd.config.to_string(prop.get_value('payment_amount')),
+                        months_str,
+                        self.main_wnd.config.to_string(prop.get_value('payment_amount_total')),
+                        get_date_str(prop.get_value('payment_start')),
+                        get_date_str(prop.get_value('payment_end')),
+                        payment_addr,
+                        get_date_str(prop.get_value('creation_time')),
+                        prop.get_value('hash'),
+                        col_hash)
 
                 self.edtDetails.setHtml(details)
                 self.refresh_details_event.set()
@@ -2441,30 +2503,28 @@ class ProposalFilterProxyModel(QSortFilterProxyModel):
         col_index = left.column()
         col = self.columns[col_index]
         left_row_index = left.row()
-        if col.name in ('name', 'url', 'title'):
-            # compare hyperlink columns
-            if 0 <= left_row_index < len(self.proposals):
-                left_prop = self.proposals[left_row_index]
-                right_row_index = right.row()
 
-                if 0 <= right_row_index < len(self.proposals):
-                    right_prop = self.proposals[right_row_index]
-                    left_value = left_prop.get_value(col.name).lower()
+        if 0 <= left_row_index < len(self.proposals):
+            left_prop = self.proposals[left_row_index]
+            right_row_index = right.row()
+
+            if 0 <= right_row_index < len(self.proposals):
+                right_prop = self.proposals[right_row_index]
+                left_value = left_prop.get_value(col.name)
+                right_value = right_prop.get_value(col.name)
+
+                if col.name in ('name', 'url', 'title'):
+                    # compare hyperlink columns
                     if not left_value:
                         left_value = ""
-                    right_value = right_prop.get_value(col.name).lower()
                     if not right_value:
                         right_value = ""
+                    left_value = left_value.lower()
+                    right_value = right_value.lower()
                     return left_value < right_value
 
-        elif col.name == 'voting_status_caption':
-            # compare status column by its status code, not status text
-            if 0 <= left_row_index < len(self.proposals):
-                left_prop = self.proposals[left_row_index]
-                right_row_index = right.row()
-
-                if 0 <= right_row_index < len(self.proposals):
-                    right_prop = self.proposals[right_row_index]
+                elif col.name == 'voting_status_caption':
+                    # compare status column by its status code, not status text
                     left_value = left_prop.voting_status
                     right_value = right_prop.voting_status
 
@@ -2473,16 +2533,9 @@ class ProposalFilterProxyModel(QSortFilterProxyModel):
                         diff = right_prop.get_value('creation_time') < left_prop.get_value('creation_time')
                     else:
                         diff = left_value < right_value
-
                     return diff
 
-        elif col.name == 'no':
-            if 0 <= left_row_index < len(self.proposals):
-                left_prop = self.proposals[left_row_index]
-                right_row_index = right.row()
-
-                if 0 <= right_row_index < len(self.proposals):
-                    right_prop = self.proposals[right_row_index]
+                elif col.name == 'no':
                     left_voting_in_progress = left_prop.voting_in_progress
                     right_voting_in_progress = right_prop.voting_in_progress
 
@@ -2492,6 +2545,10 @@ class ProposalFilterProxyModel(QSortFilterProxyModel):
                         diff = right_prop.get_value('creation_time') < left_prop.get_value('creation_time')
                     else:
                         diff = left_prop.voting_status < right_prop.voting_status
+                    return diff
+
+                elif col.name in ('payment_start', 'payment_end', 'creation_time'):
+                    diff = right_value < left_value
                     return diff
 
         return super().lessThan(left, right)
@@ -2540,7 +2597,15 @@ class ProposalsModel(QAbstractTableModel):
                 col = self.columns[col_idx]
                 if prop:
                     if role == Qt.DisplayRole:
-                        if col.name not in ('url', 'name', 'no', 'title'):
+                        if col.name in ('payment_start', 'payment_end', 'creation_time'):
+                            value = prop.get_value(col.name)
+                            if value is not None:
+                                return self.parent.main_wnd.config.to_string(value.date())
+                            else:
+                                return ''
+                        elif col.name in ('active'):
+                            return 'Yes' if prop.get_value(col.name) is True else 'No'
+                        elif col.name not in ('url', 'name', 'no', 'title'):
                             # Hyperlink cells will be processed within displaySpecialCells method
                             value = prop.get_value(col.name)
                             if isinstance(value, datetime.datetime):
@@ -2711,7 +2776,11 @@ class VotesModel(QAbstractTableModel):
                 if vote:
                     if role == Qt.DisplayRole:
                         if col_idx == 0:    # vote timestamp
-                            return str(vote[0])
+                            value = vote[0]
+                            if value is not None:
+                                return self.proposals_dlg.main_wnd.config.to_string(value)
+                            else:
+                                return ''
                         elif col_idx == 1:  # YES/NO/ABSTAIN
                             return vote[1]
                         elif col_idx == 2:  # voting masternode label

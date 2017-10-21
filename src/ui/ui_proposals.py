@@ -50,6 +50,9 @@ class Ui_ProposalsDlg(object):
         self.detailsSplitter.setOrientation(QtCore.Qt.Vertical)
         self.detailsSplitter.setObjectName("detailsSplitter")
         self.propsView = QtWidgets.QTableView(self.detailsSplitter)
+        self.propsView.setStyleSheet("QTableView{\n"
+"  gridline-color: lightgray\n"
+"}")
         self.propsView.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContentsOnFirstShow)
         self.propsView.setEditTriggers(QtWidgets.QAbstractItemView.AnyKeyPressed|QtWidgets.QAbstractItemView.CurrentChanged|QtWidgets.QAbstractItemView.DoubleClicked|QtWidgets.QAbstractItemView.EditKeyPressed)
         self.propsView.setAlternatingRowColors(False)
