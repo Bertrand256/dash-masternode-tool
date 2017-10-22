@@ -42,7 +42,7 @@ The main purpose of the application is to give masternode owners (MNOs) the abil
 #### Supported hardware wallets
 - [x] Trezor
 - [x] KeepKey
-- [ ] Ledger Nano S (in the future)
+- [x] Ledger Nano S (now only starting masternode feature)
 
 Most ot the application features are accessible from the main program window:  
 ![Main window](doc/img/dmt-main-window.png)
@@ -52,7 +52,7 @@ Most ot the application features are accessible from the main program window:
 ### Setting up the hardware wallet type
  * Click the `Configure` button.
  * In the configuration dialog that will open, select the `Miscellaneous` tab.
- * Depending on the type of your hard ware wallet, select the `Trezor` or `Keepkey` option.      
+ * Depending on the type of your hard ware wallet, select the `Trezor`, `Keepkey` or `Ledger Nano S` option.      
  ![1](doc/img/dmt-config-dlg-misc.png)
 
 ### Connection setup
