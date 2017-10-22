@@ -11,6 +11,7 @@ import re
 import sqlite3
 import threading
 import time
+import codecs
 from functools import partial
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtChart import QChart, QChartView, QLineSeries, QDateTimeAxis, QValueAxis, QBarSet, QBarSeries, \
@@ -1230,6 +1231,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         try:
             url = self.main_wnd.config.dash_central_proposal_api
             if url:
+                exceptions_occurred = False
                 for idx, prop in enumerate(proposals):
                     if self.finishing:
                         raise CloseDialogException
@@ -1245,7 +1247,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         response = urllib.request.urlopen(cur_url)
                         contents = response.read()
                         network_duration += time.time() - network_tm_begin
-                        contents = json.loads(contents)
+                        if contents is not None:
+                            contents = json.loads(contents.decode('utf-8'))
+                        else:
+                            contents = ''
                         prop.marker = True  # network operation went OK
                         p = contents.get('proposal')
                         if p is not None:
@@ -1265,6 +1270,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         raise
 
                     except Exception as e:
+                        exceptions_occurred = True
                         logging.error(str(e))
 
                 if not self.finishing:
@@ -1289,6 +1295,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         self.db_intf.commit()
                     finally:
                         self.db_intf.release_cursor()
+
+                    if exceptions_occurred:
+                        self.errorMsg('Error(s) occurred while retrieving proposals external data. '
+                                      'Look into the log file for details.')
 
         except CloseDialogException:
             logging.info('Closing the dialog.')
@@ -2402,7 +2412,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                          initial_filter="CSV files (*.csv)")
         if file_name:
             try:
-                with open(file_name, 'w') as f_ptr:
+                with codecs.open(file_name, 'w', 'utf-8') as f_ptr:
                     elems = [col.caption for col in self.columns]
                     self.write_csv_row(f_ptr, elems)
                     for prop in sorted(self.proposals, key = lambda p: p.initial_order_no):
@@ -2422,7 +2432,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                              initial_filter="CSV files (*.csv)")
             if file_name:
                 try:
-                    with open(file_name, 'w') as f_ptr:
+                    with codecs.open(file_name, 'w', 'utf-8') as f_ptr:
                         elems = ['Vote date/time', 'Vote', 'Masternode', 'User\'s masternode']
                         self.write_csv_row(f_ptr, elems)
 
