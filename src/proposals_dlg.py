@@ -2539,8 +2539,8 @@ class ProposalFilterProxyModel(QSortFilterProxyModel):
                     right_value = right_prop.voting_status
 
                     if left_value == right_value:
-                        # for even statuses, order by creation time (newest first)
-                        diff = right_prop.get_value('creation_time') < left_prop.get_value('creation_time')
+                        # for even statuses, order by votes number
+                        diff = right_prop.get_value('absolute_yes_count') < left_prop.get_value('absolute_yes_count')
                     else:
                         diff = left_value < right_value
                     return diff
