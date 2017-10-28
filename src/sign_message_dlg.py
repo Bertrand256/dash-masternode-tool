@@ -10,6 +10,8 @@ import hw_intf
 from app_config import HWType
 from ui import ui_sign_message_dlg
 import logging
+from hw_common import HardwareWalletCancelException
+
 
 class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.WndUtils):
     def __init__(self, main_ui, bip32path, address):
@@ -49,6 +51,9 @@ class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.W
                                  'required one: %s\n\nDid you enter correct passphrase?' % (sig.address, self.bip32path, self.address))
             else:
                 self.errorMsg('Empty message cannot be signed.')
+
+        except HardwareWalletCancelException:
+            logging.warning('HardwareWalletCancelException')
 
         except Exception as e:
             logging.exception('Sign message exception:')

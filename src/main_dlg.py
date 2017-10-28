@@ -424,9 +424,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 else:
                     self.check_conn_thread = self.runInThread(connect_thread, (), on_thread_finish=connect_finished)
                     if wait_for_check_finish:
-                        logging.info("entering event_loop")
                         event_loop.exec()
-                        logging.info("left event_loop")
                     # connect_thread({})
                     # if call_on_check_finished:
                     #     call_on_check_finished()
@@ -1162,6 +1160,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if not self.curMasternode.privateKey:
                 self.errorMsg("Masternode's private key not set.")
                 return
+        else:
+            self.errorMsg("No masternode selected.")
 
         self.checkDashdConnection(wait_for_check_finish=True)
         if not self.dashd_connection_ok:
@@ -1172,7 +1172,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                          "until it's finished.")
             return
 
-        mn_status = self.getMnStatus(extended=False)
+        mn_status = self.get_masternode_status(self.curMasternode)
         if mn_status in ('ENABLED', 'PRE_ENABLED'):
             if self.queryDlg("Warning: masternode state is %s. \n\nDo you really want to sent 'Start Masternode' "
                              "message? " % mn_status, default_button=QMessageBox.Cancel,
@@ -1365,16 +1365,24 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.errorMsg(str(e))
             logging.exception('Exception occurred.')
 
-    def getMnStatus(self, extended):
+    def get_masternode_status(self, masternode):
         """
-        Gets current masternode status.        
-        :param extended: if False, function returns only status (ENABLED, PRE_ENABLED,..), if True it returns
-            a few more informations related to the masternode
-        :return: masternode's status
+        Returns the current masternode status (ENABLED, PRE_ENABLED, WATCHDOG_EXPIRED, ...)
+        :return:
+        """
+        if self.dashd_connection_ok:
+            collateral_id = masternode.collateralTx + '-' + masternode.collateralTxIndex
+            mns_info = self.dashd_intf.get_masternodelist('full', collateral_id)
+            if len(mns_info):
+                return mns_info[0].status
+        return '???'
+
+    def get_masternode_status_description(self):
+        """
+        Get current masternode's extended status.
         """
 
         if self.dashd_connection_ok:
-            addr_ip = self.curMasternode.ip + ':' + self.curMasternode.port
             collateral_id = self.curMasternode.collateralTx + '-' + self.curMasternode.collateralTxIndex
 
             if not self.curMasternode.collateralTx:
@@ -1383,55 +1391,48 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if not self.curMasternode.collateralTxIndex:
                 return '<span style="color:red">Enter the collateral TX index</span>'
 
-            # (status, protocol, payee, lastseen, activeseconds, lastpaidtime, pastpaidblock, ip) =
-            mns_info = self.dashd_intf.get_masternodelist('full', collateral_id, skip_cache=True)
-            if mns_info:
-                if len(mns_info) == 1:
-                    mn_info = mns_info[0]  # there shold be the only our masternode in the list
-
-                    if extended:
-                        lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
-                        if mn_info.lastseen > 0:
-                            lastseen_str = self.config.to_string(lastseen)
-                            lastseen_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastseen),
-                                                                       out_seconds=False) + ' ago'
-                        else:
-                            lastseen_str = 'never'
-                            lastseen_ago = ''
-
-                        lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
-                        if mn_info.lastpaidtime > 0:
-                            lastpaid_str = self.config.to_string(lastpaid)
-                            lastpaid_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastpaidtime),
-                                                                       out_seconds=False) + ' ago'
-                        else:
-                            lastpaid_str = 'never'
-                            lastpaid_ago = ''
-
-                        activeseconds_str = dash_utils.seconds_to_human(int(mn_info.activeseconds), out_seconds=False)
-                        if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
-                            color = 'green'
-                        else:
-                            color = 'red'
-                        status = '<style>td {white-space:nowrap;padding-right:8px}' \
-                                 '.title {text-align:right;font-weight:bold}' \
-                                 '.ago {font-style:normal}' \
-                                 '.value {color:navy}' \
-                                 '</style>' \
-                                 '<table>' \
-                                 '<tr><td class="title">Status:</td><td class="value"><span style="color:%s">%s</span></td></tr>' \
-                                 '<tr><td class="title">Last Seen:</td><td class="value">%s</td><td class="ago">%s</td></tr>' \
-                                 '<tr><td class="title">Last Paid:</td><td class="value">%s</td><td class="ago">%s</td></tr>' \
-                                 '<tr><td class="title">Active Duration:</td><td class="value" colspan="2">%s</td></tr>' \
-                                 '</table>' % \
-                                 (color, mn_info.status, lastseen_str, lastseen_ago, lastpaid_str, lastpaid_ago,
-                                  activeseconds_str)
-                    else:
-                        status = mn_info.status
+            mns_info = self.dashd_intf.get_masternodelist('full', data_max_age=120)  # read new data from the network
+                                                                                     # every 120 seconds
+            mn_info = self.dashd_intf.masternodes_by_ident.get(collateral_id)
+            if mn_info:
+                lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
+                if mn_info.lastseen > 0:
+                    lastseen_str = self.config.to_string(lastseen)
+                    lastseen_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastseen),
+                                                               out_seconds=False) + ' ago'
                 else:
-                    msg = 'Dash daemon returned more than one masternode info. Check the collateral TX ID.'
-                    self.errorMsg(msg)
-                    status = '<span style="color:red">%s</span>' % msg
+                    lastseen_str = 'never'
+                    lastseen_ago = ''
+
+                lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
+                if mn_info.lastpaidtime > 0:
+                    lastpaid_str = self.config.to_string(lastpaid)
+                    lastpaid_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastpaidtime),
+                                                               out_seconds=False) + ' ago'
+                else:
+                    lastpaid_str = 'never'
+                    lastpaid_ago = ''
+
+                activeseconds_str = dash_utils.seconds_to_human(int(mn_info.activeseconds), out_seconds=False)
+                if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
+                    color = 'green'
+                else:
+                    color = 'red'
+                enabled_mns_count = len(self.dashd_intf.payment_queue)
+                status = '<style>td {white-space:nowrap;padding-right:8px}' \
+                         '.title {text-align:right;font-weight:bold}' \
+                         '.ago {font-style:normal}' \
+                         '.value {color:navy}' \
+                         '</style>' \
+                         '<table>' \
+                         '<tr><td class="title">Status:</td><td class="value"><span style="color:%s">%s</span></td></tr>' \
+                         '<tr><td class="title">Last Seen:</td><td class="value">%s</td><td class="ago">%s</td></tr>' \
+                         '<tr><td class="title">Last Paid:</td><td class="value">%s</td><td class="ago">%s</td></tr>' \
+                         '<tr><td class="title">Active Duration:</td><td class="value" colspan="2">%s</td></tr>' \
+                         '<tr><td class="title">Queue/Count:</td><td class="value" colspan="2">%s/%s</td></tr>' \
+                         '</table>' % \
+                         (color, mn_info.status, lastseen_str, lastseen_ago, lastpaid_str, lastpaid_ago,
+                          activeseconds_str, str(mn_info.queue_position), enabled_mns_count)
             else:
                 status = '<span style="color:red">Masternode not found.</span>'
         else:
@@ -1441,7 +1442,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot(bool)
     def on_btnRefreshMnStatus_clicked(self):
         self.checkDashdConnection(wait_for_check_finish=True)
-        status = self.getMnStatus(extended=True)
+        status = self.get_masternode_status_description()
         self.lblMnStatus.setText(status)
 
     @pyqtSlot(bool)

@@ -1041,7 +1041,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     users_mn_configs_by_ident = {}
                     for mn_cfg in self.main_wnd.config.masternodes:
                         ident = mn_cfg.collateralTx + '-' + mn_cfg.collateralTxIndex
-                        users_mn_configs_by_ident[ident] = mn_cfg
+                        if not ident in users_mn_configs_by_ident:
+                            users_mn_configs_by_ident[ident] = mn_cfg
 
                     mns = self.dashd_intf.get_masternodelist('full')
                     self.masternodes = mns
@@ -1330,9 +1331,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     mn = self.masternodes_by_ident.get(mn_ident)
                     if mn:
                         cur.execute("SELECT proposal_id, voting_time, voting_result "
-                                    "FROM VOTING_RESULTS vr WHERE masternode_id=? AND EXISTS "
+                                    "FROM VOTING_RESULTS vr WHERE masternode_ident=? AND EXISTS "
                                     "(SELECT 1 FROM PROPOSALS p where p.id=vr.proposal_id and p.dmt_active=1)",
-                                    (mn.db_id,))
+                                    (mn_ident,))
                         for row in cur.fetchall():
                             if self.finishing:
                                 raise CloseDialogException
@@ -1460,10 +1461,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         if cur:
                             tm_begin = time.time()
                             try:
-                                cur.execute("INSERT INTO VOTING_RESULTS(proposal_id, masternode_id, masternode_ident,"
-                                            " voting_time, voting_result, hash) VALUES(?,?,?,?,?,?)",
+                                cur.execute("INSERT INTO VOTING_RESULTS(proposal_id, masternode_ident,"
+                                            " voting_time, voting_result, hash) VALUES(?,?,?,?,?)",
                                             (prop.db_id,
-                                             mn.db_id if mn else None,
                                              mn_ident,
                                              voting_time,
                                              voting_result,
@@ -1472,10 +1472,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 if e.args and e.args[0].find('UNIQUE constraint failed') >= 0:
                                     # this vote is assigned to the same proposal but inactive one; correct this
                                     cur.execute("UPDATE VOTING_RESULTS"
-                                        " set proposal_id=?, masternode_id=?, masternode_ident=?,"
+                                        " set proposal_id=?, masternode_ident=?,"
                                         " voting_time=?, voting_result=? WHERE hash=?",
                                         (prop.db_id,
-                                         mn.db_id if mn else None,
                                          mn_ident,
                                          voting_time,
                                          voting_result,
@@ -2819,26 +2818,23 @@ class VotesModel(QAbstractTableModel):
             tm_begin = time.time()
             cur = self.db_intf.get_cursor()
             logging.debug('Get votes fot proposal id: ' + str(self.proposal.db_id))
-            cur.execute("SELECT voting_time, voting_result, masternode_id, masternode_ident, m.ip "
+            cur.execute("SELECT voting_time, voting_result, masternode_ident, m.ip "
                         "FROM VOTING_RESULTS v "
-                        "LEFT OUTER JOIN MASTERNODES m on m.id = v.masternode_id "
+                        "LEFT OUTER JOIN MASTERNODES m on m.ident = v.masternode_ident "
                         "WHERE proposal_id=? order by voting_time desc", (self.proposal.db_id,))
 
             for row in cur.fetchall():
                 if self.proposals_dlg.finishing:
                     raise CloseDialogException
                 users_mn_name = ''
-                mn_label = row[4]
+                mn_label = row[3]
                 if not mn_label:
-                    mn_label = row[3]
+                    mn_label = row[2]
 
-                if row[2]:
-                    mn = self.masternodes_by_db_id.get(row[2])
-                    if mn:
-                        # check if this masternode is in the user's configuration
-                        users_mn = self.users_masternodes_by_ident.get(mn.ident)
-                        if users_mn:
-                            users_mn_name = users_mn.masternode_config.name
+                # check if this masternode is in the user's configuration
+                users_mn = self.users_masternodes_by_ident.get(row[2])
+                if users_mn:
+                    users_mn_name = users_mn.masternode_config.name
 
                 self.votes.append((datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S'),
                                    row[1], mn_label, users_mn_name))
