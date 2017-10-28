@@ -105,6 +105,7 @@ class DBCache(object):
                     " last_paid_time INTEGER, last_paid_block INTEGER, ip TEXT,"
                     " dmt_active INTEGER, dmt_create_time TEXT, dmt_deactivation_time TEXT)")
         cur.execute("CREATE INDEX IF NOT EXISTS IDX_MASTERNODES_DMT_ACTIVE ON MASTERNODES(dmt_active)")
+        cur.execute("CREATE INDEX IF NOT EXISTS IDX_MASTERNODES_IDENT ON MASTERNODES(ident)")
 
         # create structures for proposals:
         cur.execute("CREATE TABLE IF NOT EXISTS PROPOSALS(id INTEGER PRIMARY KEY, name TEXT, payment_start TEXT,"
@@ -143,13 +144,12 @@ class DBCache(object):
             # proposal's title from an external source like DashCentral.org
             cur.execute("ALTER TABLE PROPOSALS ADD COLUMN title TEXT")
 
-        # masternode_ident column is for identifying votes of no longer existing masternodes. For existing
-        # masternodes we use masternode_id (db identifier)
         cur.execute("CREATE TABLE IF NOT EXISTS VOTING_RESULTS(id INTEGER PRIMARY KEY, proposal_id INTEGER,"
-                    " masternode_id INTEGER, masternode_ident TEXT, voting_time TEXT, voting_result TEXT,"
+                    " masternode_ident TEXT, voting_time TEXT, voting_result TEXT,"
                     "hash TEXT)")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_HASH ON VOTING_RESULTS(hash)")
         cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_1 ON VOTING_RESULTS(proposal_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_2 ON VOTING_RESULTS(masternode_ident)")
 
         # Create table for storing live data for example last read time of proposals
         cur.execute("CREATE TABLE IF NOT EXISTS LIVE_CONFIG(symbol text PRIMARY KEY, value TEXT)")
