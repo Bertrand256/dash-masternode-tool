@@ -868,17 +868,17 @@ class DashdInterface(WndUtils):
 
             if len(args) == 1 and args[0] == 'full':
                 last_read_time = self.get_cache_value('MasternodesLastReadTime', 0, int)
-                logging.debug("MasternodesLastReadTime: %d" % last_read_time)
+                logging.info("MasternodesLastReadTime: %d" % last_read_time)
 
                 if self.masternodes and data_max_age > 0 and \
                    int(time.time()) - last_read_time < data_max_age:
-                    logging.debug('Using cached masternodelist (data age: %s)' % str(int(time.time()) - last_read_time))
+                    logging.info('Using cached masternodelist (data age: %s)' % str(int(time.time()) - last_read_time))
                     return self.masternodes
                 else:
-                    logging.debug('Loading masternode list from Dash daemon...')
+                    logging.info('Loading masternode list from Dash daemon...')
                     mns = self.proxy.masternodelist(*args)
                     mns = parse_mns(mns)
-                    logging.debug('Finished loading masternode list')
+                    logging.info('Finished loading masternode list')
 
                     # mark already cached masternodes to identify those to delete
                     for mn in self.masternodes:
@@ -892,7 +892,7 @@ class DashdInterface(WndUtils):
                             cur = self.db_intf.get_cursor()
 
                         for mn in mns:
-                            # check if newly-read masternode is alterady in the cache
+                            # check if newly-read masternode already exists in the cache
                             existing_mn = self.masternodes_by_ident.get(mn.ident)
                             if not existing_mn:
                                 mn.marker = True
@@ -928,8 +928,7 @@ class DashdInterface(WndUtils):
                                 self.masternodes_by_ident.pop(mn.ident,0)
                                 del self.masternodes[mn_index]
 
-                            self.set_cache_value('MasternodesLastReadTime', int(time.time()))
-
+                        self.set_cache_value('MasternodesLastReadTime', int(time.time()))
                         self.update_mn_queue_values()
                     finally:
                         if db_modified:

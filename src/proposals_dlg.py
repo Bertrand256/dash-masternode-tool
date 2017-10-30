@@ -783,185 +783,198 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 prop.marker = False
                 prop.modified = False  # all modified proposals will be saved to DB cache
 
+            errors = 0
             for pro_key in proposals_new:
-                prop_raw = proposals_new[pro_key]
+                hash = '?'
+                try:
+                    prop_raw = proposals_new[pro_key]
 
-                prop_dstr = prop_raw.get("DataString")
-                prop_data_json = json.loads(prop_dstr)
-                prop_data = find_prop_data(prop_data_json)
-                if prop_data is None:
-                    continue
+                    prop_dstr = prop_raw.get("DataString")
+                    prop_data_json = json.loads(prop_dstr)
+                    prop_data = find_prop_data(prop_data_json)
+                    if prop_data is None:
+                        continue
+                    hash = prop_raw['Hash']
+                    prop = self.proposals_by_hash.get(hash)
+                    if not prop:
+                        is_new = True
+                        prop = Proposal(self.columns, self.vote_columns_by_mn_ident, self.next_superblock_time)
+                    else:
+                        is_new = False
+                    prop.marker = True
 
-                prop = self.proposals_by_hash.get(prop_raw['Hash'])
-                if not prop:
-                    is_new = True
-                    prop = Proposal(self.columns, self.vote_columns_by_mn_ident, self.next_superblock_time)
-                else:
-                    is_new = False
-                prop.marker = True
-
-                prop.set_value('name', prop_data['name'])
-                prop.set_value('payment_start', datetime.datetime.fromtimestamp(int(prop_data['start_epoch'])))
-                prop.set_value('payment_end', datetime.datetime.fromtimestamp(int(prop_data['end_epoch'])))
-                prop.set_value('payment_amount', float(prop_data['payment_amount']))
-                prop.set_value('yes_count', int(prop_raw['YesCount']))
-                prop.set_value('absolute_yes_count', int(prop_raw['AbsoluteYesCount']))
-                prop.set_value('no_count', int(prop_raw['NoCount']))
-                prop.set_value('abstain_count', int(prop_raw['AbstainCount']))
-                prop.set_value('creation_time', datetime.datetime.fromtimestamp(int(prop_raw["CreationTime"])))
-                prop.set_value('url', prop_data['url'])
-                prop.set_value('payment_address', prop_data["payment_address"])
-                prop.set_value('type', prop_data['type'])
-                prop.set_value('hash', prop_raw['Hash'])
-                prop.set_value('collateral_hash', prop_raw['CollateralHash'])
-                prop.set_value('fBlockchainValidity', prop_raw['fBlockchainValidity'])
-                prop.set_value('fCachedValid', prop_raw['fCachedValid'])
-                prop.set_value('fCachedDelete', prop_raw['fCachedDelete'])
-                prop.set_value('fCachedFunding', prop_raw['fCachedFunding'])
-                prop.set_value('fCachedEndorsed', prop_raw['fCachedEndorsed'])
-                prop.set_value('ObjectType', prop_raw['ObjectType'])
-                prop.set_value('IsValidReason', prop_raw['IsValidReason'])
-                prop.apply_values(self.masternodes, self.last_superblock_time, self.next_superblock_time)
-                if is_new:
-                    self.proposals.append(prop)
-                    self.proposals_by_hash[prop.get_value('hash')] = prop
-                    rows_added = True
+                    prop.set_value('name', prop_data['name'])
+                    prop.set_value('payment_start', datetime.datetime.fromtimestamp(int(prop_data['start_epoch'])))
+                    prop.set_value('payment_end', datetime.datetime.fromtimestamp(int(prop_data['end_epoch'])))
+                    prop.set_value('payment_amount', float(prop_data['payment_amount'].replace(',', '.')))
+                    prop.set_value('yes_count', int(prop_raw['YesCount']))
+                    prop.set_value('absolute_yes_count', int(prop_raw['AbsoluteYesCount']))
+                    prop.set_value('no_count', int(prop_raw['NoCount']))
+                    prop.set_value('abstain_count', int(prop_raw['AbstainCount']))
+                    prop.set_value('creation_time', datetime.datetime.fromtimestamp(int(prop_raw["CreationTime"])))
+                    prop.set_value('url', prop_data['url'])
+                    prop.set_value('payment_address', prop_data["payment_address"])
+                    prop.set_value('type', prop_data['type'])
+                    prop.set_value('hash', hash)
+                    prop.set_value('collateral_hash', prop_raw['CollateralHash'])
+                    prop.set_value('fBlockchainValidity', prop_raw['fBlockchainValidity'])
+                    prop.set_value('fCachedValid', prop_raw['fCachedValid'])
+                    prop.set_value('fCachedDelete', prop_raw['fCachedDelete'])
+                    prop.set_value('fCachedFunding', prop_raw['fCachedFunding'])
+                    prop.set_value('fCachedEndorsed', prop_raw['fCachedEndorsed'])
+                    prop.set_value('ObjectType', prop_raw['ObjectType'])
+                    prop.set_value('IsValidReason', prop_raw['IsValidReason'])
+                    prop.apply_values(self.masternodes, self.last_superblock_time, self.next_superblock_time)
+                    if is_new:
+                        self.proposals.append(prop)
+                        self.proposals_by_hash[prop.get_value('hash')] = prop
+                        rows_added = True
+                except Exception as e:
+                    logging.exception('Error while processing proposal data. Proposal hash: ' + hash)
+                    errors += 1
 
             if len(proposals_new) > 0:
-                try:
-                    cur = self.db_intf.get_cursor()
+                if errors < len(proposals_new)/10:
+                    try:
+                        cur = self.db_intf.get_cursor()
 
-                    for prop in self.proposals:
-                        if self.finishing:
-                            raise CloseDialogException
+                        for prop in self.proposals:
+                            if self.finishing:
+                                raise CloseDialogException
 
-                        if prop.marker:
-                            if not prop.db_id:
-                                # first, check if there is a proposal with the same hash in the database
-                                # dashd sometimes does not return some proposals, so they are deactivated id the db
-                                hash = prop.get_value('hash')
-                                cur.execute('SELECT id from PROPOSALS where hash=?', (hash,))
-                                row = cur.fetchone()
-                                if row:
-                                    prop.db_id = row[0]
-                                    prop.modified = True
-                                    cur.execute('UPDATE PROPOSALS set dmt_active=1, dmt_deactivation_time=NULL '
-                                                'WHERE id=?', (row[0],))
-                                    logging.info('Proposal "%s" (db_id: %d) exists int the DB. Re-activating.' %
-                                                 (hash, row[0]))
+                            if prop.marker:
+                                if not prop.db_id:
+                                    # first, check if there is a proposal with the same hash in the database
+                                    # dashd sometimes does not return some proposals, so they are deactivated id the db
+                                    hash = prop.get_value('hash')
+                                    cur.execute('SELECT id from PROPOSALS where hash=?', (hash,))
+                                    row = cur.fetchone()
+                                    if row:
+                                        prop.db_id = row[0]
+                                        prop.modified = True
+                                        cur.execute('UPDATE PROPOSALS set dmt_active=1, dmt_deactivation_time=NULL '
+                                                    'WHERE id=?', (row[0],))
+                                        logging.info('Proposal "%s" (db_id: %d) exists int the DB. Re-activating.' %
+                                                     (hash, row[0]))
 
-                            if not prop.db_id:
-                                logging.info('Adding a new proposal to DB. Hash: ' + prop.get_value('hash'))
-                                cur.execute("INSERT INTO PROPOSALS (name, payment_start, payment_end, payment_amount,"
-                                            " yes_count, absolute_yes_count, no_count, abstain_count, creation_time,"
-                                            " url, payment_address, type, hash, collateral_hash, f_blockchain_validity,"
-                                            " f_cached_valid, f_cached_delete, f_cached_funding, f_cached_endorsed, "
-                                            " object_type, is_valid_reason, dmt_active, dmt_create_time, "
-                                            " dmt_deactivation_time, dmt_voting_last_read_time)"
-                                            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)",
-                                            (prop.get_value('name'),
-                                             prop.get_value('payment_start').strftime('%Y-%m-%d %H:%M:%S'),
-                                             prop.get_value('payment_end').strftime('%Y-%m-%d %H:%M:%S'),
-                                             prop.get_value('payment_amount'),
-                                             prop.get_value('yes_count'),
-                                             prop.get_value('absolute_yes_count'),
-                                             prop.get_value('no_count'),
-                                             prop.get_value('abstain_count'),
-                                             prop.get_value('creation_time').strftime('%Y-%m-%d %H:%M:%S'),
-                                             prop.get_value('url'),
-                                             prop.get_value('payment_address'),
-                                             prop.get_value('type'),
-                                             prop.get_value('hash'),
-                                             prop.get_value('collateral_hash'),
-                                             prop.get_value('fBlockchainValidity'),
-                                             prop.get_value('fCachedValid'),
-                                             prop.get_value('fCachedDelete'),
-                                             prop.get_value('fCachedFunding'),
-                                             prop.get_value('fCachedEndorsed'),
-                                             prop.get_value('ObjectType'),
-                                             prop.get_value('IsValidReason'),
-                                             1,
-                                             datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                             None))
-                                prop.db_id = cur.lastrowid
-                                self.proposals_by_db_id[prop.db_id] = prop
-                            else:
-                                # proposal's db record already exists, check if should be updated
-                                if prop.modified:
-                                    logging.debug('Updating proposal in the DB. Hash: %s, DB id: %d' %
-                                                  (prop.get_value('hash'), prop.db_id) )
-                                    cur.execute("UPDATE PROPOSALS set name=?, payment_start=?, payment_end=?, "
-                                                "payment_amount=?, yes_count=?, absolute_yes_count=?, no_count=?, "
-                                                "abstain_count=?, creation_time=?, url=?, payment_address=?, type=?,"
-                                                "hash=?, collateral_hash=?, f_blockchain_validity=?, f_cached_valid=?,"
-                                                "f_cached_delete=?, f_cached_funding=?, f_cached_endorsed=?, object_type=?,"
-                                                "is_valid_reason=? WHERE id=?",
-                                                (
-                                                    prop.get_value('name'),
-                                                    prop.get_value('payment_start').strftime('%Y-%m-%d %H:%M:%S'),
-                                                    prop.get_value('payment_end').strftime('%Y-%m-%d %H:%M:%S'),
-                                                    prop.get_value('payment_amount'),
-                                                    prop.get_value('yes_count'),
-                                                    prop.get_value('absolute_yes_count'),
-                                                    prop.get_value('no_count'),
-                                                    prop.get_value('abstain_count'),
-                                                    prop.get_value('creation_time').strftime('%Y-%m-%d %H:%M:%S'),
-                                                    prop.get_value('url'),
-                                                    prop.get_value('payment_address'),
-                                                    prop.get_value('type'),
-                                                    prop.get_value('hash'),
-                                                    prop.get_value('collateral_hash'),
-                                                    prop.get_value('fBlockchainValidity'),
-                                                    prop.get_value('fCachedValid'),
-                                                    prop.get_value('fCachedDelete'),
-                                                    prop.get_value('fCachedFunding'),
-                                                    prop.get_value('fCachedEndorsed'),
-                                                    prop.get_value('ObjectType'),
-                                                    prop.get_value('IsValidReason'),
-                                                    prop.db_id
-                                                ))
+                                if not prop.db_id:
+                                    logging.info('Adding a new proposal to DB. Hash: ' + prop.get_value('hash'))
+                                    cur.execute("INSERT INTO PROPOSALS (name, payment_start, payment_end, payment_amount,"
+                                                " yes_count, absolute_yes_count, no_count, abstain_count, creation_time,"
+                                                " url, payment_address, type, hash, collateral_hash, f_blockchain_validity,"
+                                                " f_cached_valid, f_cached_delete, f_cached_funding, f_cached_endorsed, "
+                                                " object_type, is_valid_reason, dmt_active, dmt_create_time, "
+                                                " dmt_deactivation_time, dmt_voting_last_read_time)"
+                                                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)",
+                                                (prop.get_value('name'),
+                                                 prop.get_value('payment_start').strftime('%Y-%m-%d %H:%M:%S'),
+                                                 prop.get_value('payment_end').strftime('%Y-%m-%d %H:%M:%S'),
+                                                 prop.get_value('payment_amount'),
+                                                 prop.get_value('yes_count'),
+                                                 prop.get_value('absolute_yes_count'),
+                                                 prop.get_value('no_count'),
+                                                 prop.get_value('abstain_count'),
+                                                 prop.get_value('creation_time').strftime('%Y-%m-%d %H:%M:%S'),
+                                                 prop.get_value('url'),
+                                                 prop.get_value('payment_address'),
+                                                 prop.get_value('type'),
+                                                 prop.get_value('hash'),
+                                                 prop.get_value('collateral_hash'),
+                                                 prop.get_value('fBlockchainValidity'),
+                                                 prop.get_value('fCachedValid'),
+                                                 prop.get_value('fCachedDelete'),
+                                                 prop.get_value('fCachedFunding'),
+                                                 prop.get_value('fCachedEndorsed'),
+                                                 prop.get_value('ObjectType'),
+                                                 prop.get_value('IsValidReason'),
+                                                 1,
+                                                 datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                                 None))
+                                    prop.db_id = cur.lastrowid
+                                    self.proposals_by_db_id[prop.db_id] = prop
+                                else:
+                                    # proposal's db record already exists, check if should be updated
+                                    if prop.modified:
+                                        logging.debug('Updating proposal in the DB. Hash: %s, DB id: %d' %
+                                                      (prop.get_value('hash'), prop.db_id) )
+                                        cur.execute("UPDATE PROPOSALS set name=?, payment_start=?, payment_end=?, "
+                                                    "payment_amount=?, yes_count=?, absolute_yes_count=?, no_count=?, "
+                                                    "abstain_count=?, creation_time=?, url=?, payment_address=?, type=?,"
+                                                    "hash=?, collateral_hash=?, f_blockchain_validity=?, f_cached_valid=?,"
+                                                    "f_cached_delete=?, f_cached_funding=?, f_cached_endorsed=?, object_type=?,"
+                                                    "is_valid_reason=? WHERE id=?",
+                                                    (
+                                                        prop.get_value('name'),
+                                                        prop.get_value('payment_start').strftime('%Y-%m-%d %H:%M:%S'),
+                                                        prop.get_value('payment_end').strftime('%Y-%m-%d %H:%M:%S'),
+                                                        prop.get_value('payment_amount'),
+                                                        prop.get_value('yes_count'),
+                                                        prop.get_value('absolute_yes_count'),
+                                                        prop.get_value('no_count'),
+                                                        prop.get_value('abstain_count'),
+                                                        prop.get_value('creation_time').strftime('%Y-%m-%d %H:%M:%S'),
+                                                        prop.get_value('url'),
+                                                        prop.get_value('payment_address'),
+                                                        prop.get_value('type'),
+                                                        prop.get_value('hash'),
+                                                        prop.get_value('collateral_hash'),
+                                                        prop.get_value('fBlockchainValidity'),
+                                                        prop.get_value('fCachedValid'),
+                                                        prop.get_value('fCachedDelete'),
+                                                        prop.get_value('fCachedFunding'),
+                                                        prop.get_value('fCachedEndorsed'),
+                                                        prop.get_value('ObjectType'),
+                                                        prop.get_value('IsValidReason'),
+                                                        prop.db_id
+                                                    ))
 
-                    # delete proposals which no longer exists in tha Dash network
-                    rows_removed = False
-                    for prop_idx in reversed(range(len(self.proposals))):
-                        if self.finishing:
-                            raise CloseDialogException
+                        # delete proposals which no longer exists in tha Dash network
+                        rows_removed = False
+                        for prop_idx in reversed(range(len(self.proposals))):
+                            if self.finishing:
+                                raise CloseDialogException
 
-                        prop = self.proposals[prop_idx]
+                            prop = self.proposals[prop_idx]
 
-                        if not prop.marker:
-                            logging.info('Deactivating proposal in the cache. Hash: %s, DB id: %s' %
-                                          (prop.get_value('hash'), str(prop.db_id)))
-                            cur.execute("UPDATE PROPOSALS set dmt_active=0, dmt_deactivation_time=? WHERE id=?",
-                                        (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), prop.db_id))
+                            if not prop.marker:
+                                logging.info('Deactivating proposal in the cache. Hash: %s, DB id: %s' %
+                                              (prop.get_value('hash'), str(prop.db_id)))
+                                cur.execute("UPDATE PROPOSALS set dmt_active=0, dmt_deactivation_time=? WHERE id=?",
+                                            (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), prop.db_id))
 
-                            self.proposals_by_hash.pop(prop.get_value('hash'), 0)
-                            self.proposals_by_db_id.pop(prop.db_id)
-                            del self.proposals[prop_idx]
-                            rows_removed = True
+                                self.proposals_by_hash.pop(prop.get_value('hash'), 0)
+                                self.proposals_by_db_id.pop(prop.db_id)
+                                del self.proposals[prop_idx]
+                                rows_removed = True
 
-                    # self.set_cache_value('ProposalsLastReadTime', int(time.time()))  # save when proposals has been
-                    cur.execute("UPDATE LIVE_CONFIG SET value=? WHERE symbol=?",
-                                (int(time.time()), CFG_PROPOSALS_LAST_READ_TIME))
-                    if cur.rowcount == 0:
-                        cur.execute("INSERT INTO LIVE_CONFIG(symbol, value) VALUES(?, ?)",
-                                    (CFG_PROPOSALS_LAST_READ_TIME, int(time.time())))
+                        # self.set_cache_value('ProposalsLastReadTime', int(time.time()))  # save when proposals has been
+                        cur.execute("UPDATE LIVE_CONFIG SET value=? WHERE symbol=?",
+                                    (int(time.time()), CFG_PROPOSALS_LAST_READ_TIME))
+                        if cur.rowcount == 0:
+                            cur.execute("INSERT INTO LIVE_CONFIG(symbol, value) VALUES(?, ?)",
+                                        (CFG_PROPOSALS_LAST_READ_TIME, int(time.time())))
 
-                    if rows_added or rows_removed:
-                        WndUtils.callFunInTheMainThread(self.display_proposals_data)
+                        if rows_added or rows_removed:
+                            WndUtils.callFunInTheMainThread(self.display_proposals_data)
 
-                except CloseDialogException:
-                    raise
+                    except CloseDialogException:
+                        raise
 
-                except Exception as e:
-                    logging.exception('Exception while saving proposals to db.')
-                    self.db_intf.rollback()
-                    raise
+                    except Exception as e:
+                        logging.exception('Exception while saving proposals to db.')
+                        self.db_intf.rollback()
+                        raise
+                    finally:
+                        self.db_intf.commit()
+                        self.db_intf.release_cursor()
+                        self.display_message('')
 
-                finally:
-                    self.db_intf.commit()
-                    self.db_intf.release_cursor()
-                    self.display_message('')
+                    if errors > 0:
+                        self.warnMsg('Problems encountered while processing some of the proposals data. '
+                                     'Look into the log file for details.')
+                else:
+                    # error count > 10% of the proposals count
+                    raise Exception('Errors while processing proposals data. Look into the log file for details.')
             else:
                 # no proposals read from network - skip deactivating records because probably
                 # some network glitch occured
@@ -1889,11 +1902,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             for s in self.vote_chart.series():
                 self.vote_chart.removeSeries(s)
 
-            if self.last_chart_type != new_chart_type:
-                if self.vote_chart.axisX() is not None:
-                    self.vote_chart.removeAxis(self.vote_chart.axisX())
-                if self.vote_chart.axisY() is not None:
-                    self.vote_chart.removeAxis(self.vote_chart.axisY())
+            if self.vote_chart.axisX() is not None:
+                self.vote_chart.removeAxis(self.vote_chart.axisX())
+            if self.vote_chart.axisY() is not None:
+                self.vote_chart.removeAxis(self.vote_chart.axisY())
 
             if self.votesModel:
                 if new_chart_type == 1:
@@ -1905,7 +1917,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     vote_mapper = {'YES': 0, 'NO': 1, 'ABSTAIN': 2}
                     dates = []
                     prev_vd = None
-                    max_y = 0
+                    max_y = 1
 
                     for idx in range(len(self.votesModel.votes)-1, -1, -1):
                         v = self.votesModel.votes[idx]
@@ -1958,7 +1970,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     pen.setWidth(2)
                     ser_abstain.setPen(pen)
 
-                    max_absolute_yes = 0
+                    max_absolute_yes = 1
                     min_absolute_yes = 0
                     for ts in dates:
                         vd = votes_aggr[ts]
@@ -1978,45 +1990,47 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     self.vote_chart.addSeries(ser_no)
                     self.vote_chart.addSeries(ser_abstain)
 
-                    if self.last_chart_type != new_chart_type:
-                        axisX = QDateTimeAxis()
-                        axisX.setLabelsVisible(True)
-                        axisX.setFormat("dd MMM")
-                        self.vote_chart.addAxis(axisX, Qt.AlignBottom)
-                        axisY = QValueAxis()
-                        axisY.setLabelFormat('%d')
-                        axisY.setLabelsVisible(True)
+                    axisX = QDateTimeAxis()
+                    axisX.setLabelsVisible(True)
+                    axisX.setFormat("dd MMM")
+                    self.vote_chart.addAxis(axisX, Qt.AlignBottom)
+                    axisY = QValueAxis()
+                    axisY.setLabelFormat('%d')
+                    axisY.setLabelsVisible(True)
 
-                        self.vote_chart.addAxis(axisY, Qt.AlignLeft)
-                        ser_yes.attachAxis(axisX)
-                        ser_yes.attachAxis(axisY)
-                        ser_no.attachAxis(axisX)
-                        ser_no.attachAxis(axisY)
-                        ser_abstain.attachAxis(axisX)
-                        ser_abstain.attachAxis(axisY)
-                        ser_abs_yes.attachAxis(axisX)
-                        ser_abs_yes.attachAxis(axisY)
-                    else:
-                        ser_yes.attachAxis(self.vote_chart.axisX())
-                        ser_yes.attachAxis(self.vote_chart.axisY())
-                        ser_no.attachAxis(self.vote_chart.axisX())
-                        ser_no.attachAxis(self.vote_chart.axisY())
-                        ser_abstain.attachAxis(self.vote_chart.axisX())
-                        ser_abstain.attachAxis(self.vote_chart.axisY())
-                        ser_abs_yes.attachAxis(self.vote_chart.axisX())
-                        ser_abs_yes.attachAxis(self.vote_chart.axisY())
+                    self.vote_chart.addAxis(axisY, Qt.AlignLeft)
+                    ser_yes.attachAxis(axisX)
+                    ser_yes.attachAxis(axisY)
+                    ser_no.attachAxis(axisX)
+                    ser_no.attachAxis(axisY)
+                    ser_abstain.attachAxis(axisX)
+                    ser_abstain.attachAxis(axisY)
+                    ser_abs_yes.attachAxis(axisX)
+                    ser_abs_yes.attachAxis(axisY)
 
                     try:
-                        self.vote_chart.axisX().setTickCount(min(len(dates), 10))
+                        x_ticks = min(max(len(dates), 2), 10)
+                        self.vote_chart.axisX().setTickCount(x_ticks)
                     except Exception as e:
-                        pass
                         raise
-                    if len(dates) > 0:
-                        self.vote_chart.axisX().setMin(datetime.datetime.fromtimestamp(dates[0] / 1000))
-                        self.vote_chart.axisX().setMax(datetime.datetime.fromtimestamp(dates[len(dates)-1] / 1000))
-                        self.vote_chart.axisY().setMin(min(0, min_absolute_yes))
-                        max_y = max_y + int(max_y * 0.05)
-                        self.vote_chart.axisY().setMax(max_y)
+
+                    if len(dates) == 0:
+                        min_date = datetime.datetime.now()
+                        max_date = datetime.datetime.now()
+                        max_date += datetime.timedelta(days=1)
+                    elif len(dates) == 1:
+                        min_date = datetime.datetime.fromtimestamp(dates[0] / 1000)
+                        max_date = min_date
+                        max_date += datetime.timedelta(days=1)
+                    else:
+                        min_date = datetime.datetime.fromtimestamp(dates[0] / 1000)
+                        max_date = datetime.datetime.fromtimestamp(dates[len(dates)-1] / 1000)
+
+                    self.vote_chart.axisX().setMin(min_date)
+                    self.vote_chart.axisX().setMax(max_date)
+                    self.vote_chart.axisY().setMin(min(0, min_absolute_yes))
+                    max_y = max_y + int(max_y * 0.05)
+                    self.vote_chart.axisY().setMax(max_y)
 
                 elif new_chart_type == 2:
                     bs_abs_yes = QBarSet("Absolute Yes")
