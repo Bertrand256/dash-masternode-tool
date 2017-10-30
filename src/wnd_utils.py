@@ -6,7 +6,6 @@ import logging
 import os
 import threading
 import traceback
-import sys
 import thread_utils
 import time
 from PyQt5 import QtWidgets, QtCore
@@ -138,7 +137,6 @@ class WndUtils:
         thread = None
 
         def on_thread_finished_int():
-            logging.debug('Finished WorkerThread for: ' + str(worker_fun))
             if thread.worker_exception:
                 if on_thread_exception:
                     on_thread_exception(thread.worker_exception)

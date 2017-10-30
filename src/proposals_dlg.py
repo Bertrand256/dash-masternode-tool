@@ -251,6 +251,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def __init__(self, parent, dashd_intf):
         QDialog.__init__(self, parent=parent)
         wnd_utils.WndUtils.__init__(self, parent.config)
+        self.setWindowFlags(Qt.Window)
         self.main_wnd = parent
         self.finishing = False  # True if the dialog is closing (all thread operations will be stopped)
         self.dashd_intf = dashd_intf
