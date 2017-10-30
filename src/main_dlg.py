@@ -1451,8 +1451,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.btnBroadcastMn.setEnabled(False)
 
         self.checkDashdConnection(wait_for_check_finish=True, call_on_check_finished=enable_buttons)
-        status = self.get_masternode_status_description()
-        self.lblMnStatus.setText(status)
+        try:
+            status = self.get_masternode_status_description()
+            self.lblMnStatus.setText(status)
+        except:
+            self.lblMnStatus.setText('')
+            raise
 
     @pyqtSlot(bool)
     def on_actTransferFundsSelectedMn_triggered(self):
