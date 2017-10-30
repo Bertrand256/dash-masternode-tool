@@ -422,7 +422,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         # if a thread waiting for dashd to finish synchronizing is running, call the callback function
                         call_on_check_finished()
                 else:
-                    self.check_conn_thread = self.runInThread(connect_thread, (), on_thread_finish=connect_finished)
+                    self.check_conn_thread = self.runInThread(connect_thread, (),
+                                                              on_thread_finish=connect_finished)
                     if wait_for_check_finish:
                         event_loop.exec()
                     # connect_thread({})
@@ -1441,7 +1442,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_btnRefreshMnStatus_clicked(self):
-        self.checkDashdConnection(wait_for_check_finish=True)
+        def enable_buttons():
+            self.btnRefreshMnStatus.setEnabled(True)
+            self.btnBroadcastMn.setEnabled(True)
+
+        self.lblMnStatus.setText('<b>Retrieving masternode information, please wait...<b>')
+        self.btnRefreshMnStatus.setEnabled(False)
+        self.btnBroadcastMn.setEnabled(False)
+
+        self.checkDashdConnection(wait_for_check_finish=True, call_on_check_finished=enable_buttons)
         status = self.get_masternode_status_description()
         self.lblMnStatus.setText(status)
 

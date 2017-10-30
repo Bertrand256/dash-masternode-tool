@@ -157,20 +157,29 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
     :param tx_fee: transaction fee
     :return: tuple (serialized tx, total transaction amount in satoshis)
     """
-    if main_ui.config.hw_type == HWType.trezor:
-        import hw_intf_trezor as trezor
+    def prepare(ctrl):
+        ctrl.dlg_config_fun(dlg_title="Confirm message signing.", show_progress_bar=False)
+        ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet...</b>')
 
-        return trezor.prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee)
+        if main_ui.config.hw_type == HWType.trezor:
+            import hw_intf_trezor as trezor
 
-    elif main_ui.config.hw_type == HWType.keepkey:
-        import hw_intf_keepkey as keepkey
+            return trezor.prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee)
 
-        return keepkey.prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee)
+        elif main_ui.config.hw_type == HWType.keepkey:
+            import hw_intf_keepkey as keepkey
 
-    elif main_ui.config.hw_type == HWType.ledger_nano_s:
-        raise Exception('Ledger Nano S not supported yet.')
-    else:
-        logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
+            return keepkey.prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee)
+
+        elif main_ui.config.hw_type == HWType.ledger_nano_s:
+            raise Exception('Ledger Nano S not supported yet.')
+        else:
+            logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
+
+    # execute the 'prepare' function, but due to the fact that the call blocks the UI until the user clicks the HW
+    # button, it's done inside a thread within a dialog that shows an appropriate message to the user
+    sig = main_ui.threadFunctionDialog(prepare, (), True, center_by_window=main_ui)
+    return sig
 
 
 @control_hw_call
