@@ -775,7 +775,9 @@ class DashdInterface(WndUtils):
 
         start_tm = time.time()
         self.payment_queue = []
-        now = int(datetime.datetime.utcnow().strftime("%s"))
+        d = datetime.datetime.utcnow()
+        now = int(time.mktime((d.year, d.month, d.day, d.hour, d.minute, d.second, 0, 0, 0)))
+
         for mn in self.masternodes:
             if mn.status == 'ENABLED':
                 # estimate payment queue position: after loading all masternodes
