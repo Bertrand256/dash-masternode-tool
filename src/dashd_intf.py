@@ -193,7 +193,8 @@ class DashdSSH(object):
                 # So, in the first case, the second query for password will ask for normal password to server, not
                 #  for a private key.
 
-                WndUtils.errorMsg(message='Incorrect password, try again...')
+                if password is not None:
+                    WndUtils.errorMsg(message='Incorrect password, try again...')
 
                 while True:
                     password = SshPassCache.get_password(self.username, self.host, message=pass_message)
