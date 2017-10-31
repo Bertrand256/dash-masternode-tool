@@ -6,6 +6,7 @@ import logging
 import os
 import threading
 import traceback
+from functools import partial
 import thread_utils
 import time
 from PyQt5 import QtWidgets, QtCore
@@ -134,15 +135,14 @@ class WndUtils:
             - skip_raise_exception is False
         :return: reference to a thread object
         """
-        thread = None
 
-        def on_thread_finished_int():
-            if thread.worker_exception:
+        def on_thread_finished_int(thread_arg):
+            if thread_arg.worker_exception:
                 if on_thread_exception:
-                    on_thread_exception(thread.worker_exception)
+                    on_thread_exception(thread_arg.worker_exception)
                 else:
                     if not skip_raise_exception:
-                        raise thread.worker_exception
+                        raise thread_arg.worker_exception
             else:
                 if on_thread_finish:
                     on_thread_finish()
@@ -154,7 +154,12 @@ class WndUtils:
             logging.error('Running thread from inside another thread. Stack: \n' + ''.join(st))
 
         thread = WorkerThread(worker_fun=worker_fun, worker_fun_args=worker_fun_args)
-        thread.finished.connect(on_thread_finished_int)
+
+        # in Python 3.5 local variables sometimes are removed before calling on_thread_finished_int
+        # so we have to bind that variables with the function ref
+        bound_on_thread_finished = partial(on_thread_finished_int, thread)
+
+        thread.finished.connect(bound_on_thread_finished)
         thread.start()
         logging.debug('Started WorkerThread for: ' + str(worker_fun))
         return thread
