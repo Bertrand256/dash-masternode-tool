@@ -136,16 +136,16 @@ class WndUtils:
         :return: reference to a thread object
         """
 
-        def on_thread_finished_int(thread_arg):
+        def on_thread_finished_int(thread_arg, on_thread_finish_arg, skip_raise_exception_arg, on_thread_exception_arg):
             if thread_arg.worker_exception:
-                if on_thread_exception:
-                    on_thread_exception(thread_arg.worker_exception)
+                if on_thread_exception_arg:
+                    on_thread_exception_arg(thread_arg.worker_exception)
                 else:
-                    if not skip_raise_exception:
+                    if not skip_raise_exception_arg:
                         raise thread_arg.worker_exception
             else:
-                if on_thread_finish:
-                    on_thread_finish()
+                if on_thread_finish_arg:
+                    on_thread_finish_arg()
 
         if threading.current_thread() != threading.main_thread():
             # starting thread from another thread causes an issue of not passing arguments'
@@ -157,7 +157,8 @@ class WndUtils:
 
         # in Python 3.5 local variables sometimes are removed before calling on_thread_finished_int
         # so we have to bind that variables with the function ref
-        bound_on_thread_finished = partial(on_thread_finished_int, thread)
+        bound_on_thread_finished = partial(on_thread_finished_int, thread, on_thread_finish, skip_raise_exception,
+                                           on_thread_exception)
 
         thread.finished.connect(bound_on_thread_finished)
         thread.start()
