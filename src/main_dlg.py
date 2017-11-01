@@ -63,6 +63,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.dashd_info = {}
         self.is_dashd_syncing = False
         self.dashd_connection_ok = False
+        self.connecting_to_dashd = False
         self.hw_client = None
         self.curMasternode = None
         self.editingEnabled = False
@@ -409,6 +410,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             """
             del self.check_conn_thread
             self.check_conn_thread = None
+            self.connecting_to_dashd = False
             if call_on_check_finished:
                 call_on_check_finished()
             if event_loop:
@@ -422,13 +424,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         # if a thread waiting for dashd to finish synchronizing is running, call the callback function
                         call_on_check_finished()
                 else:
+                    self.connecting_to_dashd = True
                     self.check_conn_thread = self.runInThread(connect_thread, (),
                                                               on_thread_finish=connect_finished)
                     if wait_for_check_finish:
                         event_loop.exec()
-                    # connect_thread({})
-                    # if call_on_check_finished:
-                    #     call_on_check_finished()
         else:
             # configuration is not complete
             logging.warning("config not complete")
@@ -438,6 +438,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot(bool)
     def on_btnCheckConnection_clicked(self):
         def connection_test_finished():
+
+            self.btnCheckConnection.setEnabled(True)
+            self.btnBroadcastMn.setEnabled(True)
+            self.btnRefreshMnStatus.setEnabled(True)
+            self.btnActions.setEnabled(True)
+
             if self.dashd_connection_ok:
                 if self.is_dashd_syncing:
                     self.infoMsg('Connection successful, but Dash daemon is synchronizing.')
@@ -450,6 +456,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.errorMsg('Connection error')
 
         if self.config.is_config_complete():
+            self.btnCheckConnection.setEnabled(False)
+            self.btnBroadcastMn.setEnabled(False)
+            self.btnRefreshMnStatus.setEnabled(False)
+            self.btnActions.setEnabled(False)
             self.checkDashdConnection(call_on_check_finished=connection_test_finished)
         else:
             # configuration not complete: show config window
@@ -1451,12 +1461,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.btnBroadcastMn.setEnabled(False)
 
         self.checkDashdConnection(wait_for_check_finish=True, call_on_check_finished=enable_buttons)
-        try:
-            status = self.get_masternode_status_description()
-            self.lblMnStatus.setText(status)
-        except:
-            self.lblMnStatus.setText('')
-            raise
+        if self.dashd_connection_ok:
+            try:
+                status = self.get_masternode_status_description()
+                self.lblMnStatus.setText(status)
+            except:
+                self.lblMnStatus.setText('')
+                raise
+        else:
+            self.errorMsg('Dash daemon not connected')
 
     @pyqtSlot(bool)
     def on_actTransferFundsSelectedMn_triggered(self):
