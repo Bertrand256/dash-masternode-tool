@@ -17,6 +17,7 @@ import simplejson
 from PyQt5.QtCore import QThread
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from paramiko import AuthenticationException, PasswordRequiredException, SSHException
+from paramiko.ssh_exception import NoValidConnectionsError
 from app_config import AppConfig
 from random import randint
 from wnd_utils import WndUtils
@@ -50,7 +51,11 @@ class Handler(socketserver.BaseRequestHandler):
                                                    dest_addr=(self.chain_host, self.chain_port),
                                                    src_addr=self.request.getpeername())
         except Exception as e:
+            logging.error('open_channel error: ' + str(e))
+            if self.broken_conn_callback is not None:
+                self.broken_conn_callback()
             return
+
         if chan is None:
             return
 
@@ -67,9 +72,11 @@ class Handler(socketserver.BaseRequestHandler):
                     if len(data) == 0:
                         break
                     self.request.send(data)
-        except socket.error:
-            pass
+            logging.debug('Finishing Handler.handle')
+        except socket.error as e:
+            logging.error('Handler socker.error occurred: ' + str(e))
         except Exception as e:
+            logging.error('Handler exception occurred: ' + str(e))
             print(str(e))
         finally:
             chan.close()
@@ -77,7 +84,8 @@ class Handler(socketserver.BaseRequestHandler):
 
 
 class SSHTunnelThread(QThread):
-    def __init__(self, local_port, remote_ip, remote_port, transport, ready_event):
+    def __init__(self, local_port, remote_ip, remote_port, transport, ready_event,
+                 on_connection_broken_callback=None, on_finish_thread_callback=None):
         QThread.__init__(self)
         self.local_port = local_port
         self.remote_ip = remote_ip
@@ -85,6 +93,8 @@ class SSHTunnelThread(QThread):
         self.transport = transport
         self.ready_event = ready_event
         self.forward_server = None
+        self.on_connection_broken_callback = on_connection_broken_callback
+        self.on_finish_thread_callback = on_finish_thread_callback
         self.setObjectName('SSHTunnelThread')
 
     def __del__(self):
@@ -94,17 +104,31 @@ class SSHTunnelThread(QThread):
         if self.forward_server:
             self.forward_server.shutdown()
 
+    def handler_broken_connection_callback(self):
+        try:
+            self.stop()
+            if self.on_connection_broken_callback is not None:
+                self.on_connection_broken_callback()
+        except:
+            logging.exception('Exception while shutting down forward server.')
+
     def run(self):
         class SubHander(Handler):
             chain_host = self.remote_ip
             chain_port = self.remote_port
             ssh_transport = self.transport
+            broken_conn_callback = self.handler_broken_connection_callback
 
-        self.ready_event.set()
-        self.forward_server = ForwardServer(('127.0.0.1', self.local_port), SubHander)
-        self.forward_server.serve_forever()
-        print('Stopped local port forwarding 127.0.0.1:%s -> %s:%s' % (str(self.local_port), self.remote_ip,
-                                                                       str(self.remote_port)))
+        try:
+            self.ready_event.set()
+            self.forward_server = ForwardServer(('127.0.0.1', self.local_port), SubHander)
+            self.forward_server.serve_forever()
+            logging.debug('Stopped local port forwarding 127.0.0.1:%s -> %s:%s' %
+                          (str(self.local_port), self.remote_ip, str(self.remote_port)))
+            if self.on_finish_thread_callback:
+                self.on_finish_thread_callback()
+        except Exception as e:
+            logging.exception('SSH tunnel exception occurred')
 
 
 class UnknownError(Exception):
@@ -118,7 +142,7 @@ class DashdConnectionError(Exception):
 
 
 class DashdSSH(object):
-    def __init__(self, host, port, username):
+    def __init__(self, host, port, username, on_connection_broken_callback=None):
         self.host = host
         self.port = port
         self.username = username
@@ -126,7 +150,9 @@ class DashdSSH(object):
         self.channel = None
         self.fw_channel = None
         self.connected = False
+        self.connection_broken = False
         self.ssh_thread = None
+        self.on_connection_broken_callback = on_connection_broken_callback
 
     def __del__(self):
         self.disconnect()
@@ -164,8 +190,9 @@ class DashdSSH(object):
 
     def connect(self):
         import paramiko
-        self.ssh = paramiko.SSHClient()
-        self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        if self.ssh is None:
+            self.ssh = paramiko.SSHClient()
+            self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         password = None
         pass_message = None
 
@@ -212,14 +239,22 @@ class DashdSSH(object):
             except Exception as e:
                 raise
 
+    def on_tunnel_thread_finish(self):
+        self.ssh_thread = None
+
     def open_tunnel(self, local_port, remote_ip, remote_port):
         if self.connected:
+            if self.ssh_thread is not None:
+                raise Exception('SSH tunnel already open.')
+
             ready_event = threading.Event()
-            self.ssh_thread = SSHTunnelThread(local_port, remote_ip, remote_port, self.ssh.get_transport(), ready_event)
+            self.ssh_thread = SSHTunnelThread(local_port, remote_ip, remote_port, self.ssh.get_transport(), ready_event,
+                                              on_connection_broken_callback=self.on_connection_broken_callback,
+                                              on_finish_thread_callback=self.on_tunnel_thread_finish)
             self.ssh_thread.start()
             ready_event.wait(10)
-            print('Started local port forwarding 127.0.0.1:%s -> %s:%s' %
-                  (str(local_port), remote_ip, str(remote_port)))
+            logging.debug('Started local port forwarding 127.0.0.1:%s -> %s:%s' %
+                          (str(local_port), remote_ip, str(remote_port)))
         else:
             raise Exception('SSH not connected')
 
@@ -339,10 +374,11 @@ def control_rpc_call(func):
                         self.mark_cur_conn_cfg_is_ok()
                         break
 
-                    except (ConnectionResetError, ConnectionAbortedError, httplib.CannotSendRequest, BrokenPipeError) as e:
+                    except (ConnectionResetError, ConnectionAbortedError, httplib.CannotSendRequest,
+                            BrokenPipeError) as e:
                         logging.error('Error while calling of "' + str(func) + ' (1)". Details: ' + str(e))
                         last_exception = e
-                        self.http_conn.close()
+                        self.reset_connection()
 
                     except JSONRPCException as e:
                         logging.error('Error while calling of "' + str(func) + ' (2)". Details: ' + str(e))
@@ -354,8 +390,9 @@ def control_rpc_call(func):
                         else:
                             self.http_conn.close()
 
-                    except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
-                        # exceptions raised by not likely functioning dashd node; try to switch to another node
+                    except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout,
+                            NoValidConnectionsError) as e:
+                        # exceptions raised most likely by not functioning dashd node; try to switch to another node
                         # if there is any in the config
                         logging.error('Error while calling of "' + str(func) + ' (3)". Details: ' + str(e))
                         raise DashdConnectionError(e)
@@ -602,7 +639,8 @@ class DashdInterface(WndUtils):
                             return False
                 except UserCancelledConnection:
                     return False
-                except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
+                except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout,
+                        NoValidConnectionsError) as e:
                     # exceptions raised by not likely functioning dashd node; try to switch to another node
                     # if there is any in the config
                     if not self.switch_to_next_config():
@@ -615,6 +653,19 @@ class DashdInterface(WndUtils):
 
         return True
 
+    def reset_connection(self):
+        """
+        Called when communication errors are detected while sending RPC commands. Here we are closing the SSH-tunnel
+        (if used) and HTTP connection object to prepare for another try.
+        :return:
+        """
+        if self.active:
+            if self.http_conn:
+                self.http_conn.close()
+            if self.ssh:
+                self.ssh.disconnect()
+                self.active = False
+
     def open_internal(self):
         """
         Try to establish connection to dash RPC daemon for current connection config.
@@ -623,19 +674,31 @@ class DashdInterface(WndUtils):
         """
         if not self.active:
             logging.debug("Trying to open connection: %s" % self.cur_conn_def.get_description())
+            try:
+                # make the owner know, we are connecting
+                if self.on_connection_begin_callback:
+                    self.on_connection_begin_callback()
+            except:
+                pass
+
             if self.cur_conn_def.use_ssh_tunnel:
                 # RPC over SSH
-                while True:
+                if self.ssh is None:
                     self.ssh = DashdSSH(self.cur_conn_def.ssh_conn_cfg.host, self.cur_conn_def.ssh_conn_cfg.port,
                                         self.cur_conn_def.ssh_conn_cfg.username)
+                try:
+                    logging.debug('starting ssh.connect')
+                    self.ssh.connect()
+                    logging.debug('finished ssh.connect')
+                except Exception as e:
+                    logging.error('error in ssh.connect')
                     try:
-                        logging.debug('starting ssh.connect')
-                        self.ssh.connect()
-                        logging.debug('finished ssh.connect')
-                        break
-                    except Exception as e:
-                        logging.error('error in ssh.connect')
-                        raise
+                        # make the owner know, connection attempt failed
+                        if self.on_connection_try_fail_callback:
+                            self.on_connection_try_fail_callback()
+                    except:
+                        logging.exception('on_connection_try_fail_callback call exception')
+                    raise
 
                 # configure SSH tunnel
                 # get random local unprivileged port number to establish SSH tunnel
@@ -682,33 +745,24 @@ class DashdInterface(WndUtils):
             logging.debug('AuthServiceProxy end')
 
             try:
-                if self.on_connection_begin_callback:
-                    try:
-                        # make the owner know, we are connecting
-                        logging.debug('on_connection_begin_callback begin')
-                        self.on_connection_begin_callback()
-                        logging.debug('on_connection_begin_callback end')
-                    except:
-                        pass
-
                 # check the connection
                 self.http_conn.connect()
                 logging.debug('Successfully connected')
 
-                if self.on_connection_finished_callback:
-                    try:
-                        # make the owner know, we successfully finished connection
+                try:
+                    # make the owner know, we successfully finished connection
+                    if self.on_connection_finished_callback:
                         self.on_connection_finished_callback()
-                    except:
-                        logging.exception('on_connection_finished_callback call exception')
+                except:
+                    logging.exception('on_connection_finished_callback call exception')
             except:
                 logging.exception('Connection failed')
-                if self.on_connection_try_fail_callback:
-                    try:
-                        # make the owner know, connection attempt failed
+                try:
+                    # make the owner know, connection attempt failed
+                    if self.on_connection_try_fail_callback:
                         self.on_connection_try_fail_callback()
-                    except:
-                        logging.exception('on_connection_try_fail_callback call exception')
+                except:
+                    logging.exception('on_connection_try_fail_callback call exception')
                 raise
             finally:
                 logging.debug('http_conn.close()')
