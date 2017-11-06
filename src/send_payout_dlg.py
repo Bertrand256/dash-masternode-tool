@@ -14,7 +14,7 @@ from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSlot
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox
 import app_cache as cache
-from app_config import MIN_TX_FEE, HWType
+from app_config import MIN_TX_FEE, FEE_SAT_PER_BYTE
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_intf import prepare_transfer_tx, get_address
 from wnd_utils import WndUtils
@@ -225,6 +225,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         assert isinstance(utxos_source, list)
         assert isinstance(main_ui.dashd_intf, DashdInterface)
         self.utxos_source = utxos_source
+        self.rawtransactions = {}
         self.dashd_intf = main_ui.dashd_intf
         self.table_model = None
         self.source_address_mode = False
@@ -261,14 +262,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.chbHideCollateralTx.toggled.connect(self.chbHideCollateralTxToggled)
         self.resizeEvent = self.resizeEvent
 
-        if self.main_ui.config.hw_type == HWType.ledger_nano_s:
-            self.pnlSourceAddress.setVisible(False)
-            self.org_message = '<span style="color:red">Sending funds controlled by Ledger Nano S wallets is not ' \
-                               'supported yet.</span>'
-            self.setMessage(self.org_message)
-            self.load_utxos()
-            self.btnSend.setEnabled(False)
-        elif len(self.utxos_source):
+        if len(self.utxos_source):
             self.pnlSourceAddress.setVisible(False)
             self.org_message = 'List of Unspent Transaction Outputs <i>(UTXOs)</i> for specified address(es). ' \
                                'Select checkboxes for the UTXOs you wish to transfer.'
@@ -311,10 +305,20 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
         # estimate transaction fee
         utxos = self.table_model.getSelectedUtxos()
-        fee = round((len(utxos) * 148 + 33 - 10) / 1000) * MIN_TX_FEE
+        bytes = len(utxos) * 148 + 44
+        fee = bytes * FEE_SAT_PER_BYTE
         if not fee:
             fee = MIN_TX_FEE
         self.edtTxFee.setValue(round(fee / 1e8, 8))
+
+    @pyqtSlot(float)
+    def on_edtTxFee_valueChanged(self, value):
+        try:
+            bytes = len(self.table_model.getSelectedUtxos()) * 148 + 44
+            sat_per_byte = int(value * 1e8 / bytes)
+            self.lblSatPerByteFee.setText("%s Sat/B" % str(sat_per_byte))
+        except:
+            pass
 
     @pyqtSlot(bool)
     def on_btnUncheckAll_clicked(self):
@@ -352,8 +356,8 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                 for utxo_idx, utxo in enumerate(utxos):
                     if utxo['collateral']:
                         if self.queryDlg(
-                                "Warning: you are going to transfer Masternode's collateral (1000 Dash) transaction "
-                                "output. Proceeding will result in broken Masternode.\n\n"
+                                "Warning: you are going to transfer masternode's collateral (1000 Dash) transaction "
+                                "output. Proceeding will result in broken masternode.\n\n"
                                 "Do you really want to continue?",
                                 buttons=QMessageBox.Yes | QMessageBox.Cancel,
                                 default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
@@ -380,12 +384,14 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                         fee = self.edtTxFee.value() * 1e8
 
                         try:
-                            serialized_tx, amount_to_send = prepare_transfer_tx(self.main_ui, utxos, address, fee)
+                            serialized_tx, amount_to_send = prepare_transfer_tx(self.main_ui, utxos, address, fee,
+                                                                                self.rawtransactions)
                         except Exception:
                             logging.exception('Exception when preparing the transaction.')
                             raise
 
                         tx_hex = serialized_tx.hex()
+                        logging.debug('Raw signed transaction: ' + tx_hex)
                         if len(tx_hex) > 90000:
                             self.errorMsg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
                         else:
@@ -474,17 +480,13 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                         utxo['coinbase_locked'] = False
 
                         try:
-                            rawtx = self.dashd_intf.getrawtransaction(utxo.get('txid'), utxo.get('outputIndex'))
+                            rawtx = self.dashd_intf.getrawtransaction(utxo.get('txid'), 1)
                             if rawtx:
-                                if not isinstance(rawtx, dict):
-                                    decodedtx = self.dashd_intf.decoderawtransaction(rawtx)
-                                else:
-                                    decodedtx = rawtx
+                                self.rawtransactions[utxo.get('txid')] = rawtx['hex']
 
-                                if decodedtx:
-                                    vin = decodedtx.get('vin')
-                                    if len(vin) == 1 and vin[0].get('coinbase') and utxo['confirmations'] < 100:
-                                        utxo['coinbase_locked'] = True
+                                vin = rawtx.get('vin')
+                                if len(vin) == 1 and vin[0].get('coinbase') and utxo['confirmations'] < 100:
+                                    utxo['coinbase_locked'] = True
                         except Exception:
                             logging.exception('Error while verifying transaction coinbase')
 

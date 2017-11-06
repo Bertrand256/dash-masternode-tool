@@ -4,6 +4,7 @@ import logging
 from btchip.btchipUtils import compress_public_key
 from hw_common import HardwareWalletCancelException
 from wnd_utils import WndUtils
+from dash_utils import *
 from PyQt5.QtWidgets import QMessageBox
 
 
@@ -133,3 +134,115 @@ def get_address_and_pubkey(client, bip32_path):
         'address': nodedata.get('address').decode('utf-8'),
         'publicKey': compress_public_key(nodedata.get('publicKey'))
     }
+
+
+@process_ledger_exceptions
+def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee, rawtransactions):
+    client = main_ui.hw_client
+
+    # Each of the UTXOs (utxos_to_send list) will become an input of the new transaction.
+    # For each of those inputs, create a Ledger's 'trusted input', which will be used by the device to sign a transaction
+    trusted_inputs = []
+
+    # new_inputs: list of dicts
+    #  {
+    #    'locking_script': <Locking script of the UTXO being used as an input. Used in the process of signing
+    #                       transaction.>,
+    #    'outputIndex': <utxo index in the previus transaction>,
+    #    'txid': <hash of the previus transaction>,
+    #    'bip32_path': <BIP32 path of the user's hardware wallet controlling funds of the corresponding UTXO>,
+    #    'pubkey': <Dict containing publicKey and address corresponding to a BIP32 path, retrieved from a hardware
+    #               wallet.>
+    #    'signature' <Signature prepared as a result of the processing.>
+    #  }
+    #  Why do we need a locking script of the previous transaction? When hashing a new transaction before creating its
+    #  signature, all placeholders for input's unlocking script has to be filled with locking script of the
+    #  corresponding UTXO (look here for the details:
+    #    https://klmoney.wordpress.com/bitcoin-dissecting-transactions-part-2-building-a-transaction-by-hand)
+    arg_inputs = []
+
+    # A dictionary mapping bip32 path to the pubkey, retrieved from the Ledger device (we want to avoid
+    # reading it multiple times for the same bip32 path since the call takes some time)
+    bip32_to_address = {}
+
+    amount = 0
+    starting = True
+    for idx, utxo in enumerate(utxos_to_spend):
+        amount += utxo['satoshis']
+
+        # get raw transaction of the previous transaction for this
+        raw_tx = bytearray.fromhex(rawtransactions[utxo['txid']])
+        if not raw_tx:
+            raise Exception("Can't find raw transaction for txid: " + rawtransactions[utxo['txid']])
+
+        # parse raw TX, so that we can extract from it UTXO with all the needed information
+        prev_transaction = bitcoinTransaction(raw_tx)
+
+        utxo_tx_index = utxo['outputIndex']
+        if utxo_tx_index < 0 or utxo_tx_index > len(prev_transaction.outputs):
+            raise Exception('Incorrent value of outputIndex for UTXO %s' % str(idx))
+
+        trusted_input = client.getTrustedInput(prev_transaction, utxo_tx_index)
+        trusted_inputs.append(trusted_input)
+
+        bip32path = utxo['bip32_path']
+        pubkey = bip32_to_address.get(bip32path)
+        if not pubkey:
+            pubkey = compress_public_key(client.getWalletPublicKey(bip32path)['publicKey'])
+            bip32_to_address[bip32path] = pubkey
+        pubkey_hash = bitcoin.bin_hash160(pubkey)
+
+        # verify if the public key hash of the wallet's bip32 path is the same as specified in the locking script
+        # if not, signature and public key provided will not match the locking script conditions - transaction
+        # will be rejected by the network
+        pubkey_hash_from_script = extract_pkh_from_locking_script(prev_transaction.outputs[utxo_tx_index].script)
+        if pubkey_hash != pubkey_hash_from_script:
+            logging.error(
+                "Error: the public key for BIP32 path %s for UTXO %s does not match the public key has in the "
+                "UTXO locking script. Your signed transaction will not be validated by the network." %
+                (bip32path, str(idx)))
+
+        arg_inputs.append({
+            'locking_script': prev_transaction.outputs[utxo['outputIndex']].script,
+            'pubkey': pubkey,
+            'bip32_path': bip32path,
+            'outputIndex': utxo['outputIndex'],
+            'txid': utxo['txid']
+        })
+
+    amount -= int(tx_fee)
+    amount = int(amount)
+    arg_outputs = [{'address': dest_address, 'valueSat': amount}]  # there will be multiple outputs soon
+
+    new_transaction = bitcoinTransaction()  # new transaction object for serialization at the last stage
+    new_transaction.version = bytearray([0x01, 0x00, 0x00, 0x00])
+    for o in arg_outputs:
+        output = bitcoinOutput()
+        output.script = compose_tx_locking_script(o['address'])
+        output.amount = int.to_bytes(o['valueSat'], 8, byteorder='little')
+        new_transaction.outputs.append(output)
+
+    # all joined output parts of the new transaction (for sigining in Ledger)
+    all_outputs_raw = new_transaction.serializeOutputs()
+
+    # sign all inputs on Ledger and set inputs in new_transaction object for serialization
+    for idx, new_input in enumerate(arg_inputs):
+
+        client.startUntrustedTransaction(starting, idx, trusted_inputs, new_input['locking_script'])
+        out = client.finalizeInputFull(all_outputs_raw)
+        sig = client.untrustedHashSign(new_input['bip32_path'], lockTime=0)
+        new_input['signature'] = sig
+
+        input = bitcoinInput()
+        input.prevOut = bytearray.fromhex(new_input['txid'])[::-1] + \
+                        int.to_bytes(new_input['outputIndex'], 4, byteorder='little')
+        input.script = bytearray([len(sig)]) + sig + bytearray([0x21]) + new_input['pubkey']
+        input.sequence = bytearray([0xFF, 0xFF, 0xFF, 0xFF])
+        new_transaction.inputs.append(input)
+
+        starting = False
+
+    new_transaction.lockTime = bytearray([0, 0, 0, 0])
+
+    tx_raw = bytearray(new_transaction.serialize())
+    return tx_raw, amount

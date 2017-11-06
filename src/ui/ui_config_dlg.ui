@@ -328,7 +328,7 @@
          <item>
           <widget class="QRadioButton" name="chbHwLedgerNanoS">
            <property name="text">
-            <string>Ledger Nano S (starting MN only)</string>
+            <string>Ledger Nano S</string>
            </property>
           </widget>
          </item>
@@ -367,14 +367,14 @@
        <item>
         <widget class="QCheckBox" name="chbConfirmWhenVoting">
          <property name="text">
-          <string>Ask for confirmation when voting</string>
+          <string>Ask for confirmation when voting (proposals)</string>
          </property>
         </widget>
        </item>
        <item>
         <widget class="QCheckBox" name="chbAddRandomOffsetToVotingTime">
          <property name="text">
-          <string>Add random offset to new vote time to enhance privacy</string>
+          <string>Add random offset to a vote time to enhance privacy (proposals)</string>
          </property>
         </widget>
        </item>

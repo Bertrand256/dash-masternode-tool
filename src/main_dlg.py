@@ -128,7 +128,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         mnu = QMenu()
 
         # transfer for current mn
-        self.actTransferFundsSelectedMn = mnu.addAction("Transfer funds from current Masternode's address...")
+        self.actTransferFundsSelectedMn = mnu.addAction("Transfer funds from current masternode's address...")
         self.setIcon(self.actTransferFundsSelectedMn, "dollar.png")
         self.actTransferFundsSelectedMn.triggered.connect(self.on_actTransferFundsSelectedMn_triggered)
 
@@ -652,7 +652,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.curMasternode:
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Warning)
-            msg.setText('Do you really want to delete current Masternode configuration?')
+            msg.setText('Do you really want to delete current masternode configuration?')
             msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
             msg.setDefaultButton(QMessageBox.No)
             retval = msg.exec_()
@@ -1161,11 +1161,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 return
 
             if not re.match('\d{1,4}', self.curMasternode.port):
-                self.errorMsg("Invalid Masternode's port number.")
+                self.errorMsg("Invalid masternode's TCP port number.")
                 return
 
             if not re.match('\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', self.curMasternode.ip):
-                self.errorMsg("Invalid Masternode's IP address.")
+                self.errorMsg("Invalid masternode's IP address.")
                 return
 
             if not self.curMasternode.privateKey:
@@ -1185,7 +1185,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         mn_status = self.get_masternode_status(self.curMasternode)
         if mn_status in ('ENABLED', 'PRE_ENABLED'):
-            if self.queryDlg("Warning: masternode state is %s. \n\nDo you really want to sent 'Start Masternode' "
+            if self.queryDlg("Warning: masternode state is %s. \n\nDo you really want to sent 'Start masternode' "
                              "message? " % mn_status, default_button=QMessageBox.Cancel,
                              icon=QMessageBox.Warning) == QMessageBox.Cancel:
                 return
@@ -1193,7 +1193,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         try:
             mn_privkey = dash_utils.wif_to_privkey(self.curMasternode.privateKey)
             if not mn_privkey:
-                self.errorMsg('Cannot convert Masternode private key')
+                self.errorMsg('Cannot convert masternode private key')
                 return
             mn_pubkey = bitcoin.privkey_to_pubkey(mn_privkey)
 
@@ -1330,7 +1330,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if ret['overall'].startswith('Successfully decoded broadcast messages for 1 masternodes'):
                 msg = QMessageBox()
                 msg.setIcon(QMessageBox.Information)
-                msg.setText('Press <OK> if you want to broadcast Masternode configuration or <Cancel> to exit.')
+                msg.setText('Press <OK> if you want to broadcast masternode configuration or <Cancel> to exit.')
                 msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
                 msg.setDefaultButton(QMessageBox.Ok)
                 retval = msg.exec_()
@@ -1479,10 +1479,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.curMasternode:
             src_addresses = []
             if not self.curMasternode.collateralBip32Path:
-                self.errorMsg("Enter the Masternode collateral BIP32 path. You can use the 'right arrow' button "
+                self.errorMsg("Enter the masternode collateral BIP32 path. You can use the 'right arrow' button "
                               "on the right of the 'Collateral' edit box.")
             elif not self.curMasternode.collateralAddress:
-                self.errorMsg("Enter the Masternode collateral Dash address. You can use the 'left arrow' "
+                self.errorMsg("Enter the masternode collateral Dash address. You can use the 'left arrow' "
                               "button on the left of the 'BIP32 path' edit box.")
             else:
                 src_addresses.append((self.curMasternode.collateralAddress, self.curMasternode.collateralBip32Path))
@@ -1537,11 +1537,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.connectHardwareWallet()
             if self.hw_client:
                 if not self.curMasternode.collateralBip32Path:
-                    self.errorMsg("Empty Masternode's collateral BIP32 path")
+                    self.errorMsg("Empty masternode's collateral BIP32 path")
                 else:
                     ui = SignMessageDlg(self, self.curMasternode.collateralBip32Path,
                                         self.curMasternode.collateralAddress)
                     ui.exec_()
+        else:
+            self.errorMsg("To sign messages, you must select a masternode.")
 
     @pyqtSlot(bool)
     def on_actHwSetup_triggered(self):
