@@ -16,7 +16,7 @@ import logging
 import bitcoin
 from logging.handlers import RotatingFileHandler
 from PyQt5.QtCore import QLocale
-from dash_utils import encrypt, decrypt
+from app_utils import encrypt, decrypt
 import app_cache as cache
 import default_config
 import app_utils
@@ -25,7 +25,8 @@ from db_intf import DBCache
 APP_NAME_SHORT = 'DashMasternodeTool'
 APP_NAME_LONG = 'Dash Masternode Tool'
 PROJECT_URL = 'https://github.com/Bertrand256/dash-masternode-tool'
-MIN_TX_FEE = 10000
+FEE_SAT_PER_BYTE = 11
+MIN_TX_FEE = 2000
 APP_CFG_CUR_VERSION = 2  # current version of configuration file format
 SCREENSHOT_MODE = False
 

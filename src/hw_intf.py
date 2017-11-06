@@ -148,13 +148,14 @@ def get_hw_firmware_version(main_ui, hw_client):
 
 
 @control_hw_call
-def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
+def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee, rawtransactions):
     """
     Creates a signed transaction.
     :param main_ui: Main window for configuration data
     :param utxos_to_spend: list of utxos to send
     :param dest_address: destination (Dash) address
     :param tx_fee: transaction fee
+    :param rawtransactions: dict mapping txid to rawtransaction
     :return: tuple (serialized tx, total transaction amount in satoshis)
     """
     def prepare(ctrl):
@@ -172,7 +173,10 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
             return keepkey.prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee)
 
         elif main_ui.config.hw_type == HWType.ledger_nano_s:
-            raise Exception('Ledger Nano S not supported yet.')
+            import hw_intf_ledgernano as ledger
+
+            return ledger.prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee, rawtransactions)
+
         else:
             logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
 

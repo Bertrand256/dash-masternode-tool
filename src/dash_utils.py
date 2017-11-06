@@ -4,13 +4,20 @@
 # Created on: 2017-03
 
 import binascii
-import base64
 import bitcoin
-from cryptography.fernet import Fernet
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base58
+
+
+# Bitcoin opcodes used in the application
+OP_DUP = b'\x76'
+OP_HASH160 = b'\xA9'
+OP_QEUALVERIFY = b'\x88'
+OP_CHECKSIG = b'\xAC'
+OP_EQUAL = b'\x87'
+
+
+P2PKH_PREFIXES = ['X']
+P2SH_PREFIXES = ['7']
 
 
 def pubkey_to_address(pubkey):
@@ -55,6 +62,24 @@ def num_to_varint(a):
     else:
         return int(255).to_bytes(1, byteorder='big') + \
             x.to_bytes(8, byteorder='little')
+
+
+def read_varint(buffer, offset):
+    if (buffer[offset] < 0xfd):
+        value_size = 1
+        value = buffer[offset]
+    elif (buffer[offset] == 0xfd):
+        value_size = 3
+        value = int.from_bytes(buffer[offset + 1: offset + 3], byteorder='little')
+    elif (buffer[offset] == 0xfe):
+        value_size = 5
+        value = int.from_bytes(buffer[offset + 1: offset + 5], byteorder='little')
+    elif (buffer[offset] == 0xff):
+        value_size = 9
+        value = int.from_bytes(buffer[offset + 1: offset + 9], byteorder='little')
+    else:
+        raise Exception("Invalid varint size")
+    return value, value_size
 
 
 def wif_to_privkey(string):
@@ -154,92 +179,43 @@ def bip32_path_n_to_string(path_n):
     return ret
 
 
-def encrypt(input_str, key):
-    salt = b'D9\x82\xbfSibW(\xb1q\xeb\xd1\x84\x118'
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=salt,
-        iterations=100000,
-        backend=default_backend()
-    )
-    key = base64.urlsafe_b64encode(kdf.derive(key.encode('utf-8')))
-    fer = Fernet(key)
-    h = fer.encrypt(input_str.encode('utf-8'))
-    h = h.hex()
-    return h
-
-
-def decrypt(input_str, key):
-    try:
-        input_str = binascii.unhexlify(input_str)
-        salt = b'D9\x82\xbfSibW(\xb1q\xeb\xd1\x84\x118'
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=100000,
-            backend=default_backend()
-        )
-        key = base64.urlsafe_b64encode(kdf.derive(key.encode('utf-8')))
-        fer = Fernet(key)
-        h = fer.decrypt(input_str)
-        h = h.decode('utf-8')
-    except:
-        return ''
-    return h
-
-
-def seconds_to_human(number_of_seconds, out_seconds=True, out_minutes=True, out_hours=True):
+def compose_tx_locking_script(dest_address):
     """
-    Converts number of seconds to string representation.
-    :param out_seconds: False, if seconds part in output is to be trucated
-    :param number_of_seconds: number of seconds.
-    :return: string representation of time delta
+    Create a Locking script (ScriptPubKey) which will be assigned to a transaction output.
+    :param dest_address: destination address in Base58Check format
+    :return: sequence of opcodes and its arguments, defining logic of the locking script
     """
-    human_strings = []
 
-    weeks = 0
-    days = 0
-    hours = 0
-    if number_of_seconds > 604800:
-        # weeks
-        weeks = int(number_of_seconds / 604800)
-        number_of_seconds = number_of_seconds - (weeks * 604800)
-        elem_str = str(int(weeks)) + ' week'
-        if weeks > 1:
-            elem_str += 's'
-        human_strings.append(elem_str)
+    pubkey_hash = bytearray.fromhex(bitcoin.b58check_to_hex(dest_address)) # convert address to a public key hash
+    if len(pubkey_hash) != 20:
+        raise Exception('Invalid length of the public key hash: ' + str(len(pubkey_hash)))
 
-    if number_of_seconds > 86400:
-        # days
-        days = int(number_of_seconds / 86400)
-        number_of_seconds = number_of_seconds - (days * 86400)
-        elem_str = str(int(days)) + ' day'
-        if days > 1:
-            elem_str += 's'
-        human_strings.append(elem_str)
+    if dest_address[0] in P2PKH_PREFIXES:
+        # sequence of opcodes/arguments for p2pkh (pay-to-public-key-hash)
+        scr = OP_DUP + \
+              OP_HASH160 + \
+              int.to_bytes(len(pubkey_hash), 1, byteorder='little') + \
+              pubkey_hash + \
+              OP_QEUALVERIFY + \
+              OP_CHECKSIG
+    elif dest_address[0] in P2SH_PREFIXES:
+        # sequence of opcodes/arguments for p2sh (pay-to-script-hash)
+        scr = OP_HASH160 + \
+              int.to_bytes(len(pubkey_hash), 1, byteorder='little') + \
+              pubkey_hash + \
+              OP_EQUAL
+    else:
+        raise Exception('Invalid dest address prefix: ' + dest_address[0])
+    return scr
 
-    if out_hours and number_of_seconds > 3600:
-        hours = int(number_of_seconds / 3600)
-        number_of_seconds = number_of_seconds - (hours * 3600)
-        elem_str = str(int(hours)) + ' hour'
-        if hours > 1:
-            elem_str += 's'
-        human_strings.append(elem_str)
 
-    if out_minutes and number_of_seconds > 60:
-        minutes = int(number_of_seconds / 60)
-        number_of_seconds = number_of_seconds - (minutes * 60)
-        elem_str = str(int(minutes)) + ' minute'
-        if minutes > 1:
-            elem_str += 's'
-        human_strings.append(elem_str)
+def extract_pkh_from_locking_script(script):
+    if len(script) == 25:
+        if script[0:1] == OP_DUP and script[1:2] == OP_HASH160:
+            if read_varint(script, 2)[0] == 20:
+                return script[3:23]
+            else:
+                raise Exception('Non-standard public key hash length (should be 20)')
+    raise Exception('Non-standard locking script type (should be P2PKH)')
 
-    if out_seconds and number_of_seconds >= 1:
-        elem_str = str(int(number_of_seconds)) + ' second'
-        if number_of_seconds > 1:
-            elem_str += 's'
-        human_strings.append(elem_str)
 
-    return ' '.join(human_strings)
