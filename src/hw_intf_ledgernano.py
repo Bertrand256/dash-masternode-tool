@@ -2,7 +2,7 @@ from btchip.btchip import *
 from btchip.btchipComm import getDongle
 import logging
 from btchip.btchipUtils import compress_public_key
-from hw_common import HardwareWalletCancelException
+from hw_common import HardwareWalletCancelException, clean_bip32_path
 from wnd_utils import WndUtils
 from dash_utils import *
 from PyQt5.QtWidgets import QMessageBox
@@ -17,7 +17,7 @@ def process_ledger_exceptions(func):
         try:
             return func(*args, **kwargs)
         except BTChipException as e:
-            logging.exception('Error communicating with Ledger hardware wallet.')
+            logging.exception('Error while communicating with Ledger hardware wallet.')
             if (e.sw == 0x6d00):
                 e.message += '\n\nMake sure the Dash app is running on your Ledger device.'
             elif (e.sw == 0x6982):
@@ -49,15 +49,17 @@ class MessageSignature:
 
 
 @process_ledger_exceptions
-def sign_message(main_ui, bip32path, message):
+def sign_message(main_ui, bip32_path, message):
+
     client = main_ui.hw_client
     # Ledger doesn't accept characters other that ascii printable:
     # https://ledgerhq.github.io/btchip-doc/bitcoin-technical.html#_sign_message
     message = message.encode('ascii', 'ignore')
+    bip32_path = clean_bip32_path(bip32_path)
 
     ok = False
     for i in range(1,4):
-        info = client.signMessagePrepare(bip32path, message)
+        info = client.signMessagePrepare(bip32_path, message)
         if info['confirmationNeeded'] and  info['confirmationType'] == 34:
             if i == 1 or \
                 WndUtils.queryDlg('Another application (such as Ledger Wallet Bitcoin app) has probably taken over '
@@ -90,10 +92,10 @@ def sign_message(main_ui, bip32path, message):
         raise Exception('Exception while signing message with Ledger Nano S. Details: ' + str(e))
 
     try:
-        pubkey = client.getWalletPublicKey(bip32path)
+        pubkey = client.getWalletPublicKey(bip32_path)
     except Exception as e:
-        logging.exception('Could not get public key for BIP32 path on Ledger Nano S')
-        raise Exception('Could not get public key for BIP32 path on Ledger Nano S. Details: ' + str(e))
+        logging.exception('Could not get public key for BIP32 path from Ledger Nano S')
+        raise Exception('Could not get public key for BIP32 path from Ledger Nano S. Details: ' + str(e))
 
     if len(signature) > 4:
         r_length = signature[3]
@@ -124,6 +126,7 @@ def sign_message(main_ui, bip32path, message):
 
 @process_ledger_exceptions
 def get_address_and_pubkey(client, bip32_path):
+    bip32_path = clean_bip32_path(bip32_path)
     bip32_path.strip()
     if bip32_path.lower().find('m/') >= 0:
         bip32_path = bip32_path[2:]
@@ -140,29 +143,29 @@ def get_address_and_pubkey(client, bip32_path):
 def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee, rawtransactions):
     client = main_ui.hw_client
 
-    # Each of the UTXOs (utxos_to_send list) will become an input of the new transaction.
-    # For each of those inputs, create a Ledger's 'trusted input', which will be used by the device to sign a transaction
+    # Each of the UTXOs will become an input in the new transaction. For each of those inputs, create
+    # a Ledger's 'trusted input', that will be used by the the device to sign a transaction.
     trusted_inputs = []
 
-    # new_inputs: list of dicts
+    # arg_inputs: list of dicts
     #  {
-    #    'locking_script': <Locking script of the UTXO being used as an input. Used in the process of signing
+    #    'locking_script': <Locking script of the UTXO used as an input. Used in the process of signing
     #                       transaction.>,
-    #    'outputIndex': <utxo index in the previus transaction>,
+    #    'outputIndex': <index of the UTXO within the previus transaction>,
     #    'txid': <hash of the previus transaction>,
-    #    'bip32_path': <BIP32 path of the user's hardware wallet controlling funds of the corresponding UTXO>,
-    #    'pubkey': <Dict containing publicKey and address corresponding to a BIP32 path, retrieved from a hardware
-    #               wallet.>
-    #    'signature' <Signature prepared as a result of the processing.>
+    #    'bip32_path': <BIP32 path of the HW key controlling UTXO's destination>,
+    #    'pubkey': <Public key obtained from the HW using the bip32_path.>
+    #    'signature' <Signature obtained as a result of processing the input. It will be used as a part of the
+    #               unlocking script.>
     #  }
     #  Why do we need a locking script of the previous transaction? When hashing a new transaction before creating its
     #  signature, all placeholders for input's unlocking script has to be filled with locking script of the
-    #  corresponding UTXO (look here for the details:
+    #  corresponding UTXO. Look here for the details:
     #    https://klmoney.wordpress.com/bitcoin-dissecting-transactions-part-2-building-a-transaction-by-hand)
     arg_inputs = []
 
-    # A dictionary mapping bip32 path to the pubkey, retrieved from the Ledger device (we want to avoid
-    # reading it multiple times for the same bip32 path since the call takes some time)
+    # A dictionary mapping bip32 path to a pubkeys obtained from the Ledger device - used to avoid
+    # reading it multiple times for the same bip32 path
     bip32_to_address = {}
 
     amount = 0
@@ -170,12 +173,11 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee, rawtransa
     for idx, utxo in enumerate(utxos_to_spend):
         amount += utxo['satoshis']
 
-        # get raw transaction of the previous transaction for this
         raw_tx = bytearray.fromhex(rawtransactions[utxo['txid']])
         if not raw_tx:
             raise Exception("Can't find raw transaction for txid: " + rawtransactions[utxo['txid']])
 
-        # parse raw TX, so that we can extract from it UTXO with all the needed information
+        # parse the raw transaction, so that we can extract the UTXO locking script we refer to
         prev_transaction = bitcoinTransaction(raw_tx)
 
         utxo_tx_index = utxo['outputIndex']
@@ -185,27 +187,27 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee, rawtransa
         trusted_input = client.getTrustedInput(prev_transaction, utxo_tx_index)
         trusted_inputs.append(trusted_input)
 
-        bip32path = utxo['bip32_path']
-        pubkey = bip32_to_address.get(bip32path)
+        bip32_path = utxo['bip32_path']
+        bip32_path = clean_bip32_path(bip32_path)
+        pubkey = bip32_to_address.get(bip32_path)
         if not pubkey:
-            pubkey = compress_public_key(client.getWalletPublicKey(bip32path)['publicKey'])
-            bip32_to_address[bip32path] = pubkey
+            pubkey = compress_public_key(client.getWalletPublicKey(bip32_path)['publicKey'])
+            bip32_to_address[bip32_path] = pubkey
         pubkey_hash = bitcoin.bin_hash160(pubkey)
 
-        # verify if the public key hash of the wallet's bip32 path is the same as specified in the locking script
-        # if not, signature and public key provided will not match the locking script conditions - transaction
-        # will be rejected by the network
+        # verify if the public key hash of the wallet's bip32 path is the same as specified in the UTXO locking script
+        # if they differ, signature and public key we produce and are going to include in the unlocking script won't
+        # match the locking script conditions - transaction will be rejected by the network
         pubkey_hash_from_script = extract_pkh_from_locking_script(prev_transaction.outputs[utxo_tx_index].script)
         if pubkey_hash != pubkey_hash_from_script:
-            logging.error(
-                "Error: the public key for BIP32 path %s for UTXO %s does not match the public key has in the "
-                "UTXO locking script. Your signed transaction will not be validated by the network." %
-                (bip32path, str(idx)))
+            logging.error("Error: different public key hashes for the BIP32 path %s (UTXO %s) and the UTXO locking "
+                          "script. Your signed transaction will not be validated by the network." %
+              (bip32_path, str(idx)))
 
         arg_inputs.append({
             'locking_script': prev_transaction.outputs[utxo['outputIndex']].script,
             'pubkey': pubkey,
-            'bip32_path': bip32path,
+            'bip32_path': bip32_path,
             'outputIndex': utxo['outputIndex'],
             'txid': utxo['txid']
         })
@@ -214,7 +216,7 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee, rawtransa
     amount = int(amount)
     arg_outputs = [{'address': dest_address, 'valueSat': amount}]  # there will be multiple outputs soon
 
-    new_transaction = bitcoinTransaction()  # new transaction object for serialization at the last stage
+    new_transaction = bitcoinTransaction()  # new transaction object to be used for serialization at the last stage
     new_transaction.version = bytearray([0x01, 0x00, 0x00, 0x00])
     for o in arg_outputs:
         output = bitcoinOutput()
@@ -222,14 +224,14 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee, rawtransa
         output.amount = int.to_bytes(o['valueSat'], 8, byteorder='little')
         new_transaction.outputs.append(output)
 
-    # all joined output parts of the new transaction (for sigining in Ledger)
+    # join all outputs - will be used by Ledger for sigining transaction
     all_outputs_raw = new_transaction.serializeOutputs()
 
-    # sign all inputs on Ledger and set inputs in new_transaction object for serialization
+    # sign all inputs on Ledger and add inputs in the new_transaction object for serialization
     for idx, new_input in enumerate(arg_inputs):
 
         client.startUntrustedTransaction(starting, idx, trusted_inputs, new_input['locking_script'])
-        out = client.finalizeInputFull(all_outputs_raw)
+        client.finalizeInputFull(all_outputs_raw)
         sig = client.untrustedHashSign(new_input['bip32_path'], lockTime=0)
         new_input['signature'] = sig
 

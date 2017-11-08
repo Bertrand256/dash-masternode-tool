@@ -767,6 +767,16 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     return find_prop_data(prop_data[0], level+1)
             return None
 
+        def clean_float(data_in):
+            # deals with JSON field 'payment_amount' passed as different type for different propsoals  - when it's
+            # a string, then comma (if exists) is replaced wit a dot, otherwise it's converted to a float
+            if isinstance(data_in, str):
+                return float(data_in.replace(',', '.'))
+            elif data_in is None:
+                return data_in
+            else:
+                return float(data_in)  # cast to float regardless of the type
+
         try:
 
             self.display_message('Reading proposals data, please wait...')
@@ -807,7 +817,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     prop.set_value('name', prop_data['name'])
                     prop.set_value('payment_start', datetime.datetime.fromtimestamp(int(prop_data['start_epoch'])))
                     prop.set_value('payment_end', datetime.datetime.fromtimestamp(int(prop_data['end_epoch'])))
-                    prop.set_value('payment_amount', float(prop_data['payment_amount'].replace(',', '.')))
+                    prop.set_value('payment_amount', clean_float(prop_data['payment_amount']))
                     prop.set_value('yes_count', int(prop_raw['YesCount']))
                     prop.set_value('absolute_yes_count', int(prop_raw['AbsoluteYesCount']))
                     prop.set_value('no_count', int(prop_raw['NoCount']))

@@ -1183,7 +1183,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                          "until it's finished.")
             return
 
-        mn_status = self.get_masternode_status(self.curMasternode)
+        mn_status, mn_protocol_version = self.get_masternode_status(self.curMasternode)
         if mn_status in ('ENABLED', 'PRE_ENABLED'):
             if self.queryDlg("Warning: masternode state is %s. \n\nDo you really want to sent 'Start masternode' "
                              "message? " % mn_status, default_button=QMessageBox.Cancel,
@@ -1282,14 +1282,21 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
             collateral_in = dash_utils.num_to_varint(len(collateral_pubkey)).hex() + collateral_pubkey.hex()
             delegate_in = dash_utils.num_to_varint(len(mn_pubkey) / 2).hex() + mn_pubkey
-            info = self.dashd_intf.getinfo()
             sig_time = int(time.time())
-            protocol_version = info['protocolversion']
+
+            info = self.dashd_intf.getinfo()
+            node_protocol_version = int(info['protocolversion'])
+
+            if not mn_protocol_version:
+                # couldn't get masternode protocol version, take it from the RCP node
+                mn_protocol_version = node_protocol_version
+                logging.warning("Couldn't obtain masternode's protocol version, using version from RCP node %s"
+                                % str(mn_protocol_version))
 
             serialize_for_sig = self.curMasternode.ip + ':' + self.curMasternode.port + str(int(sig_time)) + \
                                 binascii.unhexlify(bitcoin.hash160(collateral_pubkey))[::-1].hex() + \
                                 binascii.unhexlify(bitcoin.hash160(bytes.fromhex(mn_pubkey)))[::-1].hex() + \
-                                str(protocol_version)
+                                str(mn_protocol_version)
 
             sig = hw_intf.sign_message(self, self.curMasternode.collateralBip32Path, serialize_for_sig)
 
@@ -1301,7 +1308,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             logging.debug('Start MN message sig_time: ' + str(sig_time))
 
             work_sig_time = sig_time.to_bytes(8, byteorder='big')[::-1].hex()
-            work_protoversion = int(protocol_version).to_bytes(4, byteorder='big')[::-1].hex()
+            work_protoversion = int(mn_protocol_version).to_bytes(4, byteorder='big')[::-1].hex()
             last_ping_block_hash = bytes.fromhex(block_hash)[::-1].hex()
 
             last_ping_serialize_for_sig = dash_utils.serialize_input_str(
@@ -1323,7 +1330,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                    + dash_utils.num_to_varint(len(sig2) / 2).hex() + sig2
 
             work = '01' + work
-            if protocol_version >= 70208:
+            if node_protocol_version >= 70208:
                 work = work + '0001000100'
 
             ret = self.dashd_intf.masternodebroadcast("decode", work)
@@ -1378,15 +1385,22 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def get_masternode_status(self, masternode):
         """
-        Returns the current masternode status (ENABLED, PRE_ENABLED, WATCHDOG_EXPIRED, ...)
+        Returns tuple: the current masternode status (ENABLED, PRE_ENABLED, WATCHDOG_EXPIRED, ...)
+        and a protocol version.
         :return:
         """
         if self.dashd_connection_ok:
             collateral_id = masternode.collateralTx + '-' + masternode.collateralTxIndex
             mns_info = self.dashd_intf.get_masternodelist('full', collateral_id)
             if len(mns_info):
-                return mns_info[0].status
-        return '???'
+                protocol_version = mns_info[0].protocol
+                if isinstance(protocol_version, str):
+                    try:
+                        protocol_version = int(protocol_version)
+                    except:
+                        logging.warning('Invalid masternode protocol version: ' + str(protocol_version))
+                return (mns_info[0].status, protocol_version)
+        return '???', None
 
     def get_masternode_status_description(self):
         """
@@ -1409,7 +1423,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
                 if mn_info.lastseen > 0:
                     lastseen_str = self.config.to_string(lastseen)
-                    lastseen_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastseen),
+                    lastseen_ago = app_utils.seconds_to_human(time.time() - float(mn_info.lastseen),
                                                                out_seconds=False) + ' ago'
                 else:
                     lastseen_str = 'never'
@@ -1418,32 +1432,34 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
                 if mn_info.lastpaidtime > 0:
                     lastpaid_str = self.config.to_string(lastpaid)
-                    lastpaid_ago = dash_utils.seconds_to_human(time.time() - float(mn_info.lastpaidtime),
+                    lastpaid_ago = app_utils.seconds_to_human(time.time() - float(mn_info.lastpaidtime),
                                                                out_seconds=False) + ' ago'
                 else:
                     lastpaid_str = 'never'
                     lastpaid_ago = ''
 
-                activeseconds_str = dash_utils.seconds_to_human(int(mn_info.activeseconds), out_seconds=False)
+                activeseconds_str = app_utils.seconds_to_human(int(mn_info.activeseconds), out_seconds=False)
                 if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
                     color = 'green'
                 else:
                     color = 'red'
                 enabled_mns_count = len(self.dashd_intf.payment_queue)
+
                 status = '<style>td {white-space:nowrap;padding-right:8px}' \
                          '.title {text-align:right;font-weight:bold}' \
                          '.ago {font-style:normal}' \
                          '.value {color:navy}' \
                          '</style>' \
                          '<table>' \
-                         '<tr><td class="title">Status:</td><td class="value"><span style="color:%s">%s</span></td></tr>' \
+                         '<tr><td class="title">Status:</td><td class="value"><span style="color:%s">%s</span>' \
+                         '</td><td>v.%s</td></tr>' \
                          '<tr><td class="title">Last Seen:</td><td class="value">%s</td><td class="ago">%s</td></tr>' \
                          '<tr><td class="title">Last Paid:</td><td class="value">%s</td><td class="ago">%s</td></tr>' \
                          '<tr><td class="title">Active Duration:</td><td class="value" colspan="2">%s</td></tr>' \
                          '<tr><td class="title">Queue/Count:</td><td class="value" colspan="2">%s/%s</td></tr>' \
                          '</table>' % \
-                         (color, mn_info.status, lastseen_str, lastseen_ago, lastpaid_str, lastpaid_ago,
-                          activeseconds_str, str(mn_info.queue_position), enabled_mns_count)
+                         (color, mn_info.status, str(mn_info.protocol), lastseen_str, lastseen_ago, lastpaid_str,
+                          lastpaid_ago, activeseconds_str, str(mn_info.queue_position), enabled_mns_count)
             else:
                 status = '<span style="color:red">Masternode not found.</span>'
         else:

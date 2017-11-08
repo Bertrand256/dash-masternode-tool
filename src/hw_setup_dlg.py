@@ -29,9 +29,6 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
         ui_hw_setup_dlg.Ui_HwSetupDlg.setupUi(self, self)
         self.setWindowTitle('Hardware Wallet Setup')
         self.lblVersion.setText(self.version)
-        # self.btnEnDisPin.clicked.connect(self.btnEnDisPinClick)
-        # self.btnChangePin.clicked.connect(self.btnChangePinClick)
-        # self.btnEnDisPass.clicked.connect(self.btnEnDisPassClick)
         self.updateControlsState()
         if self.main_ui.config.hw_type == HWType.ledger_nano_s:
             self.lblMessage.setVisible(True)

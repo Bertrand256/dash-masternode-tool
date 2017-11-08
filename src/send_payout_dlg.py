@@ -391,7 +391,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                             raise
 
                         tx_hex = serialized_tx.hex()
-                        logging.debug('Raw signed transaction: ' + tx_hex)
+                        logging.info('Raw signed transaction: ' + tx_hex)
                         if len(tx_hex) > 90000:
                             self.errorMsg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
                         else:

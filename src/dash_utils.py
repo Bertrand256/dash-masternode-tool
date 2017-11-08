@@ -181,7 +181,7 @@ def bip32_path_n_to_string(path_n):
 
 def compose_tx_locking_script(dest_address):
     """
-    Create a Locking script (ScriptPubKey) which will be assigned to a transaction output.
+    Create a Locking script (ScriptPubKey) that will be assigned to a transaction output.
     :param dest_address: destination address in Base58Check format
     :return: sequence of opcodes and its arguments, defining logic of the locking script
     """
