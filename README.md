@@ -42,7 +42,7 @@ The main purpose of the application is to give masternode owners (MNOs) the abil
 #### Supported hardware wallets
 - [x] Trezor
 - [x] KeepKey
-- [x] Ledger Nano S (now only starting masternode feature)
+- [x] Ledger Nano S
 
 Most ot the application features are accessible from the main program window:  
 ![Main window](doc/img/dmt-main-window.png)
