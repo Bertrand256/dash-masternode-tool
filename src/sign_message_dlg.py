@@ -38,8 +38,12 @@ class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.W
                     try:
                         msg_to_sign.encode('ascii')
                     except UnicodeEncodeError:
-                        self.warnMsg('Ledger wallets cannot sign non-ASCII or non-printable characters. Remove them '
-                                     'from your message and try again.')
+                        self.warnMsg('Ledger wallets cannot sign non-ASCII and non-printable characters. Please '
+                                     'remove them from your message and try again.')
+                        return
+                    if len(msg_to_sign) > 140:
+                        self.warnMsg('Ledger wallets cannot sign messages longer than 140 characters. Please '
+                                     'remove any extra characters and try again.')
                         return
 
                 sig = hw_intf.sign_message(self.main_ui, self.bip32path, msg_to_sign)

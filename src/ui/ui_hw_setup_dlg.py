@@ -87,7 +87,7 @@ class Ui_HwSetupDlg(object):
         self.lblPassStatus.setText(_translate("HwSetupDlg", "enabled"))
         self.lblPassStatusLabel.setText(_translate("HwSetupDlg", "Passphrase:"))
         self.lblVersion.setText(_translate("HwSetupDlg", "?"))
-        self.lblMessage.setText(_translate("HwSetupDlg", "PIN/passphrase features is not available for Ledger devices."))
+        self.lblMessage.setText(_translate("HwSetupDlg", "PIN/passphrase features are not available for Ledger devices."))
 
 
 if __name__ == "__main__":

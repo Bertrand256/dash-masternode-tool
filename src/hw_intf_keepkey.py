@@ -5,7 +5,6 @@
 
 import json
 import binascii
-
 import logging
 from keepkeylib.client import TextUIMixin as keepkey_TextUIMixin
 from keepkeylib.client import ProtocolMixin as keepkey_ProtocolMixin
@@ -15,6 +14,7 @@ from keepkeylib.tx_api import TxApiInsight
 from hw_common import HardwareWalletCancelException
 import keepkeylib.types_pb2 as proto_types
 from wnd_utils import WndUtils
+from hw_common import clean_bip32_path
 
 
 class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):
@@ -116,15 +116,6 @@ class MyTxApiInsight(TxApiInsight):
             except Exception as e:
                 pass
         return j
-
-
-def clean_bip32_path(bip32_path):
-    # Keepkey doesn't allow BIP32 "m/" prefix
-    bip32_path.strip()
-    if bip32_path.lower().find('m/') >= 0:
-        # removing m/ prefix because of keepkey library
-        bip32_path = bip32_path[2:]
-    return bip32_path
 
 
 def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
