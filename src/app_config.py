@@ -313,6 +313,9 @@ class AppConfig(object):
                         mn.collateralAddress = config.get(section, 'collateral_address', fallback='')
                         mn.collateralTx = config.get(section, 'collateral_tx', fallback='')
                         mn.collateralTxIndex = config.get(section, 'collateral_tx_index', fallback='')
+                        mn.use_default_protocol_version = self.value_to_bool(
+                            config.get(section, 'use_default_protocol_version', fallback='1'))
+                        mn.protocol_version = config.get(section, 'protocol_version', fallback='')
                         self.masternodes.append(mn)
                     elif re.match('NETCFG\d', section):
                         # read network configuration from new config file format
@@ -397,6 +400,8 @@ class AppConfig(object):
             config.set(section, 'collateral_address', mn.collateralAddress)
             config.set(section, 'collateral_tx', mn.collateralTx)
             config.set(section, 'collateral_tx_index', str(mn.collateralTxIndex))
+            config.set(section, 'use_default_protocol_version', '1' if mn.use_default_protocol_version else '0')
+            config.set(section, 'protocol_version', str(mn.protocol_version))
             mn.modified = False
 
         # save dash network connections
@@ -658,6 +663,8 @@ class MasterNodeConfig:
         self.collateralAddress = ''
         self.collateralTx = ''
         self.collateralTxIndex = ''
+        self.use_default_protocol_version = True
+        self.protocol_version = ''
         self.new = False
         self.modified = False
         self.lock_modified_change = False

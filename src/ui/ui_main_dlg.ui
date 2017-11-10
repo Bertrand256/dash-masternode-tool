@@ -216,6 +216,38 @@
             </widget>
            </item>
            <item>
+            <widget class="QCheckBox" name="chbUseDefaultProtocolVersion">
+             <property name="toolTip">
+              <string>Use the protocol version number (from the RPC node) when starting masternode</string>
+             </property>
+             <property name="text">
+              <string>Use default protocol version</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLineEdit" name="edtMnProtocolVersion">
+             <property name="maximumSize">
+              <size>
+               <width>60</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="toolTip">
+              <string>Enter the protocol version number to be sent at masternode start time</string>
+             </property>
+             <property name="statusTip">
+              <string/>
+             </property>
+             <property name="inputMask">
+              <string>00009</string>
+             </property>
+             <property name="placeholderText">
+              <string>default</string>
+             </property>
+            </widget>
+           </item>
+           <item>
             <spacer name="horizontalSpacer_2">
              <property name="orientation">
               <enum>Qt::Horizontal</enum>

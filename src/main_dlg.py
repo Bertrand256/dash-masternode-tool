@@ -197,9 +197,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def on_actCheckForUpdates_triggered(self, checked, force_check=True):
         if self.config.check_for_updates:
             cur_date = datetime.datetime.now().strftime('%Y-%m-%d')
-            last_ver_check_date = cache.get_value('check_for_updates_last_date', '', str)
-            if force_check or cur_date != last_ver_check_date:
-                self.runInThread(self.checkForUpdates, (cur_date, force_check))
+            self.runInThread(self.checkForUpdates, (cur_date, force_check))
 
     @pyqtSlot(bool)
     def on_actLogFile_triggered(self, checked):
@@ -282,6 +280,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.edtMnCollateralAddress.setText(self.curMasternode.collateralAddress if self.curMasternode else '')
             self.edtMnCollateralTx.setText(self.curMasternode.collateralTx if self.curMasternode else '')
             self.edtMnCollateralTxIndex.setText(self.curMasternode.collateralTxIndex if self.curMasternode else '')
+            use_default_protocol = self.curMasternode.use_default_protocol_version if self.curMasternode else True
+            self.chbUseDefaultProtocolVersion.setChecked(use_default_protocol)
+            self.edtMnProtocolVersion.setText(self.curMasternode.protocol_version if self.curMasternode else '')
+            self.edtMnProtocolVersion.setVisible(not use_default_protocol)
             self.lblMnStatus.setText('')
         finally:
             if self.curMasternode:
@@ -935,6 +937,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.edtMnIp.setReadOnly(not editing)
             self.edtMnName.setReadOnly(not editing)
             self.edtMnPort.setReadOnly(not editing)
+            self.chbUseDefaultProtocolVersion.setEnabled(editing)
+            self.edtMnProtocolVersion.setEnabled(editing)
             self.edtMnPrivateKey.setReadOnly(not editing)
             self.edtMnCollateralBip32Path.setReadOnly(not editing)
             self.edtMnCollateralAddress.setReadOnly(not editing)
@@ -1027,6 +1031,19 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.curMasternode:
             self.curMnModified()
             self.curMasternode.port = self.edtMnPort.text()
+
+    @pyqtSlot(bool)
+    def on_chbUseDefaultProtocolVersion_toggled(self, use_default):
+        if self.curMasternode:
+            self.curMnModified()
+            self.curMasternode.use_default_protocol_version = use_default
+            self.edtMnProtocolVersion.setVisible(not use_default)
+
+    @pyqtSlot(str)
+    def on_edtMnProtocolVersion_textEdited(self, version):
+        if self.curMasternode:
+            self.curMnModified()
+            self.curMasternode.protocol_version = version
 
     @pyqtSlot(str)
     def on_edtMnPrivateKey_textEdited(self):
@@ -1183,7 +1200,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                          "until it's finished.")
             return
 
-        mn_status, mn_protocol_version = self.get_masternode_status(self.curMasternode)
+        mn_status, _ = self.get_masternode_status(self.curMasternode)
         if mn_status in ('ENABLED', 'PRE_ENABLED'):
             if self.queryDlg("Warning: masternode state is %s. \n\nDo you really want to sent 'Start masternode' "
                              "message? " % mn_status, default_button=QMessageBox.Cancel,
@@ -1286,17 +1303,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
             info = self.dashd_intf.getinfo()
             node_protocol_version = int(info['protocolversion'])
-
-            if not mn_protocol_version:
-                # couldn't get masternode protocol version, take it from the RCP node
-                mn_protocol_version = node_protocol_version
-                logging.warning("Couldn't obtain masternode's protocol version, using version from RCP node %s"
-                                % str(mn_protocol_version))
+            if self.curMasternode.use_default_protocol_version or not self.curMasternode.protocol_version:
+                protocol_version = node_protocol_version
+            else:
+                protocol_version = self.curMasternode.protocol_version
 
             serialize_for_sig = self.curMasternode.ip + ':' + self.curMasternode.port + str(int(sig_time)) + \
                                 binascii.unhexlify(bitcoin.hash160(collateral_pubkey))[::-1].hex() + \
                                 binascii.unhexlify(bitcoin.hash160(bytes.fromhex(mn_pubkey)))[::-1].hex() + \
-                                str(mn_protocol_version)
+                                str(protocol_version)
 
             sig = hw_intf.sign_message(self, self.curMasternode.collateralBip32Path, serialize_for_sig)
 
@@ -1308,7 +1323,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             logging.debug('Start MN message sig_time: ' + str(sig_time))
 
             work_sig_time = sig_time.to_bytes(8, byteorder='big')[::-1].hex()
-            work_protoversion = int(mn_protocol_version).to_bytes(4, byteorder='big')[::-1].hex()
+            work_protoversion = int(protocol_version).to_bytes(4, byteorder='big')[::-1].hex()
             last_ping_block_hash = bytes.fromhex(block_hash)[::-1].hex()
 
             last_ping_serialize_for_sig = dash_utils.serialize_input_str(
@@ -1337,7 +1352,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if ret['overall'].startswith('Successfully decoded broadcast messages for 1 masternodes'):
                 msg = QMessageBox()
                 msg.setIcon(QMessageBox.Information)
-                msg.setText('Press <OK> if you want to broadcast masternode configuration or <Cancel> to exit.')
+                msg.setText('Press <OK> if you want to broadcast masternode configuration (protocol version: %s) '
+                            'or <Cancel> to exit.' % str(protocol_version))
                 msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
                 msg.setDefaultButton(QMessageBox.Ok)
                 retval = msg.exec_()

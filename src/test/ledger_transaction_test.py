@@ -1,3 +1,8 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Author: Bertrand256
+# Created on: 2017-11
+
 from btchip.btchip import *
 from btchip.btchipUtils import *
 import bitcoin
