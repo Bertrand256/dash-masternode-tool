@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_main_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.9
+# Created by: PyQt5 UI code generator 5.9.1
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -101,6 +101,14 @@ class Ui_MainWindow(object):
         self.edtMnPort.setMaximumSize(QtCore.QSize(40, 16777215))
         self.edtMnPort.setObjectName("edtMnPort")
         self.horizontalLayout_3.addWidget(self.edtMnPort)
+        self.chbUseDefaultProtocolVersion = QtWidgets.QCheckBox(self.groupBox_3)
+        self.chbUseDefaultProtocolVersion.setObjectName("chbUseDefaultProtocolVersion")
+        self.horizontalLayout_3.addWidget(self.chbUseDefaultProtocolVersion)
+        self.edtMnProtocolVersion = QtWidgets.QLineEdit(self.groupBox_3)
+        self.edtMnProtocolVersion.setMaximumSize(QtCore.QSize(60, 16777215))
+        self.edtMnProtocolVersion.setStatusTip("")
+        self.edtMnProtocolVersion.setObjectName("edtMnProtocolVersion")
+        self.horizontalLayout_3.addWidget(self.edtMnProtocolVersion)
         spacerItem1 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout_3.addItem(spacerItem1)
         self.gridLayout_2.addLayout(self.horizontalLayout_3, 2, 1, 1, 1)
@@ -464,6 +472,11 @@ class Ui_MainWindow(object):
         self.edtMnIp.setToolTip(_translate("MainWindow", "The Masternode\'s IP address for incoming communication with other nodes"))
         self.label_11.setText(_translate("MainWindow", "port:"))
         self.edtMnPort.setToolTip(_translate("MainWindow", "The Masternode\'s TCP port number for incoming communication with other nodes"))
+        self.chbUseDefaultProtocolVersion.setToolTip(_translate("MainWindow", "Use the protocol version number (from the RPC node) when starting masternode"))
+        self.chbUseDefaultProtocolVersion.setText(_translate("MainWindow", "Use default protocol version"))
+        self.edtMnProtocolVersion.setToolTip(_translate("MainWindow", "Enter the protocol version number to be sent at masternode start time"))
+        self.edtMnProtocolVersion.setInputMask(_translate("MainWindow", "00009"))
+        self.edtMnProtocolVersion.setPlaceholderText(_translate("MainWindow", "default"))
         self.edtMnCollateralTx.setToolTip(_translate("MainWindow", "The collateral transaction hash from the 1000 Dash deposit"))
         self.label_7.setText(_translate("MainWindow", "TX index:"))
         self.edtMnCollateralTxIndex.setToolTip(_translate("MainWindow", "The collateral transaction\'s (unspent) output index with the 1000 Dash deposit (usally 0)"))

@@ -6,6 +6,7 @@
 import datetime
 import json
 import logging
+from urllib.error import URLError
 import random
 import re
 import sqlite3
@@ -22,6 +23,7 @@ from PyQt5.QtGui import QColor, QPainter, QPen
 from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QMessageBox, QTableView, QAbstractItemView
 from math import floor
 import urllib.request
+import ssl
 import app_cache
 import app_utils
 import wnd_utils as wnd_utils
@@ -1252,6 +1254,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         begin_time = time.time()
         network_duration = 0
         modified_ext_attributes = False
+        ssl._create_default_https_context = ssl._create_unverified_context
+        url_err_retries = 2
 
         try:
             url = self.main_wnd.config.dash_central_proposal_api
@@ -1269,8 +1273,17 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         hash = prop.get_value('hash')
                         cur_url = url.replace('%HASH%', hash)
                         network_tm_begin = time.time()
-                        response = urllib.request.urlopen(cur_url)
-                        contents = response.read()
+
+                        for url_try in range(0, url_err_retries+1):
+                            try:
+                                response = urllib.request.urlopen(cur_url)
+                                contents = response.read()
+                                break
+                            except URLError:
+                                if url_try >= url_err_retries:
+                                    raise
+                                logging.info('URLError, retrying...')
+
                         network_duration += time.time() - network_tm_begin
                         if contents is not None:
                             contents = json.loads(contents.decode('utf-8'))
