@@ -19,8 +19,7 @@ def control_hw_call(func):
         main_ui = args[0]
         client = main_ui.hw_client
         if not client:
-            if not main_ui.connectHardwareWallet():
-                return
+            client = main_ui.connectHardwareWallet()
         if not client:
             raise Exception('Not connected to Hardware Wallet')
         try:
@@ -125,7 +124,6 @@ def disconnect_hw(hw_client):
         logging.exception('Disconnect HW error')
 
 
-@control_hw_call
 def get_hw_label(main_ui, hw_client):
     hw_type = get_hw_type(hw_client)
     if hw_type in (HWType.trezor, HWType.keepkey):
@@ -304,3 +302,108 @@ def get_address_and_pubkey(main_ui, bip32_path):
             return ledger.get_address_and_pubkey(client, bip32_path)
         else:
             raise Exception('Unknown hwardware wallet type: ' + main_ui.config.hw_type)
+
+
+def wipe_device(main_ui):
+    def wipe(ctrl):
+        ctrl.dlg_config_fun(dlg_title="Confirm wiping device.", show_progress_bar=False)
+        ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet...</b>')
+
+        client = main_ui.hw_client
+        if client:
+            if main_ui.config.hw_type == HWType.trezor:
+                from trezorlib.client import CallException
+                try:
+                    return client.wipe_device()
+                except CallException as e:
+                    if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
+                        raise
+
+            elif main_ui.config.hw_type == HWType.keepkey:
+                # todo: keepkey
+                pass
+
+            elif main_ui.config.hw_type == HWType.ledger_nano_s:
+                # todo: ledger nano s
+                raise Exception('Ledger Nano S not supported yet.')
+
+            else:
+                logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
+        else:
+            raise Exception('Not connected to Hardware Wallet')
+
+    # execute the 'wipe' inside a thread to avoid blocking UI
+    main_ui.threadFunctionDialog(wipe, (), True, center_by_window=main_ui)
+
+@control_hw_call
+def get_entropy(main_ui, len_bytes):
+    def entropy(ctrl, len_bytes):
+        ctrl.dlg_config_fun(dlg_title="Please confirm", show_progress_bar=False)
+        ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet...</b>')
+
+        client = main_ui.hw_client
+        if client:
+            if main_ui.config.hw_type == HWType.trezor:
+                from trezorlib.client import CallException
+                try:
+                    return client.get_entropy(len_bytes)
+                except CallException as e:
+                    if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
+                        raise
+
+            elif main_ui.config.hw_type == HWType.keepkey:
+                # todo: keepkey
+                pass
+
+            elif main_ui.config.hw_type == HWType.ledger_nano_s:
+                # todo: ledger nano s
+                raise Exception('Ledger Nano S not supported yet.')
+
+            else:
+                logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
+        else:
+            raise Exception('Not connected to Hardware Wallet')
+
+    # execute the 'entropy' inside a thread to avoid blocking UI
+    return main_ui.threadFunctionDialog(entropy, (len_bytes,), True, center_by_window=main_ui)
+
+@control_hw_call
+def load_device_by_mnemonic(main_ui, mnemonic, pin, passphrase_protection, label, language=None):
+    def load(ctrl):
+        ctrl.dlg_config_fun(dlg_title="Please confirm", show_progress_bar=False)
+        ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet...</b>')
+
+        client = main_ui.hw_client
+        if client:
+            if main_ui.config.hw_type == HWType.trezor:
+                from trezorlib.client import CallException
+                try:
+                    if client.features.initialized:
+                        client.wipe_device()
+                    # client.load_device_by_mnemonic(mnemonic, pin, passphrase_protection, label, language)
+                    #
+                    # client.recovery_device(word_count=24, passphrase_protection=True, pin_protection=True,
+                    #                     label=label, language='english', dry_run=True)
+
+                    client.reset_device(display_random=True, strength=256, passphrase_protection=True, pin_protection=True,
+                                        label=label, language='english', u2f_counter=0, skip_backup=True)
+
+                except CallException as e:
+                    if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
+                        raise
+
+            elif main_ui.config.hw_type == HWType.keepkey:
+                # todo: keepkey
+                pass
+
+            elif main_ui.config.hw_type == HWType.ledger_nano_s:
+                # todo: ledger nano s
+                raise Exception('Ledger Nano S not supported yet.')
+
+            else:
+                logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
+        else:
+            raise Exception('Not connected to Hardware Wallet')
+
+    # execute the 'load' inside a thread to avoid blocking UI
+    return main_ui.threadFunctionDialog(load, (), True, center_by_window=main_ui)

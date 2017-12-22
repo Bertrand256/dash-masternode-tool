@@ -5,14 +5,14 @@
 import json
 import simplejson
 import binascii
-from trezorlib.client import TextUIMixin as trezor_TextUIMixin
-from trezorlib.client import ProtocolMixin as trezor_ProtocolMixin
-from trezorlib.client import BaseClient as trezor_BaseClient
+
+import unicodedata
+from trezorlib.client import TextUIMixin as trezor_TextUIMixin, normalize_nfc, ProtocolMixin as trezor_ProtocolMixin, \
+    BaseClient as trezor_BaseClient
 from trezorlib.tx_api import TxApiInsight
 from hw_common import HardwareWalletCancelException
 from trezorlib import messages_pb2 as trezor_proto
 import trezorlib.types_pb2 as proto_types
-import base58
 import logging
 from wnd_utils import WndUtils
 
@@ -28,6 +28,8 @@ class MyTrezorTextUIMixin(trezor_TextUIMixin):
         passphrase = self.ask_for_pass_fun(msg)
         if passphrase is None:
             raise HardwareWalletCancelException('Cancelled')
+        else:
+            passphrase = unicodedata.normalize('NFKD', passphrase)
         return trezor_proto.PassphraseAck(passphrase=passphrase)
 
     def callback_PinMatrixRequest(self, msg):

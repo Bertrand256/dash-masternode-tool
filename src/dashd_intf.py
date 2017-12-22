@@ -384,9 +384,13 @@ def control_rpc_call(func):
                         logging.error('Error while calling of "' + str(func) + ' (2)". Details: ' + str(e))
                         if e.code == -5 and e.message == 'No information available for address':
                             raise DashdIndexException(e)
-                        elif e.error.get('message','').find('403 Forbidden'):
+                        elif e.error.get('message','').find('403 Forbidden') >= 0:
                             self.http_conn.close()
                             raise DashdConnectionError(e)
+                        elif e.code in (-32603,):
+                            # for these error codes don't retry the request with another rpc connetion
+                            #  -32603: failure to verify vote
+                            raise
                         else:
                             self.http_conn.close()
 
@@ -405,8 +409,7 @@ def control_rpc_call(func):
                         raise e.org_exception  # couldn't use another conn config, raise last exception
                     else:
                         try_nr -= 1  # another config retries do not count
-                except Exception as e:
-                    logging.exception('Error while calling of "' + str(func) + ' (5)". Details: ' + str(e))
+                except Exception:
                     raise
         finally:
             self.http_lock.release()

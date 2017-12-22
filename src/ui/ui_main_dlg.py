@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_main_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.9.1
+# Created by: PyQt5 UI code generator 5.9.2
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -352,6 +352,9 @@ class Ui_MainWindow(object):
         self.btnSaveConfiguration.setMaximumSize(QtCore.QSize(16777215, 16777215))
         self.btnSaveConfiguration.setObjectName("btnSaveConfiguration")
         self.layButtons.addWidget(self.btnSaveConfiguration)
+        self.btnProposals = QtWidgets.QPushButton(self.groupBox)
+        self.btnProposals.setObjectName("btnProposals")
+        self.layButtons.addWidget(self.btnProposals)
         self.btnActions = QtWidgets.QPushButton(self.groupBox)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         sizePolicy.setHorizontalStretch(0)
@@ -508,6 +511,7 @@ class Ui_MainWindow(object):
         self.btnConfiguration.setToolTip(_translate("MainWindow", "Open configuration window of communication with a Dash daemon"))
         self.btnConfiguration.setText(_translate("MainWindow", "Configure"))
         self.btnSaveConfiguration.setText(_translate("MainWindow", "Save configuration"))
+        self.btnProposals.setText(_translate("MainWindow", "Proposals"))
         self.btnActions.setText(_translate("MainWindow", "Tools"))
         self.btnAbout.setText(_translate("MainWindow", "About"))
         self.btnHwCheck.setToolTip(_translate("MainWindow", "Check Hardware Wallet connection"))
