@@ -914,6 +914,13 @@
             </widget>
            </item>
            <item>
+            <widget class="QPushButton" name="btnProposals">
+             <property name="text">
+              <string>Proposals</string>
+             </property>
+            </widget>
+           </item>
+           <item>
             <widget class="QPushButton" name="btnActions">
              <property name="sizePolicy">
               <sizepolicy hsizetype="Fixed" vsizetype="Fixed">

@@ -1,7 +1,9 @@
+import unicodedata
+
 try:
     import traceback
     import sys
-    from trezorlib.client import TrezorClient
+    from trezorlib.client import TrezorClient, TrezorClientDebug, TrezorDebugClient
     from trezorlib.transport_hid import HidTransport
 except Exception as e:
     print(str(e))
@@ -30,12 +32,11 @@ def main():
 
         # # Get the first address of first BIP44 account
         # # (should be the same address as shown in wallet.trezor.io)
-        # bip32_path = client.expand_path("44'/0'/0'/0/0")
-        # address = client.get_address('Bitcoin', bip32_path)
-        # print('Bitcoin address:', address)
+        bip32_path = client.expand_path("m/44'/5'/0'/0/0")
+        address = client.get_address('Dash', bip32_path)
+        print('Dash address:', address)
 
         client.close()
-        input('Press any key...')
     except Exception as e:
         print(str(e))
         traceback.print_exc(file=sys.stdout)

@@ -60,7 +60,7 @@ arg_outputs = [
 # Bitcoin opcodes used to compose locking script
 OP_DUP = b'\x76'
 OP_HASH160 = b'\xA9'
-OP_QEUALVERIFY = b'\x88'
+OP_EQUALVERIFY = b'\x88'
 OP_CHECKSIG = b'\xAC'
 OP_EQUAL = b'\x87'
 
@@ -86,7 +86,7 @@ def compose_tx_locking_script(dest_address):
               OP_HASH160 + \
               int.to_bytes(len(pubkey_hash), 1, byteorder='little') + \
               pubkey_hash + \
-              OP_QEUALVERIFY + \
+              OP_EQUALVERIFY + \
               OP_CHECKSIG
     elif dest_address[0] in P2SH_PREFIXES:
         # sequence of opcodes/arguments for p2sh (pay-to-script-hash)

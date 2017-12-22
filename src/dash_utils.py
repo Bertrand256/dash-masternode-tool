@@ -11,7 +11,7 @@ import base58
 # Bitcoin opcodes used in the application
 OP_DUP = b'\x76'
 OP_HASH160 = b'\xA9'
-OP_QEUALVERIFY = b'\x88'
+OP_EQUALVERIFY = b'\x88'
 OP_CHECKSIG = b'\xAC'
 OP_EQUAL = b'\x87'
 
@@ -179,6 +179,13 @@ def bip32_path_n_to_string(path_n):
     return ret
 
 
+def bip32_path_string_to_n(path_str):
+    if path_str.startswith('m/'):
+        path_str = path_str[2:]
+    elems = [int(elem[:-1]) + 0x80000000 if elem.endswith("'") else int(elem) for elem in path_str.split('/')]
+    return elems
+
+
 def compose_tx_locking_script(dest_address):
     """
     Create a Locking script (ScriptPubKey) that will be assigned to a transaction output.
@@ -196,7 +203,7 @@ def compose_tx_locking_script(dest_address):
               OP_HASH160 + \
               int.to_bytes(len(pubkey_hash), 1, byteorder='little') + \
               pubkey_hash + \
-              OP_QEUALVERIFY + \
+              OP_EQUALVERIFY + \
               OP_CHECKSIG
     elif dest_address[0] in P2SH_PREFIXES:
         # sequence of opcodes/arguments for p2sh (pay-to-script-hash)
