@@ -6,6 +6,8 @@
 import json
 import binascii
 import logging
+
+import unicodedata
 from keepkeylib.client import TextUIMixin as keepkey_TextUIMixin
 from keepkeylib.client import ProtocolMixin as keepkey_ProtocolMixin
 from keepkeylib.client import BaseClient as keepkey_BaseClient
@@ -28,6 +30,8 @@ class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):
         passphrase = self.ask_for_pass_fun(msg)
         if passphrase is None:
             raise HardwareWalletCancelException('Cancelled')
+        else:
+            passphrase = unicodedata.normalize('NFKD', passphrase)
         return keepkey_proto.PassphraseAck(passphrase=passphrase)
 
     def callback_PinMatrixRequest(self, msg):
