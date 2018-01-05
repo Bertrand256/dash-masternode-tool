@@ -346,6 +346,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         if len(utxos):
             address = self.edtDestAddress.text()
             if address:
+                address = address.strip()
                 if not self.main_ui.connectHardwareWallet():
                     return
 

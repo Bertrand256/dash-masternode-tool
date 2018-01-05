@@ -6,6 +6,7 @@ from hw_common import HardwareWalletCancelException, clean_bip32_path
 from wnd_utils import WndUtils
 from dash_utils import *
 from PyQt5.QtWidgets import QMessageBox
+import unicodedata
 
 
 def process_ledger_exceptions(func):
@@ -137,6 +138,82 @@ def get_address_and_pubkey(client, bip32_path):
         'address': nodedata.get('address').decode('utf-8'),
         'publicKey': compress_public_key(nodedata.get('publicKey'))
     }
+
+
+def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, secondary_pin: str):
+    """
+    Initialise Ledger Nano S device with a list of mnemonic words.
+    :param mnemonic_words: 12, 18 or 24 mnemonic words separated with spaces to initialise device.
+    :param pin: PIN to be set in the device (4- or 8-character string)
+    :param passphrase: Passphrase to be set in the device or empty.
+    :param secondary_pin: Secondary PIN to activate passphrase. It's required if 'passphrase' is set.
+    """
+
+    def process(ctrl, mnemonic_words, pin, passphrase, secondary_pin):
+        ctrl.dlg_config_fun(dlg_title="Please confirm", show_progress_bar=False)
+        ctrl.display_msg_fun('<b>Please wait while initializing device...</b>')
+
+        dongle = getDongle()
+
+        # stage 1: initialize the hardware wallet with mnemonic words
+        apdudata = bytearray()
+        if pin:
+            apdudata += bytearray([len(pin)]) + bytearray(pin, 'utf8')
+        else:
+            apdudata += bytearray([0])
+
+        # empty prefix
+        apdudata += bytearray([0])
+
+        # empty passphrase in this phase
+        apdudata += bytearray([0])
+
+        if mnemonic_words:
+            apdudata += bytearray([len(mnemonic_words)]) + bytearray(mnemonic_words, 'utf8')
+        else:
+            apdudata += bytearray([0])
+
+        apdu = bytearray([0xE0, 0xD0, 0x00, 0x00, len(apdudata)]) + apdudata
+        dongle.exchange(apdu, timeout=3000)
+
+        # stage 2: setup the secondary pin and the passphrase if provided
+        if passphrase and secondary_pin:
+            ctrl.display_msg_fun('<b>Configuring passphrase, enter the primary PIN on your '
+                                 'hardware wallet when asked...</b>')
+
+            apdudata = bytearray()
+            if pin:
+                apdudata += bytearray([len(pin)]) + bytearray(secondary_pin, 'utf8')
+            else:
+                apdudata += bytearray([0])
+
+            # empty prefix
+            apdudata += bytearray([0])
+
+            if passphrase:
+                passphrase = unicodedata.normalize('NFKD', passphrase)
+                apdudata += bytearray([len(passphrase)]) + bytearray(passphrase, 'utf8')
+            else:
+                apdudata += bytearray([0])
+
+            # empty mnemonic words in this phase
+            apdudata += bytearray([0])
+
+            apdu = bytearray([0xE0, 0xD0, 0x01, 0x00, len(apdudata)]) + apdudata
+            dongle.exchange(apdu, timeout=3000)
+
+        dongle.close()
+        del dongle
+    try:
+        return WndUtils.threadFunctionDialog(process, (mnemonic_words, pin, passphrase, secondary_pin), True)
+    except BTChipException as e:
+        if e.message == 'Invalid status 6982':
+            raise Exception('Operation failed with the following error: %s. \n\nMake sure you have reset the device '
+                            'and started it in recovery mode.' % e.message)
+        else:
+            raise
+    except Exception as e:
+        raise
 
 
 @process_ledger_exceptions
