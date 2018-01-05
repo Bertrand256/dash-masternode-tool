@@ -61,6 +61,7 @@ if os_type == 'win32':
 
 # add bitcoin library data file
 add_files.append( (os.path.join(lib_path, 'bitcoin/english.txt'),'/bitcoin') )
+add_files.append( (os.path.join(lib_path, 'mnemonic/wordlist/english.txt'),'/mnemonic/wordlist') )
 
 a = Analysis(['src/dash_masternode_tool.py'],
              pathex=[base_dir],

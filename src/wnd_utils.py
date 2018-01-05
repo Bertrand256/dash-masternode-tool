@@ -48,21 +48,21 @@ class WndUtils:
     @staticmethod
     def errorMsg(message):
         if threading.current_thread() != threading.main_thread():
-            return WndUtils.callFunInTheMainThread(WndUtils.displayMessage, QMessageBox.Critical, message)
+            return WndUtils.call_in_main_thread(WndUtils.displayMessage, QMessageBox.Critical, message)
         else:
             return WndUtils.displayMessage(QMessageBox.Critical, message)
 
     @staticmethod
     def warnMsg(message):
         if threading.current_thread() != threading.main_thread():
-            return WndUtils.callFunInTheMainThread(WndUtils.displayMessage, QMessageBox.Warning, message)
+            return WndUtils.call_in_main_thread(WndUtils.displayMessage, QMessageBox.Warning, message)
         else:
             return WndUtils.displayMessage(QMessageBox.Warning, message)
 
     @staticmethod
     def infoMsg(message):
         if threading.current_thread() != threading.main_thread():
-            return WndUtils.callFunInTheMainThread(WndUtils.displayMessage, QMessageBox.Information, message)
+            return WndUtils.call_in_main_thread(WndUtils.displayMessage, QMessageBox.Information, message)
         else:
             return WndUtils.displayMessage(QMessageBox.Information, message)
 
@@ -87,7 +87,7 @@ class WndUtils:
             return msg.exec_()
 
         if threading.current_thread() != threading.main_thread():
-            return WndUtils.callFunInTheMainThread(dlg, message, buttons, default_button, icon)
+            return WndUtils.call_in_main_thread(dlg, message, buttons, default_button, icon)
         else:
             return dlg(message, buttons, default_button, icon)
 
@@ -166,8 +166,8 @@ class WndUtils:
         return thread
 
     @staticmethod
-    def callFunInTheMainThread(fun_to_call, *args):
-        return thread_wnd_utils.callFunInTheMainThread(fun_to_call, *args)
+    def call_in_main_thread(fun_to_call, *args):
+        return thread_wnd_utils.call_in_main_thread(fun_to_call, *args)
 
     def setIcon(self, widget, ico):
         if isinstance(ico, str):
@@ -275,11 +275,11 @@ class ThreadWndUtils(QObject):
 
     def __init__(self):
         QObject.__init__(self)
-        self.fun_call_signal.connect(self.funCallSignalled)
+        self.fun_call_signal.connect(self.fun_call_signalled)
         self.fun_call_ret_value = None
         self.fun_call_exception = None
 
-    def funCallSignalled(self, fun_to_call, args, mutex):
+    def fun_call_signalled(self, fun_to_call, args, mutex):
         """
         Function-event executed in the main thread as a result of emiting signal fun_call_signal from BG threads.
         :param fun_to_call: ref to a function which is to be called
@@ -296,7 +296,7 @@ class ThreadWndUtils(QObject):
         finally:
             mutex.unlock()
 
-    def callFunInTheMainThread(self, fun_to_call, *args):
+    def call_in_main_thread(self, fun_to_call, *args):
         """
         This method is called from BG threads. Its purpose is to run 'fun_to_call' from main thread (used for dialogs)
         and return values ruturned from it.
@@ -318,7 +318,7 @@ class ThreadWndUtils(QObject):
                     caller_file = ''
                     caller_line = ''
                     for si in reversed(traceback.extract_stack()):
-                        if si.name != 'callFunInTheMainThread':
+                        if si.name != 'call_in_main_thread':
                             caller_file = si.filename
                             caller_line = si.lineno
                             break
@@ -343,7 +343,7 @@ class ThreadWndUtils(QObject):
                     self.fun_call_signal.emit(fun_to_call, args, mutex)
 
                     # wait for the function to finish; lock will be successful only when the first lock
-                    # made a few lines above is released in the funCallSignalled method
+                    # made a few lines above is released in the fun_call_signalled method
                     tm_begin = time.time()
                     locked = mutex.tryLock(3600000)  # wait 1h max
                     tm_diff = time.time() - tm_begin
@@ -365,7 +365,7 @@ class ThreadWndUtils(QObject):
         except DeadlockException:
             raise
         except Exception as e:
-            logging.exception('ThreadWndUtils.callFunInTheMainThread error: %s' % str(e))
+            logging.exception('ThreadWndUtils.call_in_main_thread error: %s' % str(e))
             raise
 
         if exception_to_rethrow:

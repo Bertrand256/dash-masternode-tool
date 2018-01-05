@@ -2,10 +2,18 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+import threading
+from typing import Optional, Tuple
+
+from mnemonic import Mnemonic
+
+import hw_pass_dlg
+import hw_pin_dlg
 from dash_utils import bip32_path_n_to_string
 from hw_common import HardwareWalletPinException
 import logging
 from app_config import HWType
+from wnd_utils import WndUtils
 
 
 def control_hw_call(func):
@@ -67,12 +75,12 @@ def control_hw_call(func):
     return catch_hw_client
 
 
-def connect_hw(hw_type, ask_for_pin_fun, ask_for_pass_fun):
+def connect_hw(hw_type):
     if hw_type == HWType.trezor:
         import hw_intf_trezor as trezor
         import trezorlib.client as client
         try:
-            return trezor.connect_trezor(ask_for_pin_fun, ask_for_pass_fun)
+            return trezor.connect_trezor()
         except client.PinException as e:
             raise HardwareWalletPinException(e.args[1])
 
@@ -80,7 +88,7 @@ def connect_hw(hw_type, ask_for_pin_fun, ask_for_pass_fun):
         import hw_intf_keepkey as keepkey
         import keepkeylib.client as client
         try:
-            return keepkey.connect_keepkey(ask_for_pin_fun, ask_for_pass_fun)
+            return keepkey.connect_keepkey()
         except client.PinException as e:
             raise HardwareWalletPinException(e.args[1])
 
@@ -367,43 +375,53 @@ def get_entropy(main_ui, len_bytes):
     # execute the 'entropy' inside a thread to avoid blocking UI
     return main_ui.threadFunctionDialog(entropy, (len_bytes,), True, center_by_window=main_ui)
 
-@control_hw_call
-def load_device_by_mnemonic(main_ui, mnemonic, pin, passphrase_protection, label, language=None):
-    def load(ctrl):
+
+def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemonic_words: str,
+                            pin: str, passphrase_enbled: bool, hw_label: str, passphrase: str,
+                            secondary_pin: str) -> Tuple[Optional[str], bool]:
+    """
+    Initializes hardware wallet with a mnemonic words. For security reasons use this function only on an offline
+    system, that will never be connected to the Internet.
+    :param hw_type: app_config.HWType
+    :param hw_device_id: id of the device selected by the user (TrezorClient, KeepkeyClient); None for Ledger Nano S
+    :param mnemonic_words: string of 12/18/24 mnemonic words (separeted by spaces)
+    :param pin: string with a new pin
+    :param passphrase_enbled: if True, hw will have passphrase enabled (Trezor/Keepkey)
+    :param hw_label: label for device (Trezor/Keepkey)
+    :param passphrase: passphrase to be saved in the device (Ledger Nano S)
+    :param secondary_pin: PIN securing passphrase (Ledger Nano S)
+    :return: Tuple
+        Ret[0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
+            returned to the caller.
+        Ret[1]: False, if the user cancelled the operation. In this situation we deliberately don't raise the 'cancelled'
+            exception, because in the case of changing of the device id (when wiping) we want to pass it back to
+            the caller.
+        Ret[0] and Ret[1] are None for Ledger devices.
+    """
+    def load(ctrl, hw_device_id: str, mnemonic: str, pin: str, passphrase_enbled: bool, hw_label: str) -> \
+            Tuple[Optional[str], bool]:
+
         ctrl.dlg_config_fun(dlg_title="Please confirm", show_progress_bar=False)
         ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet...</b>')
 
-        client = main_ui.hw_client
-        if client:
-            if main_ui.config.hw_type == HWType.trezor:
-                from trezorlib.client import CallException
-                try:
-                    if client.features.initialized:
-                        client.wipe_device()
-                    # client.load_device_by_mnemonic(mnemonic, pin, passphrase_protection, label, language)
-                    #
-                    # client.recovery_device(word_count=24, passphrase_protection=True, pin_protection=True,
-                    #                     label=label, language='english', dry_run=True)
+        if hw_device_id:
+            if hw_type == HWType.trezor:
+                from hw_intf_trezor import load_device_by_mnemonic
 
-                    client.reset_device(display_random=True, strength=256, passphrase_protection=True, pin_protection=True,
-                                        label=label, language='english', u2f_counter=0, skip_backup=True)
+                return load_device_by_mnemonic(hw_device_id, mnemonic, pin, passphrase_enbled, hw_label)
 
-                except CallException as e:
-                    if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
-                        raise
-
-            elif main_ui.config.hw_type == HWType.keepkey:
+            elif hw_type == HWType.keepkey:
                 # todo: keepkey
                 pass
 
-            elif main_ui.config.hw_type == HWType.ledger_nano_s:
-                # todo: ledger nano s
-                raise Exception('Ledger Nano S not supported yet.')
-
             else:
-                logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
+                logging.error('Unsupported HW type: ' + str(hw_type))
         else:
             raise Exception('Not connected to Hardware Wallet')
 
-    # execute the 'load' inside a thread to avoid blocking UI
-    return main_ui.threadFunctionDialog(load, (), True, center_by_window=main_ui)
+    if hw_type == HWType.ledger_nano_s:
+        import hw_intf_ledgernano
+        hw_intf_ledgernano.load_device_by_mnemonic(mnemonic_words, pin, passphrase, secondary_pin)
+        return None, True
+    else:
+        return WndUtils.threadFunctionDialog(load, (hw_device_id, mnemonic_words, pin, passphrase_enbled, hw_label), True)

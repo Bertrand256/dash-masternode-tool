@@ -678,7 +678,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         cur.execute("update PROPOSALS set title=null, owner=null, ext_attributes_loaded=0")
                         self.db_intf.commit()
                         if self.read_external_attibutes(self.proposals):
-                            WndUtils.callFunInTheMainThread(display_data)
+                            WndUtils.call_in_main_thread(display_data)
 
                     except CloseDialogException:
                         pass
@@ -738,7 +738,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
         if not self.finishing:
             if threading.current_thread() != threading.main_thread():
-                WndUtils.callFunInTheMainThread(disp, message)
+                WndUtils.call_in_main_thread(disp, message)
             else:
                 disp(message)
 
@@ -753,7 +753,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
         if not self.finishing:
             if threading.current_thread() != threading.main_thread():
-                WndUtils.callFunInTheMainThread(disp, message)
+                WndUtils.call_in_main_thread(disp, message)
             else:
                 disp(message)
 
@@ -982,7 +982,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                         (CFG_PROPOSALS_LAST_READ_TIME, int(time.time())))
 
                         if rows_added or rows_removed:
-                            WndUtils.callFunInTheMainThread(self.display_proposals_data)
+                            WndUtils.call_in_main_thread(self.display_proposals_data)
 
                     except CloseDialogException:
                         raise
@@ -1205,7 +1205,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 self.display_proposals_data()
 
                             # display data, now without voting results, which will be read below
-                            WndUtils.callFunInTheMainThread(disp)
+                            WndUtils.call_in_main_thread(disp)
 
                         except CloseDialogException:
                             raise
@@ -1245,7 +1245,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             proposals.append(prop)
                 if proposals and not self.finishing:
                     if self.read_external_attibutes(proposals):
-                        WndUtils.callFunInTheMainThread(self.display_proposals_data)  # refresh display
+                        WndUtils.call_in_main_thread(self.display_proposals_data)  # refresh display
 
             if not self.finishing:
                 proposals = []
@@ -1512,7 +1512,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                  (str(network_duration), (len(proposals))))
 
                     # display data from dynamic (voting) columns
-                    # WndUtils.callFunInTheMainThread(self.update_grid_data, cells_to_update)
+                    # WndUtils.call_in_main_thread(self.update_grid_data, cells_to_update)
                     logging.info('DB calls duration (stage 1): %s, SQL count: %d' % (str(db_oper_duration),
                                                                                     db_oper_count))
 
@@ -1669,7 +1669,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     proposals.append(prop)
         if proposals and not self.finishing:
             if self.read_external_attibutes(proposals):
-                WndUtils.callFunInTheMainThread(self.display_proposals_data) # refresh display
+                WndUtils.call_in_main_thread(self.display_proposals_data) # refresh display
 
         proposals = []  # refresh "live" proposals only
         for prop in self.proposals:
@@ -2258,10 +2258,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     self.votesModel.read_votes()
                     last_proposal_read = self.current_proposal
                     last_chart_type = self.current_chart_type
-                    WndUtils.callFunInTheMainThread(apply_grid_data)
+                    WndUtils.call_in_main_thread(apply_grid_data)
                 elif last_chart_type != self.current_chart_type:
                     last_chart_type = self.current_chart_type
-                    WndUtils.callFunInTheMainThread(self.draw_chart)
+                    WndUtils.call_in_main_thread(self.draw_chart)
 
                 wr = self.refresh_details_event.wait(2)
                 if self.refresh_details_event.is_set():
