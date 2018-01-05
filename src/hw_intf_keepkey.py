@@ -2,18 +2,19 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
-
 import json
 import binascii
 import logging
 
 import unicodedata
+from typing import Optional
+
 from keepkeylib.client import TextUIMixin as keepkey_TextUIMixin
 from keepkeylib.client import ProtocolMixin as keepkey_ProtocolMixin
 from keepkeylib.client import BaseClient as keepkey_BaseClient
 from keepkeylib import messages_pb2 as keepkey_proto
 from keepkeylib.tx_api import TxApiInsight
-from hw_common import HardwareWalletCancelException
+from hw_common import HardwareWalletCancelException, ask_for_pin_callback, ask_for_pass_callback
 import keepkeylib.types_pb2 as proto_types
 from wnd_utils import WndUtils
 from hw_common import clean_bip32_path
@@ -56,42 +57,49 @@ class MyKeepkeyClient(keepkey_ProtocolMixin, MyKeepkeyTextUIMixin, keepkey_BaseC
         keepkey_BaseClient.__init__(self, transport)
 
 
-def connect_keepkey(ask_for_pin_fun, ask_for_pass_fun):
+def connect_keepkey(device_id: Optional[str] = None) -> Optional[MyKeepkeyClient]:
     """
     Connect to a Keepkey device.
-    :param ask_for_pin_fun: ref to a function displaying a dialog asking the user for a pin (Trezor and Keepkey)
-    :param ask_for_pass_fun: ref to a function displaying a dialog asking the user for a passphrase (Trezor and Keepkey)
     :return: ref to a keepkey client if connection successfull or None if we are sure that no Keepkey device connected.
     """
 
-    def get_transport():
+    logging.info('Started function')
+    def get_client() -> Optional[MyKeepkeyClient]:
         from keepkeylib.transport_hid import HidTransport
+
         count = len(HidTransport.enumerate())
         if not count:
             logging.warning('Number of Keepkey devices: 0')
+
         for d in HidTransport.enumerate():
             transport = HidTransport(d)
-            return transport
+            client = MyKeepkeyClient(transport, ask_for_pin_callback, ask_for_pass_callback)
+            if not device_id or client.features.device_id == device_id:
+                return client
+            else:
+                client.clear_session()
+                client.close()
+        return None
 
     # HidTransport.enumerate() has to be called in the main thread - second call from bg thread
     # causes SIGSEGV
-    transport = WndUtils.callFunInTheMainThread(get_transport)
-
-    if transport:
-        client = MyKeepkeyClient(transport, ask_for_pin_fun, ask_for_pass_fun)
+    client = WndUtils.call_in_main_thread(get_client)
+    if client:
+        logging.info('Keepkey connected. Firmware version: %s.%s.%s, vendor: %s, initialized: %s, '
+                     'pp_protection: %s, pp_cached: %s, bootloader_mode: %s ' %
+                     (str(client.features.major_version),
+                      str(client.features.minor_version),
+                      str(client.features.patch_version), str(client.features.vendor),
+                      str(client.features.initialized),
+                      str(client.features.passphrase_protection), str(client.features.passphrase_cached),
+                      str(client.features.bootloader_mode)))
         return client
     else:
-        logging.warning('Transport is None')
-
-
-def reconnect_keepkey(client, ask_for_pin_fun, ask_for_pass_fun):
-    try:
-        from trezorlib.transport_hid import HidTransport
-        client.init_device()
-        return connect_keepkey(ask_for_pin_fun, ask_for_pass_fun)
-    except Exception as e:
-        logging.exception("Exception occurred")
-        raise
+        if device_id:
+            msg = 'Cannot connect to the Keepkey device with this id: .' % device_id
+        else:
+            msg = 'Cannot find any Keepkey device.'
+        raise Exception(msg)
 
 
 class MyTxApiInsight(TxApiInsight):

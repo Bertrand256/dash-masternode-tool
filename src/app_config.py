@@ -36,6 +36,17 @@ class HWType:
     keepkey = 'KEEPKEY'
     ledger_nano_s = 'LEDGERNANOS'
 
+    @staticmethod
+    def get_desc(hw_type):
+        if hw_type == HWType.trezor:
+            return 'Trezor'
+        elif hw_type == HWType.keepkey:
+            return 'KeepKey'
+        elif hw_type == HWType.ledger_nano_s:
+            return 'Ledger Nano S'
+        else:
+            return '???'
+
 
 class AppConfig(object):
     def __init__(self):
