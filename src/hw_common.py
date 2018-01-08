@@ -3,9 +3,12 @@
 # Author: Bertrand256
 # Created on: 2017-03
 import threading
+from typing import List
 
 import hw_pass_dlg
 import hw_pin_dlg
+import hw_word_dlg
+from mnemonic import Mnemonic
 from wnd_utils import WndUtils
 
 
@@ -54,4 +57,17 @@ def ask_for_pass_callback(msg):
     else:
         return dlg()
 
+
+def ask_for_word_callback(msg: str, wordlist: List[str]) -> str:
+    def dlg():
+        ui = hw_word_dlg.HardwareWalletWordDlg(msg, wordlist)
+        if ui.exec_():
+            return ui.get_word()
+        else:
+            return None
+
+    if threading.current_thread() != threading.main_thread():
+        return WndUtils.call_in_main_thread(dlg)
+    else:
+        return dlg()
 

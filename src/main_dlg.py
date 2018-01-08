@@ -154,7 +154,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.actHwSetup.triggered.connect(self.on_actHwSetup_triggered)
 
         # hardware wallet initialization dialog
-        self.actHwSetup = mnu.addAction("Hardware Wallet seed initialization...")
+        self.actHwSetup = mnu.addAction("Hardware Wallet initialization/recovery...")
         # self.setIcon(self.actHwSetup, "hw.png")
         self.actHwSetup.triggered.connect(self.on_actHwInitialize_triggered)
 
@@ -544,13 +544,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         if not self.hw_client:
             try:
-                if sys.platform == 'linux':
-                    if (self.config.hw_type == HWType.trezor and 'keepkeylib' in sys.modules.keys()) or \
-                       (self.config.hw_type == HWType.keepkey and 'trezorlib' in sys.modules.keys()):
-                        self.warnMsg('On linux OS switching between Trezor/Keepkey wallets requires restarting the '
-                                     'application.\n\nPlease restart the application to continue.')
-                        return None
-
                 try:
                     logging.info('Connecting to a hardware wallet device')
                     self.hw_client = hw_intf.connect_hw(self.config.hw_type)

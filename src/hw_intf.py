@@ -5,15 +5,25 @@
 import threading
 from typing import Optional, Tuple
 
-from mnemonic import Mnemonic
-
-import hw_pass_dlg
-import hw_pin_dlg
+import sys
 from dash_utils import bip32_path_n_to_string
 from hw_common import HardwareWalletPinException
 import logging
 from app_config import HWType
 from wnd_utils import WndUtils
+
+
+def control_trezor_keepkey_libs(connecting_to_hw):
+    """
+    Check if trying to switch between Trezor and Keepkey on Linux. It's not allowed because Trezor/Keepkey's client
+    libraries use objects with the same names (protobuf), which causes errors when switching between them.
+    :param connecting_to_hw: type of the hardware wallet we are going to connect to.
+    :return:
+    """
+    if sys.platform == 'linux' and ((connecting_to_hw == HWType.trezor and 'keepkeylib' in sys.modules.keys()) or
+       (connecting_to_hw == HWType.keepkey and 'trezorlib' in sys.modules.keys())):
+        raise Exception('On linux OS switching between Trezor/Keepkey wallets requires restarting the '
+                        'application.\n\nPlease restart the application to continue.')
 
 
 def control_hw_call(func):
@@ -31,7 +41,7 @@ def control_hw_call(func):
         if not client:
             raise Exception('Not connected to Hardware Wallet')
         try:
-
+            control_trezor_keepkey_libs(main_ui.config.hw_type)
             if main_ui.config.hw_type == HWType.trezor:
 
                 import hw_intf_trezor as trezor
@@ -76,6 +86,7 @@ def control_hw_call(func):
 
 
 def connect_hw(hw_type):
+    control_trezor_keepkey_libs(hw_type)
     if hw_type == HWType.trezor:
         import hw_intf_trezor as trezor
         import trezorlib.client as client
@@ -312,36 +323,31 @@ def get_address_and_pubkey(main_ui, bip32_path):
             raise Exception('Unknown hwardware wallet type: ' + main_ui.config.hw_type)
 
 
-def wipe_device(main_ui):
+def wipe_device(hw_type: HWType, hw_device_id: Optional[str]):
     def wipe(ctrl):
         ctrl.dlg_config_fun(dlg_title="Confirm wiping device.", show_progress_bar=False)
         ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet...</b>')
 
-        client = main_ui.hw_client
-        if client:
-            if main_ui.config.hw_type == HWType.trezor:
-                from trezorlib.client import CallException
-                try:
-                    return client.wipe_device()
-                except CallException as e:
-                    if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
-                        raise
+        if hw_type == HWType.trezor:
 
-            elif main_ui.config.hw_type == HWType.keepkey:
-                # todo: keepkey
-                pass
+            from hw_intf_trezor import wipe_device
+            wipe_device(hw_device_id)
 
-            elif main_ui.config.hw_type == HWType.ledger_nano_s:
-                # todo: ledger nano s
-                raise Exception('Ledger Nano S not supported yet.')
+        elif hw_type == HWType.keepkey:
 
-            else:
-                logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
+            from hw_intf_keepkey import wipe_device
+            wipe_device(hw_device_id)
+
+        elif hw_type == HWType.ledger_nano_s:
+
+            raise Exception('Not supported by Ledger Nano S.')
+
         else:
-            raise Exception('Not connected to Hardware Wallet')
+            logging.error('Unsupported HW type: ' + str(hw_type))
 
     # execute the 'wipe' inside a thread to avoid blocking UI
-    main_ui.threadFunctionDialog(wipe, (), True, center_by_window=main_ui)
+    WndUtils.threadFunctionDialog(wipe, (), True)
+
 
 @control_hw_call
 def get_entropy(main_ui, len_bytes):
@@ -352,21 +358,17 @@ def get_entropy(main_ui, len_bytes):
         client = main_ui.hw_client
         if client:
             if main_ui.config.hw_type == HWType.trezor:
-                from trezorlib.client import CallException
-                try:
-                    return client.get_entropy(len_bytes)
-                except CallException as e:
-                    if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
-                        raise
+
+                from hw_intf_trezor import get_entropy
+                return get_entropy(client, len_bytes)
 
             elif main_ui.config.hw_type == HWType.keepkey:
-                # todo: keepkey
-                pass
+
+                from hw_intf_keepkey import get_entropy
+                return get_entropy(client, len_bytes)
 
             elif main_ui.config.hw_type == HWType.ledger_nano_s:
-                # todo: ledger nano s
-                raise Exception('Ledger Nano S not supported yet.')
-
+                raise Exception('Not supported by Ledger Nano S.')
             else:
                 logging.error('Unsupported HW type: ' + str(main_ui.config.hw_type))
         else:
@@ -406,13 +408,14 @@ def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemon
 
         if hw_device_id:
             if hw_type == HWType.trezor:
-                from hw_intf_trezor import load_device_by_mnemonic
 
+                from hw_intf_trezor import load_device_by_mnemonic
                 return load_device_by_mnemonic(hw_device_id, mnemonic, pin, passphrase_enbled, hw_label)
 
             elif hw_type == HWType.keepkey:
-                # todo: keepkey
-                pass
+
+                from hw_intf_keepkey import load_device_by_mnemonic
+                return load_device_by_mnemonic(hw_device_id, mnemonic, pin, passphrase_enbled, hw_label)
 
             else:
                 logging.error('Unsupported HW type: ' + str(hw_type))
@@ -425,3 +428,49 @@ def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemon
         return None, True
     else:
         return WndUtils.threadFunctionDialog(load, (hw_device_id, mnemonic_words, pin, passphrase_enbled, hw_label), True)
+
+
+def recovery_device(hw_type: HWType, hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool,
+                    hw_label: str) -> Tuple[Optional[str], bool]:
+    """
+    :param hw_type: app_config.HWType
+    :param hw_device_id: id of the device selected by the user (TrezorClient, KeepkeyClient); None for Ledger Nano S
+    :param word_count: number of recovery words (12/18/24)
+    :param passphrase_enbled: if True, hw will have passphrase enabled (Trezor/Keepkey)
+    :param pin_enabled: if True, hw will have pin enabled (Trezor/Keepkey)
+    :param hw_label: label for device (Trezor/Keepkey)
+    :return: Tuple
+        Ret[0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
+            returned to the caller.
+        Ret[1]: False, if the user cancelled the operation. In this situation we deliberately don't raise the
+            'cancelled' exception, because in the case of changing of the device id (when wiping) we want to pass
+            it back to the caller function.
+        Ret[0] and Ret[1] are None for Ledger devices.
+    """
+    def load(ctrl, hw_type: HWType, hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool,
+             hw_label: str) -> Tuple[Optional[str], bool]:
+
+        ctrl.dlg_config_fun(dlg_title="Please confirm", show_progress_bar=False)
+        ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet...</b>')
+
+        if hw_device_id:
+            if hw_type == HWType.trezor:
+
+                from hw_intf_trezor import recovery_device
+                return recovery_device(hw_device_id, word_count, passphrase_enabled, pin_enabled, hw_label)
+
+            # elif hw_type == HWType.keepkey:
+            #
+            #     from hw_intf_keepkey import recovery_device
+            #     return recovery_device(hw_device_id, mnemonic, pin, passphrase_enbled, hw_label)
+
+            else:
+                logging.error('Unsupported HW type: ' + str(hw_type))
+        else:
+            raise Exception('Not connected to Hardware Wallet')
+
+    if hw_type == HWType.ledger_nano_s:
+        raise Exception('Not supported by Ledger Nano S.')
+    else:
+        return WndUtils.threadFunctionDialog(load, (hw_type, hw_device_id, word_count, passphrase_enabled, pin_enabled,
+                                                    hw_label), True)

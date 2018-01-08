@@ -5,13 +5,11 @@
 import json
 import binascii
 import logging
-
 import unicodedata
-from typing import Optional
-
+from typing import Optional, Tuple
 from keepkeylib.client import TextUIMixin as keepkey_TextUIMixin
 from keepkeylib.client import ProtocolMixin as keepkey_ProtocolMixin
-from keepkeylib.client import BaseClient as keepkey_BaseClient
+from keepkeylib.client import BaseClient as keepkey_BaseClient, CallException
 from keepkeylib import messages_pb2 as keepkey_proto
 from keepkeylib.tx_api import TxApiInsight
 from hw_common import HardwareWalletCancelException, ask_for_pin_callback, ask_for_pass_callback
@@ -191,3 +189,80 @@ def apply_settings(main_ui, label=None, language=None, use_passphrase=None, home
         main_ui.hw_client.apply_settings()
     else:
         raise Exception('HW client not set.')
+
+
+def get_entropy(hw_device_id, len_bytes):
+    client = None
+    try:
+        client = connect_keepkey(hw_device_id)
+
+        if client:
+            client.get_entropy(len_bytes)
+            client.close()
+        else:
+            raise Exception('Couldn\'t connect to Trezor device.')
+    except CallException as e:
+        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
+            raise
+        else:
+            if client:
+                client.close()
+            raise HardwareWalletCancelException('Cancelled')
+
+
+def wipe_device(hw_device_id):
+    client = None
+    try:
+        client = connect_keepkey(hw_device_id)
+
+        if client:
+            client.wipe_device()
+            client.close()
+        else:
+            raise Exception('Couldn\'t connect to Trezor device.')
+    except CallException as e:
+        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
+            raise
+        else:
+            if client:
+                client.close()
+            raise HardwareWalletCancelException('Cancelled')
+
+
+def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphrase_enbled: bool, hw_label: str,
+                            language: Optional[str]=None) -> Tuple[str, bool]:
+    """
+    :param hw_device_id:
+    :param mnemonic:
+    :param pin:
+    :param passphrase_enbled:
+    :param hw_label:
+    :param language:
+    :return: Tuple
+        [0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
+            returned to the caller.
+        [1]: False, if the user cancelled the operation. In this case we deliberately don't raise the 'cancelled'
+            exception, because in the case of changing of the device id (when wiping) we want to pass the new device
+            id back to the caller.
+    """
+    client = None
+    try:
+        client = connect_keepkey(hw_device_id)
+
+        if client:
+            if client.features.initialized:
+                client.wipe_device()
+                hw_device_id = client.features.device_id
+            client.load_device_by_mnemonic(mnemonic, pin, passphrase_enbled, hw_label, language=language)
+            client.close()
+            return hw_device_id, True
+        else:
+            raise Exception('Couldn\'t connect to Keepkey device.')
+
+    except CallException as e:
+        if client:
+            client.close()
+        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
+            raise
+        else:
+            return hw_device_id, False  # cancelled by the user
