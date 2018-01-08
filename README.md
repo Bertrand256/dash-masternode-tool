@@ -2,8 +2,8 @@
 
 ## Contents
  * [Masternodes](#masternodes)  
- * [Dash Masternode Tool](#dashmasternodetool)  
-   * [Feature list](#features-list)
+ * [Dash Masternode Tool](#dash-masternode-tool)  
+   * [Feature list](#feature-list)
    * [Supported hardware wallets](#supported-hardware-wallets)
  * [Configuration](#configuration)
    * [Setting up the hardware wallet type](#setting-up-the-hardware-wallet-type)
@@ -14,12 +14,12 @@
    * [Masternode setup](#masternode-setup)
      * [Scenario A: moving masternode management from Dash Core](doc/config-masternodes-a.md)
      * [Scenario B: configuring a new masternode](doc/config-masternodes-b.md)
-   * [Command line parameters](#commandline-parameters)
+   * [Command line parameters](#command-line-parameters)
  * [Features](#features)
-   * [Starting a masternode](#starting-masternode)
-   * [Transferring masternode earnings](#transferring-of-masternode-earnings)
-   * [Signing messages with a hardware wallet](#signing-messages-with-hardware-wallet)
-   * [Changing a hardware wallet PIN/passphrase](#changing-hardware-wallets-pinpassphrase)
+   * [Starting a masternode](#starting-a-masternode)
+   * [Transferring masternode earnings](#transferring-masternode-earnings)
+   * [Signing messages with a hardware wallet](#signing-messages-with-a-hardware-wallet)
+   * [Changing a hardware wallet PIN/passphrase](#changing-a-hardware-wallet-pinpassphrase)
    * [Browsing and voting on proposals](doc/proposals.md)
  * [Downloads](https://github.com/Bertrand256/dash-masternode-tool/releases/latest)
 
@@ -69,7 +69,7 @@ Depending on your preferences (and skills) you can choose one of three possible 
 
 ### Masternode setup
 Here we make the following assumptions:
-  * You already have a server running the Dash daemon software (_dashd_) that you want to use as a masternode. If you don't, you will need to install and configure one first by following the guide on the [Dash Wiki](https://dashpay.atlassian.net/wiki/display/DOC/Set+Up).
+  * You already have a server running the Dash daemon software (_dashd_) that you want to use as a masternode. If you don't, you will need to install and configure one first by following the guide on the [Dash Wiki](https://dashpay.atlassian.net/wiki/spaces/DOC/pages/113934340).
   * We occasionally refer to the _dashd_ configuration file, so it is assumed that *dashd* is running under a Linux operating system (OS), which is the most popular and recommended OS for this purpose.
   * Your server has a public IP address that will be visible on the Internet.
   * You have set up a TCP port on which your _dashd_ listens for incoming connections (usually 9999). 
