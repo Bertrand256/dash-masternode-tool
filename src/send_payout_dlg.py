@@ -537,7 +537,7 @@ class SendPayoutDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
                 except Exception as e:
                     logging.exception('Exception while reading address for BIP32 path (%s).' % path)
-                    self.errorMsg('Invalid BIP32 path.')
+                    self.errorMsg(str(e))
                     self.edtSourceBip32Path.setFocus()
             else:
                 self.errorMsg('Enter the BIP32 path.')
