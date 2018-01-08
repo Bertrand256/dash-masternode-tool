@@ -7,10 +7,10 @@ from typing import Optional, Tuple
 import simplejson
 import binascii
 import unicodedata
-from trezorlib.client import TextUIMixin as trezor_TextUIMixin, normalize_nfc, ProtocolMixin as trezor_ProtocolMixin, \
+from trezorlib.client import TextUIMixin as trezor_TextUIMixin, ProtocolMixin as trezor_ProtocolMixin, \
     BaseClient as trezor_BaseClient, CallException
 from trezorlib.tx_api import TxApiInsight
-from hw_common import HardwareWalletCancelException, ask_for_pass_callback, ask_for_pin_callback
+from hw_common import HardwareWalletCancelException, ask_for_pass_callback, ask_for_pin_callback, ask_for_word_callback
 from trezorlib import messages_pb2 as trezor_proto
 import trezorlib.types_pb2 as proto_types
 import logging
@@ -45,6 +45,15 @@ class MyTrezorTextUIMixin(trezor_TextUIMixin):
         if not pin:
             raise HardwareWalletCancelException('Cancelled')
         return trezor_proto.PinMatrixAck(pin=pin)
+
+    def callback_WordRequest(self, msg):
+        if msg.type in (proto_types.WordRequestType_Matrix9,
+                        proto_types.WordRequestType_Matrix6):
+            return self.callback_RecoveryMatrix(msg)
+
+        msg = "Enter one word of mnemonic: "
+        word = ask_for_word_callback(msg, self.mnemonic_wordlist.wordlist)
+        return trezor_proto.WordAck(word=word)
 
 
 class MyTrezorClient(trezor_ProtocolMixin, MyTrezorTextUIMixin, trezor_BaseClient):
@@ -199,6 +208,44 @@ def change_pin(main_ui, remove=False):
         raise Exception('HW client not set.')
 
 
+def get_entropy(hw_device_id, len_bytes):
+    client = None
+    try:
+        client = connect_trezor(hw_device_id)
+
+        if client:
+            client.get_entropy(len_bytes)
+            client.close()
+        else:
+            raise Exception('Couldn\'t connect to Trezor device.')
+    except CallException as e:
+        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
+            raise
+        else:
+            if client:
+                client.close()
+            raise HardwareWalletCancelException('Cancelled')
+
+
+def wipe_device(hw_device_id):
+    client = None
+    try:
+        client = connect_trezor(hw_device_id)
+
+        if client:
+            client.wipe_device()
+            client.close()
+        else:
+            raise Exception('Couldn\'t connect to Trezor device.')
+    except CallException as e:
+        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
+            raise
+        else:
+            if client:
+                client.close()
+            raise HardwareWalletCancelException('Cancelled')
+
+
 def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphrase_enbled: bool, hw_label: str,
                             language: Optional[str]=None) -> Tuple[str, bool]:
     """
@@ -209,11 +256,11 @@ def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphra
     :param hw_label:
     :param language:
     :return: Tuple
-        Ret[0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
+        [0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
             returned to the caller.
-        Ret[1]: False, if the user cancelled the operation. In this situation we deliberately don't raise the 'cancelled'
-            exception, because in the case of changing of the device id (when wiping) we want to pass it back to
-            the caller.
+        [1]: False, if the user cancelled the operation. In this case we deliberately don't raise the 'cancelled'
+            exception, because in the case of changing of the device id (when wiping) we want to pass the new device
+            id back to the caller.
     """
     client = None
     try:
@@ -227,7 +274,7 @@ def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphra
             client.close()
             return hw_device_id, True
         else:
-            raise Exception('Couln\'t connect to Trezor device.')
+            raise Exception('Couldn\'t connect to Trezor device.')
 
     except CallException as e:
         if client:
@@ -236,3 +283,48 @@ def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphra
             raise
         else:
             return hw_device_id, False  # cancelled by the user
+
+
+def recovery_device(hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool, hw_label: str) \
+        -> Tuple[str, bool]:
+    """
+    :param hw_device_id:
+    :param passphrase_enbled:
+    :param pin_enbled:
+    :param hw_label:
+    :return: Tuple
+        [0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
+            returned to the caller.
+        [1]: False, if the user cancelled the operation. In this case we deliberately don't raise the 'cancelled'
+            exception, because in the case of changing of the device id (when wiping) we want to pass the new device
+            id back to the caller.
+    """
+    client = None
+    try:
+        client = connect_trezor(hw_device_id)
+
+        if client:
+            if client.features.initialized:
+                client.wipe_device()
+                hw_device_id = client.features.device_id
+
+            client.recovery_device(word_count, passphrase_enabled, pin_enabled, hw_label, language='english',
+                                   expand=True)
+            client.close()
+            return hw_device_id, True
+        else:
+            raise Exception('Couldn\'t connect to Trezor device.')
+
+    except CallException as e:
+        if client:
+            client.close()
+        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
+            raise
+        else:
+            return hw_device_id, False  # cancelled by the user
+
+ # client.recovery_device(word_count=24, passphrase_protection=True, pin_protection=True,
+                    #                     label=label, language='english', dry_run=True)
+
+                    # client.reset_device(display_random=True, strength=256, passphrase_protection=True, pin_protection=True,
+                    #                     label=label, language='english', u2f_counter=0, skip_backup=True)
