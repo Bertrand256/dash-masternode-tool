@@ -21,6 +21,7 @@ import app_cache as cache
 import default_config
 import app_utils
 from db_intf import DBCache
+from wnd_utils import WndUtils
 
 APP_NAME_SHORT = 'DashMasternodeTool'
 APP_NAME_LONG = 'Dash Masternode Tool'
@@ -88,7 +89,6 @@ class AppConfig(object):
         self.confirm_when_voting = True
         self.add_random_offset_to_vote_time = True  # To avoid identifying one user's masternodes by vote time
         self.csv_delimiter =';'
-
         self.masternodes = []
         self.last_bip32_base_path = ''
         self.bip32_recursive_search = True
@@ -100,6 +100,7 @@ class AppConfig(object):
         self.log_level_str = ''
         self.db_cache_file_name = ''
         self.cfg_backup_dir = ''
+        self.app_last_version = ''
 
     def init(self, app_path):
         """ Initialize configuration after openning the application. """
@@ -112,19 +113,37 @@ class AppConfig(object):
         except:
             pass
 
-        home_dir = expanduser('~')
-        app_user_dir = os.path.join(home_dir, APP_NAME_SHORT)
-        if not os.path.exists(app_user_dir):
-            os.makedirs(app_user_dir)
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--config', help="Path to a configuration file", dest='config')
+        parser.add_argument('--data-dir', help="Root directory for configuration file, cache and log dubdirs",
+                            dest='data_dir')
+        args = parser.parse_args()
+
+        app_user_dir = ''
+        if args.data_dir:
+            if os.path.exists(args.data_dir):
+                if os.path.isdir(args.data_dir):
+                    app_user_dir = args.data_dir
+                else:
+                    WndUtils.errorMsg('--data-dir parameter doesn\'t point to a directory. Using the default '
+                                      'data directory.')
+            else:
+                WndUtils.errorMsg('--data-dir parameter doesn\'t point to an existing directory. Using the default '
+                                  'data directory.')
+
+        if not app_user_dir:
+            home_dir = expanduser('~')
+            app_user_dir = os.path.join(home_dir, APP_NAME_SHORT)
+            if not os.path.exists(app_user_dir):
+                os.makedirs(app_user_dir)
+
         self.cache_dir = os.path.join(app_user_dir, 'cache')
         if not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir)
         cache.init(self.cache_dir, self.app_version)
+        self.app_last_version = cache.get_value('app_version', '', str)
         self.app_config_file_name = ''
 
-        parser = argparse.ArgumentParser()
-        parser.add_argument('--config', help="Path to a configuration file", dest='config')
-        args = parser.parse_args()
         if args.config is not None:
             self.app_config_file_name = args.config
             if not os.path.exists(self.app_config_file_name):
@@ -162,16 +181,20 @@ class AppConfig(object):
         except Exception as e:
             logging.exception('SQLite initialization error')
 
+        # directory for configuration backups:
+        self.cfg_backup_dir = os.path.join(app_user_dir, 'backup')
+        if not os.path.exists(self.cfg_backup_dir):
+            os.makedirs(self.cfg_backup_dir)
+
         try:
             # read configuration from a file
             self.read_from_file()
         except:
             pass
 
-        # directory for configuration backups:
-        self.cfg_backup_dir = os.path.join(app_user_dir, 'backup')
-        if not os.path.exists(self.cfg_backup_dir):
-            os.makedirs(self.cfg_backup_dir)
+        if not self.app_last_version or \
+           app_utils.version_str_to_number(self.app_last_version) < app_utils.version_str_to_number(self.app_version):
+            cache.save_data()
         self.initialized = True
 
     def start_cache(self):
@@ -236,6 +259,12 @@ class AppConfig(object):
         was_default_direct_localhost_in_ini_v1 = False
         ini_v1_localhost_rpc_cfg = None
 
+        # from v0.9.15 some public nodes changed its names and port numbers to the official HTTPS port number: 443
+        # correct the configuration
+        correct_public_nodes = self.app_last_version and \
+            (app_utils.version_str_to_number(self.app_last_version) < app_utils.version_str_to_number('0.9.15'))
+        configuration_corrected = False
+
         if os.path.exists(self.app_config_file_name):
             config = ConfigParser()
             try:
@@ -295,6 +324,15 @@ class AppConfig(object):
                         self.dash_net_configs.append(cfg)
                         was_default_direct_localhost_in_ini_v1 = cfg.enabled and cfg.host == '127.0.0.1'
                         ini_v1_localhost_rpc_cfg = cfg
+                        if correct_public_nodes:
+                            if cfg.host.lower() == 'alice.dash-dmt.eu':
+                                cfg.host = 'alice.dash-masternode-tool.org'
+                                cfg.port = '443'
+                                configuration_corrected = True
+                            elif cfg.host.lower() == 'luna.dash-dmt.eu':
+                                cfg.host = 'luna.dash-masternode-tool.org'
+                                cfg.port = '443'
+                                configuration_corrected = True
 
                 self.last_bip32_base_path = config.get(section, 'bip32_base_path', fallback="44'/5'/0'/0/0")
                 if not self.last_bip32_base_path:
@@ -347,6 +385,15 @@ class AppConfig(object):
                         cfg.ssh_conn_cfg.port = config.get(section, 'ssh_port', fallback='')
                         cfg.ssh_conn_cfg.username = config.get(section, 'ssh_username', fallback='')
                         self.dash_net_configs.append(cfg)
+                        if correct_public_nodes:
+                            if cfg.host.lower() == 'alice.dash-dmt.eu':
+                                cfg.host = 'alice.dash-masternode-tool.org'
+                                cfg.port = '443'
+                                configuration_corrected = True
+                            elif cfg.host.lower() == 'luna.dash-dmt.eu':
+                                cfg.host = 'luna.dash-masternode-tool.org'
+                                cfg.port = '443'
+                                configuration_corrected = True
             except Exception:
                 logging.exception('Read configuration error:')
 
@@ -370,7 +417,7 @@ class AppConfig(object):
                         # deactivate user's old cfg
                         ini_v1_localhost_rpc_cfg.enabled = False
 
-            if not ini_version or ini_version == 1:
+            if not ini_version or ini_version == 1 or configuration_corrected:
                 # we are migrating settings from old configuration file - save config file in a new format
                 self.save_to_file()
 

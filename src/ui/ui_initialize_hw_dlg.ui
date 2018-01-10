@@ -32,14 +32,14 @@
    <item>
     <widget class="QStackedWidget" name="tabSteps">
      <property name="currentIndex">
-      <number>5</number>
+      <number>2</number>
      </property>
      <widget class="QWidget" name="pgStepDeviceType">
       <layout class="QVBoxLayout" name="verticalLayout_12">
        <item>
         <widget class="QLabel" name="lblStep0Title_2">
          <property name="text">
-          <string>&lt;b&gt;Select the device type&lt;/b&gt;</string>
+          <string>&lt;b&gt;Select device type&lt;/b&gt;</string>
          </property>
         </widget>
        </item>
@@ -121,7 +121,7 @@
        <item>
         <widget class="QLabel" name="lblStepDeviceInstanceMessage">
          <property name="text">
-          <string>&lt;b&gt;Select which device you are going to use.&lt;/b&gt;</string>
+          <string>&lt;b&gt;Select which device you want to use&lt;/b&gt;</string>
          </property>
          <property name="wordWrap">
           <bool>true</bool>
@@ -170,7 +170,7 @@
        <item>
         <widget class="QLabel" name="lblStep1Title">
          <property name="text">
-          <string>&lt;b&gt;Choose the action you are going to perform&lt;/b&gt;</string>
+          <string>&lt;b&gt;Select the action to perform&lt;/b&gt;</string>
          </property>
          <property name="wordWrap">
           <bool>true</bool>
@@ -204,7 +204,7 @@
           <item>
            <widget class="QRadioButton" name="rbActRecoverWordsSafe">
             <property name="text">
-             <string>Recover hardware wallet from words seed - safe</string>
+             <string>Recover hardware wallet from seed words - safe</string>
             </property>
             <property name="checked">
              <bool>true</bool>
@@ -214,7 +214,7 @@
           <item>
            <widget class="QRadioButton" name="rbActRecoverMnemonicWords">
             <property name="text">
-             <string>Recover hardware wallet from words seed - convenient</string>
+             <string>Recover hardware wallet from seed words - convenient</string>
             </property>
             <property name="checked">
              <bool>false</bool>
@@ -231,7 +231,7 @@
           <item>
            <widget class="QRadioButton" name="rbActInitializeNewSeed">
             <property name="text">
-             <string>Initialize hardware wallet with newly generated word seed</string>
+             <string>Initialize hardware wallet with newly generated seed words</string>
             </property>
            </widget>
           </item>
@@ -270,7 +270,7 @@
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="pgStepWordCountEntropy">
+     <widget class="QWidget" name="pgStepWordCount">
       <layout class="QVBoxLayout" name="verticalLayout_6">
        <property name="leftMargin">
         <number>6</number>
@@ -343,9 +343,26 @@
         </widget>
        </item>
        <item>
+        <spacer name="verticalSpacer_3">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="pgSetpEntropy">
+      <layout class="QVBoxLayout" name="verticalLayout_4">
+       <item>
         <widget class="QLabel" name="lblStep1HexEntropy">
          <property name="text">
-          <string>&lt;b&gt;Enter the recovery entropy&lt;/b&gt;</string>
+          <string>&lt;b&gt;Enter your recovery seed hexadecimal entropy&lt;/b&gt;</string>
          </property>
         </widget>
        </item>
@@ -357,27 +374,7 @@
         </widget>
        </item>
        <item>
-        <widget class="QLabel" name="lblStep1Message1">
-         <property name="text">
-          <string/>
-         </property>
-         <property name="wordWrap">
-          <bool>true</bool>
-         </property>
-         <property name="openExternalLinks">
-          <bool>true</bool>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QLabel" name="lblStep1Message2">
-         <property name="text">
-          <string/>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <spacer name="verticalSpacer_3">
+        <spacer name="verticalSpacer_6">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
          </property>
@@ -408,7 +405,7 @@
        <item>
         <widget class="QLabel" name="lblStepWordListTitle">
          <property name="text">
-          <string>&lt;b&gt;Enter your recovery seed words&lt;/b&gt;</string>
+          <string>&lt;b&gt;Enter the words of your recovery seed&lt;/b&gt;</string>
          </property>
          <property name="wordWrap">
           <bool>true</bool>
@@ -440,7 +437,7 @@
        <item>
         <widget class="QLabel" name="lblStepWordListMessage2">
          <property name="text">
-          <string>You can use your OS's stadard 'Copy'/'Paste' shortcuts to copy/paste the whole words seed (separated with spaces/commas) from/to the editor.</string>
+          <string>You can copy and paste the complete set of seed words into this dialog directly (separated by spaces, commas or line breaks).</string>
          </property>
          <property name="wordWrap">
           <bool>true</bool>
@@ -488,7 +485,7 @@
          <item row="0" column="1">
           <widget class="QLineEdit" name="edtHwOptionsDeviceLabel">
            <property name="placeholderText">
-            <string>Label for Trezor/Keepkey device</string>
+            <string/>
            </property>
           </widget>
          </item>
@@ -593,7 +590,7 @@
                <enum>QLineEdit::Password</enum>
               </property>
               <property name="placeholderText">
-               <string>PIN for passphrase</string>
+               <string>Secondary PIN</string>
               </property>
              </widget>
             </item>
@@ -917,6 +914,9 @@
       <layout class="QVBoxLayout" name="verticalLayout_10">
        <item>
         <widget class="QLabel" name="lblStep5Tile">
+         <property name="styleSheet">
+          <string notr="true">font: 18pt &quot;.SF NS Text&quot;;</string>
+         </property>
          <property name="text">
           <string>&lt;b&gt;Operation successfully finished.&lt;/b&gt;</string>
          </property>
