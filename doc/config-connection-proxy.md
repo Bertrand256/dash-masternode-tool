@@ -1,7 +1,7 @@
 ## Connection to "public" nodes
 This solution is designed for non-technical users who may have difficulty configuring their own JSON-RPC node, or for those who do not want to waste their time repeating what others have done before and have made publicly available :-)
 
-From the user's point of view, the solution is based on several JSON-RPC nodes made available by the Dash community to the users of the *DashMasternodeTool* and *dashmnb* apps. At the time of writing, one of the nodes (actually three, accessed under one shared IP address) was managed by @chaeplin, a very well-known Dash Core developer, and the other two by myself (@Bertrand256).
+From the user's point of view, the solution is based on several JSON-RPC nodes made available by the Dash community to the users of the *Dash Masternode Tool* and *dashmnb* apps. At the time of writing, one of the nodes (actually three, accessed under one shared IP address) was managed by @chaeplin, a very well-known Dash Core developer, and the other two by myself (@Bertrand256).
 
 ### Technical information
 These nodes are based on the following components:
