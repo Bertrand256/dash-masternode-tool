@@ -22,7 +22,9 @@
    * [Signing messages with a hardware wallet](#signing-messages-with-a-hardware-wallet)
    * [Changing a hardware wallet PIN/passphrase](#changing-a-hardware-wallet-pinpassphrase)
    * [Browsing and voting on proposals](doc/proposals.md)
+   * [Hardware wallets' initialization / recovery](doc/hw-initialization-recovery.md)
  * [Downloads](https://github.com/Bertrand256/dash-masternode-tool/releases/latest)
+ * [Changelog](changelog.md)
 
 ## Masternodes
 
@@ -84,10 +86,12 @@ Further configuration steps depend on whether you already have a masternode cont
 
 ### Command line parameters
 
-The application currently supports one command-line parameter: `--config`, which can be used to pass a non-standard path to a configuration file. Example:
-```
-DashMasternodeTool.exe --config=C:\dmt-configs\config1.ini
-```
+The application currently supports the following command-line parameters:
+* `--data-dir`: a path to a directory in which the application will create all the needed files, such as: configuration file, cache and log files; it can be useful for users who want to avoid leaving any of the application files on the computer - which by default are created in the user's home directory - and insted to keep them on an external drive
+* `--config`: a non-standard path to a configuration file. Example:
+  `DashMasternodeTool.exe --config=C:\dmt-configs\config1.ini`
+
+
 
 ## Features
 
@@ -95,7 +99,7 @@ DashMasternodeTool.exe --config=C:\dmt-configs\config1.ini
 
 Once you set up the Dash daemon and perform the required *DMT* configuration, you need to broadcast the `start masternode` message to the Dash network, so the other Dash nodes recognize your daemon as a masternode and add it to the payment queue.
 
-To do this, click the `Start Masternode using Hardware Wallet` button.
+To do this, click the `Start Masternode using Hardware wallet` button.
 
 ### Sequence of actions
 
@@ -171,7 +175,7 @@ To sign a message with your hardware wallet, click the `Tools` button and then s
 
 ### Changing hardware wallet PIN/passphrase
 
-Click the `Tools` button and select the `Hardware Wallet PIN/Passphrase configuration` item. The following window will appear to guide you through the steps of changing the PIN/passphrase:  
+Click the `Tools` button and select the `Hardware wallet PIN/Passphrase configuration` item. The following window will appear to guide you through the steps of changing the PIN/passphrase:  
 ![Hardware wallet setup window](doc/img/dmt-hardware-wallet-config.png)
 
 ### Downloads
@@ -180,7 +184,7 @@ This application is written in Python 3, but requires several additional librari
 
 For this reason, in addition to providing the source code on GitHub, binary versions for all three major operating systems - macOS, Windows (32 and 64-bit) and Linux - are available for download directly. The binaries are compiled and tested under the following OS distributions:
 * Windows 7 64-bit
-* macOS 10.11.6 El Capitan
+* macOS 10.13.2 High Sierra
 * Linux Debian Jessie
 
 Binary versions of the latest release can be downloaded from: https://github.com/Bertrand256/dash-masternode-tool/releases/latest.

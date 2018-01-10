@@ -2,18 +2,17 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-12
-from typing import List, Optional, Tuple
-from PyQt5 import QtGui, QtCore
+from typing import List
+from PyQt5 import QtGui
 import bitcoin
 import functools
 import re
-from PyQt5.QtCore import QSize, pyqtSlot, QAbstractTableModel, QVariant, Qt, QPoint
+from PyQt5.QtCore import pyqtSlot, QAbstractTableModel, QVariant, Qt, QPoint
 from PyQt5.QtGui import QKeySequence
-from PyQt5.QtWidgets import QDialog, QMenu, QApplication, QLineEdit, QAction, QShortcut, QMessageBox
+from PyQt5.QtWidgets import QDialog, QMenu, QApplication, QLineEdit, QShortcut, QMessageBox
 from dash_utils import bip32_path_string_to_n, pubkey_to_address
-from hw_common import HardwareWalletCancelException, ask_for_word_callback
+from hw_common import HardwareWalletCancelException
 from ui import ui_initialize_hw_dlg
-from wnd_utils import WndUtils
 from doc_dlg import show_doc_dlg
 from hw_intf import *
 from mnemonic import Mnemonic
@@ -23,13 +22,12 @@ ACTION_RECOVER_FROM_WORDS_CONV = 1
 ACTION_RECOVER_FROM_WORDS_SAFE = 2
 ACTION_RECOVER_FROM_ENTROPY = 3
 ACTION_INITIALIZE_NEW_SAFE = 4
-ACTION_INITIALIZE_NEW_UNSAFE = 5
-ACTION_WIPE_DEVICE = 6
+ACTION_WIPE_DEVICE = 5
 
 
 STEP_SELECT_DEVICE_TYPE = 0
 STEP_SELECT_DEVICE_INSTANCE = 1
-STEP_CHOOSE_ACTION = 2
+STEP_SELECT_ACTION = 2
 STEP_INPUT_NUMBER_OF_WORDS = 3
 STEP_INPUT_ENTROPY = 4
 STEP_INPUT_WORDS = 5
@@ -56,11 +54,19 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         self.hw_type: Optional[HWType] = None  # HWType
         self.hw_device_id_selected = Optional[str]  # device id of the hw client selected
         self.hw_device_instances: List[List[str]] = []  # list of 2-element list: hw desc, ref to trezor/keepey/ledger client object
+        self.act_paste_words = None
+        self.hw_action_mnemonic_words: Optional[str] = None
+        self.hw_action_use_pin: Optional[bool] = None
+        self.hw_action_pin: Optional[str] = None
+        self.hw_action_use_passphrase: Optional[bool] = None
+        self.hw_action_passphrase: Optional[str] = None  # only for Ledger
+        self.hw_action_secondary_pin: Optional[str] = None # only for Ledger
+        self.hw_action_label: Optional[str] = None
         self.setupUi()
 
     def setupUi(self):
         ui_initialize_hw_dlg.Ui_HwInitializeDlg.setupUi(self, self)
-        self.setWindowTitle("Hardware wallet initialization")
+        self.setWindowTitle("Hardware wallet recovery/initialization")
 
         self.viewMnemonic.verticalHeader().setDefaultSectionSize(
             self.viewMnemonic.verticalHeader().fontMetrics().height() + 6)
@@ -113,9 +119,9 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         QShortcut(QKeySequence("Ctrl+C"), self.viewMnemonic).activated.connect(self.on_actCopyWords_triggered)
 
         # paste action
-        self.actPasteWords = self.popMenuWords.addAction("\u23ce Paste")
-        self.actPasteWords.triggered.connect(self.on_actPasteWords_triggered)
-        self.actPasteWords.setShortcut(QKeySequence("Ctrl+V"))
+        self.act_paste_words = self.popMenuWords.addAction("\u23ce Paste")
+        self.act_paste_words.triggered.connect(self.on_actPasteWords_triggered)
+        self.act_paste_words.setShortcut(QKeySequence("Ctrl+V"))
         QShortcut(QKeySequence("Ctrl+V"), self.viewMnemonic).activated.connect(self.on_actPasteWords_triggered)
 
         self.fraDetails.setVisible(False)
@@ -130,7 +136,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         elif self.rbActRecoverHexEntropy.isChecked():
             self.action_type = ACTION_RECOVER_FROM_ENTROPY
         elif self.rbActInitializeNewSeed.isChecked():
-            self.action_type = ACTION_INITIALIZE_NEW_UNSAFE
+            self.action_type = ACTION_INITIALIZE_NEW_SAFE
         elif self.rbActWipeDevice.isChecked():
             self.action_type = ACTION_WIPE_DEVICE
         else:
@@ -141,18 +147,18 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             idx = 0
         elif self.current_step == STEP_SELECT_DEVICE_INSTANCE:
             idx = 1
-        elif self.current_step == STEP_CHOOSE_ACTION:
+        elif self.current_step == STEP_SELECT_ACTION:
             idx = 2
         elif self.current_step == STEP_INPUT_NUMBER_OF_WORDS:
             idx = 3
         elif self.current_step == STEP_INPUT_ENTROPY:
-            idx = 3
-        elif self.current_step == STEP_INPUT_WORDS:
             idx = 4
-        elif self.current_step == STEP_INPUT_HW_OPTIONS:
+        elif self.current_step == STEP_INPUT_WORDS:
             idx = 5
-        elif self.current_step == STEP_FINISHED:
+        elif self.current_step == STEP_INPUT_HW_OPTIONS:
             idx = 6
+        elif self.current_step == STEP_FINISHED:
+            idx = 7
         else:
             raise Exception('Invalid step.')
         self.tabSteps.setCurrentIndex(idx)
@@ -165,241 +171,316 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             if self.current_step == STEP_FINISHED:
                 self.btnNext.setText('Close')
 
-    @pyqtSlot(bool)
-    def on_btnNext_clicked(self, clicked):
-        error = False
-        if self.current_step == STEP_SELECT_DEVICE_TYPE:
-            if not self.hw_type:
-                self.errorMsg('Select your hardware wallet type.')
-                error = True
-            else:
-                # try to load devices
-                self.load_hw_devices()
-                cnt = len(self.hw_device_instances)
-                if cnt == 0:
-                    self.errorMsg('Couldn\'t find any %s devices connected to your computer.' %
-                                  HWType.get_desc(self.hw_type))
-                    error = True
-                elif cnt == 1:
-                    # there is only one instance of this device type; go to the actions tab
-                    self.hw_device_id_selected = self.hw_device_instances[0][1]
-                    self.set_next_step(STEP_CHOOSE_ACTION)
-                else:
-                    # there is more than one instance of this device type; go to the device instance selection tab
-                    self.set_next_step(STEP_SELECT_DEVICE_INSTANCE)
+    def apply_step_select_device_type(self) -> bool:
+        """Moves forward from the 'device type selection' step."""
+        success = True
+        if not self.hw_type:
+            self.errorMsg('Select your hardware wallet type.')
+            success = False
+        else:
+            self.set_next_step(STEP_SELECT_ACTION)
+        return success
 
-        elif self.current_step == STEP_SELECT_DEVICE_INSTANCE:
-            idx = self.cboDeviceInstance.currentIndex()
-            if idx >= 0 and idx < len(self.hw_device_instances):
-                self.hw_device_id_selected = self.hw_device_instances[idx][1]
-                self.set_next_step(STEP_CHOOSE_ACTION)
-            else:
-                self.errorMsg('No %s device instances.' % HWType.get_desc(self.hw_type))
+    def apply_step_select_action(self) -> bool:
+        """Moves forward from the 'select action' step."""
+        success = True
+        self.read_action_type_from_ui()
+        if self.action_type in (ACTION_RECOVER_FROM_WORDS_CONV, ACTION_RECOVER_FROM_WORDS_SAFE,
+                                ACTION_INITIALIZE_NEW_SAFE):
 
-        elif self.current_step == STEP_CHOOSE_ACTION:
-            # step: choose the action type
-            self.read_action_type_from_ui()
-            if self.action_type == ACTION_RECOVER_FROM_WORDS_CONV:
+            self.set_next_step(STEP_INPUT_NUMBER_OF_WORDS)
 
-                self.set_next_step(STEP_INPUT_NUMBER_OF_WORDS)
+        elif self.action_type == ACTION_RECOVER_FROM_ENTROPY:
 
-            elif self.action_type == ACTION_RECOVER_FROM_ENTROPY:
+            self.set_next_step(STEP_INPUT_ENTROPY)
 
-                self.set_next_step(STEP_INPUT_ENTROPY)
-
-            elif self.action_type == ACTION_RECOVER_FROM_WORDS_SAFE:
-
-                self.set_next_step(STEP_INPUT_NUMBER_OF_WORDS)
-
-            elif self.action_type == ACTION_WIPE_DEVICE:
-                if self.hw_type in (HWType.trezor, HWType.keepkey):
-                    if self.queryDlg('Do you really want to wipe your %s device?' % self.hw_type,
-                                     buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                                     default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
-                        try:
-                            wipe_device(self.hw_type, self.hw_device_id_selected)
-                            self.set_next_step(STEP_FINISHED)
-                        except HardwareWalletCancelException:
-                            self.warnMsg('Operation cancelled.')
-            else:
-                raise Exception('Not implemented')
-
-        elif self.current_step in (STEP_INPUT_NUMBER_OF_WORDS, STEP_INPUT_ENTROPY):
-            if self.action_type == ACTION_RECOVER_FROM_WORDS_CONV:
-                self.set_next_step(STEP_INPUT_WORDS)
-
-            elif self.action_type == ACTION_RECOVER_FROM_ENTROPY:
-                # recovery from hex entropy
-                ent_str = self.edtHexEntropy.text()
-                try:
-                    entropy = bytes.fromhex(ent_str)
-                    if len(entropy) not in (32, 24, 16):
-                        self.warnMsg('The entropy hex-string can only have 16, 24 or 32 bytes.')
-                        error = True
-                    else:
-                        self.entropy = entropy
-                        words = self.entropy_to_mnemonic(entropy)
-                        self.set_words(words)
-                        self.set_word_count(len(words))
-                    if not error:
-                        self.set_next_step(STEP_INPUT_WORDS)
-                except Exception as e:
-                    self.warnMsg(str(e))
-                    error = True
-            elif self.action_type == ACTION_INITIALIZE_NEW_UNSAFE:
-                # generate a new seed and initialize device
-                ent_len = {
-                    24: 32,
-                    18: 24,
-                    12: 16}.get(self.word_count)
-                if ent_len:
-                    entropy = get_entropy(self.main_ui, ent_len)
-                    words = self.entropy_to_mnemonic(entropy)
-                    self.entropy = entropy
-                    self.set_words(words)
-                    self.set_word_count(len(words))
-                    self.set_next_step(STEP_INPUT_WORDS)
-                else:
-                    raise Exception("Internal error: invalid seed length.")
-
-            elif self.action_type == ACTION_RECOVER_FROM_WORDS_SAFE:
-
-                self.set_next_step(STEP_INPUT_HW_OPTIONS)
-
-        elif self.current_step == STEP_INPUT_WORDS:
-            if self.action_type == ACTION_RECOVER_FROM_WORDS_CONV:
-                # verify all the seed words entered by the user
-                wl = self.mnemonic.wordlist
-                invalid_indexes = []
-                suppress_error_message = False
-                for idx, word in enumerate(self.get_cur_mnemonic_words()):
-                    if not word:
-                        self.errorMsg('Cannot continue - enter all words.' )
-                        error = True
-                        suppress_error_message = True
-                        break
-                    if word not in wl:
-                        error = True
-                        invalid_indexes.append(idx)
-
-                if error:
-                    # verify the whole word-set entered by the user (checksum)
-                    if not suppress_error_message:
-                        self.errorMsg('Cannot continue - invalid word(s): %s.' %
-                                      ','.join(['#' + str(x+1) for x in invalid_indexes]))
-                else:
+        elif self.action_type == ACTION_WIPE_DEVICE:
+            if self.hw_type in (HWType.trezor, HWType.keepkey):
+                if self.queryDlg('Do you really want to wipe your %s device?' % self.hw_type,
+                                 buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                 default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
                     try:
-                        ws = self.get_cur_mnemonic_words()
-                        self.entropy = self.mnemonic.to_entropy(ws)
-                    except Exception as e:
-                        error = True
-                        if str(e) == 'Failed checksum.':
-                            self.errorMsg('Invalid checksum of the provided words. You\'ve probably mistyped some'
-                                          ' words or changed their order.')
+                        self.load_hw_devices()
+                        cnt = len(self.hw_device_instances)
+                        if cnt == 0:
+                            self.errorMsg('Couldn\'t find any %s devices connected to your computer.' %
+                                          HWType.get_desc(self.hw_type))
+                            success = False
+                        elif cnt == 1:
+                            # there is only one instance of this device type
+                            self.hw_device_id_selected = self.hw_device_instances[0][1]
+                            success = self.apply_action_on_hardware_wallet()
+                            if success:
+                                self.set_next_step(STEP_FINISHED)
                         else:
-                            self.errorMsg('There was an error in the provided word-list. Error details: ' + str(e))
-            elif self.action_type == ACTION_RECOVER_FROM_ENTROPY:
-                pass
+                            # there is more than one instance of this device type; go to the device instance selection tab
+                            self.set_next_step(STEP_SELECT_DEVICE_INSTANCE)
+                            success = True
+                    except HardwareWalletCancelException:
+                        self.warnMsg('Operation cancelled.')
+                        success = False
+                else:
+                    success = False
+        else:
+            raise Exception('Not implemented')
+        return success
+
+    def apply_step_select_number_of_words(self) -> bool:
+        """Moves forward from the 'select number of words' step."""
+
+        if self.action_type == ACTION_RECOVER_FROM_WORDS_CONV:
+            self.set_next_step(STEP_INPUT_WORDS)
+        elif self.action_type == ACTION_RECOVER_FROM_WORDS_SAFE:
+            self.set_next_step(STEP_INPUT_HW_OPTIONS)
+        elif self.action_type == ACTION_INITIALIZE_NEW_SAFE:
+            self.set_next_step(STEP_INPUT_HW_OPTIONS)
+        else:
+            raise Exception('Invalid action type.')
+        return True
+
+    def apply_step_input_entropy(self) -> bool:
+        """Moves forward from the 'input entropy' step."""
+        success = True
+        ent_str = self.edtHexEntropy.text()
+        try:
+            entropy = bytes.fromhex(ent_str)
+            if len(entropy) not in (32, 24, 16):
+                self.warnMsg('The entropy hex-string can only have 16, 24 or 32 bytes.')
+                success = False
             else:
-                error = True
-            if not error:
-                self.set_next_step(STEP_INPUT_HW_OPTIONS)
+                self.entropy = entropy
+                words = self.entropy_to_mnemonic(entropy)
+                self.set_words(words)
+                self.set_word_count(len(words))
+                self.set_next_step(STEP_INPUT_WORDS)
+        except Exception as e:
+            self.warnMsg(str(e))
+            success = False
+        return success
 
-        elif self.current_step == STEP_INPUT_HW_OPTIONS:
-            use_pin = self.chbHwOptionsUsePIN.isChecked()
-            use_passphrase = self.chbHwOptionsUsePassphrase.isChecked()
-            hw_label = self.edtHwOptionsDeviceLabel.text()
-            device_id = ''
-            finished = False
-            if not hw_label:
-                hw_label = 'My hardware wallet'
+    def apply_step_input_words(self) -> bool:
+        """Moves forward from the 'input words' step."""
+        success = True
+        if self.action_type == ACTION_RECOVER_FROM_WORDS_CONV:
+            # verify all the seed words entered by the user
+            wl = self.mnemonic.wordlist
+            invalid_indexes = []
+            suppress_error_message = False
+            for idx, word in enumerate(self.get_cur_mnemonic_words()):
+                if not word:
+                    self.errorMsg('Cannot continue - not all words are entered.')
+                    success = False
+                    suppress_error_message = True
+                    break
+                if word not in wl:
+                    success = False
+                    invalid_indexes.append(idx)
 
-            if self.action_type in (ACTION_RECOVER_FROM_WORDS_CONV, ACTION_RECOVER_FROM_ENTROPY):
-                mnemonic_words = ' '.join(self.get_cur_mnemonic_words())
-                pin = ''
-                secondary_pin = ''
-                passphrase_for_ledger = ''
-                error = False
-                if use_pin:
-                    pin = self.edtHwOptionsPIN.text()
-                    if len(pin) not in (4, 8):
-                        self.errorMsg('Invalid PIN length. It can only have 4 or 8 characters.')
-                        error = True
+            if not success:
+                # verify the whole word-set entered by the user (checksum)
+                if not suppress_error_message:
+                    self.errorMsg('Cannot continue - invalid word(s): %s.' %
+                                  ','.join(['#' + str(x + 1) for x in invalid_indexes]))
+            else:
+                try:
+                    ws = self.get_cur_mnemonic_words()
+                    self.entropy = self.mnemonic.to_entropy(ws)
+                except Exception as e:
+                    success = False
+                    if str(e) == 'Failed checksum.':
+                        self.errorMsg('Invalid checksum of the provided words. You\'ve probably mistyped some'
+                                      ' words or changed their order.')
                     else:
-                        if self.hw_type == HWType.ledger_nano_s:
-                            if not re.match("^[0-9]+$", pin):
-                                self.errorMsg('Invalid PIN. Allowed characters: 0-9.')
-                                error = True
-                        else:
-                            if not re.match("^[1-9]+$", pin):
-                                self.errorMsg('Invalid PIN. Allowed characters: 1-9.')
-                                error = True
-                if error:
-                    self.edtHwOptionsPIN.setFocus()
+                        self.errorMsg('There was an error in the provided word-list. Error details: ' + str(e))
+        elif self.action_type == ACTION_RECOVER_FROM_ENTROPY:
+            pass
+        else:
+            raise Exception('Invalid action type.')
+
+        if success:
+            self.set_next_step(STEP_INPUT_HW_OPTIONS)
+
+        return success
+
+    def apply_step_input_hw_options(self) -> bool:
+        """Moves forward from the 'input hardware wallet options' step."""
+        self.hw_action_use_pin = self.chbHwOptionsUsePIN.isChecked()
+        self.hw_action_use_passphrase = self.chbHwOptionsUsePassphrase.isChecked()
+        self.hw_action_label = self.edtHwOptionsDeviceLabel.text()
+        success = True
+        if not self.hw_action_label:
+            self.hw_action_label = 'My %s' % HWType.get_desc(self.hw_type)
+
+        if self.action_type in (ACTION_RECOVER_FROM_WORDS_CONV, ACTION_RECOVER_FROM_ENTROPY):
+            self.hw_action_mnemonic_words = ' '.join(self.get_cur_mnemonic_words())
+            self.hw_action_pin = ''
+            self.hw_action_secondary_pin = ''
+            self.hw_action_passphrase = ''
+            if self.hw_action_use_pin:
+                self.hw_action_pin = self.edtHwOptionsPIN.text()
+                if len(self.hw_action_pin) not in (4, 8):
+                    self.errorMsg('Invalid PIN length. It can only have 4 or 8 characters.')
+                    success = False
                 else:
                     if self.hw_type == HWType.ledger_nano_s:
-                        if use_passphrase:
-                            passphrase_for_ledger = self.edtHwOptionsLedgerPassphrase.text()
-                            if not passphrase_for_ledger:
-                                self.errorMsg('Passphrase for Ledger Nano S device is required if you '
-                                              'checked the option to use this feature.')
-                                self.edtHwOptionsLedgerPassphrase.setFocus()
-                                error = True
-                            if not error:
-                                # validate secondary PIN
-                                secondary_pin = self.edtHwOptionsLedgerSecondaryPIN.text()
-                                if not secondary_pin:
-                                    self.errorMsg('Secondary PIN is required if you would like to save passphrase '
-                                                  'in your Ledger Nano S device.')
+                        if not re.match("^[0-9]+$", self.hw_action_pin):
+                            self.errorMsg('Invalid PIN. Allowed characters: 0-9.')
+                            success = False
+                    else:
+                        if not re.match("^[1-9]+$", self.hw_action_pin):
+                            self.errorMsg('Invalid PIN. Allowed characters: 1-9.')
+                            success = False
+            if not success:
+                self.edtHwOptionsPIN.setFocus()
+            else:
+                if self.hw_type == HWType.ledger_nano_s:
+                    if self.hw_action_use_passphrase:
+                        self.hw_action_passphrase = self.edtHwOptionsLedgerPassphrase.text()
+                        if not self.hw_action_passphrase:
+                            self.errorMsg('For Ledger Nano S you need to provide your passphrase - it will be '
+                                          'stored in the device and secured by secondary PIN.')
+                            self.edtHwOptionsLedgerPassphrase.setFocus()
+                            success = False
+                        else:
+                            # validate secondary PIN
+                            self.hw_action_secondary_pin = self.edtHwOptionsLedgerSecondaryPIN.text()
+                            if not self.hw_action_secondary_pin:
+                                self.errorMsg('Secondary PIN is required if you want to save passphrase '
+                                              'in your Ledger Nano S.')
+                                self.edtHwOptionsLedgerSecondaryPIN.setFocus()
+                                success = False
+                            else:
+                                if len(self.hw_action_secondary_pin) not in (4, 8):
+                                    self.errorMsg('Invalid secondary PIN length. '
+                                                  'It can only have 4 or 8 characters.')
+                                    success = False
+                                elif not re.match("^[0-9]+$", self.hw_action_secondary_pin):
+                                    self.errorMsg('Invalid secondary PIN. Allowed characters: 0-9.')
+                                    success = False
+
+                                if not success:
                                     self.edtHwOptionsLedgerSecondaryPIN.setFocus()
-                                    error = True
-                                else:
-                                    if len(secondary_pin) not in (4, 8):
-                                        self.errorMsg('Invalid secondary PIN length. '
-                                                      'It can only have 4 or 8 characters.')
-                                        error = True
-                                    elif not re.match("^[0-9]+$", secondary_pin):
-                                        self.errorMsg('Invalid secondary PIN. Allowed characters: 0-9.')
-                                        error = True
+        elif self.action_type in (ACTION_RECOVER_FROM_WORDS_SAFE, ACTION_INITIALIZE_NEW_SAFE):
+            pass
+        else:
+            raise Exception('Invalid action.')
 
-                                    if error:
-                                        self.edtHwOptionsLedgerSecondaryPIN.setFocus()
-
-                if not error:
-                    device_id, finished = load_device_by_mnemonic(
-                        self.hw_type, self.hw_device_id_selected, mnemonic_words, pin, use_passphrase, hw_label,
-                        passphrase_for_ledger, secondary_pin)
-
-            elif self.action_type == ACTION_RECOVER_FROM_WORDS_SAFE:
-
-                device_id, finished = recovery_device(self.hw_type, self.hw_device_id_selected, self.word_count,
-                                                      use_passphrase, use_pin, hw_label)
-
+        if success:
+            # try to load devices
+            self.load_hw_devices()
+            cnt = len(self.hw_device_instances)
+            if cnt == 0:
+                self.errorMsg('Couldn\'t find any %s devices connected to your computer.' %
+                              HWType.get_desc(self.hw_type))
+            elif cnt == 1:
+                # there is only one instance of this device type
+                self.hw_device_id_selected = self.hw_device_instances[0][1]
+                success = self.apply_action_on_hardware_wallet()
+                if success:
+                    self.set_next_step(STEP_FINISHED)
             else:
-                raise Exception('Invalid action.')
+                # there is more than one instance of this device type; go to the device instance selection tab
+                self.set_next_step(STEP_SELECT_DEVICE_INSTANCE)
+                success = True
+        return success
 
-            if device_id and self.hw_device_id_selected and self.hw_device_id_selected != device_id:
-                # if Trezor or Keepkey is wiped during the initialization then it gets a new device_id
-                # update the deice id in the device combobox and a list associated with it
-                self.hw_device_id_selected = device_id
-                idx = self.cboDeviceInstance.currentIndex()
-                if idx >= 0 and idx < len(self.hw_device_instances):
-                    self.hw_device_instances[idx][1] = device_id
-                    lbl = hw_label + ' (' + device_id + ')'
-                    self.cboDeviceInstance.setItemText(idx, lbl)
-
-            if not finished:
-                self.warnMsg('Operation cancelled.')
-            else:
+    def apply_step_select_device_id(self) -> bool:
+        """Moves forward from the 'select device instance' step."""
+        idx = self.cboDeviceInstance.currentIndex()
+        if idx >= 0 and idx < len(self.hw_device_instances):
+            self.hw_device_id_selected = self.hw_device_instances[idx][1]
+            success = self.apply_action_on_hardware_wallet()
+            if success:
                 self.set_next_step(STEP_FINISHED)
+        else:
+            self.errorMsg('No %s device instances.' % HWType.get_desc(self.hw_type))
+            success = False
+        return success
+
+    def apply_action_on_hardware_wallet(self) -> bool:
+        """Executes command on hardware wallet device related to the selected actions."""
+        if self.action_type in (ACTION_RECOVER_FROM_WORDS_CONV, ACTION_RECOVER_FROM_ENTROPY):
+
+            device_id, cancelled = load_device_by_mnemonic(
+                self.hw_type, self.hw_device_id_selected, self.hw_action_mnemonic_words, self.hw_action_pin,
+                self.hw_action_use_passphrase, self.hw_action_label,
+                self.hw_action_passphrase, self.hw_action_secondary_pin, parent_window=self.main_ui)
+
+        elif self.action_type == ACTION_RECOVER_FROM_WORDS_SAFE:
+
+            device_id, cancelled = recovery_device(self.hw_type, self.hw_device_id_selected, self.word_count,
+                                                   self.hw_action_use_passphrase, self.hw_action_use_pin, self.hw_action_label, parent_window=self.main_ui)
+
+        elif self.action_type == ACTION_INITIALIZE_NEW_SAFE:
+
+            device_id, cancelled = reset_device(self.hw_type, self.hw_device_id_selected, self.word_count,
+                                                self.hw_action_use_passphrase, self.hw_action_use_pin, self.hw_action_label, parent_window=self.main_ui)
+
+        elif self.action_type == ACTION_WIPE_DEVICE:
+
+            device_id, cancelled = wipe_device(self.hw_type, self.hw_device_id_selected, parent_window=self.main_ui)
+
+        else:
+            raise Exception('Invalid action.')
+
+        if device_id and self.hw_device_id_selected and self.hw_device_id_selected != device_id:
+            # if Trezor or Keepkey is wiped during the initialization then it gets a new device_id
+            # update the deice id in the device combobox and a list associated with it
+            self.hw_device_id_selected = device_id
+            idx = self.cboDeviceInstance.currentIndex()
+            if idx >= 0 and idx < len(self.hw_device_instances):
+                self.hw_device_instances[idx][1] = device_id
+                if self.hw_action_label is None:
+                    self.hw_action_label = ''
+                lbl = self.hw_action_label + ' (' + device_id + ')'
+                self.cboDeviceInstance.setItemText(idx, lbl)
+
+        if cancelled:
+            self.warnMsg('Operation cancelled.')
+            return False
+        else:
+            self.set_next_step(STEP_FINISHED)
+            return True
+
+    @pyqtSlot(bool)
+    def on_btnNext_clicked(self, clicked):
+        success = False
+        if self.current_step == STEP_SELECT_DEVICE_TYPE:
+
+            success = self.apply_step_select_device_type()
+
+        elif self.current_step == STEP_SELECT_DEVICE_INSTANCE:
+
+            success = self.apply_step_select_device_id()
+
+        elif self.current_step == STEP_SELECT_ACTION:
+
+            success = self.apply_step_select_action()
+
+        elif self.current_step == STEP_INPUT_NUMBER_OF_WORDS:
+
+            success = self.apply_step_select_number_of_words()
+
+        elif self.current_step == STEP_INPUT_ENTROPY:
+
+            success = self.apply_step_input_entropy()
+
+        elif self.current_step == STEP_INPUT_WORDS:
+
+            success = self.apply_step_input_words()
+
+        elif self.current_step == STEP_INPUT_HW_OPTIONS:
+
+             success = self.apply_step_input_hw_options()
 
         elif self.current_step == STEP_FINISHED:
+
             self.close()
 
         else:
             raise Exception("Internal error: invalid step.")
 
-        if not error:
+        if success:
             self.update_current_tab()
             self.btnBack.setEnabled(True)
 
@@ -428,9 +509,9 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
             if self.hw_type == HWType.ledger_nano_s:
                 msg_text = '<span><b>Important! Start your Ledger Nano S wallet in recovery mode:</b></span>' \
-                           '<ol><li>Clear the device by selecting its \'Settings->Device->Reset all\' menu item.</li>' \
+                           '<ol><li>Clear the device by selecting the \'Settings->Device->Reset all\' menu item.</li>' \
                            '<li>Power the device off.</li>' \
-                           '<li>Power the device on while holding its right-hand physical button.</li>' \
+                           '<li>Power the device on while holding down the right-hand physical button.</li>' \
                            '</ol>'
 
             if sys.platform == 'linux':
@@ -442,10 +523,10 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
         elif self.current_step == STEP_SELECT_DEVICE_INSTANCE:
 
-            self.lblStepDeviceInstanceMessage.setText("<b>Select which '%s' device you are going to use.</b>" %
+            self.lblStepDeviceInstanceMessage.setText("<b>Select which '%s' device you want to use</b>" %
                                                       HWType.get_desc(self.hw_type))
 
-        elif self.current_step == STEP_CHOOSE_ACTION:
+        elif self.current_step == STEP_SELECT_ACTION:
             if self.hw_type == HWType.ledger_nano_s:
                 # turn off options not applicable for ledger walltes
                 self.rbActRecoverWordsSafe.setDisabled(True)
@@ -461,14 +542,15 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
             if self.action_type in (ACTION_RECOVER_FROM_WORDS_CONV, ACTION_RECOVER_FROM_ENTROPY):
                 self.lblActionTypeMessage.setText(
-                    '<span style="color:red;font-weight:bold">Use this feature only on offline systems, ' \
-                    'which will never be connected to the Internet.</span>')
+                    '<span style="color:red;font-weight:bold">This feature should only be used on offline systems '
+                    'which will never be connected to the internet.</span>')
             else:
                 self.lblActionTypeMessage.setText('')
 
         elif self.current_step in (STEP_INPUT_NUMBER_OF_WORDS, STEP_INPUT_ENTROPY):
 
-            if self.action_type in (ACTION_RECOVER_FROM_WORDS_CONV, ACTION_RECOVER_FROM_WORDS_SAFE):
+            if self.action_type in (ACTION_RECOVER_FROM_WORDS_CONV, ACTION_RECOVER_FROM_WORDS_SAFE,
+                                    ACTION_INITIALIZE_NEW_SAFE):
                 # recovery based on mnemonic words
                 self.gbNumberOfMnemonicWords.setVisible(True)
                 self.lblStep1MnemonicWords.setVisible(True)
@@ -481,16 +563,6 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                 self.lblStep1MnemonicWords.setVisible(False)
                 self.lblStep1HexEntropy.setVisible(True)
                 self.edtHexEntropy.setVisible(True)
-            elif self.action_type == ACTION_INITIALIZE_NEW_UNSAFE:
-                # initializeing hw with an hexadecimal entropy generated on a device
-                self.gbNumberOfMnemonicWords.setVisible(True)
-                self.lblStep1MnemonicWords.setVisible(True)
-                self.lblStep1HexEntropy.setVisible(False)
-                self.edtHexEntropy.setVisible(False)
-                self.lblStep1MnemonicWords.setText('<b>Number of words to be generated (the higher the better)</b>')
-                self.lblStep1Message1.setText('<span style="">Click the &lt;Continue&gt; button to generate new words of your recovery seed using your hardware wallet\'s random-number generator.</span>')
-                self.lblStep1Message1.setVisible(True)
-                self.lblStep1Message2.setVisible(False)
             else:
                 raise Exception('Invalid action type')
 
@@ -505,13 +577,8 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                 self.lblStepWordListMessage2.setVisible(False)
                 self.lblStepWordListTitle.setText('<b>Below are the seed words for the provided hexadecimal entropy</b>')
                 self.viewMnemonic.setStyleSheet('background-color:#e6e6e6')
-            elif self.action_type == ACTION_INITIALIZE_NEW_UNSAFE:
-                self.grid_model.set_read_only(True)
-                self.lblStepWordListTitle.setText(
-                    '<b>Below are the newly generated words of your recovery seed<br>'
-                    '<span style="color:red"><b>Important!!!</b> Please, write them down and keep them safe. '
-                    'If you lose them, you will lose access to your funds.</span>')
-                self.viewMnemonic.setStyleSheet('background-color:#e6e6e6')
+            else:
+                raise Exception('Invalid action type')
 
             # estimate words columns widths
             width = self.viewMnemonic.width()
@@ -522,10 +589,10 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             self.viewMnemonic.setColumnWidth(2, 40)
 
         elif self.current_step == STEP_INPUT_HW_OPTIONS:
-            if self.action_type in (ACTION_RECOVER_FROM_WORDS_CONV, ACTION_RECOVER_FROM_ENTROPY,
-                                    ACTION_INITIALIZE_NEW_UNSAFE):
+            self.edtHwOptionsDeviceLabel.setPlaceholderText('My %s' % HWType.get_desc(self.hw_type))
+            if self.action_type in (ACTION_RECOVER_FROM_WORDS_CONV, ACTION_RECOVER_FROM_ENTROPY):
                 if self.entropy:
-                    self.lblHwOptionsMessage1.setText('Your recovery seed\'s entropy: ' + self.entropy.hex())
+                    self.lblHwOptionsMessage1.setText('Your recovery seed hexadecimal entropy: ' + self.entropy.hex())
                 self.fraDetails.setVisible(self.hw_options_details_visible)
 
                 if self.hw_options_details_visible:
@@ -537,7 +604,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                 self.btnShowPIN.setVisible(self.chbHwOptionsUsePIN.isChecked())
                 self.btnHwOptionsDetails.setVisible(True)
 
-            elif self.action_type == ACTION_RECOVER_FROM_WORDS_SAFE:
+            elif self.action_type in (ACTION_RECOVER_FROM_WORDS_SAFE, ACTION_INITIALIZE_NEW_SAFE):
                 # trezor/keepkey device will ask for pin, so we'll hide the PIN editbox
                 self.edtHwOptionsPIN.setVisible(False)
                 self.btnShowPIN.setVisible(False)
@@ -569,11 +636,6 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         if checked:
             self.word_count = word_count
             self.grid_model.set_words_count(word_count)
-
-    @pyqtSlot(bool)
-    def on_btnWipeDevice_clicked(self, clicked):
-        if self.connect_hardware_wallet():
-            wipe_device(self.main_ui)
 
     @pyqtSlot(bool)
     def on_btnGenerateSeed_clicked(self, clicked):
@@ -695,6 +757,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         """
 
         control_trezor_keepkey_libs(self.hw_type)
+        self.main_ui.disconnectHardwareWallet()  # disconnect hw if it's open in the main window
         self.hw_device_instances.clear()
         self.cboDeviceInstance.clear()
 
@@ -763,29 +826,46 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
     @pyqtSlot(str)
     def on_lblStepDeviceTypeMessage_linkActivated(self, link_text):
-        text = 'To enable hardware wallet devices on your linux system execute the following commands from ' \
-               'the command line:<br><br>' \
-               '<b>Trezor</b><br>' \
-               '<code>echo "SUBSYSTEM==\\"usb\\", ATTR{idVendor}==\\"534c\\", ATTR{idProduct}==\\"0001\\", TAG+=\\"uaccess\\", TAG+=\\"udev-acl\\", SYMLINK+=\\"trezor%n\\"" | sudo tee /etc/udev/rules.d/51-trezor-udev.rules ' \
+        text = '<h4>To enable hardware wallet devices on your linux system execute the following commands from ' \
+               'the command line.</h4>' \
+               '<b>For Trezor hardware wallets:</b><br>' \
+               '<code>echo "SUBSYSTEM==\\"usb\\", ATTR{idVendor}==\\"534c\\", ATTR{idProduct}==\\"0001\\", ' \
+               'TAG+=\\"uaccess\\", TAG+=\\"udev-acl\\", SYMLINK+=\\"trezor%n\\"" | ' \
+               'sudo tee /etc/udev/rules.d/51-trezor-udev.rules<br>' \
+               'sudo udevadm trigger<br>'\
+               'sudo udevadm control --reload-rules' \
                '</code><br><br>' \
-               '<b>Keepkey</b><br>' \
-               '<code>echo "SUBSYSTEM==\\"usb\\", ATTR{idVendor}==\\"2b24\\", ATTR{idProduct}==\\"0001\\", MODE=\\"0666\\", GROUP=\\"dialout\\", SYMLINK+=\\"keepkey%n\\"" | sudo tee /etc/udev/rules.d/51-usb-keepkey.rules'\
-               '<br>echo "KERNEL==\\"hidraw*\\", ATTRS{idVendor}==\\"2b24\\", ATTRS{idProduct}==\\"0001\\", MODE=\\"0666\\", GROUP=\\"dialout\\"" | sudo tee -a /etc/udev/rules.d/51-usb-keepkey.rules' \
+               '<b>For Keepkey hardware wallets:</b><br>' \
+               '<code>echo "SUBSYSTEM==\\"usb\\", ATTR{idVendor}==\\"2b24\\", ATTR{idProduct}==\\"0001\\", ' \
+               'MODE=\\"0666\\", GROUP=\\"dialout\\", SYMLINK+=\\"keepkey%n\\"" | ' \
+               'sudo tee /etc/udev/rules.d/51-usb-keepkey.rules'\
+               '<br>echo "KERNEL==\\"hidraw*\\", ATTRS{idVendor}==\\"2b24\\", ATTRS{idProduct}==\\"0001\\", ' \
+               'MODE=\\"0666\\", GROUP=\\"dialout\\"" | sudo tee -a /etc/udev/rules.d/51-usb-keepkey.rules<br>' \
+               'sudo udevadm trigger<br>'\
+               'sudo udevadm control --reload-rules' \
                '</code><br><br>' \
-               '<b>Ledger Nano</b><br>' \
-               '<code>echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"1b7c\\", MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee /etc/udev/rules.d/20-hw1.rules' \
-               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"2b7c\\", MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
-               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"3b7c\\", MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
-               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"4b7c\\", MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
-               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"1807\\", MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
-               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"1808\\", MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
-               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2c97\\", ATTRS{idProduct}==\\"0000\\", MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
-               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2c97\\", ATTRS{idProduct}==\\"0001\\", MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
-               '</code><br>' \
-               '<b>Then execute the following two commands:</b><br>' \
-               '<code>sudo udevadm trigger<br>'\
-               'sudo udevadm control --reload-rules</code>'
-        show_doc_dlg(self, text, 'Help')
+               '<b>For Ledger hardware wallets:</b><br>' \
+               '<code>echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"1b7c\\", ' \
+               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee /etc/udev/rules.d/20-hw1.rules<br>' \
+               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"2b7c\\", ' \
+               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
+               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"3b7c\\", ' \
+               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
+               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"4b7c\\", ' \
+               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
+               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"1807\\", ' \
+               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
+               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"1808\\", ' \
+               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
+               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2c97\\", ATTRS{idProduct}==\\"0000\\", ' \
+               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
+               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2c97\\", ATTRS{idProduct}==\\"0001\\", ' \
+               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
+               'sudo udevadm trigger<br>'\
+               'sudo udevadm control --reload-rules' \
+               '</code>'
+        style_sheet = 'font-size:12px'
+        show_doc_dlg(self, text, style_sheet, 'Help')
 
 
 class MnemonicModel(QAbstractTableModel):

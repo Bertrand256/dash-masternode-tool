@@ -149,13 +149,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.actSignMessageWithHw.triggered.connect(self.on_actSignMessageWithHw_triggered)
 
         # hardware wallet setup tools
-        self.actHwSetup = mnu.addAction("Hardware Wallet PIN/Passphrase configuration...")
+        self.actHwSetup = mnu.addAction("Hardware wallet PIN/passphrase configuration...")
         self.setIcon(self.actHwSetup, "hw.png")
         self.actHwSetup.triggered.connect(self.on_actHwSetup_triggered)
 
         # hardware wallet initialization dialog
-        self.actHwSetup = mnu.addAction("Hardware Wallet initialization/recovery...")
-        # self.setIcon(self.actHwSetup, "hw.png")
+        self.actHwSetup = mnu.addAction("Hardware wallet initialization/recovery...")
+        self.setIcon(self.actHwSetup, "recover.png")
         self.actHwSetup.triggered.connect(self.on_actHwInitialize_triggered)
 
         mnu.addSeparator()
@@ -404,6 +404,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     err = 'Connect error: %s' % type(e).__name__
                 self.is_dashd_syncing = False
                 self.dashd_connection_ok = False
+                self.on_connection_failed()
                 self.setMessage(err,
                                 style='{background-color:red;color:white;padding:3px 5px 3px 5px; border-radius:3px}')
 
@@ -555,8 +556,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 except Exception as e:
                     self.hw_client = None
                     logging.info('Could not connect to a hardware wallet')
-                    self.setStatus2Text('<b>HW status:</b> cannot find %s device' % self.getHwName(), 'red')
-                    self.errorMsg('Cannot find %s device.' % self.getHwName())
+                    self.setStatus2Text('<b>HW status:</b> cannot connect to %s device' % self.getHwName(), 'red')
+                    self.errorMsg(str(e))
 
                 ret = self.hw_client
             except HardwareWalletPinException as e:

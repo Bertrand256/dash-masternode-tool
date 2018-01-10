@@ -384,7 +384,8 @@ def control_rpc_call(func):
                         logging.error('Error while calling of "' + str(func) + ' (2)". Details: ' + str(e))
                         if e.code == -5 and e.message == 'No information available for address':
                             raise DashdIndexException(e)
-                        elif e.error.get('message','').find('403 Forbidden') >= 0:
+                        elif e.error.get('message','').find('403 Forbidden') >= 0 or \
+                             e.error.get('message', '').find('502 Bad Gateway') >= 0:
                             self.http_conn.close()
                             raise DashdConnectionError(e)
                         elif e.code in (-32603,):
@@ -392,6 +393,7 @@ def control_rpc_call(func):
                             #  -32603: failure to verify vote
                             raise
                         else:
+                            last_exception = e
                             self.http_conn.close()
 
                     except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout,
@@ -409,6 +411,7 @@ def control_rpc_call(func):
                         raise e.org_exception  # couldn't use another conn config, raise last exception
                     else:
                         try_nr -= 1  # another config retries do not count
+                        last_exception = e.org_exception
                 except Exception:
                     raise
         finally:
