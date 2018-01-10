@@ -12,7 +12,7 @@ Before describing the individual steps, the following prerequisites apply:
 
 #### Step 1
 
-The procedure to send 1000 Dash to a hardware wallet is described [here](config-masternodes-a.md#sending-1000-dash-to-the-address-controlled-by-your-hardware-wallet).
+The procedure to send 1000 Dash to a hardware wallet is described [here](config-masternodes-a.md#sending-1000-dash-to-the-hardware-wallet-address).
 
 ### Filling in the masternode configuration fields
 
