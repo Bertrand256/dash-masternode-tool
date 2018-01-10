@@ -8,10 +8,10 @@ To use these features, open the *Proposals* window by clicking the `Tools -> Pro
 
 The first time you open the window, it will take a few minutes for the application to retrieve data on all of the proposals currently maintained by the network, as well as the votes cast on them by masternodes. That data is saved to a cache database, so the opening the window should be faster once the data in in the local cache.
 
-The upper part of the window shows a list of proposals in a table, with several common proposal attributes visible in columns. You can control visibility and the display order of the columns by clicking the `Columns` button and enabling or reordering the columns of interest to you in the *Columns* dialog.  
+The upper part of the window shows a list of proposals in a table, with several common proposal attributes visible in columns. You can control visibility and the display order of the columns by clicking the `Columns` button and enabling or reordering the columns of interest to you in the `Columns` dialog.  
 ![Column selection dialog](img/dmt-proposals-columns.png)
 
-In the *Proposals* dialog, you can:
+In the `Proposals` dialog, you can:
  * View the list of all of the currently available proposals and associated details.
  * View the list of votes cast on particular proposal.
  * Cast a vote on proposals (if a masternode is configured in *DMT*).
@@ -21,7 +21,7 @@ In the *Proposals* dialog, you can:
 
 ### Reviewing proposal details
 
-All key proposal details can be viewed on the *Details* tab in the lower section of the `Proposals` window (see screenshot above).
+All key proposal details can be viewed on the `Details` tab in the lower section of the `Proposals` window (see screenshot above).
 
 ### Reviewing voting details
 
