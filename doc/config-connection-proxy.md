@@ -1,28 +1,29 @@
 ## Connection to "public" nodes
-This solution is dedicated for non-technical users who may not be able to properly configure the JSON-RPC node or for those who do not want to waste their time on what others have done before and have made available :-) 
 
-From the user's point of view, the solution is based on several JSON-RPC nodes made available to the users of the _DashMasternodeTool_ and _dashmnb_ apps, by other users of the Dash community. At the time of writing, one of the nodes (actually three, accessed by one IP address) was shared by @chaeplin, a very well-known member of the Dash community, and the other two by me (@Bertrand256).
+This solution is designed for non-technical users who may have difficulty configuring their own JSON-RPC node, or for those who do not want to waste their time repeating what others have done before and have made publicly available :-)
+
+From the user's point of view, the solution is based on several JSON-RPC nodes made available by the Dash community to the users of the *Dash Masternode Tool* and *dashmnb* apps. At the time of writing, one of the nodes (actually three, accessed under one shared IP address) was managed by @chaeplin, a very well-known Dash Core developer, and the other two by myself (@Bertrand256).
 
 ### Technical information
-These nodes are based on the following components:
- * _Dash daemon_ processing JSON-RPC requests
- * _Nginx_ web server, as a frontend for serving SSL requests sent by the applications
- * A Lua script, as a broker between _nginx_ and _dashd_ 
 
-Configuration is based on ethereum-nginx-proxy, adapted to Dash requirements by @chaeplin: 
- https://github.com/chaeplin/dash-ticker/tree/master/web/nginx
+These nodes are based on the following components:
+ * Dash daemon (*dashd*) processing JSON-RPC requests
+ * *Nginx* web server, as a frontend serving SSL requests sent by the applications
+ * A Lua script, as a broker between *nginx* and *dashd*
+
+Configuration is based on ethereum-nginx-proxy, adapted to Dash requirements by @chaeplin: https://github.com/chaeplin/dash-ticker/tree/master/web/nginx
 
 ### Configuration
-When version >= 0.9.5 of DMT application will be run the first time, _"public"_ connections will automatically be added to the configuration. In the _Configuration_ dialog you should see the following three connections:
+
+When version 0.9.5 or higher of the DMT application is run the first time, "public" connections will automatically be added to the configuration. Open DMT and click the `Configure` button. In the `Configuration` dialog you should see the following three connections:
  * https://alice.dash-dmt.eu:8080
  * https://luna.dash-dmt.eu:8080
  * https://test.stats.dash.org:8080
-
-![1](img/dmt-config-dlg-public.png)  
-
-
-If you see connections and all three are checked (enabled) you don't need to do anything. If you see connections but they are not enabled, you just need to enable them. I also suggest deactivating all other connections, if any  - these may be connections from the old configuration.
  
+![Public connection configuration window](img/dmt-config-dlg-public.png)
+
+If you see connections and all three are checked (enabled) you don't need to do anything. If you see connections but they are not enabled, you just need to enable them. I also suggest deactivating all other connections, since these may be connections from an old configuration.
+
 If any of the listed "predefined" nodes are missing or are incomplete, follow these steps:
  * Select all the text from the block below and copy to the clipboard (do not miss the square brackets at the beginning and the end of the text):
 ```﻿
@@ -54,20 +55,24 @@ If any of the listed "predefined" nodes are missing or are incomplete, follow th
 ]
 ```
  * Right-click on the `Connections` box.
- * From the popup menu choose the `Paste connection(s) from cliboard` action:  
- ![1](img/dmt-config-dlg-public-recover.png)  
+ * From the popup menu choose the `Paste connection(s) from cliboard` action:
+    ![Paste connections from clipboard](img/dmt-config-dlg-public-recover.png)
  * Click `Yes` to the question whether you want to import connections.
- 
-As a result, all three connections should be added to the configuration.
+
+All three connections should then be added to the configuration.
 
 ### Security
-To perform its job, the application must send some data to the JSON-RPC node that may be percieved as sensitive. These are: the client's IP address and the JSON-RPC command themselves with their arguments. 
 
-For example, action initiated by the `Get status` button sends the following data to the node: 
+To perform its job, the application must send some data to the JSON-RPC node that may be perceived as sensitive. Specifically, these are the client's IP address and the JSON-RPC commands themselves, with their respective arguments.
+
+For example, the action initiated by the `Get status` button sends the following data to the node:
 ```python
 {"version": "1.1", "id": 2, "params": ["full", "19e7eba493a026f205078469566e4df6a5a4b1428965574b55bec2412ddc9c48-0"], "method": "masternodelist"}
 ```
 
-To maximize user anonymity, all three published nodes don't have enabled logging of any information related to JSON-RPC commands. The logging configuration is exactly the same as in the example scripts provided by @chaeplin: https://github.com/chaeplin/dash-ticker/tree/master/web/nginx.
+To maximize user anonymity, all three published nodes have disabled logging of any information related to JSON-RPC commands. The logging configuration is exactly the same as the example scripts provided by @chaeplin here: [https://github.com/chaeplin/dash-ticker/tree/master/web/nginx](https://github.com/chaeplin/dash-ticker/tree/master/web/nginx).
 
-If despite this, you would prefer not to risk sharing this information, I suggest you disabling the configuration of the "public" nodes and choosing a different connection type: [connection to a local Dash daemon](config-connection-direct.md) or [connection to a remote Dash daemon through an SSH tunnel](config-connection-ssh.md).
+Despite this, if you would prefer not to risk sharing this information, it is suggested to disable the configuration options for the "public" nodes and choose a different type of connection:
+
+- [Connection to a local Dash daemon](config-connection-direct.md)
+- [Connection to a remote Dash daemon through an SSH tunnel](config-connection-ssh.md)
