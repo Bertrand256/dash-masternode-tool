@@ -217,7 +217,12 @@ class AppConfig(object):
         elif isinstance(data, datetime.date):
             return self.get_default_locale().toString(data, self.date_format)
         elif isinstance(data, float):
-            return self.get_default_locale().toString(data)
+            # don't use QT float to number conversion due to weird behavior
+            dp = self.get_default_locale().decimalPoint()
+            ret_str = str(data)
+            if dp != '.':
+                ret_str.replace('.', dp)
+            return ret_str
         elif isinstance(data, str):
             return data
         elif isinstance(data, int):
