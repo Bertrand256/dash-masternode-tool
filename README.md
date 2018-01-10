@@ -10,7 +10,7 @@
    * [Setting up the hardware wallet type](#setting-up-the-hardware-wallet-type)
    * [Connection setup](#connection-setup)
      * [Connection to a local node](doc/config-connection-direct.md)
-     * [Connection to a remote node trough an SSH tunnel](doc/config-connection-ssh.md)
+     * [Connection to a remote node through an SSH tunnel](doc/config-connection-ssh.md)
      * [Connection to "public" JSON-RPC nodes](doc/config-connection-proxy.md)
    * [Masternode setup](#masternode-setup)
      * [Scenario A: moving masternode management from Dash Core](doc/config-masternodes-a.md)
@@ -58,7 +58,7 @@ Most of the application features are accessible from the main program window:
  * Click the `Configure` button.
  * Select the `Miscellaneous` tab in the configuration dialog that appears.
  * Depending on the type of your hardware wallet, select the `Trezor`, `Keepkey` or `Ledger Nano S` option.  
-     ![1](doc/img/dmt-config-dlg-misc.png)
+     ![Configuration window](doc/img/dmt-config-dlg-misc.png)
 
 ### Connection setup
 
@@ -105,43 +105,41 @@ The steps are as follows:
 
 1. Verification that all the required fields are filled with correct values. These fields are: `IP`, `port`, `MN private key`, `Collateral`, `Collateral TX ID` and `TX index`.
   An example message in case of errors:  
-  ![1](doc/img/startmn-fields-validation-error.png)
+  ![Invalid collateral transaction id](doc/img/startmn-fields-validation-error.png)
 
 2. Opening a connection to the Dash network and verifying if the Dash daemon to which it is connected is not still waiting for synchronization to complete.
   Message in case of failure:  
-  ![1](doc/img/startmn-synchronize-warning.png)
+  ![Dash daemon synchronizing](doc/img/startmn-synchronize-warning.png)
 
 3. Verification that the masternode status is not already `ENABLED` or `PRE_ENABLED`. If it is, the following warning appears:  
-  ![1](doc/img/startmn-state-warning.png)  
+  ![Warning: masternode state is enabled](doc/img/startmn-state-warning.png)  
   If your masternode is running and you decide to send a `start masternode` message anyway, your masternode's payment queue position will be reset.
 
 4. Opening a connection to the hardware wallet. Message in case of failure:  
-  ![1](doc/img/startmn-hw-error.png)
+  ![Cannot find Trezor device](doc/img/startmn-hw-error.png)
 
 5. If the `BIP32 path` value is empty, *DMT* uses the *collateral address* to read the BIP32 path from the hardware wallet.
 
 6. Retrieving the Dash address from the hardware wallet for the `BIP32 path` specified in the configuration. If it differs from the collateral address provided in the configuration, the following warning appears:  
-  ![1](doc/img/startmn-addr-mismatch-warning.png)  
+  ![Dash address mismatch](doc/img/startmn-addr-mismatch-warning.png)  
   The most common reason for this error is mistyping the hardware wallet passphrase. Remember that different passphrases result in different Dash addresses for the same BIP32 path.
 
 7. Verification that the specified transaction ID exists, points to your collateral address, is unspent and is equal to exactly 1000 Dash. Messages in case of failure:  
-  ![1](doc/img/startmn-tx-warning.png)  
-  ![1](doc/img/startmn-collateral-warning.png)  
+  ![Could not find the specified transaction id](doc/img/startmn-tx-warning.png)  
+  ![Collateral transaction output should equal 1000 Dash](doc/img/startmn-collateral-warning.png)  
   If you decide to continue anyway, you probably won't be able to successfully start your masternode.
 
 8. Verification at the Dash network level that the specified transaction ID is valid. Message in case of failure:  
-  ![1](doc/img/startmn-incorrect-tx-error.png)
+  ![Masternode broadcast message decode failed](doc/img/startmn-incorrect-tx-error.png)
 
 9. After completing all pre-verification, the application will ask you whether you want to continue:  
-  ![1](doc/img/startmn-broadcast-query.png)  
+  ![Press OK to broadcast transaction](doc/img/startmn-broadcast-query.png)  
   This is the last chance to stop the process.
 
 10. Sending the `start masternode` message. Success returns the following message:  
-  ![1](doc/img/startmn-success.png)  
+  ![Successfully relayed broadcast message](doc/img/startmn-success.png)  
   In case of failure, the message text may vary, depending on the nature of the problem. Example:  
-  ![1](doc/img/startmn-failed-error.png)
-
-
+  ![Failed to start masternode](doc/img/startmn-failed-error.png)
 
 ### Transferring masternode earnings
 
@@ -155,27 +153,26 @@ To show the `Transfer funds` window, click the `Tools` button. Then, from the po
  * `Transfer funds from any HW address` (mode 3)
 
 Sending masternode payouts:  
-![1](doc/img/dmt-transfer-funds.png)
+![Transfer masternode funds window](doc/img/dmt-transfer-funds.png)
 
 Transferring funds from any address controlled by a hardware wallet:  
-![1](doc/img/dmt-transfer-funds-any-address.png)
+![Transfer funds from any address window](doc/img/dmt-transfer-funds-any-address.png)
 
 Select all *UTXOs* you wish to include in your transaction, verify the transaction fee and click the `Send` button. After signing the transaction with your hardware wallet, the application will ask you for confirmation to broadcast the signed transaction to the Dash network.  
-![1](doc/img/dmt-transfer-funds-broadcast.png)
+![Broadcast signed transaction confirmation](doc/img/dmt-transfer-funds-broadcast.png)
 
 After clicking `Yes`, the application broadcasts the transaction and then shows a message box with a transaction ID as a hyperlink directing to a Dash block explorer:  
-![1](doc/img/dmt-transfer-funds-confirmation.png)
-
+![Transaction sent](doc/img/dmt-transfer-funds-confirmation.png)
 
 ### Signing messages with a hardware wallet
 
 To sign a message with your hardware wallet, click the `Tools` button and then select the `Sign message with HW for current Masternode's address` menu item. The `Sign message` window appears:  
-![1](doc/img/dmt-hw-sign-message.png)
+![Sign message window](doc/img/dmt-hw-sign-message.png)
 
 ### Changing hardware wallet PIN/passphrase
 
 Click the `Tools` button and select the `Hardware Wallet PIN/Passphrase configuration` item. The following window will appear to guide you through the steps of changing the PIN/passphrase:  
-![1](doc/img/dmt-hardware-wallet-config.png)
+![Hardware wallet setup window](doc/img/dmt-hardware-wallet-config.png)
 
 ### Downloads
 
