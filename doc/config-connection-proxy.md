@@ -1,9 +1,11 @@
 ## Connection to "public" nodes
+
 This solution is designed for non-technical users who may have difficulty configuring their own JSON-RPC node, or for those who do not want to waste their time repeating what others have done before and have made publicly available :-)
 
 From the user's point of view, the solution is based on several JSON-RPC nodes made available by the Dash community to the users of the *Dash Masternode Tool* and *dashmnb* apps. At the time of writing, one of the nodes (actually three, accessed under one shared IP address) was managed by @chaeplin, a very well-known Dash Core developer, and the other two by myself (@Bertrand256).
 
 ### Technical information
+
 These nodes are based on the following components:
  * Dash daemon (*dashd*) processing JSON-RPC requests
  * *Nginx* web server, as a frontend serving SSL requests sent by the applications
@@ -12,13 +14,12 @@ These nodes are based on the following components:
 Configuration is based on ethereum-nginx-proxy, adapted to Dash requirements by @chaeplin: https://github.com/chaeplin/dash-ticker/tree/master/web/nginx
 
 ### Configuration
+
 When version 0.9.5 or higher of the DMT application is run the first time, "public" connections will automatically be added to the configuration. Open DMT and click the `Configure` button. In the `Configuration` dialog you should see the following three connections:
  * https://alice.dash-dmt.eu:8080
  * https://luna.dash-dmt.eu:8080
  * https://test.stats.dash.org:8080
-
-![1](img/dmt-config-dlg-public.png)
-
+![Public connection configuration window](img/dmt-config-dlg-public.png)
 
 If you see connections and all three are checked (enabled) you don't need to do anything. If you see connections but they are not enabled, you just need to enable them. I also suggest deactivating all other connections, since these may be connections from an old configuration.
 
@@ -54,12 +55,13 @@ If any of the listed "predefined" nodes are missing or are incomplete, follow th
 ```
  * Right-click on the `Connections` box.
  * From the popup menu choose the `Paste connection(s) from cliboard` action:
-    ![1](img/dmt-config-dlg-public-recover.png)
+    ![Paste connections from clipboard](img/dmt-config-dlg-public-recover.png)
  * Click `Yes` to the question whether you want to import connections.
 
 All three connections should then be added to the configuration.
 
 ### Security
+
 To perform its job, the application must send some data to the JSON-RPC node that may be perceived as sensitive. Specifically, these are the client's IP address and the JSON-RPC commands themselves, with their respective arguments.
 
 For example, the action initiated by the `Get status` button sends the following data to the node:
