@@ -1,14 +1,14 @@
 ## Connection to a local Dash daemon
-In this scenario, you are going to use your own _Dash daemon_ configured to serve JSON-RPC requests on your local network or on any network you have direct (nonfiltered) access to. The most convenient way to achieve this is to run a daemon on the same computer on which you run the DMT application. 
+In this scenario, you will use your own Dash daemon configured to serve JSON-RPC requests on your local network or any network you can access directly. The most convenient way to achieve this is to run a daemon on the same computer as the DMT application itself.
 
-### 1. Install Dash Core software wallet
-As a _Dash daemon_ you are going to use the Dash official client - Dash Core. If you haven't installed this program before, do it now. Installer matching your operating system can be downloaded from the following page: https://www.dash.org/wallets.
+### Install the Dash Core wallet
+We will use the official Dash Core client as the Dash daemon for this configuration. Install it now if not already installed. Binary installers for macOS, Linux and Windows can be downloaded from the [official site](https://www.dash.org/wallets), while documentation on the installation process is available on the [Dash Wiki](https://dashpay.atlassian.net/wiki/spaces/DOC/pages/1867921).
 
-### 2. Enable JSON-RPC and "indexing" in Dash Core
-####  2.1 Set the required parameters in the `dash.conf` file
-Default Dash Core configuration doesn't have any of the required settings, so it will be necessary to make some changes in the `dash.conf` file. Location of this file varies depending on the operating system you are using and may be changed during installation, so I will not specify any paths due to possible confusion. Instead, I suggest clicking the `Tools->Open Wallet Configuration File` menu item of the Dash Core application. After that the `dash.conf` file will be open in default text editor. 
+### Enable JSON-RPC and "indexing" in Dash Core
+####  Set the required parameters in the `dash.conf` file
+The default Dash Core configuration does not include all of the required settings, so some changes to the `dash.conf` file are necessary. The location of this file varies depending on the operating system you are using and may be changed during installation, so paths will not be specified here due to possible confusion. Instead, select `Tools -> Open Wallet Configuration File` from the Dash Core menu. The `dash.conf` file will open in your default text editor.
 
-Copy and paste into the file the following parameters/values, changing the `rpcuser` and `rpcpassword` values to your own:
+Copy and paste the following parameters/values into the file, changing the `rpcuser` and `rpcpassword` values to your own unique values:
 ```ini
 rpcuser=any_alphanumeric_string_as_a_username
 rpcpassword=any_alphanumeric_string_as_a_password
@@ -20,31 +20,30 @@ spentindex=1
 timestampindex=1
 txindex=1
 ```
-  
-#### 2.1 Restart the Dash Core application
-#### 2.2 Rebuild index
-Setting parameters related to indexing and even restarting the application is not enough for the Dash Core internal database to be indexed - it is necessary to force the operation.
 
-For this:
- * Click the `Toools->Wallet Repair` menu item.
- * In the _Tools_ dialog that will open click the `Rebuild index` button.  
- ![1](img/dashqt-rebuild-index.png)
- * Wait until the operation is completed which can take several hours.
- 
-### 3. Configure connection in the DMT
- * In the main application window click the `Configure` button. 
- * Choose the `Dashd network` tab.
+#### Restart Dash Core
+
+Close Dash Core by selecting `File -> Exit` from the menu, then open it again.
+
+#### Rebuild index
+Setting parameters related to indexing and even restarting the application is not enough for Dash Core to entirely update its internal database to support indexing, so it is necessary to force the operation. Follow the following steps to do so:
+
+ * Select the `Tools -> Wallet Repair` menu item.
+ * Click the `Rebuild index` button in the Wallet Repair dialog box.  
+    ![Wallet repair rebuild index](img/dashqt-rebuild-index.png)
+ * Wait until the operation is complete. This step may take several hours.
+
+### Configure connection in the DMT
+ * Open DMT and click the `Configure` button.
+ * Select the `Dash network` tab.
  * Click the `+` (plus) button on the left side of the dialog.
- * Check the box `Enabled`.
- * Fill in the values:
-   * `RPC host` to 127.0.0.1
-   * `port` to 9998
-   * `RPC username` to a value you've entered for `rpcuser` parameter in the `dash.conf` file.
-   * `RPC password` to a value you've entered for `rpcpassword` parameter in the `dash.conf` file.
- * Make sure, that `Use SSH tunnel` and `SSL` checkboxes are unchecked. Also, if you decide to use only this connection, deactivate all other connections by unchecking their `Enabled` checkbox.  
- ![!](img/dmt-config-dlg-conn-direct.png)
- * Click the `Test connection` button. The successful connection test ends with the following message:  
- ![](img/dmt-conn-success.png)
- 
-
-
+ * Check the `Enabled` box.
+ * Enter the following values:
+   * `RPC host`: 127.0.0.1
+   * `port`: 9998
+   * `RPC username`: enter the value you specified for the `rpcuser` parameter in the `dash.conf` file.
+   * `RPC password`: enter the value you specified for the `rpcpassword` parameter in the `dash.conf` file.
+ * Make sure the `Use SSH tunnel` and `SSL` checkboxes remain unchecked. Also, if you decide to use only this connection, deactivate all other connections by unchecking the corresponding `Enabled` checkboxes.  
+    ![Direct connection configuration window](img/dmt-config-dlg-conn-direct.png)
+ * Click the `Test connection` button. If successful, DMT will return the following message:  
+    ![Connection successful](img/dmt-conn-success.png)
