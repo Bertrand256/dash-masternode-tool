@@ -35,7 +35,7 @@ Click the `Generate new` button on the right side of the `MN private key` field 
 
 #### Step 5
 
-Enter the collateral related information as described [here](config-masternodes-a.md#entering-the-collateral-related-information).  
+Enter information related to the collateral as described [here](config-masternodes-a.md#entering-information-on-the-collateral).  
 ![New masternode configuration steps](img/conf-masternodes-b-1.png)
 
 ### Changing the configuration of your Dash daemon
@@ -62,4 +62,4 @@ Log in to the server running *dashd* using your preferred SSH terminal client ([
 
 ### Next steps
 
-Before you continue with the last step of the whole configuration (sending the `start masternode` message), make sure that the number of confirmations for the collateral transaction is greater than or equal to 15 (this can be verified in the `Lookup` dialog). If less than 15 confirmations exist, you will not be able to start your masternode successfully. Once this final requirement has been met, you can finally perform the [start masternode](../README.md#starting-masternode) operation.
+Before you continue with the last step of the whole configuration (sending the `start masternode` message), make sure that the number of confirmations for the collateral transaction is greater than or equal to 15 (this can be verified in the `Lookup` dialog). If less than 15 confirmations exist, you will not be able to start your masternode successfully. Once this final requirement has been met, you can finally perform the [start masternode](../README.md#starting-a-masternode) operation.
