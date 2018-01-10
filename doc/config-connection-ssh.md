@@ -26,7 +26,7 @@ The procedure is similar to the RPC/indexing [procedure](config-connection-direc
  * Log in to the server running the Dash daemon (*dashd*) with a SSH terminal.
  * Change to the *dashd* configuration directory: `cd ~/.dashcore`
  * Open the `dash.conf` file with your preferred text editor: `nano dash.conf`
- * Enter the configuration parameters listed [here](config-connection-direct.md#21-set-the-required-parameters-in-the-dashconf-file).
+ * Enter the configuration parameters listed [here](config-connection-direct.md#set-the-required-parameters-in-the-dashconf-file).
  * Stop the *dashd* process: `./dash-cli stop`
  * Start *dashd* with the `-reindex` parameter: `./dashd -reindex`
 
