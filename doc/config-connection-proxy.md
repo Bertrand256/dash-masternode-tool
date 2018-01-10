@@ -19,6 +19,7 @@ When version 0.9.5 or higher of the DMT application is run the first time, "publ
  * https://alice.dash-dmt.eu:8080
  * https://luna.dash-dmt.eu:8080
  * https://test.stats.dash.org:8080
+ 
 ![Public connection configuration window](img/dmt-config-dlg-public.png)
 
 If you see connections and all three are checked (enabled) you don't need to do anything. If you see connections but they are not enabled, you just need to enable them. I also suggest deactivating all other connections, since these may be connections from an old configuration.
