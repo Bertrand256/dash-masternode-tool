@@ -697,7 +697,7 @@
                 <string notr="true"/>
                </property>
                <property name="text">
-                <string>Start Masternode using Hardware Wallet</string>
+                <string>Start Masternode using hardware wallet</string>
                </property>
               </widget>
              </item>
@@ -1008,7 +1008,7 @@
            <item>
             <widget class="QPushButton" name="btnHwCheck">
              <property name="toolTip">
-              <string>Check Hardware Wallet connection</string>
+              <string>Check hardware wallet connection</string>
              </property>
              <property name="text">
               <string>Test HW</string>
@@ -1027,7 +1027,7 @@
            <item>
             <widget class="QPushButton" name="btnHwDisconnect">
              <property name="toolTip">
-              <string>Close Hardware Wallet session </string>
+              <string>Close hardware wallet session </string>
              </property>
              <property name="text">
               <string>Disconnect HW</string>

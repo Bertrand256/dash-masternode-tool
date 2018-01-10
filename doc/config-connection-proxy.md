@@ -2,7 +2,7 @@
 
 This solution is designed for non-technical users who may have difficulty configuring their own JSON-RPC node, or for those who do not want to waste their time repeating what others have done before and have made publicly available :-)
 
-From the user's point of view, the solution is based on several JSON-RPC nodes made available by the Dash community to the users of the *Dash Masternode Tool* and *dashmnb* apps. At the time of writing, one of the nodes (actually three, accessed under one shared IP address) was managed by @chaeplin, a very well-known Dash Core developer, and the other two by myself (@Bertrand256).
+From the user's point of view, the solution is based on several JSON-RPC nodes made available by the Dash community to the users of the *Dash Masternode Tool* and *dashmnb* apps. At the time of writing, one of the nodes (actually three, accessed under one shared IP address) was managed by @chaeplin, a very well-known Dash Core developer, and the other three by myself (@Bertrand256).
 
 ### Technical information
 
@@ -16,10 +16,11 @@ Configuration is based on ethereum-nginx-proxy, adapted to Dash requirements by 
 ### Configuration
 
 When version 0.9.5 or higher of the DMT application is run the first time, "public" connections will automatically be added to the configuration. Open DMT and click the `Configure` button. In the `Configuration` dialog you should see the following three connections:
- * https://alice.dash-dmt.eu:8080
- * https://luna.dash-dmt.eu:8080
+ * https://alice.dash-masternode-tool.org:443
+ * https://luna.dash-masternode-tool.org:443
+ * https://suzy.dash-masternode-tool.org:443
  * https://test.stats.dash.org:8080
- 
+
 ![Public connection configuration window](img/dmt-config-dlg-public.png)
 
 If you see connections and all three are checked (enabled) you don't need to do anything. If you see connections but they are not enabled, you just need to enable them. I also suggest deactivating all other connections, since these may be connections from an old configuration.
@@ -30,27 +31,35 @@ If any of the listed "predefined" nodes are missing or are incomplete, follow th
 [
     {
         "use_ssh_tunnel": false,
-        "use_ssl": true,
+        "host": "alice.dash-masternode-tool.org",
         "port": "443",
         "username": "dmtuser",
-        "host": "alice.dash-dmt.eu",
-        "password": "674141414141425a4d5343545262596869657472393230696f3761674a6d30305261715f79656d45664a5559454b69587251482d3972473641623363353542647261704e735f4650313579584143776e704e7730444c6663556346397653576e58513d3d"
+        "password": "6741414141414261574c7443574d303967325967653459306a634d3631784a6c496236513268526d6658437952675837506272442d7345326c717a72426b37416b4644665651366676545537435a6c4a4345395f6655494f4b486f5f5f63326761413d3d",
+        "use_ssl": true
     },
     {
         "use_ssh_tunnel": false,
-        "use_ssl": true,
-        "port": "8080",
+        "host": "luna.dash-masternode-tool.org",
+        "port": "443",
         "username": "dmtuser",
-        "host": "luna.dash-dmt.eu",
-        "password": "674141414141425a4d534354795549726a48735f4b6f3757585a743151533573735f354e58464a6b6f76766c705a472d4935726c4655456b7452686e356856416a385443446433496972485a4c4745354d3768745a6264424858537343466a6871773d3d"
+        "password": "6741414141414261574c7443423764302d6655786749634e7264586a7647386e306b454c646c6538654e644f5865746878647839324172702d426d4b5446614349566a346a5670456c4c704f6238666e635a5648765331524252487955646e765a413d3d",
+        "use_ssl": true
     },
     {
         "use_ssh_tunnel": false,
-        "use_ssl": true,
+        "host": "suzy.dash-masternode-tool.org",
+        "port": "443",
+        "username": "dmtuser",
+        "password": "6741414141414261574c7443534d343635444e415259447538496f4b6b64455670376c4c614250705f4d3274495f62436d5430475649417933414a59564f56315430314c51515875536c54374a4b54754e3042627a7a48337835527a654e664e66413d3d",
+        "use_ssl": true
+    },
+    {
+        "use_ssh_tunnel": false,
+        "host": "test.stats.dash.org",
         "port": "8080",
         "username": "dashmnb",
-        "host": "test.stats.dash.org",
-        "password": "674141414141425a4d534354374f4757395062686a33346f445f71375a45306349514d72476b46746943716d376b4b556566764a326137586b42632d71564f71336a34516f586a472d73565258694c6d3246727a6f657951637435706f5f533857673d3d"
+        "password": "674141414141425a454375364c477053456746506a7759345166693547595574506330616550636c6e6f77426c36487276586a56345962494e527a79464e54676937716f6958706a6a377348387a32736d423271304d354e4f754a595449796a56413d3d",
+        "use_ssl": true
     }
 ]
 ```

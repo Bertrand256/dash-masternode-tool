@@ -10,18 +10,20 @@ from wnd_utils import WndUtils
 
 
 class DocDlg(QDialog, ui_doc_dlg.Ui_DocDlg, WndUtils):
-    def __init__(self, parent, doc_text, window_title=None):
+    def __init__(self, parent, doc_text, style_sheet, window_title=None):
         QDialog.__init__(self, parent)
         ui_doc_dlg.Ui_DocDlg.__init__(self)
         WndUtils.__init__(self)
         self.doc_text = doc_text
+        self.style_sheet = style_sheet
         self.window_title = window_title
         self.setupUi()
 
     def setupUi(self):
         ui_doc_dlg.Ui_DocDlg.setupUi(self, self)
         self.setWindowTitle(self.window_title)
-        # self.textMain.viewport().setAutoFillBackground(False)
+        if self.style_sheet:
+            self.textMain.setStyleSheet(self.style_sheet)
         self.textMain.setHtml(self.doc_text)
 
     @pyqtSlot(bool)
@@ -29,6 +31,6 @@ class DocDlg(QDialog, ui_doc_dlg.Ui_DocDlg, WndUtils):
         self.close()
 
 
-def show_doc_dlg(parent, doc_text, window_title=None):
-    ui = DocDlg(parent, doc_text, window_title)
+def show_doc_dlg(parent, doc_text, style_sheet=None, window_title=None):
+    ui = DocDlg(parent, doc_text, style_sheet, window_title)
     ui.exec_()

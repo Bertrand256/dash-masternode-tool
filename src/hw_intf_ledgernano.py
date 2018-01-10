@@ -178,7 +178,7 @@ def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, seco
 
         # stage 2: setup the secondary pin and the passphrase if provided
         if passphrase and secondary_pin:
-            ctrl.display_msg_fun('<b>Configuring passphrase, enter the primary PIN on your '
+            ctrl.display_msg_fun('<b>Configuring the passphrase, enter the primary PIN on your <br>'
                                  'hardware wallet when asked...</b>')
 
             apdudata = bytearray()
