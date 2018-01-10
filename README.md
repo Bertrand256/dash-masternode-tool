@@ -79,7 +79,7 @@ Here we make the following assumptions:
 
 Further configuration steps depend on whether you already have a masternode controlled by *Dash Core* which you want to migrate to a hardware wallet managed by *DMT*, or if you are setting up a new masternode.
 
-[Scenario A - moving masternode management from Dash Core](doc/config-masternodes-a.md)
+[Scenario A - moving masternode management from Dash Core](doc/config-masternodes-a.md)  
 [Scenario B - configuration of a new masternode](doc/config-masternodes-b.md)
 
 ### Command line parameters
@@ -112,7 +112,7 @@ The steps are as follows:
   ![1](doc/img/startmn-synchronize-warning.png)
 
 3. Verification that the masternode status is not already `ENABLED` or `PRE_ENABLED`. If it is, the following warning appears:  
-  ![1](doc/img/startmn-state-warning.png)
+  ![1](doc/img/startmn-state-warning.png)  
   If your masternode is running and you decide to send a `start masternode` message anyway, your masternode's payment queue position will be reset.
 
 4. Opening a connection to the hardware wallet. Message in case of failure:  
@@ -121,7 +121,7 @@ The steps are as follows:
 5. If the `BIP32 path` value is empty, *DMT* uses the *collateral address* to read the BIP32 path from the hardware wallet.
 
 6. Retrieving the Dash address from the hardware wallet for the `BIP32 path` specified in the configuration. If it differs from the collateral address provided in the configuration, the following warning appears:  
-  ![1](doc/img/startmn-addr-mismatch-warning.png)
+  ![1](doc/img/startmn-addr-mismatch-warning.png)  
   The most common reason for this error is mistyping the hardware wallet passphrase. Remember that different passphrases result in different Dash addresses for the same BIP32 path.
 
 7. Verification that the specified transaction ID exists, points to your collateral address, is unspent and is equal to exactly 1000 Dash. Messages in case of failure:  
@@ -133,11 +133,11 @@ The steps are as follows:
   ![1](doc/img/startmn-incorrect-tx-error.png)
 
 9. After completing all pre-verification, the application will ask you whether you want to continue:  
-  ![1](doc/img/startmn-broadcast-query.png)
+  ![1](doc/img/startmn-broadcast-query.png)  
   This is the last chance to stop the process.
 
 10. Sending the `start masternode` message. Success returns the following message:  
-  ![1](doc/img/startmn-success.png)
+  ![1](doc/img/startmn-success.png)  
   In case of failure, the message text may vary, depending on the nature of the problem. Example:  
   ![1](doc/img/startmn-failed-error.png)
 
