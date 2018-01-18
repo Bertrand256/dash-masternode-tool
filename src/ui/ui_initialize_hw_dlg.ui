@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>598</width>
-    <height>420</height>
+    <height>446</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -32,14 +32,18 @@
    <item>
     <widget class="QStackedWidget" name="tabSteps">
      <property name="currentIndex">
-      <number>2</number>
+      <number>0</number>
      </property>
      <widget class="QWidget" name="pgStepDeviceType">
       <layout class="QVBoxLayout" name="verticalLayout_12">
        <item>
-        <widget class="QLabel" name="lblStep0Title_2">
+        <widget class="QLabel" name="lblStepDeviceType">
          <property name="text">
-          <string>&lt;b&gt;Select device type&lt;/b&gt;</string>
+          <string>&lt;b&gt;Select device type&lt;/b&gt;
+</string>
+         </property>
+         <property name="openExternalLinks">
+          <bool>true</bool>
          </property>
         </widget>
        </item>
@@ -168,11 +172,14 @@
         <number>6</number>
        </property>
        <item>
-        <widget class="QLabel" name="lblStep1Title">
+        <widget class="QLabel" name="lblStepActionTitle">
          <property name="text">
           <string>&lt;b&gt;Select the action to perform&lt;/b&gt;</string>
          </property>
          <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+         <property name="openExternalLinks">
           <bool>true</bool>
          </property>
         </widget>
@@ -928,6 +935,23 @@
       </layout>
      </widget>
     </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_4">
+     <property name="leftMargin">
+      <number>6</number>
+     </property>
+     <item>
+      <widget class="QLabel" name="label_2">
+       <property name="text">
+        <string>&lt;a href=&quot;https://github.com/Bertrand256/dash-masternode-tool/blob/master/doc/hw-initialization-recovery.md&quot;&gt;Read the documentation on GitHub&lt;/a&gt;</string>
+       </property>
+       <property name="openExternalLinks">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item>
     <widget class="QWidget" name="widget" native="true">

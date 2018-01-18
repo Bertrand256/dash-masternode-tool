@@ -66,7 +66,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
     def setupUi(self):
         ui_initialize_hw_dlg.Ui_HwInitializeDlg.setupUi(self, self)
-        self.setWindowTitle("Hardware wallet recovery/initialization")
+        self.setWindowTitle("Hardware wallet initialization/recovery")
 
         self.viewMnemonic.verticalHeader().setDefaultSectionSize(
             self.viewMnemonic.verticalHeader().fontMetrics().height() + 6)
@@ -125,6 +125,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         QShortcut(QKeySequence("Ctrl+V"), self.viewMnemonic).activated.connect(self.on_actPasteWords_triggered)
 
         self.fraDetails.setVisible(False)
+        self.resize(self.size().width(), 350)
         self.apply_current_step_to_ui()
         self.update_current_tab()
 
@@ -518,7 +519,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                 if msg_text:
                     msg_text += '<br>'
                 msg_text += '<b>Important!</b> To make hardware wallet devices visible on linux, ' \
-                            'add the appropriate udev rules (<a href="udev_linux">see details</a>).'
+                            'add the appropriate udev rules (<a href="udev_linux">see the details</a>).'
             self.lblStepDeviceTypeMessage.setText(msg_text)
 
         elif self.current_step == STEP_SELECT_DEVICE_INSTANCE:
