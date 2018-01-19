@@ -189,4 +189,45 @@ For this reason, in addition to providing the source code on GitHub, binary vers
 
 Binary versions of the latest release can be downloaded from: https://github.com/Bertrand256/dash-masternode-tool/releases/latest.
 
+#### Verification of the binary files
+Beginning with version 0.9.15, each binary file being part of the release has a corresponding signature file, that you can use to check whether the binary file has not been couterfeited (or corrupted while downloading) and whether it was signed by the application's author (Keybase user: bertrand256).
+
+The verification method described below is based on the use of the Keybase application, so if you have not already done so, downloading the installer from https://keybase.io/download and install the app.
+
+**Verification steps**
+
+1. Open your OS command line terminal
+
+2. Change the current directory to the folder, where you have downloaded DMT release files:  
+
+   `cd /Users/<username>/dmt-dist`
+
+   After invoking the *list directory* command (`ls` for Mac/Linux, `dir` for Windows ) you should see both, the archived executable (.tar.gz, .zip) and the corresponding signature file (.asc):
+
+   ```
+   <username>: ls
+   DashMasternodeTool_0.9.15.mac.zip    DashMasternodeTool_0.9.15.mac.zip.asc
+   ```
+
+
+3. Verify the signature, by executing the following command:
+
+   ```
+   keybase pgp verify -d DashMasternodeTool_0.9.15.mac.zip.asc -i DashMasternodeTool_0.9.15.mac.zip -S bertrand256
+   ```
+
+   As a result you shoud see something like this:
+
+   ```
+   ▶ INFO Identifying bertrand256
+   ✔ public key fingerprint: 8044 DCB5 D241 349F 815F 9522 0D8F 46CA A62F 7EFD
+   ฿  bitcoin 1BkMySjL6K72LWX82SVVmgCuZCuZ3DfuxS
+   ฿  zcash t1byMTzteuJ8n1XUwxBzYXXV8qVv5kh3bFn
+   ✔ "bertrand256" on reddit: https://www.reddit.com/r/KeybaseProofs/comments/688799/my_keybase_proof_redditbertrand256/ [cached 2018-01-19 10:27:37 CET]
+   ✔ "bertrand256" on github: https://gist.github.com/781be961e33042c68d617782b0060844 [cached 2018-01-19 10:27:37 CET]
+   Signature verified. Signed by bertrand256 1 hour ago (2018-01-19 11:46:05 +0100 CET).
+   PGP Fingerprint: 8044dcb5d241349f815f95220d8f46caa62f7efd.
+   ```
+
+   ​
 
