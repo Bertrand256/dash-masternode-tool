@@ -1407,8 +1407,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                                                                      # every 120 seconds
             mn_info = self.dashd_intf.masternodes_by_ident.get(collateral_id)
             if mn_info:
-                lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
                 if mn_info.lastseen > 0:
+                    lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
                     lastseen_str = self.config.to_string(lastseen)
                     lastseen_ago = app_utils.seconds_to_human(time.time() - float(mn_info.lastseen),
                                                                out_seconds=False) + ' ago'
@@ -1416,8 +1416,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     lastseen_str = 'never'
                     lastseen_ago = ''
 
-                lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
                 if mn_info.lastpaidtime > 0:
+                    lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
                     lastpaid_str = self.config.to_string(lastpaid)
                     lastpaid_ago = app_utils.seconds_to_human(time.time() - float(mn_info.lastpaidtime),
                                                                out_seconds=False) + ' ago'
