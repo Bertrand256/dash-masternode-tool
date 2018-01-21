@@ -182,13 +182,19 @@ class Proposal(AttrsProtected):
         """ Calculate auto-calculated columns (eg. voting_in_progress and voting_status values). """
 
         payment_start = self.get_value('payment_start')
+        if payment_start:
+            payment_start = payment_start.timestamp()
+        else:
+            payment_start = None
         payment_end = self.get_value('payment_end')
+        if payment_end:
+            payment_end = payment_end.timestamp()
+        else:
+            payment_end = None
         funding_enabled = self.get_value('fCachedFunding')
 
         if payment_start and payment_end and isinstance(last_superblock_time, (int, float)) \
                 and isinstance(next_superblock_datetime, (int, float)):
-            payment_start = payment_start.timestamp()
-            payment_end = payment_end.timestamp()
             self.voting_in_progress = (payment_start > last_superblock_time) or \
                                       (payment_end > next_superblock_datetime)
         else:
