@@ -404,7 +404,9 @@ class AppConfig(object):
             cfgs = self.decode_connections(default_config.dashd_default_connections)
             if cfgs:
                 # force import default connections if there is no any in the configuration
-                force_import = (len(self.dash_net_configs) == 0)
+                force_import = (len(self.dash_net_configs) == 0) or \
+                               (self.app_last_version == '0.9.15') # v0.9.15 imported the connections but not saved the cfg
+
                 added, updated = self.import_connections(cfgs, force_import=force_import)
                 if not ini_version or (ini_version == 1 and len(added) > 0):
                     # we are migrating from config.ini version 1
@@ -419,6 +421,8 @@ class AppConfig(object):
                         # we assume, that user would prefer "public" connections over local, troublesome node
                         # deactivate user's old cfg
                         ini_v1_localhost_rpc_cfg.enabled = False
+                if added or updated:
+                    configuration_corrected = True
 
             if not ini_version or ini_version == 1 or configuration_corrected:
                 # we are migrating settings from old configuration file - save config file in a new format
