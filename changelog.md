@@ -1,3 +1,11 @@
+## [0.9.16] - 2018-01-23
+
+**Fixed**
+
+- *[Errno 22] Invalid argument* on Windows when checking status of a masternode that never received payment.
+- Error in method computing the *months* and the *current_month* fields.
+
+
 ## [0.9.15] - 2018-01-18
 
 **Added**

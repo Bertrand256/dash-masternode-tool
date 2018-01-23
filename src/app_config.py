@@ -261,8 +261,11 @@ class AppConfig(object):
 
         # from v0.9.15 some public nodes changed its names and port numbers to the official HTTPS port number: 443
         # correct the configuration
-        correct_public_nodes = self.app_last_version and \
-            (app_utils.version_str_to_number(self.app_last_version) < app_utils.version_str_to_number('0.9.15'))
+        if not self.app_last_version or \
+            (app_utils.version_str_to_number(self.app_last_version) < app_utils.version_str_to_number('0.9.16')):
+            correct_public_nodes = True
+        else:
+            correct_public_nodes = False
         configuration_corrected = False
 
         if os.path.exists(self.app_config_file_name):
