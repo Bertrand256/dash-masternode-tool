@@ -126,7 +126,7 @@ class MyTxApiInsight(TxApiInsight):
             except:
                 pass
         try:
-            j = self.dashd_inf.getrawtransaction(resourceid.decode("utf-8"), 1)
+            j = self.dashd_inf.getrawtransaction(resourceid, 1)
         except Exception as e:
             raise
         if cache_file:
