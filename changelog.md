@@ -1,3 +1,10 @@
+## [0.9.17] - 2018-01-25
+
+**Fixed**
+
+- Error when signing transactions with Keepkey hardware wallets: 'str' object has no attribute 'decode'.
+
+
 ## [0.9.16] - 2018-01-23
 
 **Fixed**
