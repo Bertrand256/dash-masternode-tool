@@ -38,29 +38,31 @@ add_files = [
  ('img/uncheck.png','/img'),
  ('img/wallet.png','/img'),
  ('img/thumb-up.png','/img'),
+ ('img/recover.png','/img'),
  ('version.txt', '')
 ]
 
 lib_path = next(p for p in sys.path if 'site-packages' in p)
-if os_type == 'win32':
-
-    qt5_path = os.path.join(lib_path, 'PyQt5\\Qt\\bin')
-    sys.path.append(qt5_path)
-
-    # add file vcruntime140.dll manually, due to not including by pyinstaller
-    found = False
-    for p in os.environ["PATH"].split(os.pathsep):
-        file_name = os.path.join(p, "vcruntime140.dll")
-        if os.path.exists(file_name):
-            found = True
-            add_files.append((file_name, ''))
-            print('Adding file ' + file_name)
-            break
-    if not found:
-        raise Exception('File vcruntime140.dll not found in the system path.')
+#if os_type == 'win32':
+#
+#    qt5_path = os.path.join(lib_path, 'PyQt5\\Qt\\bin')
+#    sys.path.append(qt5_path)
+#
+#    # add file vcruntime140.dll manually, due to not including by pyinstaller
+#    found = False
+#    for p in os.environ["PATH"].split(os.pathsep):
+#        file_name = os.path.join(p, "vcruntime140.dll")
+#        if os.path.exists(file_name):
+#            found = True
+#            add_files.append((file_name, ''))
+#            print('Adding file ' + file_name)
+#            break
+#    if not found:
+#        raise Exception('File vcruntime140.dll not found in the system path.')
 
 # add bitcoin library data file
 add_files.append( (os.path.join(lib_path, 'bitcoin/english.txt'),'/bitcoin') )
+add_files.append( (os.path.join(lib_path, 'mnemonic/wordlist/english.txt'),'/mnemonic/wordlist') )
 
 a = Analysis(['src/dash_masternode_tool.py'],
              pathex=[base_dir],
@@ -99,12 +101,12 @@ if os_type == 'darwin':
                      }
                  )
 
-all_bin_dir = os.path.join(base_dir, 'dist', 'all')
+dist_path = os.path.join(base_dir, DISTPATH)
+all_bin_dir = os.path.join(dist_path, '..', 'all')
 if not os.path.exists(all_bin_dir):
     os.makedirs(all_bin_dir)
 
 # zip archives
-dist_path = os.path.join(base_dir, DISTPATH)
 print(dist_path)
 print(all_bin_dir)
 os.chdir(dist_path)
