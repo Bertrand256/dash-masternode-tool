@@ -3,7 +3,7 @@
 Version 0.9.8 of *DMT* introduced functionality for *masternode owners* (MNOs) to review and cast votes on current proposals. In addition to MNOs, this feature is also useful to *proposal owners*, who can use it to track and analyze voting progress on their proposals.
 
 
-To use these features, open the *Proposals* window by clicking the `Tools -> Proposals` menu item in the main application window. The following window appears:  
+To use these features, open the *Proposals* window by clicking the `Proposals` buttom in the main application window. The following window appears:  
 ![Proposals window](img/dmt-proposals-window.png)
 
 The first time you open the window, it will take a few minutes for the application to retrieve data on all of the proposals currently maintained by the network, as well as the votes cast on them by masternodes. That data is saved to a cache database, so the opening the window should be faster once the data in in the local cache.
@@ -17,6 +17,7 @@ In the `Proposals` dialog, you can:
  * Cast a vote on proposals (if a masternode is configured in *DMT*).
  * Save proposal and vote data to a CSV file for further analysis.
  * View charts showing voting progress over time.
+ * Filter proposals by its properties: name, title, proposal owner
 
 
 ### Reviewing proposal details
@@ -30,7 +31,7 @@ On the `Voting History` tab you can view:
  * An incremental chart of votes over time.
  * A chart of changed votes over time (MNOs can change their vote at any time during the voting period).
  * A chart summarizing YES, NO and ABSTAIN vote counts.  
-![Voting history tab](img/dmt-proposals-voting-history.png)
+  ![Voting history tab](img/dmt-proposals-voting-history.png)
 
 Vote change chart:  
 ![Vote change chart](img/dmt-proposals-vote-change-chart.png)

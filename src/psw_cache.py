@@ -31,7 +31,7 @@ class SshPassCache(object):
             message = 'Enter password for ' + username + '@' + host + ':'
 
         if threading.current_thread() != threading.main_thread():
-            password, ok = WndUtils.callFunInTheMainThread(query_psw, message)
+            password, ok = WndUtils.call_in_main_thread(query_psw, message)
         else:
             password, ok = query_psw(message)
 

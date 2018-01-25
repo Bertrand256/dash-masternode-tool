@@ -31,6 +31,7 @@ import hw_pass_dlg
 import hw_pin_dlg
 import send_payout_dlg
 import app_utils
+from initialize_hw_dlg import HwInitializeDlg
 from proposals_dlg import ProposalsDlg
 from app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG, APP_NAME_SHORT, PROJECT_URL
 from dash_utils import bip32_path_n_to_string
@@ -113,12 +114,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
           QLineEdit:read-only{background-color: lightgray}
         """
         self.setStyleSheet(styleSheet)
-
         self.setIcon(self.btnHwCheck, 'hw-test.ico')
         self.setIcon(self.btnHwDisconnect, "hw-lock.ico")
         self.setIcon(self.btnHwAddressToBip32, QStyle.SP_ArrowRight)
         self.setIcon(self.btnHwBip32ToAddress, QStyle.SP_ArrowLeft)
         self.setIcon(self.btnConfiguration, "gear.png")
+        self.setIcon(self.btnProposals, "thumb-up.png")
         self.setIcon(self.btnActions, "tools.png")
         self.setIcon(self.btnCheckConnection, QStyle.SP_CommandLink)
         self.setIcon(self.btnSaveConfiguration, QStyle.SP_DriveFDIcon)
@@ -148,27 +149,27 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.actSignMessageWithHw.triggered.connect(self.on_actSignMessageWithHw_triggered)
 
         # hardware wallet setup tools
-        self.actHwSetup = mnu.addAction("Hardware Wallet PIN/Passphrase configuration...")
+        self.actHwSetup = mnu.addAction("Hardware wallet PIN/passphrase configuration...")
         self.setIcon(self.actHwSetup, "hw.png")
         self.actHwSetup.triggered.connect(self.on_actHwSetup_triggered)
 
-        # proposals
-        self.actProposals = mnu.addAction("Proposals...")
-        self.setIcon(self.actProposals, "thumb-up.png")
-        self.actProposals.triggered.connect(self.on_actProposals_triggered)
+        # hardware wallet initialization dialog
+        self.actHwSetup = mnu.addAction("Hardware wallet initialization/recovery...")
+        self.setIcon(self.actHwSetup, "recover.png")
+        self.actHwSetup.triggered.connect(self.on_actHwInitialize_triggered)
 
         mnu.addSeparator()
 
-        # check for updates
+        # the "check for updates" menu item
         self.actCheckForUpdates = mnu.addAction("Check for updates")
         self.actCheckForUpdates.triggered.connect(self.on_actCheckForUpdates_triggered)
         self.btnActions.setMenu(mnu)
 
-        # log file
+        # the "log file" menu item
         self.actLogFile = mnu.addAction('Open log file (%s)' % self.config.log_file)
         self.actLogFile.triggered.connect(self.on_actLogFile_triggered)
 
-        # add masternodes to the combobox
+        # add masternodes' info to the combobox
         self.cboMasternodes.clear()
         for mn in self.config.masternodes:
             self.cboMasternodes.addItem(mn.name, mn)
@@ -403,6 +404,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     err = 'Connect error: %s' % type(e).__name__
                 self.is_dashd_syncing = False
                 self.dashd_connection_ok = False
+                self.on_connection_failed()
                 self.setMessage(err,
                                 style='{background-color:red;color:white;padding:3px 5px 3px 5px; border-radius:3px}')
 
@@ -470,35 +472,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                              icon=QMessageBox.Warning) == QMessageBox.Yes:
                 self.on_btnConfiguration_clicked()
 
-    @staticmethod
-    def askForPinCallback(msg):
-        def dlg():
-            ui = hw_pin_dlg.HardwareWalletPinDlg(msg)
-            if ui.exec_():
-                return ui.pin
-            else:
-                return None
-
-        if threading.current_thread() != threading.main_thread():
-            return WndUtils.callFunInTheMainThread(dlg)
-        else:
-            return dlg()
-
-    @staticmethod
-    def askForPassCallback(msg):
-        def dlg():
-            ui = hw_pass_dlg.HardwareWalletPassDlg()
-            if ui.exec_():
-                return ui.getPassphrase()
-            else:
-                return None
-
-        if threading.current_thread() != threading.main_thread():
-            return WndUtils.callFunInTheMainThread(dlg)
-        else:
-            return dlg()
-
-
     def setStatus1Text(self, text, color):
         def set_status(text, color):
             self.lblStatus1.setText(text)
@@ -507,7 +480,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.lblStatus1.setStyleSheet('QLabel{color: ' + color + ';margin-right:20px;margin-left:8px}')
 
         if threading.current_thread() != threading.main_thread():
-            self.callFunInTheMainThread(set_status, text, color)
+            self.call_in_main_thread(set_status, text, color)
         else:
             set_status(text, color)
 
@@ -519,7 +492,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.lblStatus2.setStyleSheet('QLabel{color: ' + color + '}')
 
         if threading.current_thread() != threading.main_thread():
-            self.callFunInTheMainThread(set_status, text, color)
+            self.call_in_main_thread(set_status, text, color)
         else:
             set_status(text, color)
 
@@ -545,7 +518,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.lblMessage.setStyleSheet('QLabel%s' % style)
 
         if threading.current_thread() != threading.main_thread():
-            self.callFunInTheMainThread(set_message, text, color, style)
+            self.call_in_main_thread(set_message, text, color, style)
         else:
             set_message(text, color, style)
 
@@ -564,6 +537,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         Connects to hardware wallet if not connected before.
         :return: True, if successfully connected, False if not
         """
+        ret = None
         if self.hw_client:
             cur_hw_type = hw_intf.get_hw_type(self.hw_client)
             if self.config.hw_type != cur_hw_type:
@@ -571,26 +545,21 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         if not self.hw_client:
             try:
-                if sys.platform == 'linux':
-                    if (self.config.hw_type == HWType.trezor and 'keepkeylib' in sys.modules.keys()) or \
-                       (self.config.hw_type == HWType.keepkey and 'trezorlib' in sys.modules.keys()):
-                        self.warnMsg('On linux OS switching between hardware wallets requires reastarting the '
-                                     'application.\n\nPlease restart the application to continue.')
-                        return False
+                try:
+                    logging.info('Connecting to a hardware wallet device')
+                    self.hw_client = hw_intf.connect_hw(self.config.hw_type)
 
-                logging.info('Connecting to hardware wallet device')
-                self.hw_client = hw_intf.connect_hw(self.config.hw_type, self.askForPinCallback,
-                                                    self.askForPassCallback)
-                if self.hw_client:
                     logging.info('Connected to a hardware wallet')
                     self.setStatus2Text('<b>HW status:</b> connected to %s' % hw_intf.get_hw_label(self, self.hw_client),
                                         'green')
                     self.updateControlsState()
-                    return True
-                else:
-                    logging.info('Could not connect do hardware wallet')
-                    self.setStatus2Text('<b>HW status:</b> cannot find %s device' % self.getHwName(), 'red')
-                    self.errorMsg('Cannot find %s device.' % self.getHwName())
+                except Exception as e:
+                    self.hw_client = None
+                    logging.info('Could not connect to a hardware wallet')
+                    self.setStatus2Text('<b>HW status:</b> cannot connect to %s device' % self.getHwName(), 'red')
+                    self.errorMsg(str(e))
+
+                ret = self.hw_client
             except HardwareWalletPinException as e:
                 self.errorMsg(e.msg)
                 if self.hw_client:
@@ -606,9 +575,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if self.hw_client:
                     self.hw_client.init_device()
                 self.updateControlsState()
-            return False
         else:
-            return True  # already connected
+            ret = self.hw_client
+        return ret
 
     def btnConnectTrezorClick(self):
         self.connectHardwareWallet()
@@ -957,7 +926,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.btnBroadcastMn.setEnabled(self.curMasternode is not None)
 
         if threading.current_thread() != threading.main_thread():
-            self.callFunInTheMainThread(update_fun)
+            self.call_in_main_thread(update_fun)
         else:
             update_fun()
 
@@ -1148,6 +1117,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         self.edtMnCollateralBip32Path.setText(paths.get(self.curMasternode.collateralAddress, ''))
                         self.curMasternode.collateralBip32Path = paths.get(self.curMasternode.collateralAddress, '')
                         self.curMnModified()
+                else:
+                    logging.info('Cancelled')
 
         except HardwareWalletCancelException:
             if self.hw_client:
@@ -1232,21 +1203,22 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             ipv6map += int(self.curMasternode.port).to_bytes(2, byteorder='big').hex()
 
             addr = hw_intf.get_address_and_pubkey(self, self.curMasternode.collateralBip32Path)
-            dash_addr = addr.get('address')
+            hw_collateral_address = addr.get('address').strip()
             collateral_pubkey = addr.get('publicKey')
+            cfg_collateral_address = self.curMasternode.collateralAddress.strip()
 
-            if not self.curMasternode.collateralAddress:
+            if not cfg_collateral_address:
                 # if mn config's collateral address is empty, assign that from hardware wallet
-                self.curMasternode.collateralAddress = dash_addr
-                self.edtMnCollateralAddress.setText(self.curMasternode.collateralAddress)
+                self.curMasternode.collateralAddress = hw_collateral_address
+                self.edtMnCollateralAddress.setText(cfg_collateral_address)
                 self.updateControlsState()
-            elif dash_addr != self.curMasternode.collateralAddress:
+            elif hw_collateral_address != cfg_collateral_address:
                 # verify config's collateral addres with hardware wallet
                 if self.queryDlg(message="The Dash address retrieved from the hardware wallet (%s) for the configured "
                                          "BIP32 path does not match the collateral address entered in the "
                                          "configuration: %s.\n\n"
                                          "Do you really want to continue?" %
-                        (dash_addr, self.curMasternode.collateralAddress),
+                        (hw_collateral_address, cfg_collateral_address),
                         default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
                     return
 
@@ -1254,7 +1226,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             msg_verification_problem = 'You can continue without verification step if you are sure, that ' \
                                        'TX ID/Index are correct.'
             try:
-                utxos = self.dashd_intf.getaddressutxos([dash_addr])
+                utxos = self.dashd_intf.getaddressutxos([hw_collateral_address])
                 found = False
                 utxo = []
                 for utxo in utxos:
@@ -1275,7 +1247,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     if self.queryDlg(
                             message="Could not find the specified transaction id/index for the collateral address: %s."
                                     "\n\nDo you really want to continue?"
-                                    % dash_addr,
+                                    % hw_collateral_address,
                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
                             default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
                         return
@@ -1315,7 +1287,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
             sig = hw_intf.sign_message(self, self.curMasternode.collateralBip32Path, serialize_for_sig)
 
-            if sig.address != dash_addr:
+            if sig.address != hw_collateral_address:
                 self.errorMsg('%s address mismatch after signing.' % self.getHwName())
                 return
             sig1 = sig.signature.hex()
@@ -1383,7 +1355,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                 if failed_count == 0:
                     self.infoMsg(overall)
-                    self.on_btnRefreshMnStatus_clicked()
                 else:
                     self.errorMsg('Failed to start masternode.\n\nResponse from Dash daemon: %s.' % errorMessage)
             else:
@@ -1436,8 +1407,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                                                                      # every 120 seconds
             mn_info = self.dashd_intf.masternodes_by_ident.get(collateral_id)
             if mn_info:
-                lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
                 if mn_info.lastseen > 0:
+                    lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
                     lastseen_str = self.config.to_string(lastseen)
                     lastseen_ago = app_utils.seconds_to_human(time.time() - float(mn_info.lastseen),
                                                                out_seconds=False) + ' ago'
@@ -1445,8 +1416,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     lastseen_str = 'never'
                     lastseen_ago = ''
 
-                lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
                 if mn_info.lastpaidtime > 0:
+                    lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
                     lastpaid_str = self.config.to_string(lastpaid)
                     lastpaid_ago = app_utils.seconds_to_human(time.time() - float(mn_info.lastpaidtime),
                                                                out_seconds=False) + ' ago'
@@ -1588,6 +1559,16 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             ui.exec_()
 
     @pyqtSlot(bool)
+    def on_actHwInitialize_triggered(self):
+        """
+        Hardware wallet initialization from a seed.
+        """
+        # self.connectHardwareWallet()
+        # if self.hw_client:
+        ui = HwInitializeDlg(self)
+        ui.exec_()
+
+    @pyqtSlot(bool)
     def on_btnFindCollateral_clicked(self):
         """
         Open dialog with list of utxos of collateral dash address.
@@ -1609,6 +1590,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             logging.warning("curMasternode or collateralAddress empty")
 
     @pyqtSlot(bool)
-    def on_actProposals_triggered(self):
+    def on_btnProposals_clicked(self):
         ui = ProposalsDlg(self, self.dashd_intf)
         ui.exec_()

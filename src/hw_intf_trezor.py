@@ -3,16 +3,18 @@
 # Author: Bertrand256
 # Created on: 2017-03
 import json
+from typing import Optional, Tuple
 import simplejson
 import binascii
-from trezorlib.client import TextUIMixin as trezor_TextUIMixin
-from trezorlib.client import ProtocolMixin as trezor_ProtocolMixin
-from trezorlib.client import BaseClient as trezor_BaseClient
+import unicodedata
+
+from mnemonic import Mnemonic
+from trezorlib.client import TextUIMixin as trezor_TextUIMixin, ProtocolMixin as trezor_ProtocolMixin, \
+    BaseClient as trezor_BaseClient, CallException
 from trezorlib.tx_api import TxApiInsight
-from hw_common import HardwareWalletCancelException
+from hw_common import HardwareWalletCancelException, ask_for_pass_callback, ask_for_pin_callback, ask_for_word_callback
 from trezorlib import messages_pb2 as trezor_proto
 import trezorlib.types_pb2 as proto_types
-import base58
 import logging
 from wnd_utils import WndUtils
 
@@ -23,11 +25,14 @@ class MyTrezorTextUIMixin(trezor_TextUIMixin):
         trezor_TextUIMixin.__init__(self, transport)
         self.ask_for_pin_fun = ask_for_pin_fun
         self.ask_for_pass_fun = ask_for_pass_fun
+        self.__mnemonic = Mnemonic('english')
 
     def callback_PassphraseRequest(self, msg):
         passphrase = self.ask_for_pass_fun(msg)
         if passphrase is None:
             raise HardwareWalletCancelException('Cancelled')
+        else:
+            passphrase = unicodedata.normalize('NFKD', passphrase)
         return trezor_proto.PassphraseAck(passphrase=passphrase)
 
     def callback_PinMatrixRequest(self, msg):
@@ -44,6 +49,17 @@ class MyTrezorTextUIMixin(trezor_TextUIMixin):
             raise HardwareWalletCancelException('Cancelled')
         return trezor_proto.PinMatrixAck(pin=pin)
 
+    def callback_WordRequest(self, msg):
+        if msg.type in (proto_types.WordRequestType_Matrix9,
+                        proto_types.WordRequestType_Matrix6):
+            return self.callback_RecoveryMatrix(msg)
+
+        msg = "Enter one word of mnemonic: "
+        word = ask_for_word_callback(msg, self.__mnemonic.wordlist)
+        if not word:
+            raise HardwareWalletCancelException('Cancelled')
+        return trezor_proto.WordAck(word=word)
+
 
 class MyTrezorClient(trezor_ProtocolMixin, MyTrezorTextUIMixin, trezor_BaseClient):
     def __init__(self, transport, ask_for_pin_fun, ask_for_pass_fun):
@@ -52,31 +68,34 @@ class MyTrezorClient(trezor_ProtocolMixin, MyTrezorTextUIMixin, trezor_BaseClien
         trezor_BaseClient.__init__(self, transport)
 
 
-def connect_trezor(ask_for_pin_fun, ask_for_pass_fun):
+def connect_trezor(device_id: Optional[str] = None) -> Optional[MyTrezorClient]:
     """
     Connect to a Trezor device.
-    :param ask_for_pin_fun: ref to a function displaying a dialog asking the user for a pin (Trezor and Keepkey)
-    :param ask_for_pass_fun: ref to a function displaying a dialog asking the user for a passphrase (Trezor and Keepkey)
+    :param device_id:
     :return: ref to a trezor client if connection successfull or None if we are sure that no Trezor device connected.
     """
 
     logging.info('Started function')
-    def get_transport():
+    def get_client() -> Optional[MyTrezorClient]:
         from trezorlib.transport_hid import HidTransport
         count = len(HidTransport.enumerate())
         if not count:
             logging.warning('Number of Trezor devices: 0')
+
         for d in HidTransport.enumerate():
             transport = HidTransport(d)
-            return transport
+            client = MyTrezorClient(transport, ask_for_pin_callback, ask_for_pass_callback)
+            if not device_id or client.features.device_id == device_id:
+                return client
+            else:
+                client.clear_session()
+                client.close()
+        return None
 
     # HidTransport.enumerate() has to be called in the main thread - second call from bg thread
     # causes SIGSEGV
-    transport = WndUtils.callFunInTheMainThread(get_transport)
-    logging.info('Read transport')
-    if transport:
-        logging.info('Transport is OK')
-        client = MyTrezorClient(transport, ask_for_pin_fun, ask_for_pass_fun)
+    client = WndUtils.call_in_main_thread(get_client)
+    if client:
         logging.info('Trezor connected. Firmware version: %s.%s.%s, vendor: %s, initialized: %s, '
                      'pp_protection: %s, pp_cached: %s, bootloader_mode: %s ' %
                      (str(client.features.major_version),
@@ -87,8 +106,11 @@ def connect_trezor(ask_for_pin_fun, ask_for_pass_fun):
                       str(client.features.bootloader_mode)))
         return client
     else:
-        logging.warning('Transport is None')
-        return None
+        if device_id:
+            msg = 'Cannot connect to the Trezor device with this id: %s.' % device_id
+        else:
+            msg = 'Cannot find any Trezor device.'
+        raise Exception(msg)
 
 
 class MyTxApiInsight(TxApiInsight):
@@ -120,6 +142,9 @@ class MyTxApiInsight(TxApiInsight):
         return j
 
 
+TxApiDash = TxApiInsight(network='insight_dash', url='https://dash-bitcore1.trezor.io/api/')
+
+
 def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
     """
     Creates a signed transaction.
@@ -129,7 +154,8 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
     :param tx_fee: transaction fee
     :return: tuple (serialized tx, total transaction amount in satoshis)
     """
-    tx_api = MyTxApiInsight('insight_dash', None, main_ui.dashd_intf, main_ui.config.cache_dir)
+    # tx_api = MyTxApiInsight('insight_dash', None, main_ui.dashd_intf, main_ui.config.cache_dir)
+    tx_api = TxApiDash
     client = main_ui.hw_client
     client.set_tx_api(tx_api)
     inputs = []
@@ -185,3 +211,199 @@ def change_pin(main_ui, remove=False):
         main_ui.hw_client.change_pin(remove)
     else:
         raise Exception('HW client not set.')
+
+
+def get_entropy(hw_device_id, len_bytes):
+    client = None
+    try:
+        client = connect_trezor(hw_device_id)
+
+        if client:
+            client.get_entropy(len_bytes)
+            client.close()
+        else:
+            raise Exception('Couldn\'t connect to Trezor device.')
+    except CallException as e:
+        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
+            raise
+        else:
+            if client:
+                client.close()
+            raise HardwareWalletCancelException('Cancelled')
+
+    except HardwareWalletCancelException:
+        if client:
+            client.close()
+        raise
+
+
+def wipe_device(hw_device_id) -> Tuple[str, bool]:
+    """
+    :param hw_device_id:
+    :return: Tuple
+        [0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
+            returned to the caller.
+        [1]: True, if the user cancelled the operation. In this case we deliberately don't raise the 'cancelled'
+            exception, because in the case of changing of the device id (when wiping) we want to pass the new device
+            id back to the caller.
+    """
+    client = None
+    try:
+        client = connect_trezor(hw_device_id)
+
+        if client:
+            client.wipe_device()
+            hw_device_id = client.features.device_id
+            client.close()
+            return hw_device_id, False
+        else:
+            raise Exception('Couldn\'t connect to Trezor device.')
+
+    except CallException as e:
+        if client:
+            client.close()
+        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
+            raise
+        else:
+            return hw_device_id, True  # cancelled by user
+
+    except HardwareWalletCancelException:
+        if client:
+            client.close()
+        return hw_device_id, True  # cancelled by user
+
+
+def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphrase_enbled: bool, hw_label: str,
+                            language: Optional[str]=None) -> Tuple[str, bool]:
+    """
+    :param hw_device_id:
+    :param mnemonic:
+    :param pin:
+    :param passphrase_enbled:
+    :param hw_label:
+    :param language:
+    :return: Tuple
+        [0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
+            returned to the caller.
+        [1]: True, if the user cancelled the operation. In this case we deliberately don't raise the 'cancelled'
+            exception, because in the case of changing of the device id (when wiping) we want to pass the new device
+            id back to the caller.
+    """
+    client = None
+    try:
+        client = connect_trezor(hw_device_id)
+
+        if client:
+            if client.features.initialized:
+                client.wipe_device()
+                hw_device_id = client.features.device_id
+            client.load_device_by_mnemonic(mnemonic, pin, passphrase_enbled, hw_label, language=language)
+            client.close()
+            return hw_device_id, False
+        else:
+            raise Exception('Couldn\'t connect to Trezor device.')
+
+    except CallException as e:
+        if client:
+            client.close()
+        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
+            raise
+        else:
+            return hw_device_id, True  # cancelled by user
+
+    except HardwareWalletCancelException:
+        if client:
+            client.close()
+        return hw_device_id, True  # cancelled by user
+
+
+def recovery_device(hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool, hw_label: str) \
+        -> Tuple[str, bool]:
+    """
+    :param hw_device_id:
+    :param passphrase_enbled:
+    :param pin_enbled:
+    :param hw_label:
+    :return: Tuple
+        [0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
+            returned to the caller.
+        [1]: True, if the user cancelled the operation. In this case we deliberately don't raise the 'cancelled'
+            exception, because in the case of changing of the device id (when wiping) we want to pass the new device
+            id back to the caller.
+    """
+    client = None
+    try:
+        client = connect_trezor(hw_device_id)
+
+        if client:
+            if client.features.initialized:
+                client.wipe_device()
+                hw_device_id = client.features.device_id
+
+            client.recovery_device(word_count, passphrase_enabled, pin_enabled, hw_label, language='english')
+            client.close()
+            return hw_device_id, False
+        else:
+            raise Exception('Couldn\'t connect to Trezor device.')
+
+    except CallException as e:
+        if client:
+            client.close()
+        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
+            raise
+        else:
+            return hw_device_id, True  # cancelled by user
+
+    except HardwareWalletCancelException:
+        if client:
+            client.close()
+        return hw_device_id, True  # cancelled by user
+
+
+def reset_device(hw_device_id: str, strength: int, passphrase_enabled: bool, pin_enabled: bool,
+                 hw_label: str) -> Tuple[str, bool]:
+    """
+    Initialize device with a newly generated words.
+    :param hw_type: app_config.HWType
+    :param hw_device_id: id of the device selected by the user
+    :param strength: number of bits of entropy (will have impact on number of words)
+    :param passphrase_enbled: if True, hw will have passphrase enabled
+    :param pin_enabled: if True, hw will have pin enabled
+    :param hw_label: label for device (Trezor/Keepkey)
+    :return: Tuple
+        Ret[0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
+            returned to the caller.
+        Ret[1]: False, if the user cancelled the operation. In this situation we deliberately don't raise the
+            'cancelled' exception, because in the case of changing of the device id (when wiping) we want to pass
+            it back to the caller function.
+    """
+    client = None
+    try:
+        client = connect_trezor(hw_device_id)
+
+        if client:
+            if client.features.initialized:
+                client.wipe_device()
+                hw_device_id = client.features.device_id
+
+            client.reset_device(display_random=True, strength=strength, passphrase_protection=passphrase_enabled,
+                                pin_protection=pin_enabled, label=hw_label, language='english', u2f_counter=0,
+                                skip_backup=False)
+            client.close()
+            return hw_device_id, False
+        else:
+            raise Exception('Couldn\'t connect to Trezor device.')
+
+    except CallException as e:
+        if client:
+            client.close()
+        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
+            raise
+        else:
+            return hw_device_id, True  # cancelled by user
+
+    except HardwareWalletCancelException:
+        if client:
+            client.close()
+        return hw_device_id, True  # cancelled by user
+
