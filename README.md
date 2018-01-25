@@ -22,7 +22,9 @@
    * [Signing messages with a hardware wallet](#signing-messages-with-a-hardware-wallet)
    * [Changing a hardware wallet PIN/passphrase](#changing-a-hardware-wallet-pinpassphrase)
    * [Browsing and voting on proposals](doc/proposals.md)
+   * [Hardware wallets' initialization / recovery](doc/hw-initialization-recovery.md)
  * [Downloads](https://github.com/Bertrand256/dash-masternode-tool/releases/latest)
+ * [Changelog](changelog.md)
 
 ## Masternodes
 
@@ -84,10 +86,12 @@ Further configuration steps depend on whether you already have a masternode cont
 
 ### Command line parameters
 
-The application currently supports one command-line parameter: `--config`, which can be used to pass a non-standard path to a configuration file. Example:
-```
-DashMasternodeTool.exe --config=C:\dmt-configs\config1.ini
-```
+The application currently supports the following command-line parameters:
+* `--data-dir`: a path to a directory in which the application will create all the needed files, such as: configuration file, cache and log files; it can be useful for users who want to avoid leaving any of the application files on the computer - which by default are created in the user's home directory - and insted to keep them on an external drive
+* `--config`: a non-standard path to a configuration file. Example:
+  `DashMasternodeTool.exe --config=C:\dmt-configs\config1.ini`
+
+
 
 ## Features
 
@@ -95,7 +99,7 @@ DashMasternodeTool.exe --config=C:\dmt-configs\config1.ini
 
 Once you set up the Dash daemon and perform the required *DMT* configuration, you need to broadcast the `start masternode` message to the Dash network, so the other Dash nodes recognize your daemon as a masternode and add it to the payment queue.
 
-To do this, click the `Start Masternode using Hardware Wallet` button.
+To do this, click the `Start Masternode using Hardware wallet` button.
 
 ### Sequence of actions
 
@@ -171,7 +175,7 @@ To sign a message with your hardware wallet, click the `Tools` button and then s
 
 ### Changing hardware wallet PIN/passphrase
 
-Click the `Tools` button and select the `Hardware Wallet PIN/Passphrase configuration` item. The following window will appear to guide you through the steps of changing the PIN/passphrase:  
+Click the `Tools` button and select the `Hardware wallet PIN/Passphrase configuration` item. The following window will appear to guide you through the steps of changing the PIN/passphrase:  
 ![Hardware wallet setup window](doc/img/dmt-hardware-wallet-config.png)
 
 ### Downloads
@@ -180,9 +184,50 @@ This application is written in Python 3, but requires several additional librari
 
 For this reason, in addition to providing the source code on GitHub, binary versions for all three major operating systems - macOS, Windows (32 and 64-bit) and Linux - are available for download directly. The binaries are compiled and tested under the following OS distributions:
 * Windows 7 64-bit
-* macOS 10.11.6 El Capitan
+* macOS 10.13.2 High Sierra
 * Linux Debian Jessie
 
 Binary versions of the latest release can be downloaded from: https://github.com/Bertrand256/dash-masternode-tool/releases/latest.
 
+#### Verification of the binary files
+Beginning with version 0.9.15, each binary file being part of the release has a corresponding signature file, that you can use to check whether the binary file has not been couterfeited (or corrupted while downloading) and whether it was signed by the application's author (Keybase user: bertrand256).
+
+The verification method described below is based on the use of the Keybase application, so if you have not already done so, downloading the installer from https://keybase.io/download and install the app.
+
+**Verification steps**
+
+1. Open your OS command line terminal
+
+2. Change the current directory to the folder, where you have downloaded DMT release files:  
+
+   `cd /Users/<username>/dmt-dist`
+
+   After invoking the *list directory* command (`ls` for Mac/Linux, `dir` for Windows ) you should see both, the archived executable (.tar.gz, .zip) and the corresponding signature file (.asc):
+
+   ```
+   <username>: ls
+   DashMasternodeTool_0.9.15.mac.zip    DashMasternodeTool_0.9.15.mac.zip.asc
+   ```
+
+
+3. Verify the signature, by executing the following command:
+
+   ```
+   keybase pgp verify -d DashMasternodeTool_0.9.15.mac.zip.asc -i DashMasternodeTool_0.9.15.mac.zip -S bertrand256
+   ```
+
+   As a result you shoud see something like this:
+
+   ```
+   ▶ INFO Identifying bertrand256
+   ✔ public key fingerprint: 8044 DCB5 D241 349F 815F 9522 0D8F 46CA A62F 7EFD
+   ฿  bitcoin 1BkMySjL6K72LWX82SVVmgCuZCuZ3DfuxS
+   ฿  zcash t1byMTzteuJ8n1XUwxBzYXXV8qVv5kh3bFn
+   ✔ "bertrand256" on reddit: https://www.reddit.com/r/KeybaseProofs/comments/688799/my_keybase_proof_redditbertrand256/ [cached 2018-01-19 10:27:37 CET]
+   ✔ "bertrand256" on github: https://gist.github.com/781be961e33042c68d617782b0060844 [cached 2018-01-19 10:27:37 CET]
+   Signature verified. Signed by bertrand256 1 hour ago (2018-01-19 11:46:05 +0100 CET).
+   PGP Fingerprint: 8044dcb5d241349f815f95220d8f46caa62f7efd.
+   ```
+
+   ​
 

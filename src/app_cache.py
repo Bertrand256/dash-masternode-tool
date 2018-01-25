@@ -117,3 +117,13 @@ def get_value(symbol, default_value, type):
         log('AppCache not initialized')
 
     return None
+
+
+def save_data():
+    global cache
+    if cache:
+        cache.data_changed()  # it forces saving data inside a thread
+    else:
+        log('AppCache not initialized')
+
+

@@ -8,12 +8,13 @@ from wnd_utils import WndUtils
 
 
 class HardwareWalletPinDlg(QDialog, ui_hw_pin_dlg.Ui_HardwareWalletPinDlg, WndUtils):
-    def __init__(self, message):
+    def __init__(self, message, hide_numbers=True):
         QDialog.__init__(self)
         ui_hw_pin_dlg.Ui_HardwareWalletPinDlg.__init__(self)
         WndUtils.__init__(self, app_config=None)
         self.pin = ''
         self.message = message
+        self.hide_numbers = hide_numbers
         self.setupUi()
 
     def new_key(self, new_key):
@@ -41,15 +42,26 @@ class HardwareWalletPinDlg(QDialog, ui_hw_pin_dlg.Ui_HardwareWalletPinDlg, WndUt
         self.btnPin9.clicked.connect(lambda: self.new_key('9'))
         self.btnEnterPin.clicked.connect(self.btnEnterClick)
         star = '\u26ab'
-        self.btnPin1.setText(star)
-        self.btnPin2.setText(star)
-        self.btnPin3.setText(star)
-        self.btnPin4.setText(star)
-        self.btnPin5.setText(star)
-        self.btnPin6.setText(star)
-        self.btnPin7.setText(star)
-        self.btnPin8.setText(star)
-        self.btnPin9.setText(star)
+        if self.hide_numbers:
+            self.btnPin1.setText(star)
+            self.btnPin2.setText(star)
+            self.btnPin3.setText(star)
+            self.btnPin4.setText(star)
+            self.btnPin5.setText(star)
+            self.btnPin6.setText(star)
+            self.btnPin7.setText(star)
+            self.btnPin8.setText(star)
+            self.btnPin9.setText(star)
+        else:
+            self.btnPin1.setText('1')
+            self.btnPin2.setText('2')
+            self.btnPin3.setText('3')
+            self.btnPin4.setText('4')
+            self.btnPin5.setText('5')
+            self.btnPin6.setText('6')
+            self.btnPin7.setText('7')
+            self.btnPin8.setText('8')
+            self.btnPin9.setText('9')
         self.btnDelete.setText('\u232b')
         self.lblMessage.setText(self.message)
         self.setWindowTitle('Hardware wallet PIN')

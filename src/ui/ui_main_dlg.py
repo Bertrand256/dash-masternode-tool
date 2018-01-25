@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_main_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.9.1
+# Created by: PyQt5 UI code generator 5.9.2
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -352,6 +352,9 @@ class Ui_MainWindow(object):
         self.btnSaveConfiguration.setMaximumSize(QtCore.QSize(16777215, 16777215))
         self.btnSaveConfiguration.setObjectName("btnSaveConfiguration")
         self.layButtons.addWidget(self.btnSaveConfiguration)
+        self.btnProposals = QtWidgets.QPushButton(self.groupBox)
+        self.btnProposals.setObjectName("btnProposals")
+        self.layButtons.addWidget(self.btnProposals)
         self.btnActions = QtWidgets.QPushButton(self.groupBox)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         sizePolicy.setHorizontalStretch(0)
@@ -500,7 +503,7 @@ class Ui_MainWindow(object):
         self.btnRefreshMnStatus.setToolTip(_translate("MainWindow", "Get Masternode\'s status"))
         self.btnRefreshMnStatus.setText(_translate("MainWindow", "Get status"))
         self.btnBroadcastMn.setToolTip(_translate("MainWindow", "Broadcast information about the Masternode"))
-        self.btnBroadcastMn.setText(_translate("MainWindow", "Start Masternode using Hardware Wallet"))
+        self.btnBroadcastMn.setText(_translate("MainWindow", "Start Masternode using hardware wallet"))
         self.btnFindCollateral.setToolTip(_translate("MainWindow", "Find collateral transaction"))
         self.btnFindCollateral.setText(_translate("MainWindow", "Lookup"))
         self.btnCheckConnection.setToolTip(_translate("MainWindow", "Check connection with Dash daemon"))
@@ -508,11 +511,12 @@ class Ui_MainWindow(object):
         self.btnConfiguration.setToolTip(_translate("MainWindow", "Open configuration window of communication with a Dash daemon"))
         self.btnConfiguration.setText(_translate("MainWindow", "Configure"))
         self.btnSaveConfiguration.setText(_translate("MainWindow", "Save configuration"))
+        self.btnProposals.setText(_translate("MainWindow", "Proposals"))
         self.btnActions.setText(_translate("MainWindow", "Tools"))
         self.btnAbout.setText(_translate("MainWindow", "About"))
-        self.btnHwCheck.setToolTip(_translate("MainWindow", "Check Hardware Wallet connection"))
+        self.btnHwCheck.setToolTip(_translate("MainWindow", "Check hardware wallet connection"))
         self.btnHwCheck.setText(_translate("MainWindow", "Test HW"))
-        self.btnHwDisconnect.setToolTip(_translate("MainWindow", "Close Hardware Wallet session "))
+        self.btnHwDisconnect.setToolTip(_translate("MainWindow", "Close hardware wallet session "))
         self.btnHwDisconnect.setText(_translate("MainWindow", "Disconnect HW"))
 
 
