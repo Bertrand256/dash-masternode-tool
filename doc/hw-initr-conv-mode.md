@@ -3,11 +3,11 @@
 
 This procedure differs from safe mode in that the words composing the recovery seed are entered in a special editor, all visible at the same time. While this method is more convenient than entering each word separately in a random order, it also has some important consequences impacting the security of the procedure.
 
-> **Remark concerning Ledger Nano S wallet**
+> **Remark concerning Ledger Nano S wallet**  
 > Before launching this function, you should put the device in Recovery mode, as described on the first screen of the wizard.
 
 
-> **Remarks on security**
+> **Remarks on security**  
 > During one of the steps in this scenario, all words of the recovery seed will at some point be simultaneously visible on the computer screen. This means it is critical to follow this scenario only on an offline computer, unless for testing purposes. By “offline” we mean a system that is not and will never be connected to a network.
 >
 > For the purposes of this scenario, it is also best to use a system launched from a live CD (as described [here](hw-initr-live-cd-linux.md)), that ceases to exist as a system once it has been turned off. This ensures that there is no trace of confidential information stored anywhere.
@@ -24,7 +24,7 @@ This procedure differs from safe mode in that the words composing the recovery s
 ##### Step 4: Enter all of the recovery seed words in corresponding fields  
 ![Input words](img/hwri/rec-words-input.png)
 
-##### Step 4: Define hardware wallet configuration options  
+##### Step 5: Define hardware wallet configuration options  
 Note: for Ledger Nano S devices, this window is slightly more complex than in case of Trezor and Keepkey.
 
 **Options for Trezor and Keepkey devices**  
