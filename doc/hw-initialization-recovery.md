@@ -1,6 +1,6 @@
 ## Hardware wallet initialization and recovery
 
- * [Introduction](#Introduction)
+ * [Introduction](#introduction)
  * [Understanding the *recovery seed*](#understanding-the-recovery-seed)
  * [Security principles](#security-principles)
  * [Hardware wallet initialization and recovery in DMT](#hardware-wallet-initialization-and-recovery-in-dmt)
