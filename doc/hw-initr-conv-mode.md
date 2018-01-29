@@ -21,7 +21,7 @@ This procedure differs from safe mode in that the words composing the recovery s
 ##### Step 3: Select the number of words in your recovery seed   
 ![Number of words](img/hwri/rec-number-of-words.png)
 
-##### Step 4: Enter all of the recovery seed words in corresponding fields  
+##### Step 4: Enter all recovery seed words in the corresponding fields  
 ![Input words](img/hwri/rec-words-input.png)
 
 ##### Step 5: Define hardware wallet configuration options  
