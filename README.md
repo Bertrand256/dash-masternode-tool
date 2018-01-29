@@ -22,7 +22,7 @@
    * [Signing messages with a hardware wallet](#signing-messages-with-a-hardware-wallet)
    * [Changing a hardware wallet PIN/passphrase](#changing-a-hardware-wallet-pinpassphrase)
    * [Browsing and voting on proposals](doc/proposals.md)
-   * [Hardware wallets' initialization / recovery](doc/hw-initialization-recovery.md)
+   * [Hardware wallet initialization/recovery](doc/hw-initialization-recovery.md)
  * [Downloads](https://github.com/Bertrand256/dash-masternode-tool/releases/latest)
  * [Changelog](changelog.md)
 
@@ -59,7 +59,7 @@ Most of the application features are accessible from the main program window:
 ### Setting up the hardware wallet type
  * Click the `Configure` button.
  * Select the `Miscellaneous` tab in the configuration dialog that appears.
- * Depending on the type of your hardware wallet, select the `Trezor`, `Keepkey` or `Ledger Nano S` option.  
+ * Depending on the type of your hardware wallet, select the `Trezor`, `KeepKey` or `Ledger Nano S` option.  
      ![Configuration window](doc/img/dmt-config-dlg-misc.png)
 
 ### Connection setup
@@ -190,19 +190,19 @@ For this reason, in addition to providing the source code on GitHub, binary vers
 Binary versions of the latest release can be downloaded from: https://github.com/Bertrand256/dash-masternode-tool/releases/latest.
 
 #### Verification of the binary files
-Beginning with version 0.9.15, each binary file being part of the release has a corresponding signature file, that you can use to check whether the binary file has not been couterfeited (or corrupted while downloading) and whether it was signed by the application's author (Keybase user: bertrand256).
+Beginning with version 0.9.15, each binary file forming part of a release has a corresponding signature file that you can use to verify the authenticity of the downloaded binary file (to ensure it has not been corrupted or replaced with a counterfeit) and confirm that it has been signed by the application author (Keybase user: bertrand256).
 
-The verification method described below is based on the use of the Keybase application, so if you have not already done so, downloading the installer from https://keybase.io/download and install the app.
+The verification method described below is based on use of the Keybase application, so if you have not already done so, download the installer from https://keybase.io/download and install the app.
 
 **Verification steps**
 
 1. Open your OS command line terminal
 
-2. Change the current directory to the folder, where you have downloaded DMT release files:  
+2. Change the current directory to the folder where the DMT release files were downloaded:
 
    `cd /Users/<username>/dmt-dist`
 
-   After invoking the *list directory* command (`ls` for Mac/Linux, `dir` for Windows ) you should see both, the archived executable (.tar.gz, .zip) and the corresponding signature file (.asc):
+   After invoking the *list directory* command (`ls` for Mac/Linux, `dir` for Windows ) you should see both the archived executable (.tar.gz, .zip) and the corresponding signature file (.asc):
 
    ```
    <username>: ls
@@ -210,13 +210,13 @@ The verification method described below is based on the use of the Keybase appli
    ```
 
 
-3. Verify the signature, by executing the following command:
+3. Verify the signature by executing the following command:
 
    ```
    keybase pgp verify -d DashMasternodeTool_0.9.15.mac.zip.asc -i DashMasternodeTool_0.9.15.mac.zip -S bertrand256
    ```
 
-   As a result you shoud see something like this:
+   You should see something similar to the following if verification was successful:
 
    ```
    ▶ INFO Identifying bertrand256
@@ -228,6 +228,3 @@ The verification method described below is based on the use of the Keybase appli
    Signature verified. Signed by bertrand256 1 hour ago (2018-01-19 11:46:05 +0100 CET).
    PGP Fingerprint: 8044dcb5d241349f815f95220d8f46caa62f7efd.
    ```
-
-   ​
-

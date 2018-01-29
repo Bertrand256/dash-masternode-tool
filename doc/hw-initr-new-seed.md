@@ -1,26 +1,26 @@
-## Hardware wallet initialization with a newly generated seed words
-This functionality is only available for Trezor and Keepkey wallets – Ledger Nano S devices have it implemented in their firmware, but the process is completely controlled by its physical buttons.
+## Hardware wallet initialization using newly generated seed words
+This functionality is only available for Trezor and KeepKey wallets – Ledger Nano S devices implement this in firmware, so the process is entirely controlled using the physical buttons.
 
-This option is used when we want to generate a brand-new set of private keys. Two random number generators take part in this process: one in the hardware wallet, and the other in the computer it’s connected to. The generated entropy (and words resulting from it) is a combination of both. The purpose of such approach is to ensure maximum randomization.
+This option is used to generate a brand new set of private keys. Two random number generators are involved in this process: one in the hardware wallet, and the other in the computer to which it is connected. The generated entropy (and words resulting from it) is a combination of both generators. The purpose of using this approach is to ensure maximum randomization.
 
-##### Step 1. On the first page of the wizard, select the right hardware wallet type.
+##### Step 1: Select the type of hardware wallet in use in the first step of the wizard
 
-##### Step 2. Select the option *Initialize hardware wallet with newly generated seed words*.  
+##### Step 2: Select the `Initialize hardware wallet with newly generated seed words` option  
 ![Input entropy](img/hwri/init-action.png)
 
-##### Step 3. Select the number of words to be generated as recovery seed.  
-The more words, the lower the risk of creating the same set for two different people. Even for 12 words there is hardly any risk, but I would still suggest that you choose the highest value, which is 24.  
+##### Step 3: Select the number of recovery seed words to be generated  
+The more words, the lower the risk of two different people creating the same set of words. Even though the risk is effectively zero for 12 words, it is still recommended to choose the highest value, which is 24.  
 
 ![Number of words](img/hwri/rec-number-of-words.png)
 
-##### Step 4. Confirm the generated entropy.
+##### Step 4: Confirm the generated entropy
 ![Trezor entropy](img/hwri/trezor-entropy.jpg)
-![Keepkey entropy](img/hwri/keepkey-entropy.jpg)
+![KeepKey entropy](img/hwri/keepkey-entropy.jpg)
 
-##### Step 5. Confirm and write down words.
-The device will begin to display subsequent words composing the recovery seed. These words should be written down and kept safe. The Keepkey wallet, which has a bigger screen, displays more words at once. After presenting all words from the complete set, the device will show them all again – this is the last step that allows you to verify if all words were noted correctly.  
+##### Step 5: Confirm and write down the words
+The device will begin to display the sequence of words constituting the recovery seed. These words should be written down and kept safe. The KeepKey wallet, which has a bigger screen, displays several words at once. After presenting the complete set of words, the device will show them all again – this is the last chance you will have to verify all words were noted down correctly.  
 
 ![Trezor initialization - word](img/hwri/trezor-init-word.jpg)
-![Keepkey initialization - word](img/hwri/keepkey-init-word.jpg)  
+![KeepKey initialization - word](img/hwri/keepkey-init-word.jpg)  
 
-When this step is done, the device is initialized.
+The device is initialized once this step is complete.
