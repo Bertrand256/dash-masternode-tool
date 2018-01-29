@@ -8,7 +8,7 @@ This procedure differs from safe mode in that the words composing the recovery s
 
 
 > **Remarks on security**  
-> During one of the steps in this scenario, all words of the recovery seed will at some point be simultaneously visible on the computer screen. This means it is critical to follow this scenario only on an offline computer, unless for testing purposes. By “offline” we mean a system that is not and will never be connected to a network.
+> During one of the steps in this scenario, all words of the recovery seed will at some point be simultaneously visible on the computer screen. This means it is critical to follow this scenario only on an offline computer, unless for testing purposes. By "offline" we mean a system that is not and will never be connected to a network.
 >
 > For the purposes of this scenario, it is also best to use a system launched from a live CD (as described [here](hw-initr-live-cd-linux.md)), that ceases to exist as a system once it has been turned off. This ensures that there is no trace of confidential information stored anywhere.
 
@@ -25,10 +25,10 @@ This procedure differs from safe mode in that the words composing the recovery s
 ![Input words](img/hwri/rec-words-input.png)
 
 ##### Step 5: Define hardware wallet configuration options  
-Note: for Ledger Nano S devices, this window is slightly more complex than in case of Trezor and Keepkey.
+Note: for Ledger Nano S devices, this window is slightly more complex than in case of Trezor and KeepKey.
 
-**Options for Trezor and Keepkey devices**  
-![Options Trezor and Keepkey](img/hwri/rec-options-conv-a.png)  
+**Options for Trezor and KeepKey devices**  
+![Options Trezor and KeepKey](img/hwri/rec-options-conv-a.png)  
 - Use PIN: if checked, the PIN entered by the user in the field will be set on the device
 - Use passphrase: if checked, the passphrase option will be enabled
 
@@ -38,17 +38,17 @@ Note: for Ledger Nano S devices, this window is slightly more complex than in ca
 -  Use passphrase: check this option if you are using a passphrase (BIP39) and you want to save it in the device memory. This may not seem like the best idea, but for this device, the only alternative is to enter the passphrase whenever needed using the two physical buttons. This is annoying for short character strings, and can be a nightmare for long ones. Nevertheless, this option was has been designed reasonably well by the manufacturer, providing as much security as possible in such situations. The passphrase is only activated if the user enters the Secondary PIN when connecting the device – otherwise, the basic set of keys is activated instead.
 
 **Preview addresses**  
-In this step of the wizard, it is possible to preview the Dash addresses that will be available in the device once initialization based on the entered recovery seed is complete. This option can be useful for verification purposes or to people who have previously initialized their device but now have doubts whether the recovery seed saved at the time was correct. It can easily be checked here by verifying if the addresses shown in the preview match those presented by the device for a given BIP32 path. Click the `Show preview` button to preview the addresses.
+In this step of the wizard, it is possible to preview the Dash addresses that will be available in the device once initialization based on the entered recovery seed is complete. This option can be useful for verification purposes or to people who have previously initialized their device but now have doubts about whether the recovery seed saved at the time was correct. It can easily be checked here by verifying if the addresses shown in the preview match those presented by the device for a given BIP32 path. Click the `Show preview` button to preview the addresses.
 
 ![Preview addresses](img/hwri/rec-options-conv-c.png) 
 
 There is also an option to change the BIP32 path to something other than the default, as well as verify the influence of passphrase on the addresses generated.
 
 ##### Step 6: Accept the security prompt 
-In this step, Trezor and Keepkey devices (quite reasonably) display a warning, informing the user that it might not be safe to import the entire recovery seed from the computer to the device at once. As mentioned before, if at any point a complete recovery seed is found on a working OS, and the computer is (or will be) connected to the Internet, there is a risk that the data could be intercepted by unauthorized parties, which could potentially result in financial loss.
+In this step, Trezor and KeepKey devices (quite reasonably) display a warning, informing the user that it might not be safe to import the entire recovery seed from the computer to the device at once. As mentioned before, if at any point a complete recovery seed is found on a working OS, and the computer is (or will be) connected to the Internet, there is a risk that the data could be intercepted by unauthorized parties, which could potentially result in financial loss.
 
-![Recovering private seed Trezor](img/hwri/trezor-recover-private-seed.jpg)
-![Recovering private seed Keepkey](img/hwri/keepkey-recover-private-seed.jpg)  
+![Recovering Trezor private seed](img/hwri/trezor-recover-private-seed.jpg)
+![Recovering KeepKey private seed](img/hwri/keepkey-recover-private-seed.jpg)  
 
 If the operation is performed on an offline system, we can safely click the button to confirm our awareness of this fact. This is followed by the following message, completing the procedure:  
 ![Recovery success](img/hwri/rec-init-success.png)

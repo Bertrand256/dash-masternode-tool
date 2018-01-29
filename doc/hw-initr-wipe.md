@@ -1,6 +1,6 @@
 
 ## Hardware wallet wiping
-This is a simple two step procedure that can be performed if it is necessary for some reason to clear the hardware wallet memory.
+This is a simple two-step procedure that can be performed if it is necessary to clear the hardware wallet memory for some reason.
 
 **Procedure steps**
 
