@@ -22,7 +22,7 @@
    * [Signing messages with a hardware wallet](#signing-messages-with-a-hardware-wallet)
    * [Changing a hardware wallet PIN/passphrase](#changing-a-hardware-wallet-pinpassphrase)
    * [Browsing and voting on proposals](doc/proposals.md)
-   * [Hardware wallets' initialization / recovery](doc/hw-initialization-recovery.md)
+   * [Hardware wallet initialization/recovery](doc/hw-initialization-recovery.md)
  * [Downloads](https://github.com/Bertrand256/dash-masternode-tool/releases/latest)
  * [Changelog](changelog.md)
 
@@ -59,7 +59,7 @@ Most of the application features are accessible from the main program window:
 ### Setting up the hardware wallet type
  * Click the `Configure` button.
  * Select the `Miscellaneous` tab in the configuration dialog that appears.
- * Depending on the type of your hardware wallet, select the `Trezor`, `Keepkey` or `Ledger Nano S` option.  
+ * Depending on the type of your hardware wallet, select the `Trezor`, `KeepKey` or `Ledger Nano S` option.  
      ![Configuration window](doc/img/dmt-config-dlg-misc.png)
 
 ### Connection setup
@@ -192,7 +192,7 @@ Binary versions of the latest release can be downloaded from: https://github.com
 #### Verification of the binary files
 Beginning with version 0.9.15, each binary file forming part of a release has a corresponding signature file that you can use to verify the authenticity of the downloaded binary file (to ensure it has not been corrupted or replaced with a counterfeit) and confirm that it has been signed by the application author (Keybase user: bertrand256).
 
-The verification method described below is based on use of the Keybase application, so if you have not already done so, downloading the installer from https://keybase.io/download and install the app.
+The verification method described below is based on use of the Keybase application, so if you have not already done so, download the installer from https://keybase.io/download and install the app.
 
 **Verification steps**
 
