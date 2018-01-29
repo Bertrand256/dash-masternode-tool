@@ -1,13 +1,13 @@
 ## Hardware wallet initialization and recovery
 
- * [Introduction](#Introduction)  
- * [Understanding the *recovery seed*](#understanding-the-recovery-seed)  
- * [Security principles](#security-principles)  
- * [Hardware wallet initialization and recovery in DMT](#hardware-wallet-initialization-and-recovery-in-dmt)  
-    * [Hardware wallet recovery - safe mode](hw-initr-safe-mode.md)  
-    * [Hardware wallet recovery - convenient mode](hw-initr-conv-mode.md)  
-    * [Hardware wallet recovery from hexadecimal entropy](hw-initr-entropy-mode.md)  
-    * [Hardware wallet initialization with a newly generated seed words](hw-initr-new-seed.md)  
+ * [Introduction](#Introduction)
+ * [Understanding the *recovery seed*](#understanding-the-recovery-seed)
+ * [Security principles](#security-principles)
+ * [Hardware wallet initialization and recovery in DMT](#hardware-wallet-initialization-and-recovery-in-dmt)
+    * [Hardware wallet recovery - safe mode](hw-initr-safe-mode.md)
+    * [Hardware wallet recovery - convenient mode](hw-initr-conv-mode.md)
+    * [Hardware wallet recovery from hexadecimal entropy](hw-initr-entropy-mode.md)
+    * [Hardware wallet initialization using newly generated seed words](hw-initr-new-seed.md)
     * [Hardware wallet wiping](hw-initr-wipe.md)
  * [Running DMT on an offline Linux system](hw-initr-live-cd-linux.md)
 
