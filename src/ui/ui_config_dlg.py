@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_config_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.9.1
+# Created by: PyQt5 UI code generator 5.10
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -12,7 +12,7 @@ class Ui_ConfigDlg(object):
     def setupUi(self, ConfigDlg):
         ConfigDlg.setObjectName("ConfigDlg")
         ConfigDlg.setWindowModality(QtCore.Qt.NonModal)
-        ConfigDlg.resize(683, 463)
+        ConfigDlg.resize(667, 440)
         ConfigDlg.setModal(False)
         self.verticalLayout = QtWidgets.QVBoxLayout(ConfigDlg)
         self.verticalLayout.setSizeConstraint(QtWidgets.QLayout.SetDefaultConstraint)
@@ -137,6 +137,28 @@ class Ui_ConfigDlg(object):
         spacerItem1 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.layHardwareWallet.addItem(spacerItem1)
         self.verticalLayout_2.addLayout(self.layHardwareWallet)
+        self.wdgKeepkeyPassEncoding = QtWidgets.QWidget(self.tabMisc)
+        self.wdgKeepkeyPassEncoding.setObjectName("wdgKeepkeyPassEncoding")
+        self.horizontalLayout_2 = QtWidgets.QHBoxLayout(self.wdgKeepkeyPassEncoding)
+        self.horizontalLayout_2.setContentsMargins(0, 0, 0, 0)
+        self.horizontalLayout_2.setObjectName("horizontalLayout_2")
+        self.lblKeepkeyPassEncoding = QtWidgets.QLabel(self.wdgKeepkeyPassEncoding)
+        self.lblKeepkeyPassEncoding.setOpenExternalLinks(True)
+        self.lblKeepkeyPassEncoding.setObjectName("lblKeepkeyPassEncoding")
+        self.horizontalLayout_2.addWidget(self.lblKeepkeyPassEncoding)
+        self.cboKeepkeyPassEncoding = QtWidgets.QComboBox(self.wdgKeepkeyPassEncoding)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.cboKeepkeyPassEncoding.sizePolicy().hasHeightForWidth())
+        self.cboKeepkeyPassEncoding.setSizePolicy(sizePolicy)
+        self.cboKeepkeyPassEncoding.setObjectName("cboKeepkeyPassEncoding")
+        self.cboKeepkeyPassEncoding.addItem("")
+        self.cboKeepkeyPassEncoding.addItem("")
+        self.horizontalLayout_2.addWidget(self.cboKeepkeyPassEncoding)
+        spacerItem2 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.horizontalLayout_2.addItem(spacerItem2)
+        self.verticalLayout_2.addWidget(self.wdgKeepkeyPassEncoding)
         self.chbCheckForUpdates = QtWidgets.QCheckBox(self.tabMisc)
         self.chbCheckForUpdates.setObjectName("chbCheckForUpdates")
         self.verticalLayout_2.addWidget(self.chbCheckForUpdates)
@@ -169,11 +191,11 @@ class Ui_ConfigDlg(object):
         self.cboLogLevel.addItem("")
         self.cboLogLevel.addItem("")
         self.hlLogLevel.addWidget(self.cboLogLevel)
-        spacerItem2 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.hlLogLevel.addItem(spacerItem2)
+        spacerItem3 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.hlLogLevel.addItem(spacerItem3)
         self.verticalLayout_2.addLayout(self.hlLogLevel)
-        spacerItem3 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
-        self.verticalLayout_2.addItem(spacerItem3)
+        spacerItem4 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+        self.verticalLayout_2.addItem(spacerItem4)
         self.tabWidget.addTab(self.tabMisc, "")
         self.verticalLayout.addWidget(self.tabWidget)
         self.lblStatus = QtWidgets.QLabel(ConfigDlg)
@@ -190,7 +212,7 @@ class Ui_ConfigDlg(object):
         self.verticalLayout.addWidget(self.buttonBox)
 
         self.retranslateUi(ConfigDlg)
-        self.tabWidget.setCurrentIndex(0)
+        self.tabWidget.setCurrentIndex(1)
         self.buttonBox.accepted.connect(ConfigDlg.accept)
         self.buttonBox.rejected.connect(ConfigDlg.reject)
         QtCore.QMetaObject.connectSlotsByName(ConfigDlg)
@@ -211,6 +233,9 @@ class Ui_ConfigDlg(object):
         self.chbHwTrezor.setText(_translate("ConfigDlg", "Trezor"))
         self.chbHwKeepKey.setText(_translate("ConfigDlg", "KeepKey"))
         self.chbHwLedgerNanoS.setText(_translate("ConfigDlg", "Ledger Nano S"))
+        self.lblKeepkeyPassEncoding.setText(_translate("ConfigDlg", "KeepKey passphrase encoding:"))
+        self.cboKeepkeyPassEncoding.setItemText(0, _translate("ConfigDlg", "NFC: compatible with the official KeepKey app"))
+        self.cboKeepkeyPassEncoding.setItemText(1, _translate("ConfigDlg", "NFKD: compatible with BIP-39 standard and Trezor"))
         self.chbCheckForUpdates.setText(_translate("ConfigDlg", "Check for updates"))
         self.chbBackupConfigFile.setToolTip(_translate("ConfigDlg", "If checked, old config file will be saved when changing configuration"))
         self.chbBackupConfigFile.setText(_translate("ConfigDlg", "Backup config file"))
