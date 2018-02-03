@@ -77,6 +77,10 @@ class AppConfig(object):
         self.defective_net_configs = []
 
         self.hw_type = HWType.trezor  # TREZOR, KEEPKEY, LEDGERNANOS
+        self.hw_keepkey_psw_encoding = 'NFC'  # Keepkey passphrase UTF8 chars encoding:
+                                              #  NFC: compatible with official Keepkey client app
+                                              #  NFKD: compatible with Trezor
+
         self.block_explorer_tx = 'https://chainz.cryptoid.info/dash/tx.dws?%TXID%'
         self.block_explorer_addr = 'https://chainz.cryptoid.info/dash/address.dws?%ADDRESS%'
         self.dash_central_proposal_api = 'https://www.dashcentral.org/api/v1/proposal?hash=%HASH%'
@@ -209,6 +213,7 @@ class AppConfig(object):
         self.dash_net_configs = copy.deepcopy(src_config.dash_net_configs)
         self.random_dash_net_config = src_config.random_dash_net_config
         self.hw_type = src_config.hw_type
+        self.hw_keepkey_psw_encoding = src_config.hw_keepkey_psw_encoding
         self.block_explorer_tx = src_config.block_explorer_tx
         self.block_explorer_addr = src_config.block_explorer_addr
         self.dash_central_proposal_api = src_config.dash_central_proposal_api
@@ -346,6 +351,12 @@ class AppConfig(object):
                     logging.warning('Invalid hardware wallet type: ' + self.hw_type)
                     self.hw_type = HWType.trezor
 
+                self.hw_keepkey_psw_encoding = config.get(section, 'hw_keepkey_psw_encoding', fallback='NFC')
+                if self.hw_keepkey_psw_encoding not in ('NFC', 'NFKD'):
+                    logging.warning('Invalid value of the hw_keepkey_psw_encoding config option: ' +
+                                    self.hw_keepkey_psw_encoding)
+                    self.hw_keepkey_psw_encoding = 'NFC'
+
                 self.random_dash_net_config = self.value_to_bool(config.get(section, 'random_dash_net_config',
                                                                             fallback='1'))
                 self.check_for_updates = self.value_to_bool(config.get(section, 'check_for_updates', fallback='1'))
@@ -448,6 +459,7 @@ class AppConfig(object):
         config.set(section, 'CFG_VERSION', str(APP_CFG_CUR_VERSION))
         config.set(section, 'log_level', self.log_level_str)
         config.set(section, 'hw_type', self.hw_type)
+        config.set(section, 'hw_keepkey_psw_encoding', self.hw_keepkey_psw_encoding)
         config.set(section, 'bip32_base_path', self.last_bip32_base_path)
         config.set(section, 'random_dash_net_config', '1' if self.random_dash_net_config else '0')
         config.set(section, 'check_for_updates', '1' if self.check_for_updates else '0')
