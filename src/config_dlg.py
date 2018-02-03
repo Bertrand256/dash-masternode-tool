@@ -173,7 +173,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.cboKeepkeyPassEncoding.setCurrentIndex(0)
         else:
             self.cboKeepkeyPassEncoding.setCurrentIndex(1)
-        note_url = app_config.PROJECT_URL + '/doc/notes.md#note-dmtn0001'
+        note_url = app_config.PROJECT_URL + '/blob/master/doc/notes.md#note-dmtn0001'
         self.lblKeepkeyPassEncoding.setText(f'KepKey passphrase encoding (<a href="{note_url}">see</a>)')
 
         self.chbCheckForUpdates.setChecked(self.local_config.check_for_updates)
