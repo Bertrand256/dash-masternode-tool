@@ -9,6 +9,8 @@ from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt, pyqtSlot, QPoint
 from PyQt5.QtWidgets import QInputDialog, QDialog, QLayout, QListWidgetItem, QPushButton, QCheckBox, QWidget, \
     QHBoxLayout, QMessageBox, QLineEdit, QMenu, QApplication, QDialogButtonBox, QAbstractButton
+
+import app_config
 from app_config import AppConfig, DashNetworkConnectionCfg
 from dashd_intf import DashdInterface
 from psw_cache import SshPassCache
@@ -166,6 +168,14 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.chbHwKeepKey.setChecked(True)
         else:
             self.chbHwLedgerNanoS.setChecked(True)
+
+        if self.local_config.hw_keepkey_psw_encoding == 'NFC':
+            self.cboKeepkeyPassEncoding.setCurrentIndex(0)
+        else:
+            self.cboKeepkeyPassEncoding.setCurrentIndex(1)
+        note_url = app_config.PROJECT_URL + '/doc/notes.md#note-dmtn0001'
+        self.lblKeepkeyPassEncoding.setText(f'KepKey passphrase encoding (<a href="{note_url}">see</a>)')
+
         self.chbCheckForUpdates.setChecked(self.local_config.check_for_updates)
         self.chbBackupConfigFile.setChecked(self.local_config.backup_config_file)
         self.chbDownloadProposalExternalData.setChecked(self.local_config.read_proposals_external_attributes)
@@ -183,6 +193,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
               }.get(self.local_config.log_level_str, 2)
         self.cboLogLevel.setCurrentIndex(idx)
 
+        self.update_keepkey_pass_encoding_ui()
         self.updateUi()
         self.disable_cfg_update = False
 
@@ -203,6 +214,14 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             item.checkState()
             self.lstConns.addItem(item)
 
+    def update_keepkey_pass_encoding_ui(self):
+        """
+        Display the widget with controls for defining of the encoding of UTF-8 characters in passphrase only when
+        Keepkey HW type is selected.
+        :return:
+        """
+        self.wdgKeepkeyPassEncoding.setVisible(self.local_config.hw_type == HWType.keepkey)
+
     def on_HwType_toggled(self):
         if self.chbHwTrezor.isChecked():
             self.local_config.hw_type = HWType.trezor
@@ -210,19 +229,29 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.local_config.hw_type = HWType.keepkey
         else:
             self.local_config.hw_type = HWType.ledger_nano_s
+
+        self.update_keepkey_pass_encoding_ui()
         self.set_modified()
 
     @pyqtSlot(bool)
-    def on_chbHwTrezor_toggled(self):
+    def on_chbHwTrezor_toggled(self, checked):
         self.on_HwType_toggled()
 
     @pyqtSlot(bool)
-    def on_chbHwKeepKey_toggled(self):
+    def on_chbHwKeepKey_toggled(self, checked):
         self.on_HwType_toggled()
 
     @pyqtSlot(bool)
-    def on_chbHwLedgerNanoS_toggled(self):
+    def on_chbHwLedgerNanoS_toggled(self, checked):
         self.on_HwType_toggled()
+
+    @pyqtSlot(int)
+    def on_cboKeepkeyPassEncoding_currentIndexChanged(self, index):
+        if index == 0:
+            self.local_config.hw_keepkey_psw_encoding = 'NFC'
+        else:
+            self.local_config.hw_keepkey_psw_encoding = 'NFKD'
+        self.set_modified()
 
     @pyqtSlot(QPoint)
     def on_lstConns_customContextMenuRequested(self, point):

@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>683</width>
-    <height>463</height>
+    <width>667</width>
+    <height>440</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -32,7 +32,7 @@
       <enum>QTabWidget::Rounded</enum>
      </property>
      <property name="currentIndex">
-      <number>0</number>
+      <number>1</number>
      </property>
      <widget class="QWidget" name="tabDashd">
       <attribute name="title">
@@ -346,6 +346,67 @@
           </spacer>
          </item>
         </layout>
+       </item>
+       <item>
+        <widget class="QWidget" name="wdgKeepkeyPassEncoding" native="true">
+         <layout class="QHBoxLayout" name="horizontalLayout_2">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="lblKeepkeyPassEncoding">
+            <property name="text">
+             <string>KeepKey passphrase encoding:</string>
+            </property>
+            <property name="openExternalLinks">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="cboKeepkeyPassEncoding">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <item>
+             <property name="text">
+              <string>NFC: compatible with the official KeepKey app</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>NFKD: compatible with BIP-39 standard and Trezor</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item>
+           <spacer name="horizontalSpacer_4">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
        </item>
        <item>
         <widget class="QCheckBox" name="chbCheckForUpdates">

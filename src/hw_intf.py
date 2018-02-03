@@ -85,7 +85,14 @@ def control_hw_call(func):
     return catch_hw_client
 
 
-def connect_hw(hw_type):
+def connect_hw(hw_type: str, passphrase_encoding: str):
+    """
+    Initializes connection with a hardware wallet.
+    :param hw_type: symbol of the hardware wallet type
+    :param passphrase_encoding: (for Keepkey only) it allows forcing the passphrase encoding compatible with BIP-39
+        standard (NFKD), which is used by Trezor devices; by default Keepkey uses non-standard encoding (NFC).
+    :return:
+    """
     control_trezor_keepkey_libs(hw_type)
     if hw_type == HWType.trezor:
         import hw_intf_trezor as trezor
@@ -99,7 +106,7 @@ def connect_hw(hw_type):
         import hw_intf_keepkey as keepkey
         import keepkeylib.client as client
         try:
-            return keepkey.connect_keepkey()
+            return keepkey.connect_keepkey(passphrase_encoding=passphrase_encoding, device_id=None)
         except client.PinException as e:
             raise HardwareWalletPinException(e.args[1])
 
