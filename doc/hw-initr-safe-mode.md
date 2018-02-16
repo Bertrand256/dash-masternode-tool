@@ -1,6 +1,6 @@
 ## Hardware wallet recovery - safe mode
 
-For Trezor and KeepKey wallets, this is a standard recovery scenario. Its is characterized by the user entering the individual words composing the recovery seed in a random order, with the number of the word to be entered shown only on the screen of the device. This makes it theoretically safe even on computers where malware may be logging everything typed on the keyboard. If this were the case, the malware would be able to capture the individual words, but not their order in the complete set, making the information useless.
+For Trezor and KeepKey wallets, this is a standard recovery scenario. It is characterized by the user entering the individual words composing the recovery seed in a random order, with the number of the word to be entered shown only on the screen of the device. This makes it theoretically safe even on computers where malware may be logging everything typed on the keyboard. If this were the case, the malware would be able to capture the individual words, but not their order in the complete set, making the information useless.
 
 ##### Step 1: Select the type of hardware wallet in use in the first step of the wizard  
 ![Select hardware wallet type](img/hwri/rec-hwtype.png)

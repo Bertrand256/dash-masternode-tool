@@ -23,6 +23,12 @@
    * [Changing a hardware wallet PIN/passphrase](#changing-a-hardware-wallet-pinpassphrase)
    * [Browsing and voting on proposals](doc/proposals.md)
    * [Hardware wallet initialization/recovery](doc/hw-initialization-recovery.md)
+ * Building the DMT executables
+    * [Mac OS](doc/build-dmt-mac.md)
+    * [Windows](doc/build-dmt-windows.md)
+    * Linux
+       * [Ubuntu](doc/build-dmt-linux-ubuntu.md)
+       * [Fedora](doc/build-dmt-linux-fedora.md)
  * [Downloads](https://github.com/Bertrand256/dash-masternode-tool/releases/latest)
  * [Changelog](changelog.md)
 
