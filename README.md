@@ -24,7 +24,7 @@
    * [Browsing and voting on proposals](doc/proposals.md)
    * [Hardware wallet initialization/recovery](doc/hw-initialization-recovery.md)
  * Building the DMT executables
-    * [Mac OS](doc/build-dmt-mac.md)
+    * [macOS](doc/build-dmt-mac.md)
     * [Windows](doc/build-dmt-windows.md)
     * Linux
        * [Ubuntu](doc/build-dmt-linux-ubuntu.md)
