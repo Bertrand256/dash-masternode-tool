@@ -1,8 +1,8 @@
-## Building DashMasternodeTool executable on Mac
+## Building the Dash Masternode Tool executable on macOS
 
-The procedure will be carried out using the Mac terminal application, so it should be run first.
+You can build Dash Masternode Tool for macOS by opening the Terminal app and running the following commands:
 
-* Install the *homebrew* package, by invoking the following command from your terminal app:
+* Install *Homebrew*:
 
   ```
   /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
@@ -10,19 +10,19 @@ The procedure will be carried out using the Mac terminal application, so it shou
 
   Installation takes about 5 minutes to complete.
 
-* Install Python 3:
+* Install *Python 3*:
 
   ```
   brew install python3
   ```
 
-* After the installation process completes, make sure, that the Python version installed is 3.6 or newer. DMT won't compile on older Python versions, event if it's version 3:
+* After the installation process completes, make sure that the Python version installed is 3.6 or newer. DMT won't compile on older versions of Python, or even older versions of Python 3:
 
   ```
   python3 --version
   ```
 
-  as a result you should get a result like this:
+  You should see a response similar to the following:
 
   `Python 3.6.4`
 
@@ -32,7 +32,7 @@ The procedure will be carried out using the Mac terminal application, so it shou
   pip3 install virtualenv
   ```
 
-* Create Python virtual environment dedicated to DMT:
+* Create a Python virtual environment for DMT:
 
   ```
   cd ~
@@ -48,14 +48,14 @@ The procedure will be carried out using the Mac terminal application, so it shou
   source dmt/bin/activate
   ```
 
-* Download DashMasternodeTool sources from Github:
+* Download the DMT source from GitHub:
 
   ```
   cd ~/projects
   git clone https://github.com/Bertrand256/dash-masternode-tool
   ```
 
-* Install the DMT's Python prerequisites:
+* Install the DMT Python requirements:
 
   ```
   cd dash-masternode-tool
@@ -69,5 +69,4 @@ The procedure will be carried out using the Mac terminal application, so it shou
   ```
 
 
-As a result of a successful build, a compressed Mac executable file is created in the ***~/projects/dist/all*** directory.  
-An uncompressed app package (*DashMasernodeTool.app*) can be found in the ***~/projects/dist/mac*** directory. 
+Once the build has completed successfully, a compressed macOS executable file will be created in the ***~/projects/dist/all*** directory. An uncompressed app package (*DashMasternodeTool.app*) can be found in the ***~/projects/dist/mac*** directory.
