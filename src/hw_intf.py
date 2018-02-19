@@ -183,7 +183,7 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee, rawtransa
     :return: tuple (serialized tx, total transaction amount in satoshis)
     """
     def prepare(ctrl):
-        ctrl.dlg_config_fun(dlg_title="Confirm message signing.", show_progress_bar=False)
+        ctrl.dlg_config_fun(dlg_title="Confirm transaction signing.", show_progress_bar=False)
         ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet...</b>')
 
         if main_ui.config.hw_type == HWType.trezor:
