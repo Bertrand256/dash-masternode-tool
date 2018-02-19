@@ -547,7 +547,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             try:
                 try:
                     logging.info('Connecting to a hardware wallet device')
-                    self.hw_client = hw_intf.connect_hw(self.config.hw_type)
+                    self.hw_client = hw_intf.connect_hw(passphrase_encoding=self.config.hw_keepkey_psw_encoding,
+                                                        hw_type=self.config.hw_type)
 
                     logging.info('Connected to a hardware wallet')
                     self.setStatus2Text('<b>HW status:</b> connected to %s' % hw_intf.get_hw_label(self, self.hw_client),

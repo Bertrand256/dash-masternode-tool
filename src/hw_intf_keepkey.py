@@ -21,10 +21,11 @@ from hw_common import clean_bip32_path
 
 class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):
 
-    def __init__(self, transport, ask_for_pin_fun, ask_for_pass_fun):
+    def __init__(self, transport, ask_for_pin_fun, ask_for_pass_fun, passphrase_encoding):
         keepkey_TextUIMixin.__init__(self, transport)
         self.ask_for_pin_fun = ask_for_pin_fun
         self.ask_for_pass_fun = ask_for_pass_fun
+        self.passphrase_encoding = passphrase_encoding
         self.__mnemonic = Mnemonic('english')
 
     def callback_PassphraseRequest(self, msg):
@@ -32,7 +33,10 @@ class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):
         if passphrase is None:
             raise HardwareWalletCancelException('Cancelled')
         else:
-            passphrase = unicodedata.normalize('NFKD', passphrase)
+            if self.passphrase_encoding in ('NFKD', 'NFC'):
+                passphrase = unicodedata.normalize(self.passphrase_encoding, passphrase)
+            else:
+                raise Exception('Invalid passphrase encoding value: ' + self.passphrase_encoding)
         return keepkey_proto.PassphraseAck(passphrase=passphrase)
 
     def callback_PinMatrixRequest(self, msg):
@@ -58,15 +62,19 @@ class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):
 
 
 class MyKeepkeyClient(keepkey_ProtocolMixin, MyKeepkeyTextUIMixin, keepkey_BaseClient):
-    def __init__(self, transport, ask_for_pin_fun, ask_for_pass_fun):
-        keepkey_ProtocolMixin.__init__(self, transport, ask_for_pin_fun, ask_for_pass_fun)
-        MyKeepkeyTextUIMixin.__init__(self, transport, ask_for_pin_fun, ask_for_pass_fun)
+    def __init__(self, transport, ask_for_pin_fun, ask_for_pass_fun, passphrase_encoding):
+        keepkey_ProtocolMixin.__init__(self, transport, ask_for_pin_fun, ask_for_pass_fun, passphrase_encoding)
+        MyKeepkeyTextUIMixin.__init__(self, transport, ask_for_pin_fun, ask_for_pass_fun, passphrase_encoding)
         keepkey_BaseClient.__init__(self, transport)
 
 
-def connect_keepkey(device_id: Optional[str] = None) -> Optional[MyKeepkeyClient]:
+def connect_keepkey(passphrase_encoding: Optional[str] = 'NFC',
+                    device_id: Optional[str] = None) -> Optional[MyKeepkeyClient]:
     """
     Connect to a Keepkey device.
+    :passphrase_encoding: Allowed values: 'NFC' or 'NFKD'. Note: Keekpey uses NFC encoding for passphrases, which is
+        incompatible with BIP-39 standard (NFKD). This argument gives the possibility to enforce comforming the
+        standard encoding.
     :return: ref to a keepkey client if connection successfull or None if we are sure that no Keepkey device connected.
     """
 
@@ -80,7 +88,7 @@ def connect_keepkey(device_id: Optional[str] = None) -> Optional[MyKeepkeyClient
 
         for d in HidTransport.enumerate():
             transport = HidTransport(d)
-            client = MyKeepkeyClient(transport, ask_for_pin_callback, ask_for_pass_callback)
+            client = MyKeepkeyClient(transport, ask_for_pin_callback, ask_for_pass_callback, passphrase_encoding)
             if not device_id or client.features.device_id == device_id:
                 return client
             else:
@@ -126,7 +134,7 @@ class MyTxApiInsight(TxApiInsight):
             except:
                 pass
         try:
-            j = self.dashd_inf.getrawtransaction(resourceid.decode("utf-8"), 1)
+            j = self.dashd_inf.getrawtransaction(resourceid, 1)
         except Exception as e:
             raise
         if cache_file:
@@ -203,7 +211,7 @@ def apply_settings(main_ui, label=None, language=None, use_passphrase=None, home
 def get_entropy(hw_device_id, len_bytes):
     client = None
     try:
-        client = connect_keepkey(hw_device_id)
+        client = connect_keepkey(device_id=hw_device_id)
 
         if client:
             client.get_entropy(len_bytes)
@@ -236,7 +244,7 @@ def wipe_device(hw_device_id) -> Tuple[str, bool]:
     """
     client = None
     try:
-        client = connect_keepkey(hw_device_id)
+        client = connect_keepkey(device_id=hw_device_id)
 
         if client:
             client.wipe_device()
@@ -278,7 +286,7 @@ def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphra
     """
     client = None
     try:
-        client = connect_keepkey(hw_device_id)
+        client = connect_keepkey(device_id=hw_device_id)
 
         if client:
             if client.features.initialized:
@@ -320,7 +328,7 @@ def recovery_device(hw_device_id: str, word_count: int, passphrase_enabled: bool
     """
     client = None
     try:
-        client = connect_keepkey(hw_device_id)
+        client = connect_keepkey(device_id=hw_device_id)
 
         if client:
             if client.features.initialized:
@@ -368,7 +376,7 @@ def reset_device(hw_device_id: str, strength: int, passphrase_enabled: bool, pin
     """
     client = None
     try:
-        client = connect_keepkey(hw_device_id)
+        client = connect_keepkey(device_id=hw_device_id)
 
         if client:
             if client.features.initialized:
