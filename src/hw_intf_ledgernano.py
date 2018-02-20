@@ -2,7 +2,7 @@ from btchip.btchip import *
 from btchip.btchipComm import getDongle
 import logging
 from btchip.btchipUtils import compress_public_key
-from hw_common import HardwareWalletCancelException, clean_bip32_path
+from hw_common import HardwareWalletCancelException, clean_bip32_path, HwSessionInfo
 from wnd_utils import WndUtils
 from dash_utils import *
 from PyQt5.QtWidgets import QMessageBox
@@ -19,7 +19,7 @@ def process_ledger_exceptions(func):
             return func(*args, **kwargs)
         except BTChipException as e:
             logging.exception('Error while communicating with Ledger hardware wallet.')
-            if (e.sw == 0x6d00):
+            if (e.sw in (0x6d00, 0x6700)):
                 e.message += '\n\nMake sure the Dash app is running on your Ledger device.'
             elif (e.sw == 0x6982):
                 e.message += '\n\nMake sure you have entered the PIN on your Ledger device.'
@@ -50,9 +50,9 @@ class MessageSignature:
 
 
 @process_ledger_exceptions
-def sign_message(main_ui, bip32_path, message):
+def sign_message(hw_session: HwSessionInfo, bip32_path, message):
 
-    client = main_ui.hw_client
+    client = hw_session.hw_client
     # Ledger doesn't accept characters other that ascii printable:
     # https://ledgerhq.github.io/btchip-doc/bitcoin-technical.html#_sign_message
     message = message.encode('ascii', 'ignore')
@@ -61,7 +61,7 @@ def sign_message(main_ui, bip32_path, message):
     ok = False
     for i in range(1,4):
         info = client.signMessagePrepare(bip32_path, message)
-        if info['confirmationNeeded'] and  info['confirmationType'] == 34:
+        if info['confirmationNeeded'] and info['confirmationType'] == 34:
             if i == 1 or \
                 WndUtils.queryDlg('Another application (such as Ledger Wallet Bitcoin app) has probably taken over '
                      'the communication with the Ledger device.'
@@ -72,9 +72,9 @@ def sign_message(main_ui, bip32_path, message):
 
                 # we need to reconnect the device; first, we'll try to reconnect to HW without closing the intefering
                 # application; it it doesn't help we'll display a message requesting the user to close the app
-                main_ui.disconnectHardwareWallet()
-                if main_ui.connectHardwareWallet():
-                    client = main_ui.hw_client
+                hw_session.hw_disconnect()
+                if hw_session.hw_connect():
+                    client = hw_session.hw_client
                 else:
                     raise Exception('Hardware wallet reconnect error.')
             else:
@@ -205,7 +205,7 @@ def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, seco
         dongle.close()
         del dongle
     try:
-        return WndUtils.threadFunctionDialog(process, (mnemonic_words, pin, passphrase, secondary_pin), True)
+        return WndUtils.run_thread_dialog(process, (mnemonic_words, pin, passphrase, secondary_pin), True)
     except BTChipException as e:
         if e.message == 'Invalid status 6982':
             raise Exception('Operation failed with the following error: %s. \n\nMake sure you have reset the device '
@@ -217,8 +217,8 @@ def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, seco
 
 
 @process_ledger_exceptions
-def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee, rawtransactions):
-    client = main_ui.hw_client
+def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend, dest_addresses, tx_fee, rawtransactions):
+    client = hw_session.hw_client
 
     # Each of the UTXOs will become an input in the new transaction. For each of those inputs, create
     # a Ledger's 'trusted input', that will be used by the the device to sign a transaction.
@@ -291,14 +291,13 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee, rawtransa
 
     amount -= int(tx_fee)
     amount = int(amount)
-    arg_outputs = [{'address': dest_address, 'valueSat': amount}]  # there will be multiple outputs soon
 
     new_transaction = bitcoinTransaction()  # new transaction object to be used for serialization at the last stage
     new_transaction.version = bytearray([0x01, 0x00, 0x00, 0x00])
-    for o in arg_outputs:
+    for _addr, _amout, _path in dest_addresses:
         output = bitcoinOutput()
-        output.script = compose_tx_locking_script(o['address'])
-        output.amount = int.to_bytes(o['valueSat'], 8, byteorder='little')
+        output.script = compose_tx_locking_script(_addr, hw_session.app_config.dash_network)
+        output.amount = int.to_bytes(_amout, 8, byteorder='little')
         new_transaction.outputs.append(output)
 
     # join all outputs - will be used by Ledger for sigining transaction

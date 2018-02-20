@@ -23,3 +23,9 @@ class AttrsProtected(object):
             super().__setattr__(name, value)
         else:
             raise AttributeError('Attribute definition protection for class "%s". Attribute name: "%s"' % (self.__class__.__name__, name))
+
+
+class CancelException(Exception):
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, *kwargs)
+
