@@ -71,6 +71,11 @@ class Ui_RpcConnection(object):
 
         self.retranslateUi(RpcConnection)
         QtCore.QMetaObject.connectSlotsByName(RpcConnection)
+        RpcConnection.setTabOrder(self.edtRpcHost, self.edtRpcPort)
+        RpcConnection.setTabOrder(self.edtRpcPort, self.edtRpcUsername)
+        RpcConnection.setTabOrder(self.edtRpcUsername, self.edtRpcPassword)
+        RpcConnection.setTabOrder(self.edtRpcPassword, self.chbRpcSSL)
+        RpcConnection.setTabOrder(self.chbRpcSSL, self.btnShowPassword)
 
     def retranslateUi(self, RpcConnection):
         _translate = QtCore.QCoreApplication.translate

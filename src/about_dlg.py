@@ -3,13 +3,15 @@
 # Author: Bertrand256
 # Created on: 2017-03
 
+import os
 import sys
+
 from PyQt5.QtCore import QSize, pyqtSlot
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import QDialog, QLayout
+from PyQt5.QtWidgets import QDialog
+
 from ui import ui_about_dlg
 from wnd_utils import WndUtils
-import os
 
 
 class AboutDlg(QDialog, ui_about_dlg.Ui_AboutDlg, WndUtils):

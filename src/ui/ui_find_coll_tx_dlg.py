@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'X:\src\ui\ui_find_coll_tx_dlg.ui'
+# Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_find_coll_tx_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.8.2
+# Created by: PyQt5 UI code generator 5.9.2
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -57,7 +57,7 @@ class Ui_FindCollateralTxDlg(object):
         self.tableWidget.verticalHeader().setCascadingSectionResizes(False)
         self.verticalLayout.addWidget(self.tableWidget)
         self.buttonBox = QtWidgets.QDialogButtonBox(FindCollateralTxDlg)
-        self.buttonBox.setStandardButtons(QtWidgets.QDialogButtonBox.Cancel|QtWidgets.QDialogButtonBox.Ok)
+        self.buttonBox.setStandardButtons(QtWidgets.QDialogButtonBox.Apply|QtWidgets.QDialogButtonBox.Close)
         self.buttonBox.setObjectName("buttonBox")
         self.verticalLayout.addWidget(self.buttonBox)
 

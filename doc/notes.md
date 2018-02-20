@@ -16,3 +16,13 @@ Keep in mind that the choice of encoding type affects the Dash addresses generat
 same BIP32 path and password. So, if you consider using the same seed with KeepKey and 
 let's say Trezor, choose NFKD. On the other hand, if you'd like to have address-compatibility 
 between DMT and the KeepKey official client app, use NFC. 
+
+## Note DMT0002
+Hardware wallet does not support Dash TESTNET.
+
+## Note DMT0003
+Remember to close other applications connected the same hardware wallet device that DMT 
+communicates with, for example web browsers with open online wallet apps, Chrome wallet apps, etc. 
+The communication with the device by these applications may distort data exchanged by DMT, which 
+may result in unexpected bahavior like returning different Dash address than the one for which 
+the query was sent.

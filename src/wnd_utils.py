@@ -7,16 +7,17 @@ import os
 import threading
 import traceback
 from functools import partial
+from typing import Callable, Optional, NewType, Any, Tuple
+import app_utils
 import thread_utils
 import time
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import Qt, QObject, QLocale
+from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap
-from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog
+from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit
 import math
 import message_dlg
-from thread_fun_dlg import ThreadFunDlg, WorkerThread
-import app_cache as app_cache
+from thread_fun_dlg import ThreadFunDlg, WorkerThread, CtrlObject
 
 
 class WndUtils:
@@ -100,8 +101,8 @@ class WndUtils:
         self.move(parent.frameGeometry().topLeft() + parent.rect().center() - self.rect().center())
 
     @staticmethod
-    def threadFunctionDialog(worker_fun, worker_fun_args, close_after_finish=True, buttons=None, title='',
-                             text=None, center_by_window=None):
+    def run_thread_dialog(worker_fun: Callable[[CtrlObject, Any], Any], worker_fun_args: Tuple[Any,...],
+                          close_after_finish=True, buttons=None, title='', text=None, center_by_window=None):
         """
         Executes worker_fun function inside a thread. Function provides a dialog for UI feedback (messages 
         and/or progressbar).
@@ -117,14 +118,15 @@ class WndUtils:
         ret = ui.getResult()
         ret_exception = ui.worker_exception
         del ui
+        QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)  # wait until dialog hides
         if ret_exception:
             # if there was an exception in the worker function, pass it to the caller
             raise ret_exception
         return ret
 
     @staticmethod
-    def runInThread(worker_fun, worker_fun_args, on_thread_finish=None, on_thread_exception=None,
-                    skip_raise_exception=False):
+    def run_thread(parent, worker_fun, worker_fun_args, on_thread_finish=None,
+                   on_thread_exception=None, skip_raise_exception=False):
         """
         Run a function inside a thread.
         :param worker_fun: reference to function to be executed inside a thread
@@ -153,7 +155,7 @@ class WndUtils:
             st = traceback.format_stack()
             logging.error('Running thread from inside another thread. Stack: \n' + ''.join(st))
 
-        thread = WorkerThread(worker_fun=worker_fun, worker_fun_args=worker_fun_args)
+        thread = WorkerThread(parent=parent, worker_fun=worker_fun, worker_fun_args=worker_fun_args)
 
         # in Python 3.5 local variables sometimes are removed before calling on_thread_finished_int
         # so we have to bind that variables with the function ref
@@ -177,13 +179,8 @@ class WndUtils:
             icon = self.style().standardIcon(ico)
         widget.setIcon(icon)
 
-    def set_cache_value(self, name, value):
-        app_cache.set_value(self.__class__.__name__ + '_' + name, value)
-
-    def get_cache_value(self, name, default_value, type):
-        return app_cache.get_value(self.__class__.__name__ + '_' + name, default_value, type)
-
-    def open_file_query(self, message, directory='', filter='', initial_filter=''):
+    @staticmethod
+    def open_file_query(main_wnd, message, directory='', filter='', initial_filter=''):
         """
         Creates an open file dialog for selecting a file or if the user configures not to use graphical dialogs
           (on some linuxes there are problems with graphic libs and app crashes) - normal input dialog for entering
@@ -194,24 +191,25 @@ class WndUtils:
         :param initial_filter: example: "Conf files (*.conf)"
         :return:
         """
-        sip_dialog = self.app_config.dont_use_file_dialogs if self.app_config else False
+        if main_wnd:
+            sip_dialog = main_wnd.app_config.dont_use_file_dialogs if main_wnd.app_config else False
+        else:
+            sip_dialog = False
         file_name = ''
 
         if sip_dialog:
-            file_name, ok = QInputDialog.getText(self, 'File name query', message)
+            file_name, ok = QInputDialog.getText(main_wnd, 'File name query', message)
             if not ok:
                 file_name = ''
         else:
-            file = QFileDialog.getOpenFileName(self,
-                                                   caption=message,
-                                                   directory=directory,
-                                                   filter=filter,
-                                                   initialFilter=initial_filter)
+            file = QFileDialog.getOpenFileName(main_wnd, caption=message, directory=directory, filter=filter,
+                                               initialFilter=initial_filter)
             if len(file) >= 2:
                 file_name = file[0]
         return file_name
 
-    def save_file_query(self, message, directory='', filter='', initial_filter=''):
+    @staticmethod
+    def save_file_query(main_wnd, message, directory='', filter='', initial_filter=''):
         """
         Creates an open file dialog for selecting a file or if the user configures not to use graphical dialogs
           (on some linuxes there are problems with graphic libs and app crashes) - normal input dialog for entering
@@ -222,21 +220,34 @@ class WndUtils:
         :param initial_filter: example: "Conf files (*.conf)"
         :return:
         """
-        sip_dialog = self.app_config.dont_use_file_dialogs if self.app_config else False
+        sip_dialog = main_wnd.app_config.dont_use_file_dialogs if main_wnd.app_config else False
         file_name = ''
 
         if sip_dialog:
-            file_name, ok = QInputDialog.getText(self, 'File name query', message)
+            file_name, ok = QInputDialog.getText(main_wnd, 'File name query', message)
             if not ok:
                 file_name = ''
         else:
-            file = QFileDialog.getSaveFileName(self,
-                                                   caption=message,
-                                                   directory=directory,
-                                                   filter=filter,
-                                                   initialFilter=initial_filter)
+            file = QFileDialog.getSaveFileName(main_wnd, caption=message, directory=directory, filter=filter,
+                                               initialFilter=initial_filter)
             if len(file) >= 2:
                 file_name = file[0]
+        return file_name
+
+    @staticmethod
+    def open_config_file_query(dir, main_wnd):
+        file_name = WndUtils.open_file_query(main_wnd, message='Enter the path to the configuration file',
+                                             directory=dir,
+                                             filter="All Files (*);;Configuration files (*.ini)",
+                                             initial_filter="Configuration files (*.ini)")
+        return file_name
+
+    @staticmethod
+    def save_config_file_query(dir, main_wnd):
+        file_name = WndUtils.save_file_query(main_wnd, message='Enter the configuration file name/path to save',
+                                             directory=dir,
+                                             filter="All Files (*);;Configuration files (*.ini)",
+                                             initial_filter="Configuration files (*.ini)")
         return file_name
 
     def write_csv_row(self, file_ptr, elems):
@@ -251,7 +262,7 @@ class WndUtils:
             if elem is None:
                 elem = ''
             elif not isinstance(elem, str):
-                elem = QLocale.toString(self.app_config.get_default_locale(), elem if elem is not None else '')
+                elem = QLocale.toString(app_utils.get_default_locale(), elem if elem is not None else '')
             csv_row.append(elem.replace(delim, delim_replacement))
         file_ptr.write(delim.join(csv_row) + '\n')
 
@@ -418,3 +429,17 @@ class WaitWidget(QWidget):
         if self.timer_id:
             self.killTimer(self.timer_id)
             self.timer_id = None
+
+
+class ReadOnlyTableCellDelegate(QItemDelegate):
+    """
+    Used for enabling read-only and text selectable cells in QTableView widgets.
+    """
+    def __init__(self, parent):
+        QItemDelegate.__init__(self, parent)
+
+    def createEditor(self, parent, option, index):
+        e = QLineEdit(parent)
+        e.setReadOnly(True)
+        return e
+

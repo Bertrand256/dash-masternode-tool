@@ -13,6 +13,8 @@ import re
 import sys
 import threading
 import time
+from functools import partial
+from typing import Optional, Tuple, Dict
 import bitcoin
 import logging
 from PyQt5 import QtCore
@@ -22,10 +24,11 @@ from PyQt5.QtGui import QFont, QIcon, QDesktopServices
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle, QInputDialog
 from PyQt5.QtWidgets import QMessageBox
+from common import CancelException
 from config_dlg import ConfigDlg
 from find_coll_tx_dlg import FindCollateralTxDlg
 import about_dlg
-import app_cache as cache
+import app_cache
 import dash_utils
 import hw_pass_dlg
 import hw_pin_dlg
@@ -33,17 +36,17 @@ import send_payout_dlg
 import app_utils
 from initialize_hw_dlg import HwInitializeDlg
 from proposals_dlg import ProposalsDlg
-from app_config import AppConfig, MasterNodeConfig, APP_NAME_LONG, APP_NAME_SHORT, PROJECT_URL
+from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT
+from app_defs import PROJECT_URL, HWType, get_note_url
 from dash_utils import bip32_path_n_to_string
 from dashd_intf import DashdInterface, DashdIndexException
-from hw_common import HardwareWalletCancelException, HardwareWalletPinException
+from hw_common import HardwareWalletCancelException, HardwareWalletPinException, HwSessionInfo
 import hw_intf
 from hw_setup_dlg import HwSetupDlg
 from psw_cache import SshPassCache
 from sign_message_dlg import SignMessageDlg
 from wnd_utils import WndUtils
 from ui import ui_main_dlg
-from app_config import HWType
 
 
 class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
@@ -54,59 +57,62 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         WndUtils.__init__(self, None)
         ui_main_dlg.Ui_MainWindow.__init__(self)
 
+        self.hw_client = None
         self.config = AppConfig()
         self.config.init(app_path)
+
         WndUtils.set_app_config(self, self.config)
-        self.dashd_intf = DashdInterface(self.config, window=None,
-                                         on_connection_begin_callback=self.on_connection_begin,
-                                         on_connection_try_fail_callback=self.on_connection_failed,
-                                         on_connection_finished_callback=self.on_connection_finished)
+
+        self.dashd_intf = DashdInterface(window=None,
+                                         on_connection_initiated_callback=self.show_connection_initiated,
+                                         on_connection_failed_callback=self.show_connection_failed,
+                                         on_connection_successful_callback=self.show_connection_successful,
+                                         on_connection_disconnected_callback=self.show_connection_disconnected)
+        self.hw_session = HwSessionInfo(
+            self.get_hw_client,
+            self.connect_hardware_wallet,
+            self.disconnect_hardware_wallet,
+            self.config,
+            dashd_intf=self.dashd_intf)
+
         self.dashd_info = {}
         self.is_dashd_syncing = False
         self.dashd_connection_ok = False
         self.connecting_to_dashd = False
-        self.hw_client = None
         self.curMasternode = None
-        self.editingEnabled = False
+        self.editing_enabled = False
         self.app_path = app_path
+        self.recent_config_files = []
 
-        # bip32 cache:
-        #   { "dash_address_of_the_parent": { bip32_path: dash_address }
-        self.bip32_cache = { }
+        # load most recently used config files from the data cache
+        mru_cf = app_cache.get_value('MainWindow_ConfigFileMRUList', default_value=[], type=list)
+        if isinstance(mru_cf, list):
+            for file_name in mru_cf:
+                if os.path.exists(file_name):
+                    self.recent_config_files.append(file_name)
+
         self.setupUi()
 
     def setupUi(self):
         ui_main_dlg.Ui_MainWindow.setupUi(self, self)
-        self.setWindowTitle(APP_NAME_LONG + ' by Bertrand256' + (
-            ' (v. ' + self.config.app_version + ')' if self.config.app_version else ''))
-
         SshPassCache.set_parent_window(self)
+        app_cache.restore_window_size(self)
         self.inside_setup_ui = True
         self.dashd_intf.window = self
         self.btnHwBip32ToAddress.setEnabled(False)
-        # self.edtMnStatus.setReadOnly(True)
-        # self.edtMnStatus.setStyleSheet('QLineEdit{background-color: lightgray}')
         self.closeEvent = self.closeEvent
         self.lblStatus1 = QtWidgets.QLabel(self)
         self.lblStatus1.setAutoFillBackground(False)
+        self.lblStatus1.setOpenExternalLinks(True)
         self.lblStatus1.setOpenExternalLinks(True)
         self.statusBar.addPermanentWidget(self.lblStatus1, 1)
         self.lblStatus1.setText('')
         self.lblStatus2 = QtWidgets.QLabel(self)
         self.statusBar.addPermanentWidget(self.lblStatus2, 2)
         self.lblStatus2.setText('')
-        img = QPixmap(os.path.join(self.app_path, "img/dmt.png"))
-        img = img.scaled(QSize(64, 64))
-        self.lblAbout.setPixmap(img)
-        self.setStatus1Text('<b>RPC network status:</b> not connected', 'black')
+        self.lblStatus2.setOpenExternalLinks(True)
+        self.show_connection_disconnected()
         self.setStatus2Text('<b>HW status:</b> idle', 'black')
-
-        if sys.platform == 'win32':
-            # improve buttons' ugly look on windows
-            styleSheet = """QPushButton {padding: 3px 10px 3px 10px}"""
-            btns = self.groupBox.findChildren(QPushButton)
-            for btn in btns:
-                btn.setStyleSheet(styleSheet)
 
         # set stylesheet for editboxes, supporting different colors for read-only and edting mode
         styleSheet = """
@@ -114,102 +120,258 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
           QLineEdit:read-only{background-color: lightgray}
         """
         self.setStyleSheet(styleSheet)
-        self.setIcon(self.btnHwCheck, 'hw-test.ico')
-        self.setIcon(self.btnHwDisconnect, "hw-lock.ico")
         self.setIcon(self.btnHwAddressToBip32, QStyle.SP_ArrowRight)
         self.setIcon(self.btnHwBip32ToAddress, QStyle.SP_ArrowLeft)
-        self.setIcon(self.btnConfiguration, "gear.png")
-        self.setIcon(self.btnProposals, "thumb-up.png")
-        self.setIcon(self.btnActions, "tools.png")
-        self.setIcon(self.btnCheckConnection, QStyle.SP_CommandLink)
-        self.setIcon(self.btnSaveConfiguration, QStyle.SP_DriveFDIcon)
-        self.setIcon(self.btnAbout, QStyle.SP_MessageBoxInformation)
+        self.setIcon(self.action_save_config_file, 'save.png')
+        self.setIcon(self.action_check_network_connection, "link-check.png")
+        self.setIcon(self.action_open_settings_window, "gear.png")
+        self.setIcon(self.action_open_proposals_window, "thumbs-up-down.png")
+        self.setIcon(self.action_test_hw_connection, "hw-test.png")
+        self.setIcon(self.action_disconnect_hw, "hw-disconnect.png")
+        self.setIcon(self.action_transfer_funds_for_cur_mn, "money-transfer-1.png")
+        self.setIcon(self.action_transfer_funds_for_all_mns, "money-transfer-2.png")
+        self.setIcon(self.action_transfer_funds_for_any_address, "wallet.png")
+        self.setIcon(self.action_sign_message_for_cur_mn, "sign.png")
+        self.setIcon(self.action_hw_configuration, "hw.png")
+        self.setIcon(self.action_hw_initialization_recovery, "recover.png")
+        # icons will not be visible in menu
+        self.action_save_config_file.setIconVisibleInMenu(False)
+        self.action_check_network_connection.setIconVisibleInMenu(False)
+        self.action_open_settings_window.setIconVisibleInMenu(False)
+        self.action_open_proposals_window.setIconVisibleInMenu(False)
+        self.action_test_hw_connection.setIconVisibleInMenu(False)
+        self.action_disconnect_hw.setIconVisibleInMenu(False)
+        self.action_transfer_funds_for_cur_mn.setIconVisibleInMenu(False)
+        self.action_transfer_funds_for_all_mns.setIconVisibleInMenu(False)
+        self.action_transfer_funds_for_any_address.setIconVisibleInMenu(False)
+        self.action_sign_message_for_cur_mn.setIconVisibleInMenu(False)
+        self.action_hw_configuration.setIconVisibleInMenu(False)
+        self.action_hw_initialization_recovery.setIconVisibleInMenu(False)
 
-        # create popup menu for actions button
-        mnu = QMenu()
-
-        # transfer for current mn
-        self.actTransferFundsSelectedMn = mnu.addAction("Transfer funds from current masternode's address...")
-        self.setIcon(self.actTransferFundsSelectedMn, "dollar.png")
-        self.actTransferFundsSelectedMn.triggered.connect(self.on_actTransferFundsSelectedMn_triggered)
-
-        # transfer for all mns
-        self.actTransferFundsForAllMns = mnu.addAction("Transfer funds from all Masternodes addresses...")
-        self.setIcon(self.actTransferFundsForAllMns, "money-bag.png")
-        self.actTransferFundsForAllMns.triggered.connect(self.on_actTransferFundsForAllMns_triggered)
-
-        # transfer for a specified address/bip32 path
-        self.actTransferFundsForAddress = mnu.addAction("Transfer funds from any HW address...")
-        self.setIcon(self.actTransferFundsForAddress, "wallet.png")
-        self.actTransferFundsForAddress.triggered.connect(self.on_actTransferFundsForAddress_triggered)
-
-        # sign message with HW
-        self.actSignMessageWithHw = mnu.addAction("Sign message with HW for current Masternode's address...")
-        self.setIcon(self.actSignMessageWithHw, "sign.png")
-        self.actSignMessageWithHw.triggered.connect(self.on_actSignMessageWithHw_triggered)
-
-        # hardware wallet setup tools
-        self.actHwSetup = mnu.addAction("Hardware wallet PIN/passphrase configuration...")
-        self.setIcon(self.actHwSetup, "hw.png")
-        self.actHwSetup.triggered.connect(self.on_actHwSetup_triggered)
-
-        # hardware wallet initialization dialog
-        self.actHwSetup = mnu.addAction("Hardware wallet initialization/recovery...")
-        self.setIcon(self.actHwSetup, "recover.png")
-        self.actHwSetup.triggered.connect(self.on_actHwInitialize_triggered)
-
-        mnu.addSeparator()
-
-        # the "check for updates" menu item
-        self.actCheckForUpdates = mnu.addAction("Check for updates")
-        self.actCheckForUpdates.triggered.connect(self.on_actCheckForUpdates_triggered)
-        self.btnActions.setMenu(mnu)
-
-        # the "log file" menu item
-        self.actLogFile = mnu.addAction('Open log file (%s)' % self.config.log_file)
-        self.actLogFile.triggered.connect(self.on_actLogFile_triggered)
 
         # add masternodes' info to the combobox
+        self.curMasternode = None
+
+        # after loading whole configuration, reset 'modified' variable
+        try:
+            self.config.read_from_file(hw_session=self.hw_session, create_config_file=True)
+        except Exception as e:
+            raise
+        self.display_window_title()
+        self.dashd_intf.initialize(self.config)
+
+        self.update_edit_controls_state()
+        self.setMessage("", None)
+
+        self.run_thread(self, self.check_for_updates_thread, (False,))
+
+        if self.config.app_config_file_name and os.path.exists(self.config.app_config_file_name):
+            self.add_item_to_config_files_mru_list(self.config.app_config_file_name)
+        self.update_config_files_mru_menu_items()
+
+        self.inside_setup_ui = False
+        self.configuration_to_ui()
+        logging.info('Finished setup of the main dialog.')
+
+    def closeEvent(self, event):
+        app_cache.save_window_size(self)
+        if self.dashd_intf:
+            self.dashd_intf.disconnect()
+
+        if self.config.is_modified():
+            if self.queryDlg('Configuration modified. Save?',
+                             buttons=QMessageBox.Yes | QMessageBox.No,
+                             default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+                self.save_configuration()
+        self.config.close()
+
+    def get_hw_client(self):
+        return self.hw_client
+
+    def configuration_to_ui(self):
+        """
+        Show the information read from configuration file on the user interface.
+        :return:
+        """
+
+        # add masternodes data to the combobox
+        self.curMasternode = None
         self.cboMasternodes.clear()
         for mn in self.config.masternodes:
             self.cboMasternodes.addItem(mn.name, mn)
         if self.config.masternodes:
             # get last masternode selected
-            idx = cache.get_value('WndMainCurMasternodeIndex', 0, int)
+            idx = app_cache.get_value('MainWindow_CurMasternodeIndex', 0, int)
             if idx >= len(self.config.masternodes):
                 idx = 0
             self.curMasternode = self.config.masternodes[idx]
-            self.displayMasternodeConfig(True)
+            self.display_masternode_config(True)
         else:
             self.curMasternode = None
 
-        # after loading whole configuration, reset 'modified' variable
-        self.config.modified = False
-        self.updateControlsState()
-        self.setMessage("", None)
+        self.action_open_log_file.setText = 'Open log file (%s)' % self.config.log_file
+        self.update_edit_controls_state()
 
-        self.on_actCheckForUpdates_triggered(True, force_check=False)
+    def load_configuration_from_file(self, file_name) -> None:
+        """
+        Load configuration from a file.
+        :param file_name: A name of the configuration file to be loaded into the application.
+        """
+        if self.config.is_modified():
+            ret = self.queryDlg('Current configuration has been modified. Save?',
+                                buttons=QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+                                default_button=QMessageBox.Yes, icon=QMessageBox.Warning)
+            if ret == QMessageBox.Yes:
+                self.save_configuration()
+            elif ret == QMessageBox.Cancel:
+                self.update_config_files_mru_menu_items()
+                return
 
-        self.inside_setup_ui = False
-        self.config.start_cache()
-        logging.info('Finished setup of the main dialog.')
+        try:
+            self.disconnect_hardware_wallet()
+            dash_network_sav = self.config.dash_network
+            self.config.read_from_file(hw_session=self.hw_session, file_name=file_name)
+            self.editing_enabled = False
+            self.configuration_to_ui()
+            self.dashd_intf.reload_configuration()
+            self.config.modified = False
+            file_name = self.config.app_config_file_name
+            if file_name:
+                self.add_item_to_config_files_mru_list(file_name)
+                self.update_config_files_mru_menu_items()
+                if dash_network_sav != self.config.dash_network:
+                    self.disconnect_hardware_wallet()
+            self.display_window_title()
+        except CancelException:
+            self.update_config_files_mru_menu_items()
+
+    def add_item_to_config_files_mru_list(self, file_name: str) -> None:
+        """
+        Add a file name to the list of recently open config files. This list acts as a source for
+        the 'Open Recent' menu subitems. This method is called after each successful loading configuration
+        from the 'file_name' config file.
+        :param file_name: A name of the file to be added to the list.
+        """
+        if file_name:
+            try:
+                if file_name in self.recent_config_files:
+                    idx = self.recent_config_files.index(file_name)
+                    del self.recent_config_files[idx]
+                    self.recent_config_files.insert(0, file_name)
+                else:
+                    self.recent_config_files.insert(0, file_name)
+                app_cache.set_value('MainWindow_ConfigFileMRUList', self.recent_config_files)
+            except Exception as e:
+                logging.warning(str(e))
+
+    def update_config_files_mru_menu_items(self):
+        app_utils.update_mru_menu_items(self.recent_config_files, self.action_open_recent_files,
+                                        self.on_config_file_mru_action_triggered,
+                                        self.config.app_config_file_name,
+                                        self.on_config_file_mru_clear_triggered)
+
+    def on_config_file_mru_action_triggered(self, file_name: str) -> None:
+        """ Triggered by clicking one of the subitems of the 'Open Recent' menu item. Each subitem is
+        related to one of recently openend configuration files.
+        :param file_name: A config file name accociated with the menu action clicked.
+        """
+        if file_name != self.config.app_config_file_name:
+            self.load_configuration_from_file(file_name)
+
+    def on_config_file_mru_clear_triggered(self):
+        """Clear items in the recent config files menu."""
+        self.recent_config_files.clear()
+        app_cache.set_value('MainWindow_ConfigFileMRUList', self.recent_config_files)
+        self.update_config_files_mru_menu_items()
+
+    def display_window_title(self):
+        """
+        Display main window title, which is composed of the application name, nick of the creator and
+        the name of the current configuration file. This method is executed after each successful loading
+        of the configuration file.
+        """
+        app_version_part = ' (v' + self.config.app_version + ')' if self.config.app_version else ''
+
+        if self.config.dash_network == 'TESTNET':
+            testnet_part = ' [TESTNET]'
+        else:
+            testnet_part = ''
+
+        if self.config.app_config_file_name:
+            cfg_file_name = self.config.app_config_file_name
+            if cfg_file_name:
+                home_dir = os.path.expanduser('~')
+                if cfg_file_name.find(home_dir) == 0:
+                    cfg_file_name = '~' + cfg_file_name[len(home_dir):]
+                else:
+                    cfg_file_name = cfg_file_name
+            cfg_file_name_part = ' - ' + cfg_file_name if cfg_file_name else ''
+        else:
+            cfg_file_name_part = '  <UNNAMED>'
+
+        if self.config.config_file_encrypted:
+            encrypted_part = ' (Encrypted)'
+        else:
+            encrypted_part = ''
+
+        title = f'{APP_NAME_SHORT}{app_version_part}{testnet_part}{cfg_file_name_part}{encrypted_part}'
+
+        self.setWindowTitle(title)
 
     @pyqtSlot(bool)
-    def on_actCheckForUpdates_triggered(self, checked, force_check=True):
-        if self.config.check_for_updates:
-            cur_date = datetime.datetime.now().strftime('%Y-%m-%d')
-            self.runInThread(self.checkForUpdates, (cur_date, force_check))
+    def on_action_load_config_file_triggered(self, checked):
+        if self.config.app_config_file_name:
+            dir = os.path.dirname(self.config.app_config_file_name)
+        else:
+            dir = self.config.data_dir
+        file_name = self.open_config_file_query(dir, self)
+
+        if file_name:
+            if os.path.exists(file_name):
+                self.load_configuration_from_file(file_name)
+            else:
+                WndUtils.errorMsg(f'File \'{file_name}\' does not exist.')
+
+    def save_configuration(self, file_name: str = None):
+        self.config.save_to_file(hw_session=self.hw_session, file_name=file_name)
+        file_name = self.config.app_config_file_name
+        if file_name:
+            self.add_item_to_config_files_mru_list(file_name)
+        self.update_config_files_mru_menu_items()
+        self.display_window_title()
+        self.editing_enabled = self.config.is_modified()
+        self.update_edit_controls_state()
 
     @pyqtSlot(bool)
-    def on_actLogFile_triggered(self, checked):
+    def on_action_save_config_file_triggered(self, checked):
+        self.save_configuration()
+
+    @pyqtSlot(bool)
+    def on_action_save_config_file_as_triggered(self, checked):
+        if self.config.app_config_file_name:
+            dir = os.path.dirname(self.config.app_config_file_name)
+        else:
+            dir = self.config.data_dir
+        file_name = self.save_config_file_query(dir, self)
+
+        if file_name:
+            self.save_configuration(file_name)
+
+    @pyqtSlot(bool)
+    def on_action_open_log_file_triggered(self, checked):
         if os.path.exists(self.config.log_file):
             ret = QDesktopServices.openUrl(QUrl("file:///%s" % self.config.log_file))
             if not ret:
                 self.warnMsg('Could not open "%s" file in a default OS application.' % self.config.log_file)
 
-    def checkForUpdates(self, ctrl, cur_date_str, force_check):
+    @pyqtSlot(bool)
+    def on_action_check_for_updates_triggered(self, checked, force_check=True):
+        if self.config.check_for_updates:
+            self.run_thread(self, self.check_for_updates_thread, (force_check,))
+
+    def check_for_updates_thread(self, ctrl, force_check):
         """
-        Thread function, checking on GitHub if there is a new version of the application.
+        Thread function checking whether there is a new version of the application on Github page.
         :param ctrl: thread control structure (not used here) 
         :param cur_date_str: Current date string - it will be saved in the cache file as the date of the 
             last-version-check date.
@@ -218,6 +380,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
         try:
             import urllib.request
+            cur_date_str = datetime.datetime.now().strftime('%Y-%m-%d')
+
             response = urllib.request.urlopen(
                 'https://raw.githubusercontent.com/Bertrand256/dash-masternode-tool/master/version.txt')
             contents = response.read()
@@ -225,7 +389,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             remote_version_str = app_utils.extract_app_version(lines)
             remote_ver = app_utils.version_str_to_number(remote_version_str)
             local_ver = app_utils.version_str_to_number(self.config.app_version)
-            cache.set_value('check_for_updates_last_date', cur_date_str)
 
             if remote_ver > local_ver:
                 if sys.platform == 'win32':
@@ -246,7 +409,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if exe_url:
                     msg = "New version (" + remote_version_str + ') available: <a href="' + exe_url + '">download</a>.'
                 else:
-                    msg = "New version (" + remote_version_str + ') available. Go to the project website: <a href="' + PROJECT_URL + '">open</a>.'
+                    msg = "New version (" + remote_version_str + ') available. Go to the project website: <a href="' + \
+                          PROJECT_URL + '">open</a>.'
 
                 self.setMessage(msg, 'green')
             else:
@@ -255,23 +419,25 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         except Exception as e:
             pass
 
-    def closeEvent(self, event):
-        if self.dashd_intf:
-            self.dashd_intf.disconnect()
-
-        if self.configModified():
-            if self.queryDlg('Configuration modified. Save?',
-                             buttons=QMessageBox.Yes | QMessageBox.No,
-                             default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
-                self.on_btnSaveConfiguration_clicked(True)
-        self.config.close()
-
-    def displayMasternodeConfig(self, set_mn_list_index):
+    def display_masternode_config(self, set_mn_list_index):
         if self.curMasternode and set_mn_list_index:
             self.cboMasternodes.setCurrentIndex(self.config.masternodes.index(self.curMasternode))
+
+        edtMnName_state = self.edtMnName.blockSignals(True)
+        edtMnIp_state = self.edtMnIp.blockSignals(True)
+        edtMnPort_state = self.edtMnPort.blockSignals(True)
+        edtMnPrivateKey_state = self.edtMnPrivateKey.blockSignals(True)
+        edtMnCollateralBip32Path_state = self.edtMnCollateralBip32Path.blockSignals(True)
+        edtMnCollateralAddress_state = self.edtMnCollateralAddress.blockSignals(True)
+        edtMnCollateralTx_state = self.edtMnCollateralTx.blockSignals(True)
+        edtMnCollateralTxIndex_state = self.edtMnCollateralTxIndex.blockSignals(True)
+        chbUseDefaultProtocolVersion_state = self.chbUseDefaultProtocolVersion.blockSignals(True)
+        edtMnProtocolVersion_state = self.edtMnProtocolVersion.blockSignals(True)
+
         try:
             if self.curMasternode:
                 self.curMasternode.lock_modified_change = True
+
             self.edtMnName.setText(self.curMasternode.name if self.curMasternode else '')
             self.edtMnIp.setText(self.curMasternode.ip if self.curMasternode else '')
             self.edtMnPort.setText(str(self.curMasternode.port) if self.curMasternode else '')
@@ -287,50 +453,56 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.edtMnProtocolVersion.setVisible(not use_default_protocol)
             self.lblMnStatus.setText('')
         finally:
+            self.edtMnName.blockSignals(edtMnName_state)
+            self.edtMnIp.blockSignals(edtMnIp_state)
+            self.edtMnPort.blockSignals(edtMnPort_state)
+            self.edtMnPrivateKey.blockSignals(edtMnPrivateKey_state)
+            self.edtMnCollateralBip32Path.blockSignals(edtMnCollateralBip32Path_state)
+            self.edtMnCollateralAddress.blockSignals(edtMnCollateralAddress_state)
+            self.edtMnCollateralTx.blockSignals(edtMnCollateralTx_state)
+            self.edtMnCollateralTxIndex.blockSignals(edtMnCollateralTxIndex_state)
+            self.chbUseDefaultProtocolVersion.blockSignals(chbUseDefaultProtocolVersion_state)
+            self.edtMnProtocolVersion.blockSignals(edtMnProtocolVersion_state)
+
             if self.curMasternode:
                 self.curMasternode.lock_modified_change = False
 
     @pyqtSlot(bool)
-    def on_btnConfiguration_clicked(self):
+    def on_action_open_settings_window_triggered(self):
+        dash_network_sav = self.config.dash_network
+        hw_type_sav = self.config.hw_type
         dlg = ConfigDlg(self, self.config)
-        dlg.exec_()
+        res = dlg.exec_()
+        if res and dlg.get_is_modified():
+            self.config.configure_cache()
+            self.dashd_intf.reload_configuration()
+            if dash_network_sav != self.config.dash_network or hw_type_sav != self.config.hw_type:
+                self.disconnect_hardware_wallet()
+            self.display_window_title()
+            self.update_edit_controls_state()
         del dlg
 
-    def connsCfgChanged(self):
-        """
-        If connections config is changed, we must apply the changes to the dashd interface object
-        :return: 
-        """
-        try:
-            self.dashd_intf.apply_new_cfg()
-            self.updateControlsState()
-        except Exception as e:
-            self.errorMsg(str(e))
-
     @pyqtSlot(bool)
-    def on_btnAbout_clicked(self):
+    def on_action_about_app_triggered(self):
         ui = about_dlg.AboutDlg(self, self.config.app_version)
         ui.exec_()
 
-    def on_connection_begin(self):
-        """
-        Called just before establising connection to a dash RPC.
-        """
+    def show_connection_initiated(self):
+        """Shows status information related to a initiated process of connection to a dash RPC. """
         self.setStatus1Text('<b>RPC network status:</b> trying %s...' % self.dashd_intf.get_active_conn_description(), 'black')
 
-    def on_connection_failed(self):
-        """
-        Called after failed connection attempt. There can be more attempts to connect to another nodes if there are 
-        such in configuration. 
-        """
+    def show_connection_failed(self):
+        """Shows status information related to a failed connection attempt. There can be more attempts to connect
+        to another nodes if there are such in configuration."""
         self.setStatus1Text('<b>RPC network status:</b> failed connection to %s' % self.dashd_intf.get_active_conn_description(), 'red')
 
-    def on_connection_finished(self):
-        """
-        Called after connection to dash daemon sucessufully establishes.
-        """
-        logging.debug("on_connection_finished")
+    def show_connection_successful(self):
+        """Shows status information after successful connetion to a Dash RPC node."""
         self.setStatus1Text('<b>RPC network status:</b> OK (%s)' % self.dashd_intf.get_active_conn_description(), 'green')
+
+    def show_connection_disconnected(self):
+        """Shows status message related to disconnection from Dash RPC node."""
+        self.setStatus1Text('<b>RPC network status:</b> not connected', 'black')
 
     def checkDashdConnection(self, wait_for_check_finish=False, call_on_check_finished=None):
         """
@@ -361,7 +533,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     synced = self.dashd_intf.issynchronized()
                     if synced:
                         self.is_dashd_syncing = False
-                        self.on_connection_finished()
+                        self.show_connection_successful()
                         break
                     mnsync = self.dashd_intf.mnsync()
                     self.setMessage('Dashd is synchronizing: AssetID: %s, AssetName: %s' %
@@ -386,15 +558,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             """
             try:
                 synced = self.dashd_intf.issynchronized()
-                self.dashd_info = self.dashd_intf.getinfo()
+                self.dashd_info = self.dashd_intf.getinfo(verify_node=True)
                 self.dashd_connection_ok = True
                 if not synced:
                     logging.info("dashd not synced")
                     if not self.is_dashd_syncing and not (hasattr(self, 'wait_for_dashd_synced_thread') and
                                                                   self.wait_for_dashd_synced_thread is not None):
                         self.is_dashd_syncing = True
-                        self.wait_for_dashd_synced_thread = self.runInThread(wait_for_synch_finished_thread, (),
-                                                                             on_thread_finish=connect_finished)
+                        self.wait_for_dashd_synced_thread = self.run_thread(self, wait_for_synch_finished_thread, (),
+                                                                            on_thread_finish=connect_finished)
                 else:
                     self.is_dashd_syncing = False
                 self.setMessage('')
@@ -404,7 +576,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     err = 'Connect error: %s' % type(e).__name__
                 self.is_dashd_syncing = False
                 self.dashd_connection_ok = False
-                self.on_connection_failed()
+                self.show_connection_failed()
                 self.setMessage(err,
                                 style='{background-color:red;color:white;padding:3px 5px 3px 5px; border-radius:3px}')
 
@@ -429,8 +601,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         call_on_check_finished()
                 else:
                     self.connecting_to_dashd = True
-                    self.check_conn_thread = self.runInThread(connect_thread, (),
-                                                              on_thread_finish=connect_finished)
+                    self.check_conn_thread = self.run_thread(self, connect_thread, (),
+                                                             on_thread_finish=connect_finished)
                     if wait_for_check_finish:
                         event_loop.exec()
         else:
@@ -440,13 +612,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.dashd_connection_ok = False
 
     @pyqtSlot(bool)
-    def on_btnCheckConnection_clicked(self):
+    def on_action_check_network_connection_triggered(self):
         def connection_test_finished():
 
-            self.btnCheckConnection.setEnabled(True)
+            self.action_check_network_connection.setEnabled(True)
             self.btnBroadcastMn.setEnabled(True)
             self.btnRefreshMnStatus.setEnabled(True)
-            self.btnActions.setEnabled(True)
+            self.action_transfer_funds_for_cur_mn.setEnabled(True)
+            self.action_transfer_funds_for_all_mns.setEnabled(True)
+            self.action_transfer_funds_for_any_address.setEnabled(True)
 
             if self.dashd_connection_ok:
                 if self.is_dashd_syncing:
@@ -460,17 +634,17 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.errorMsg('Connection error')
 
         if self.config.is_config_complete():
-            self.btnCheckConnection.setEnabled(False)
+            self.action_check_network_connection.setEnabled(False)
             self.btnBroadcastMn.setEnabled(False)
             self.btnRefreshMnStatus.setEnabled(False)
-            self.btnActions.setEnabled(False)
+            # disable all actions that utilize dash network
+            self.action_transfer_funds_for_cur_mn.setEnabled(False)
+            self.action_transfer_funds_for_all_mns.setEnabled(False)
+            self.action_transfer_funds_for_any_address.setEnabled(False)
             self.checkDashdConnection(call_on_check_finished=connection_test_finished)
         else:
             # configuration not complete: show config window
-            if self.queryDlg("There is no (enabled) connections to RPC node in your configuration. Open configuration dialog?",
-                             buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Yes,
-                             icon=QMessageBox.Warning) == QMessageBox.Yes:
-                self.on_btnConfiguration_clicked()
+            self.errorMsg("There are no (enabled) connections to an RPC node in your configuration.")
 
     def setStatus1Text(self, text, color):
         def set_status(text, color):
@@ -532,30 +706,66 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             return 'Unknown HW Type'
 
-    def connectHardwareWallet(self):
+    def connect_hardware_wallet(self) -> Optional[object]:
         """
         Connects to hardware wallet if not connected before.
-        :return: True, if successfully connected, False if not
+        :return: Reference to hw client or None if not connected.
         """
         ret = None
         if self.hw_client:
             cur_hw_type = hw_intf.get_hw_type(self.hw_client)
             if self.config.hw_type != cur_hw_type:
-                self.on_btnHwDisconnect_clicked()
+                self.on_action_disconnect_hw_triggered()
 
         if not self.hw_client:
             try:
                 try:
-                    logging.info('Connecting to a hardware wallet device')
-                    self.hw_client = hw_intf.connect_hw(passphrase_encoding=self.config.hw_keepkey_psw_encoding,
+                    logging.info('Connecting to a hardware wallet device. self: ' + str(self))
+                    self.hw_client = hw_intf.connect_hw(hw_session=self.hw_session,
+                                                        device_id=None,
+                                                        passphrase_encoding=self.config.hw_keepkey_psw_encoding,
                                                         hw_type=self.config.hw_type)
 
+                    if self.config.dash_network == 'TESTNET':
+                        # check if Dash testnet is supported by this hardware wallet
+
+                        found_testnet_support = False
+                        self.config.hw_coin_name = ''
+                        if self.config.hw_type in (HWType.trezor, HWType.keepkey):
+                            for coin in self.hw_client.features.coins:
+                                if coin.coin_name.upper() == 'DASH TESTNET' or coin.coin_shortcut.upper() == 'TDASH':
+                                    found_testnet_support = True
+                                    self.config.hw_coin_name = coin.coin_name
+                                    break
+                        elif self.config.hw_type == HWType.ledger_nano_s:
+                            addr = hw_intf.get_address(self.hw_session,
+                                                       dash_utils.get_default_bip32_path(self.config.dash_network))
+                            if dash_utils.validate_address(addr, self.config.dash_network):
+                                found_testnet_support = False
+
+                        if not found_testnet_support:
+                            url = get_note_url('DMT0002')
+                            msg = f'Your hardware wallet device does not support Dash TESTNET ' \
+                                  f'(<a href="{url}">see details</a>).'
+                            self.errorMsg(msg)
+                            try:
+                                self.disconnect_hardware_wallet()
+                            except Exception:
+                                pass
+                            self.setStatus2Text(msg, 'red')
+                            return
+                    else:
+                        self.config.hw_coin_name = 'Dash'
+
                     logging.info('Connected to a hardware wallet')
-                    self.setStatus2Text('<b>HW status:</b> connected to %s' % hw_intf.get_hw_label(self, self.hw_client),
+                    self.setStatus2Text('<b>HW status:</b> connected to %s' % hw_intf.get_hw_label(self.hw_client),
                                         'green')
-                    self.updateControlsState()
+                    self.update_edit_controls_state()
                 except Exception as e:
-                    self.hw_client = None
+                    try:
+                        self.disconnect_hardware_wallet()
+                    except Exception:
+                        pass
                     logging.info('Could not connect to a hardware wallet')
                     self.setStatus2Text('<b>HW status:</b> cannot connect to %s device' % self.getHwName(), 'red')
                     self.errorMsg(str(e))
@@ -565,37 +775,38 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.errorMsg(e.msg)
                 if self.hw_client:
                     self.hw_client.clear_session()
-                self.updateControlsState()
+                self.update_edit_controls_state()
             except OSError as e:
                 logging.exception('Exception occurred')
                 self.errorMsg('Cannot open %s device.' % self.getHwName())
-                self.updateControlsState()
+                self.update_edit_controls_state()
             except Exception as e:
                 logging.exception('Exception occurred')
                 self.errorMsg(str(e))
                 if self.hw_client:
                     self.hw_client.init_device()
-                self.updateControlsState()
+                self.update_edit_controls_state()
         else:
             ret = self.hw_client
         return ret
 
     def btnConnectTrezorClick(self):
-        self.connectHardwareWallet()
+        self.connect_hardware_wallet()
 
     @pyqtSlot(bool)
-    def on_btnHwCheck_clicked(self):
-        self.connectHardwareWallet()
-        self.updateControlsState()
+    def on_action_test_hw_connection_triggered(self):
+        self.connect_hardware_wallet()
+        self.update_edit_controls_state()
         if self.hw_client:
             try:
                 if self.config.hw_type in (HWType.trezor, HWType.keepkey):
                     features = self.hw_client.features
-                    hw_intf.ping(self, 'Hello, press the button', button_protection=False,
-                          pin_protection=features.pin_protection,
-                          passphrase_protection=features.passphrase_protection)
+                    # hw_intf.ping(self.hw_session, 'Hello, press the button', button_protection=False,
+                    #       pin_protection=features.pin_protection,
+                    #       passphrase_protection=features.passphrase_protection)
+
                     self.infoMsg('Connection to %s device (%s) successful.' %
-                                 (self.getHwName(), hw_intf.get_hw_label(self, self.hw_client)))
+                                 (self.getHwName(), hw_intf.get_hw_label(self.hw_client)))
                 elif self.config.hw_type == HWType.ledger_nano_s:
                     self.infoMsg('Connection to %s device successful.' %
                                  (self.getHwName(),))
@@ -603,17 +814,17 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if self.hw_client:
                     self.hw_client.init_device()
 
-    def disconnectHardwareWallet(self):
+    def disconnect_hardware_wallet(self) -> None:
         if self.hw_client:
             hw_intf.disconnect_hw(self.hw_client)
             del self.hw_client
             self.hw_client = None
             self.setStatus2Text('<b>HW status:</b> idle', 'black')
-            self.updateControlsState()
+            self.update_edit_controls_state()
 
     @pyqtSlot(bool)
-    def on_btnHwDisconnect_clicked(self):
-        self.disconnectHardwareWallet()
+    def on_action_disconnect_hw_triggered(self):
+        self.disconnect_hardware_wallet()
 
     @pyqtSlot(bool)
     def on_btnNewMn_clicked(self):
@@ -633,19 +844,22 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.config.masternodes.remove(self.curMasternode)
             self.cboMasternodes.removeItem(self.cboMasternodes.currentIndex())
             self.config.modified = True
-            self.updateControlsState()
+            self.update_edit_controls_state()
 
     @pyqtSlot(bool)
     def on_btnEditMn_clicked(self):
-        self.editingEnabled = True
-        self.updateControlsState()
+        self.editing_enabled = True
+        self.update_edit_controls_state()
 
-    def hwScanForBip32Paths(self, addresses):
+    def scan_hw_for_bip32_paths(self, addresses) -> Tuple[Dict[str, str], bool]:
         """
         Scans hardware wallet for bip32 paths of all Dash addresses passed in the addresses list.
         :param addresses: list of Dash addresses to scan
-        :return: dict {dash_address: bip32_path}
+        :return: Tuple[Dict[str <dash address>, str <bip32 path>], bool <True if user cancelled scanning>]
         """
+        paths_found = []
+        user_cancelled = False
+
         def scan_for_bip32_thread(ctrl, addresses):
             """
             Function run inside a thread which purpose is to scan hawrware wallet
@@ -660,117 +874,99 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             found_adresses = {}
             user_cancelled = False
             ctrl.dlg_config_fun(dlg_title="Scanning hardware wallet...", show_progress_bar=False)
-            self.connectHardwareWallet()
             if self.hw_client:
 
-                # get dash address of the parent
-                address_n = [2147483692,  # 44'
-                             2147483653,  # 5'
-                            ]
-                addr_of_cur_path = hw_intf.get_address(self, address_n)
-                b32cache = self.bip32_cache.get(addr_of_cur_path, None)
-                modified_b32cache = False
-                cache_file = os.path.join(self.config.cache_dir, 'bip32cache_%s.json' % addr_of_cur_path)
-                if not b32cache:
-                    # entry for parrent address was not scanned since starting the app, find cache file on disk
-                    try:  # looking into cache first
-                        b32cache = json.load(open(cache_file))
-                    except:
-                        # cache file not found
-                        b32cache = {}
+                address_n = dash_utils.get_default_bip32_base_path_n(self.config.dash_network) + [None, 0, None]
+                db_cur = self.config.db_intf.get_cursor()
 
-                    # create in cache entry for tree beginning from our parent path (different hw passphrase
-                    # gives different bip32 parent path)
-                    self.bip32_cache[addr_of_cur_path] = b32cache
-
-                for addr_to_find_bip32 in addresses:
-                    if not found_adresses.get(addr_to_find_bip32):
-                        # check 10 addresses of account 0 (44'/5'/0'/0), then 10 addreses
-                        # of account 1 (44'/5'/1'/0) and so on until 9th account.
-                        # if not found, then check next 10 addresses of account 0 (44'/5'/0'/0)
-                        # and so on; we assume here, that user rather puts collaterals
-                        # under first addresses of subsequent accounts than under far addresses
-                        # of the first account; if so, following iteration shuld be faster
-                        found = False
-                        if ctrl.finish:
-                            break
-                        for tenth_nr in range(0, 10):
+                try:
+                    for addr_to_find_bip32 in addresses:
+                        if not found_adresses.get(addr_to_find_bip32):
+                            # check 10 addresses of account 0 (44'/5'/0'/0), then 10 addreses
+                            # of account 1 (44'/5'/1'/0) and so on until 9th account.
+                            # if not found, then check next 10 addresses of account 0 (44'/5'/0'/0)
+                            # and so on; we assume here, that user rather puts collaterals
+                            # under first addresses of subsequent accounts than under far addresses
+                            # of the first account; if so, following iteration shuld be faster
+                            found = False
                             if ctrl.finish:
                                 break
-                            for account_nr in range(0, 10):
+                            for tenth_nr in range(0, 10):
                                 if ctrl.finish:
                                     break
-                                for index in range(0, 10):
+                                for account_nr in range(0, 10):
                                     if ctrl.finish:
                                         break
-                                    address_n = [2147483692,  # 44'
-                                                 2147483653,  # 5'
-                                                 2147483648 + account_nr,  # 0' + account_nr
-                                                 0,
-                                                 (tenth_nr * 10) + index]
+                                    for index in range(0, 10):
+                                        if ctrl.finish:
+                                            break
+                                        address_n[2] = account_nr + 0x80000000
+                                        address_n[4] = (tenth_nr * 10) + index
 
-                                    cur_bip32_path = bip32_path_n_to_string(address_n)
+                                        cur_bip32_path = bip32_path_n_to_string(address_n)
 
-                                    ctrl.display_msg_fun(
-                                        '<b>Scanning hardware wallet for BIP32 paths, please wait...</b><br><br>'
-                                        'Paths scanned: <span style="color:black">%d</span><br>'
-                                        'Keys found: <span style="color:green">%d</span><br>'
-                                        'Current path: <span style="color:blue">%s</span><br>'
-                                        % (paths_checked, paths_found, cur_bip32_path))
+                                        ctrl.display_msg_fun(
+                                            '<b>Scanning hardware wallet for BIP32 paths, please wait...</b><br><br>'
+                                            'Paths scanned: <span style="color:black">%d</span><br>'
+                                            'Keys found: <span style="color:green">%d</span><br>'
+                                            'Current path: <span style="color:blue">%s</span><br>'
+                                            % (paths_checked, paths_found, cur_bip32_path))
 
-                                    # first, find dash address in cache by bip32 path
-                                    addr_of_cur_path = b32cache.get(cur_bip32_path, None)
-                                    if not addr_of_cur_path:
-                                        addr_of_cur_path = hw_intf.get_address(self, address_n)
-                                        b32cache[cur_bip32_path] = addr_of_cur_path
-                                        modified_b32cache = True
+                                        addr_of_cur_path = hw_intf.get_address_ext(
+                                            self.hw_session, address_n, db_cur, self.config.hw_encrypt_string,
+                                            self.config.hw_decrypt_string)
 
-                                    paths_checked += 1
-                                    if addr_to_find_bip32 == addr_of_cur_path:
-                                        found_adresses[addr_to_find_bip32] = cur_bip32_path
-                                        found = True
-                                        paths_found += 1
+                                        paths_checked += 1
+                                        if addr_to_find_bip32 == addr_of_cur_path:
+                                            found_adresses[addr_to_find_bip32] = cur_bip32_path
+                                            found = True
+                                            paths_found += 1
+                                            break
+                                        elif not found_adresses.get(addr_of_cur_path, None) and \
+                                                        addr_of_cur_path in addresses:
+                                            # address of current bip32 path is in the search list
+                                            found_adresses[addr_of_cur_path] = cur_bip32_path
+
+                                    if found:
                                         break
-                                    elif not found_adresses.get(addr_of_cur_path, None) and \
-                                                    addr_of_cur_path in addresses:
-                                        # address of current bip32 path is in the search list
-                                        found_adresses[addr_of_cur_path] = cur_bip32_path
-
                                 if found:
                                     break
-                            if found:
-                                break
-
-                if modified_b32cache:
-                    # save modified cache to file
-                    if cache_file:
-                        try:  # saving into cache
-                            json.dump(b32cache, open(cache_file, 'w'))
-                        except Exception as e:
-                            pass
+                finally:
+                    if db_cur.connection.total_changes > 0:
+                        self.config.db_intf.commit()
+                    self.config.db_intf.release_cursor()
 
                 if ctrl.finish:
                     user_cancelled = True
             return found_adresses, user_cancelled
 
-        paths_found, user_cancelled = self.threadFunctionDialog(scan_for_bip32_thread, (addresses,), True,
-                                                buttons=[{'std_btn': QtWidgets.QDialogButtonBox.Cancel}],
-                                                center_by_window=self)
+        try:
+            self.connect_hardware_wallet()
+            self.config.initialize_hw_encryption(self.hw_session)
+
+            if self.hw_client:
+                paths_found, user_cancelled = self.run_thread_dialog(scan_for_bip32_thread, (addresses,), True,
+                                                                     buttons=[{'std_btn': QtWidgets.QDialogButtonBox.Cancel}],
+                                                                     center_by_window=self)
+        except Exception:
+            logging.exception('Unhandled exception while converting address to bip32 path.')
+            raise
         return paths_found, user_cancelled
 
     @pyqtSlot(bool)
-    def on_btnImportMasternodesConf_clicked(self):
+    def on_action_import_masternode_conf_triggered(self, checked):
         """
         Imports masternodes configuration from masternode.conf file.
         """
 
-        file_name = self.open_file_query(message='Enter the path to the masternode.conf configuration file',
-                                        directory='', filter="All Files (*);;Conf files (*.conf)",
-                                        initial_filter="Conf files (*.conf)")
+        file_name = self.open_file_query(self,
+                                         message='Enter the path to the masternode.conf configuration file',
+                                         directory='', filter="All Files (*);;Conf files (*.conf)",
+                                         initial_filter="Conf files (*.conf)")
 
         if file_name:
             if os.path.exists(file_name):
-                if not self.editingEnabled:
+                if not self.editing_enabled:
                     self.on_btnEditMn_clicked()
 
                 try:
@@ -830,10 +1026,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                         mns_imported.append(mn)
                                         if self.curMasternode == mn:
                                             # current mn has been updated - update UI controls to new data
-                                            self.displayMasternodeConfig(False)
+                                            self.display_masternode_config(False)
                                 else:
                                     imported_cnt += 1
-                                    mn = MasterNodeConfig()
+                                    mn = MasternodeConfig()
                                     update_mn(mn)
                                     modified = True
                                     self.config.add_mn(mn)
@@ -843,7 +1039,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 # incorrenct number of elements
                                 skipped_cnt += 1
                         if modified:
-                            self.updateControlsState()
+                            self.update_edit_controls_state()
                         if imported_cnt:
                             msg_text = 'Successfully imported %s masternode(s)' % str(imported_cnt)
                             if skipped_cnt:
@@ -862,8 +1058,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 for mn in mns_imported:
                                     if not mn.collateralBip32Path and mn.collateralAddress:
                                         addresses_to_scan.append(mn.collateralAddress)
-                                self.disconnectHardwareWallet()  # forcing to enter the passphrase again
-                                found_paths, user_cancelled = self.hwScanForBip32Paths(addresses_to_scan)
+                                self.disconnect_hardware_wallet()  # forcing to enter the passphrase again
+                                found_paths, user_cancelled = self.scan_hw_for_bip32_paths(addresses_to_scan)
 
                                 paths_missing = 0
                                 for mn in mns_imported:
@@ -874,7 +1070,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                             if self.curMasternode == mn:
                                                 # current mn has been updated - update UI controls
                                                 # to new data
-                                                self.displayMasternodeConfig(False)
+                                                self.display_masternode_config(False)
                                         else:
                                             paths_missing += 1
 
@@ -892,18 +1088,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if file_name:
                     self.errorMsg("File '" + file_name + "' does not exist")
 
-    @pyqtSlot(bool)
-    def on_btnSaveConfiguration_clicked(self, clicked):
-        self.save_configuration()
-
-    def save_configuration(self):
-        self.config.save_to_file()
-        self.editingEnabled = False
-        self.updateControlsState()
-
-    def updateControlsState(self):
+    def update_edit_controls_state(self):
         def update_fun():
-            editing = (self.editingEnabled and self.curMasternode is not None)
+            editing = (self.editing_enabled and self.curMasternode is not None)
             self.edtMnIp.setReadOnly(not editing)
             self.edtMnName.setReadOnly(not editing)
             self.edtMnPort.setReadOnly(not editing)
@@ -915,14 +1102,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.edtMnCollateralTx.setReadOnly(not editing)
             self.edtMnCollateralTxIndex.setReadOnly(not editing)
             self.btnGenerateMNPrivateKey.setEnabled(editing)
-            self.btnFindCollateral.setEnabled(editing and self.curMasternode.collateralAddress is not None and
-                                              self.curMasternode.collateralAddress != '')
             self.btnHwBip32ToAddress.setEnabled(editing)
             self.btnHwAddressToBip32.setEnabled(editing)
             self.btnDeleteMn.setEnabled(self.curMasternode is not None)
-            self.btnEditMn.setEnabled(not self.editingEnabled and self.curMasternode is not None)
-            self.btnSaveConfiguration.setEnabled(self.configModified())
-            self.btnHwDisconnect.setEnabled(True if self.hw_client else False)
+            self.btnEditMn.setEnabled(not self.editing_enabled and self.curMasternode is not None)
+            self.action_save_config_file.setEnabled(self.config.is_modified())
+            self.action_disconnect_hw.setEnabled(True if self.hw_client else False)
             self.btnRefreshMnStatus.setEnabled(self.curMasternode is not None)
             self.btnBroadcastMn.setEnabled(self.curMasternode is not None)
 
@@ -931,18 +1116,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             update_fun()
 
-    def configModified(self):
-        # check if masternodes config was changed
-        modified = self.config.modified
-        if not modified:
-            for mn in self.config.masternodes:
-                if mn.modified:
-                    modified = True
-                    break
-        return modified
-
     def newMasternodeConfig(self):
-        new_mn = MasterNodeConfig()
+        new_mn = MasternodeConfig()
         new_mn.new = True
         self.curMasternode = new_mn
         # find new, not used masternode name proposal
@@ -959,7 +1134,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if name_found:
             new_mn.name = name_found
         self.config.masternodes.append(new_mn)
-        self.editingEnabled = True
+        self.editing_enabled = True
         old_index = self.cboMasternodes.currentIndex()
         self.cboMasternodes.addItem(new_mn.name, new_mn)
         if old_index != -1:
@@ -970,7 +1145,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def curMnModified(self):
         if self.curMasternode:
             self.curMasternode.set_modified()
-            self.btnSaveConfiguration.setEnabled(self.configModified())
+            self.action_save_config_file.setEnabled(self.config.is_modified())
 
     @pyqtSlot(int)
     def on_cboMasternodes_currentIndexChanged(self):
@@ -978,10 +1153,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.curMasternode = self.config.masternodes[self.cboMasternodes.currentIndex()]
         else:
             self.curMasternode = None
-        self.displayMasternodeConfig(False)
-        self.updateControlsState()
+        self.display_masternode_config(False)
+        self.update_edit_controls_state()
         if not self.inside_setup_ui:
-            cache.set_value('WndMainCurMasternodeIndex', self.cboMasternodes.currentIndex())
+            app_cache.set_value('MainWindow_CurMasternodeIndex', self.cboMasternodes.currentIndex())
 
     @pyqtSlot(str)
     def on_edtMnName_textEdited(self):
@@ -1022,7 +1197,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.curMasternode.privateKey = self.edtMnPrivateKey.text()
 
     @pyqtSlot(str)
-    def on_edtMnCollateralBip32Path_textEdited(self):
+    def on_edtMnCollateralBip32Path_textChanged(self):
         if self.curMasternode:
             self.curMnModified()
             self.curMasternode.collateralBip32Path = self.edtMnCollateralBip32Path.text()
@@ -1032,11 +1207,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.btnHwBip32ToAddress.setEnabled(False)
 
     @pyqtSlot(str)
-    def on_edtMnCollateralAddress_textEdited(self):
+    def on_edtMnCollateralAddress_textChanged(self):
         if self.curMasternode:
             self.curMnModified()
             self.curMasternode.collateralAddress = self.edtMnCollateralAddress.text()
-            self.updateControlsState()
+            self.update_edit_controls_state()
             if self.curMasternode.collateralAddress:
                 self.btnHwAddressToBip32.setEnabled(True)
             else:
@@ -1070,7 +1245,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if retval == QMessageBox.No:
                 return
 
-        wif = dash_utils.generate_privkey()
+        wif = dash_utils.generate_privkey(self.config.dash_network)
         self.curMasternode.privateKey = wif
         self.edtMnPrivateKey.setText(wif)
         self.curMnModified()
@@ -1082,11 +1257,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         :return: 
         """
         try:
-            self.connectHardwareWallet()
+            self.connect_hardware_wallet()
             if not self.hw_client:
                 return
             if self.curMasternode and self.curMasternode.collateralBip32Path:
-                dash_addr = hw_intf.get_address(self, self.curMasternode.collateralBip32Path)
+                dash_addr = hw_intf.get_address(self.hw_session, self.curMasternode.collateralBip32Path)
                 self.edtMnCollateralAddress.setText(dash_addr)
                 self.curMasternode.collateralAddress = dash_addr
                 self.curMnModified()
@@ -1104,12 +1279,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
 
         try:
-            self.disconnectHardwareWallet()  # forcing to enter the passphrase again
-            self.connectHardwareWallet()
+            self.disconnect_hardware_wallet()  # forcing to enter the passphrase again
+            self.connect_hardware_wallet()
             if not self.hw_client:
                 return
             if self.curMasternode and self.curMasternode.collateralAddress:
-                paths, user_cancelled = self.hwScanForBip32Paths([self.curMasternode.collateralAddress])
+                paths, user_cancelled = self.scan_hw_for_bip32_paths([self.curMasternode.collateralAddress])
                 if not user_cancelled:
                     if not paths or len(paths) == 0:
                         self.errorMsg("Couldn't find Dash address in your hardware wallet. If you are using HW passphrase, "
@@ -1180,13 +1355,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 return
 
         try:
-            mn_privkey = dash_utils.wif_to_privkey(self.curMasternode.privateKey)
+            mn_privkey = dash_utils.wif_to_privkey(self.curMasternode.privateKey, self.config.dash_network)
             if not mn_privkey:
                 self.errorMsg('Cannot convert masternode private key')
                 return
             mn_pubkey = bitcoin.privkey_to_pubkey(mn_privkey)
 
-            self.connectHardwareWallet()
+            self.connect_hardware_wallet()
             if not self.hw_client:
                 return
 
@@ -1203,7 +1378,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 ipv6map += i.to_bytes(1, byteorder='big')[::-1].hex()
             ipv6map += int(self.curMasternode.port).to_bytes(2, byteorder='big').hex()
 
-            addr = hw_intf.get_address_and_pubkey(self, self.curMasternode.collateralBip32Path)
+            addr = hw_intf.get_address_and_pubkey(self.hw_session, self.curMasternode.collateralBip32Path)
             hw_collateral_address = addr.get('address').strip()
             collateral_pubkey = addr.get('publicKey')
             cfg_collateral_address = self.curMasternode.collateralAddress.strip()
@@ -1212,7 +1387,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 # if mn config's collateral address is empty, assign that from hardware wallet
                 self.curMasternode.collateralAddress = hw_collateral_address
                 self.edtMnCollateralAddress.setText(cfg_collateral_address)
-                self.updateControlsState()
+                self.update_edit_controls_state()
             elif hw_collateral_address != cfg_collateral_address:
                 # verify config's collateral addres with hardware wallet
                 if self.queryDlg(message="The Dash address retrieved from the hardware wallet (%s) for the configured "
@@ -1274,7 +1449,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             delegate_in = dash_utils.num_to_varint(len(mn_pubkey) / 2).hex() + mn_pubkey
             sig_time = int(time.time())
 
-            info = self.dashd_intf.getinfo()
+            info = self.dashd_intf.getinfo(verify_node=True)
             node_protocol_version = int(info['protocolversion'])
             if self.curMasternode.use_default_protocol_version or not self.curMasternode.protocol_version:
                 protocol_version = node_protocol_version
@@ -1286,7 +1461,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 binascii.unhexlify(bitcoin.hash160(bytes.fromhex(mn_pubkey)))[::-1].hex() + \
                                 str(protocol_version)
 
-            sig = hw_intf.sign_message(self, self.curMasternode.collateralBip32Path, serialize_for_sig)
+            sig = hw_intf.hw_sign_message(self.hw_session, self.curMasternode.collateralBip32Path, serialize_for_sig)
 
             if sig.address != hw_collateral_address:
                 self.errorMsg('%s address mismatch after signing.' % self.getHwName())
@@ -1305,7 +1480,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 seq,
                 '') + block_hash + str(sig_time)
 
-            r = dash_utils.ecdsa_sign(last_ping_serialize_for_sig, self.curMasternode.privateKey)
+            r = dash_utils.ecdsa_sign(last_ping_serialize_for_sig, self.curMasternode.privateKey,
+                                      self.config.dash_network)
             sig2 = (base64.b64decode(r).hex())
             logging.debug('Start MN message signature2: ' + sig2)
 
@@ -1323,14 +1499,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
             ret = self.dashd_intf.masternodebroadcast("decode", work)
             if ret['overall'].startswith('Successfully decoded broadcast messages for 1 masternodes'):
-                msg = QMessageBox()
-                msg.setIcon(QMessageBox.Information)
-                msg.setText('Press <OK> if you want to broadcast masternode configuration (protocol version: %s) '
-                            'or <Cancel> to exit.' % str(protocol_version))
-                msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
-                msg.setDefaultButton(QMessageBox.Ok)
-                retval = msg.exec_()
-                if retval == QMessageBox.Cancel:
+                if self.queryDlg(f'Press "Yes" if you want to broadcast start masternode message (protocol version: '
+                                 f'{protocol_version}) or "Cancel" to exit.',
+                                buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Cancel:
                     return
 
                 ret = self.dashd_intf.masternodebroadcast("relay", work)
@@ -1410,7 +1582,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if mn_info:
                 if mn_info.lastseen > 0:
                     lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
-                    lastseen_str = self.config.to_string(lastseen)
+                    lastseen_str = app_utils.to_string(lastseen)
                     lastseen_ago = app_utils.seconds_to_human(time.time() - float(mn_info.lastseen),
                                                                out_seconds=False) + ' ago'
                 else:
@@ -1419,7 +1591,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                 if mn_info.lastpaidtime > 0:
                     lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
-                    lastpaid_str = self.config.to_string(lastpaid)
+                    lastpaid_str = app_utils.to_string(lastpaid)
                     lastpaid_ago = app_utils.seconds_to_human(time.time() - float(mn_info.lastpaidtime),
                                                                out_seconds=False) + ' ago'
                 else:
@@ -1433,21 +1605,33 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     color = 'red'
                 enabled_mns_count = len(self.dashd_intf.payment_queue)
 
+                # get balance
+                addr = self.curMasternode.collateralAddress.strip()
+                bal_entry = ''
+                if addr:
+                    try:
+                        bal = self.dashd_intf.getaddressbalance([addr])
+                        if bal:
+                            bal = round(bal.get('balance') / 1e8, 5)
+                            bal_entry = f'<tr><td class="title">Balance:</td><td class="value">' \
+                                        f'{app_utils.to_string(bal)}</td><td></td></tr>'
+                    except Exception:
+                        pass
+
                 status = '<style>td {white-space:nowrap;padding-right:8px}' \
                          '.title {text-align:right;font-weight:bold}' \
                          '.ago {font-style:normal}' \
                          '.value {color:navy}' \
                          '</style>' \
                          '<table>' \
-                         '<tr><td class="title">Status:</td><td class="value"><span style="color:%s">%s</span>' \
-                         '</td><td>v.%s</td></tr>' \
-                         '<tr><td class="title">Last Seen:</td><td class="value">%s</td><td class="ago">%s</td></tr>' \
-                         '<tr><td class="title">Last Paid:</td><td class="value">%s</td><td class="ago">%s</td></tr>' \
-                         '<tr><td class="title">Active Duration:</td><td class="value" colspan="2">%s</td></tr>' \
-                         '<tr><td class="title">Queue/Count:</td><td class="value" colspan="2">%s/%s</td></tr>' \
-                         '</table>' % \
-                         (color, mn_info.status, str(mn_info.protocol), lastseen_str, lastseen_ago, lastpaid_str,
-                          lastpaid_ago, activeseconds_str, str(mn_info.queue_position), enabled_mns_count)
+                         f'<tr><td class="title">Status:</td><td class="value"><span style="color:{color}">{mn_info.status}</span>' \
+                         f'</td><td>v.{str(mn_info.protocol)}</td></tr>' \
+                         f'<tr><td class="title">Last Seen:</td><td class="value">{lastseen_str}</td><td class="ago">{lastseen_ago}</td></tr>' \
+                         f'<tr><td class="title">Last Paid:</td><td class="value">{lastpaid_str}</td><td class="ago">{lastpaid_ago}</td></tr>' \
+                         f'{bal_entry}' \
+                         f'<tr><td class="title">Active Duration:</td><td class="value" colspan="2">{activeseconds_str}</td></tr>' \
+                         f'<tr><td class="title">Queue/Count:</td><td class="value" colspan="2">{str(mn_info.queue_position)}/{enabled_mns_count}</td></tr>' \
+                         '</table>'
             else:
                 status = '<span style="color:red">Masternode not found.</span>'
         else:
@@ -1476,7 +1660,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.errorMsg('Dash daemon not connected')
 
     @pyqtSlot(bool)
-    def on_actTransferFundsSelectedMn_triggered(self):
+    def on_action_transfer_funds_for_cur_mn_triggered(self):
         """
         Shows tranfser funds window with utxos related to current masternode. 
         """
@@ -1490,55 +1674,43 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                               "button on the left of the 'BIP32 path' edit box.")
             else:
                 src_addresses.append((self.curMasternode.collateralAddress, self.curMasternode.collateralBip32Path))
-                self.executeTransferFundsDialog(src_addresses)
+                mn_index = self.config.masternodes.index(self.curMasternode)
+                self.show_wallet_window(mn_index)
         else:
             self.errorMsg('No masternode selected')
 
     @pyqtSlot(bool)
-    def on_actTransferFundsForAllMns_triggered(self):
+    def on_action_transfer_funds_for_all_mns_triggered(self):
         """
         Shows tranfser funds window with utxos related to all masternodes. 
         """
-        src_addresses = []
-        lacking_addresses  = 0
-        for mn in self.config.masternodes:
-            if mn.collateralAddress and mn.collateralBip32Path:
-                src_addresses.append((mn.collateralAddress, mn.collateralBip32Path))
-            else:
-                lacking_addresses += 1
-        if len(src_addresses):
-            if lacking_addresses == 0 or \
-                self.queryDlg("Some of your Masternodes lack the Dash addres and/or BIP32 path of the collateral "
-                              "in their configuration. Transactions for these Masternodes will not be listed.\n\n"
-                              "Continue?",
-                              buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                              default_button=QMessageBox.Yes, icon=QMessageBox.Warning) == QMessageBox.Yes:
-                self.executeTransferFundsDialog(src_addresses)
-        else:
-            self.errorMsg('No masternode with the BIP32 path and Dash address configured.')
+        self.show_wallet_window(-1)
 
     @pyqtSlot(bool)
-    def on_actTransferFundsForAddress_triggered(self):
+    def on_action_transfer_funds_for_any_address_triggered(self):
         """
         Shows tranfser funds window for address/path specified by the user.
         """
-        if not self.dashd_intf.open():
-            self.errorMsg('Dash daemon not connected')
-        else:
-            ui = send_payout_dlg.SendPayoutDlg([], self)
-            ui.exec_()
+        self.show_wallet_window(None)
 
-    def executeTransferFundsDialog(self, src_addresses):
+    def show_wallet_window(self, initial_mn: Optional[int]):
+        """ Shows the wallet/send payments dialog.
+        :param initial_mn:
+          if the value is from 0 to len(masternodes), show utxos for the masternode
+            having the 'initial_mn' index in self.config.mastrnodes
+          if the value is -1, show utxo for all masternodes
+          if the value is None, show the default utxo source type
+        """
         if not self.dashd_intf.open():
             self.errorMsg('Dash daemon not connected')
         else:
-            ui = send_payout_dlg.SendPayoutDlg(src_addresses, self)
+            ui = send_payout_dlg.WalletDlg(self, initial_mn_sel=initial_mn)
             ui.exec_()
 
     @pyqtSlot(bool)
-    def on_actSignMessageWithHw_triggered(self):
+    def on_action_sign_message_for_cur_mn_triggered(self):
         if self.curMasternode:
-            self.connectHardwareWallet()
+            self.connect_hardware_wallet()
             if self.hw_client:
                 if not self.curMasternode.collateralBip32Path:
                     self.errorMsg("Empty masternode's collateral BIP32 path")
@@ -1550,22 +1722,20 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.errorMsg("To sign messages, you must select a masternode.")
 
     @pyqtSlot(bool)
-    def on_actHwSetup_triggered(self):
+    def on_action_hw_configuration_triggered(self):
         """
         Hardware wallet setup.
         """
-        self.connectHardwareWallet()
+        self.connect_hardware_wallet()
         if self.hw_client:
             ui = HwSetupDlg(self)
             ui.exec_()
 
     @pyqtSlot(bool)
-    def on_actHwInitialize_triggered(self):
+    def on_action_hw_initialization_recovery_triggered(self):
         """
         Hardware wallet initialization from a seed.
         """
-        # self.connectHardwareWallet()
-        # if self.hw_client:
         ui = HwInitializeDlg(self)
         ui.exec_()
 
@@ -1576,21 +1746,23 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         :return: 
         """
         if self.curMasternode and self.curMasternode.collateralAddress:
-            ui = FindCollateralTxDlg(self, self.dashd_intf, self.curMasternode.collateralAddress)
+            ui = FindCollateralTxDlg(self, self.dashd_intf, self.curMasternode.collateralAddress,
+                                     not self.editing_enabled)
             if ui.exec_():
-                tx, txidx = ui.getSelection()
-                if tx:
-                    if self.curMasternode.collateralTx != tx or self.curMasternode.collateralTxIndex != str(txidx):
-                        self.curMasternode.collateralTx = tx
-                        self.curMasternode.collateralTxIndex = str(txidx)
-                        self.edtMnCollateralTx.setText(tx)
-                        self.edtMnCollateralTxIndex.setText(str(txidx))
-                        self.curMnModified()
-                        self.updateControlsState()
+                if self.editing_enabled:
+                    tx, txidx = ui.getSelection()
+                    if tx:
+                        if self.curMasternode.collateralTx != tx or self.curMasternode.collateralTxIndex != str(txidx):
+                            self.curMasternode.collateralTx = tx
+                            self.curMasternode.collateralTxIndex = str(txidx)
+                            self.edtMnCollateralTx.setText(tx)
+                            self.edtMnCollateralTxIndex.setText(str(txidx))
+                            self.curMnModified()
+                            self.update_edit_controls_state()
         else:
             logging.warning("curMasternode or collateralAddress empty")
 
     @pyqtSlot(bool)
-    def on_btnProposals_clicked(self):
+    def on_action_open_proposals_window_triggered(self):
         ui = ProposalsDlg(self, self.dashd_intf)
         ui.exec_()

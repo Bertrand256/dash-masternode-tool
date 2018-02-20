@@ -3,50 +3,41 @@
 # Author: Bertrand256
 # Created on: 2017-03
 import argparse
+import base64
 import datetime
 import json
 import os
 import re
 import copy
+import shutil
+import threading
+import time
+from io import StringIO, BytesIO
 from configparser import ConfigParser
-from os.path import expanduser
 from random import randint
 from shutil import copyfile
 import logging
+from typing import Optional
 import bitcoin
 from logging.handlers import RotatingFileHandler
 from PyQt5.QtCore import QLocale
+from PyQt5.QtWidgets import QMessageBox
+from cryptography.fernet import Fernet
+
+import hw_intf
+from app_defs import APP_NAME_SHORT, APP_NAME_LONG, HWType, APP_DATA_DIR_NAME
 from app_utils import encrypt, decrypt
-import app_cache as cache
+import app_cache
 import default_config
 import app_utils
+from common import CancelException
 from db_intf import DBCache
+from encrypted_files import read_file_encrypted, write_file_encrypted, NotConnectedToHardwareWallet
+from hw_common import HwSessionInfo
 from wnd_utils import WndUtils
 
-APP_NAME_SHORT = 'DashMasternodeTool'
-APP_NAME_LONG = 'Dash Masternode Tool'
-PROJECT_URL = 'https://github.com/Bertrand256/dash-masternode-tool'
-FEE_SAT_PER_BYTE = 11
-MIN_TX_FEE = 2000
-APP_CFG_CUR_VERSION = 2  # current version of configuration file format
-SCREENSHOT_MODE = False
 
-
-class HWType:
-    trezor = 'TREZOR'
-    keepkey = 'KEEPKEY'
-    ledger_nano_s = 'LEDGERNANOS'
-
-    @staticmethod
-    def get_desc(hw_type):
-        if hw_type == HWType.trezor:
-            return 'Trezor'
-        elif hw_type == HWType.keepkey:
-            return 'KeepKey'
-        elif hw_type == HWType.ledger_nano_s:
-            return 'Ledger Nano S'
-        else:
-            return '???'
+CURRENT_CFG_FILE_VERSION = 3
 
 
 class AppConfig(object):
@@ -55,9 +46,9 @@ class AppConfig(object):
         self.app_path = ''  # will be passed in the init method
         self.log_level_str = 'WARNING'
         self.app_version = ''
-        QLocale.setDefault(self.get_default_locale())
-        self.date_format = self.get_default_locale().dateFormat(QLocale.ShortFormat)
-        self.date_time_format = self.get_default_locale().dateTimeFormat(QLocale.ShortFormat)
+        QLocale.setDefault(app_utils.get_default_locale())
+        self.date_format = app_utils.get_default_locale().dateFormat(QLocale.ShortFormat)
+        self.date_time_format = app_utils.get_default_locale().dateTimeFormat(QLocale.ShortFormat)
 
         # List of Dash network configurations. Multiple conn configs advantage is to give the possibility to use
         # another config if particular one is not functioning (when using "public" RPC service, it could be node's
@@ -76,13 +67,17 @@ class AppConfig(object):
         # connections
         self.defective_net_configs = []
 
-        self.hw_type = HWType.trezor  # TREZOR, KEEPKEY, LEDGERNANOS
+        self.hw_type = None  # TREZOR, KEEPKEY, LEDGERNANOS
         self.hw_keepkey_psw_encoding = 'NFC'  # Keepkey passphrase UTF8 chars encoding:
                                               #  NFC: compatible with official Keepkey client app
                                               #  NFKD: compatible with Trezor
 
-        self.block_explorer_tx = 'https://chainz.cryptoid.info/dash/tx.dws?%TXID%'
-        self.block_explorer_addr = 'https://chainz.cryptoid.info/dash/address.dws?%ADDRESS%'
+        self.dash_network = 'MAINNET'
+
+        self.block_explorer_tx_mainnet = 'https://insight.dash.org/insight/tx/%TXID%'
+        self.block_explorer_addr_mainnet = 'https://insight.dash.org/insight/address/%ADDRESS%'
+        self.block_explorer_tx_testnet = 'https://test.insight.dash.siampm.com/tx/%TXID%'
+        self.block_explorer_addr_testnet = 'https://test.insight.dash.siampm.com/address/%ADDRESS%'
         self.dash_central_proposal_api = 'https://www.dashcentral.org/api/v1/proposal?hash=%HASH%'
 
         self.check_for_updates = True
@@ -92,7 +87,7 @@ class AppConfig(object):
         self.dont_use_file_dialogs = False
         self.confirm_when_voting = True
         self.add_random_offset_to_vote_time = True  # To avoid identifying one user's masternodes by vote time
-        self.csv_delimiter =';'
+        self.csv_delimiter = ';'
         self.masternodes = []
         self.last_bip32_base_path = ''
         self.bip32_recursive_search = True
@@ -102,9 +97,24 @@ class AppConfig(object):
         self.log_dir = ''
         self.log_file = ''
         self.log_level_str = ''
+        self.db_intf = None
         self.db_cache_file_name = ''
         self.cfg_backup_dir = ''
         self.app_last_version = ''
+        self.data_dir = ''
+        self.encrypt_config_file = False
+
+        self.config_file_encrypted = False
+
+        # runtime information, set after connecting to hardware wallet device; for Dash mainnet the value is
+        # 'Dash', for Dash testnet, the value is 'Dash Testnet' or 'tDash' depending on the (custom) firmware
+        # used
+        self.hw_coin_name = 'Dash'
+
+        # attributes related to encryption cache data with hardware wallet:
+        self.hw_generated_key = b"\xab\x0fs}\x8b\t\xb4\xc3\xb8\x05\xba\xd1\x96\x9bq`I\xed(8w\xbf\x95\xf0-\x1a\x14\xcb\x1c\x1d+\xcd"
+        self.hw_encryption_key = None
+        self.fernet = None
 
     def init(self, app_path):
         """ Initialize configuration after openning the application. """
@@ -119,7 +129,7 @@ class AppConfig(object):
 
         parser = argparse.ArgumentParser()
         parser.add_argument('--config', help="Path to a configuration file", dest='config')
-        parser.add_argument('--data-dir', help="Root directory for configuration file, cache and log dubdirs",
+        parser.add_argument('--data-dir', help="Root directory for configuration file, cache and log subdirs",
                             dest='data_dir')
         args = parser.parse_args()
 
@@ -129,26 +139,36 @@ class AppConfig(object):
                 if os.path.isdir(args.data_dir):
                     app_user_dir = args.data_dir
                 else:
+                    app_user_dir = ''
                     WndUtils.errorMsg('--data-dir parameter doesn\'t point to a directory. Using the default '
                                       'data directory.')
             else:
+                app_user_dir = ''
                 WndUtils.errorMsg('--data-dir parameter doesn\'t point to an existing directory. Using the default '
                                   'data directory.')
 
         if not app_user_dir:
-            home_dir = expanduser('~')
-            app_user_dir = os.path.join(home_dir, APP_NAME_SHORT)
-            if not os.path.exists(app_user_dir):
-                os.makedirs(app_user_dir)
+            home_dir = os.path.expanduser('~')
 
+            app_user_dir = os.path.join(home_dir, APP_DATA_DIR_NAME)
+            if not os.path.exists(app_user_dir):
+                # check if there exists directory used by app versions prior to 0.9.18
+                app_user_dir_old = os.path.join(home_dir, APP_NAME_SHORT)
+                if os.path.exists(app_user_dir_old):
+                    shutil.copytree(app_user_dir_old, app_user_dir)
+
+        self.data_dir = app_user_dir
         self.cache_dir = os.path.join(app_user_dir, 'cache')
         if not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir)
-        cache.init(self.cache_dir, self.app_version)
-        self.app_last_version = cache.get_value('app_version', '', str)
+
+        cache_file_name = os.path.join(self.cache_dir, 'dmt_cache.json')
+        app_cache.init(cache_file_name, self.app_version)
+        self.app_last_version = app_cache.get_value('app_version', '', str)
         self.app_config_file_name = ''
 
         if args.config is not None:
+            # set config file name to what user passed in the 'config' argument
             self.app_config_file_name = args.config
             if not os.path.exists(self.app_config_file_name):
                 msg = 'Config file "%s" does not exist.' % self.app_config_file_name
@@ -156,7 +176,11 @@ class AppConfig(object):
                 raise Exception(msg)
 
         if not self.app_config_file_name:
-            self.app_config_file_name = os.path.join(app_user_dir, 'config.ini')
+            # if the user hasn't passed a config file name in command line argument, read the config file name used the
+            # last time the application was running (use cache data); if there is no information in cache, use the
+            # default name 'config.ini'
+            self.app_config_file_name = app_cache.get_value(
+                'AppConfig_ConfigFileName', default_value=os.path.join(app_user_dir, 'config.ini'), type=str)
 
         # setup logging
         self.log_dir = os.path.join(app_user_dir, 'logs')
@@ -177,45 +201,30 @@ class AppConfig(object):
             handler.doRollover()
         logging.info('App started')
 
-        # database (SQLITE) cache for caching bigger datasets:
-        self.db_cache_file_name = os.path.join(self.cache_dir, 'dmt_cache.db')
-
-        try:
-            self.db_intf = DBCache(self.db_cache_file_name)
-        except Exception as e:
-            logging.exception('SQLite initialization error')
-
         # directory for configuration backups:
         self.cfg_backup_dir = os.path.join(app_user_dir, 'backup')
         if not os.path.exists(self.cfg_backup_dir):
             os.makedirs(self.cfg_backup_dir)
 
-        try:
-            # read configuration from a file
-            self.read_from_file()
-        except:
-            pass
-
         if not self.app_last_version or \
            app_utils.version_str_to_number(self.app_last_version) < app_utils.version_str_to_number(self.app_version):
-            cache.save_data()
+            app_cache.save_data()
         self.initialized = True
 
-    def start_cache(self):
-        """ Start cache save thread after GUI initializes. """
-        cache.start()
-
     def close(self):
-        cache.finish()
+        app_cache.finish()
         self.db_intf.close()
 
     def copy_from(self, src_config):
+        self.dash_network = src_config.dash_network
         self.dash_net_configs = copy.deepcopy(src_config.dash_net_configs)
         self.random_dash_net_config = src_config.random_dash_net_config
         self.hw_type = src_config.hw_type
         self.hw_keepkey_psw_encoding = src_config.hw_keepkey_psw_encoding
-        self.block_explorer_tx = src_config.block_explorer_tx
-        self.block_explorer_addr = src_config.block_explorer_addr
+        self.block_explorer_tx_mainnet = src_config.block_explorer_tx_mainnet
+        self.block_explorer_tx_testnet = src_config.block_explorer_tx_testnet
+        self.block_explorer_addr_mainnet = src_config.block_explorer_addr_mainnet
+        self.block_explorer_addr_testnet = src_config.block_explorer_addr_testnet
         self.dash_central_proposal_api = src_config.dash_central_proposal_api
         self.check_for_updates = src_config.check_for_updates
         self.backup_config_file = src_config.backup_config_file
@@ -231,38 +240,41 @@ class AppConfig(object):
         else:
             # ... otherwise just copy attribute without reconfiguring logger
             self.log_level_str = src_config.log_level_str
+        self.encrypt_config_file = src_config.encrypt_config_file
 
-    def get_default_locale(self):
-        if SCREENSHOT_MODE:
-            return QLocale(QLocale.English)
+    def configure_cache(self):
+        if self.is_testnet():
+            db_cache_file_name = 'dmt_cache_testnet.db'
         else:
-            return QLocale.system()
+            db_cache_file_name = 'dmt_cache.db'
 
-    def to_string(self, data):
-        """ Converts date/datetime or number to string using the current locale. """
-        if isinstance(data, datetime.datetime):
-            return self.get_default_locale().toString(data, self.date_time_format)
-        elif isinstance(data, datetime.date):
-            return self.get_default_locale().toString(data, self.date_format)
-        elif isinstance(data, float):
-            # don't use QT float to number conversion due to weird behavior
-            dp = self.get_default_locale().decimalPoint()
-            ret_str = str(data)
-            if dp != '.':
-                ret_str.replace('.', dp)
-            return ret_str
-        elif isinstance(data, str):
-            return data
-        elif isinstance(data, int):
-            return str(data)
+        new_db_cache_file_name = os.path.join(self.cache_dir, db_cache_file_name)
+        if self.db_intf:
+            if self.db_cache_file_name != new_db_cache_file_name:
+                self.db_cache_file_name = new_db_cache_file_name
+                self.db_intf.close()
+                self.db_intf.open(self.db_cache_file_name)
         else:
-            raise Exception('Argument is not a datetime type')
+            self.db_intf = DBCache()
+            self.db_intf.open(new_db_cache_file_name)
+            self.db_cache_file_name = new_db_cache_file_name
 
-    def read_from_file(self):
-        ini_version = None
-        was_default_ssh_in_ini_v1 = False
-        was_default_direct_localhost_in_ini_v1 = False
-        ini_v1_localhost_rpc_cfg = None
+    def clear_configuration(self):
+        """
+        Clears all the data structures that are loaded during the reading of the
+        configuration file. This method is called before the reading new configuration
+        from a file.
+        :return:
+        """
+        self.dash_net_configs.clear()
+        self.active_dash_net_configs.clear()
+        self.defective_net_configs.clear()
+        self.masternodes.clear()
+
+    def read_from_file(self, hw_session: HwSessionInfo, file_name: Optional[str] = None,
+                       create_config_file: bool = False):
+        if not file_name:
+            file_name = self.app_config_file_name
 
         # from v0.9.15 some public nodes changed its names and port numbers to the official HTTPS port number: 443
         # correct the configuration
@@ -272,13 +284,58 @@ class AppConfig(object):
         else:
             correct_public_nodes = False
         configuration_corrected = False
+        ini_version = CURRENT_CFG_FILE_VERSION
+        errors_while_reading = False
+        config_file_encrypted = False
+        hw_type_sav = self.hw_type
 
-        if os.path.exists(self.app_config_file_name):
+        if os.path.exists(file_name):
             config = ConfigParser()
             try:
+                self.hw_type = None
+                while True:
+                    mem_file = ''
+                    ret_info = {}
+                    try:
+                        for data_chunk in read_file_encrypted(file_name, ret_info, hw_session):
+                            mem_file += data_chunk.decode('utf-8')
+                        break
+                    except NotConnectedToHardwareWallet as e:
+                        ret = WndUtils.queryDlg(
+                            'Configuration file read error: ' + str(e) + '\n\n' +
+                            'Click \'Retry\' to try again, \'Restore Defaults\' to continue with default '
+                            'configuration or \'Cancel\' to exit.',
+                            buttons=QMessageBox.Retry | QMessageBox.Cancel | QMessageBox.RestoreDefaults,
+                            default_button=QMessageBox.Yes, icon=QMessageBox.Critical)
+
+                        if ret == QMessageBox.Cancel:
+                            raise CancelException('Couldn\'t read configuration file.')
+                        elif ret == QMessageBox.Default:
+                            break
+                        elif ret == QMessageBox.Open:
+                            if self.app_config_file_name:
+                                dir = os.path.dirname(self.app_config_file_name)
+                            else:
+                                dir = self.data_dir
+
+                            file_name = WndUtils.open_config_file_query(dir, None)
+                            if file_name:
+                                self.read_from_file(hw_session, file_name)
+                                return
+                            else:
+                                raise Exception('Couldn\'t read the configuration. Exiting...')
+
+                config_file_encrypted = ret_info.get('encrypted', False)
+
+                config.read_string(mem_file)
+                self.clear_configuration()
+
                 section = 'CONFIG'
-                config.read(self.app_config_file_name)
-                ini_version = config.get(section, 'CFG_VERSION', fallback=1)  # if CFG_VERSION not set it's old config
+                ini_version = config.get(section, 'CFG_VERSION', fallback=CURRENT_CFG_FILE_VERSION)
+                try:
+                    ini_version = int(ini_version)
+                except Exception:
+                    ini_version = CURRENT_CFG_FILE_VERSION
 
                 log_level_str = config.get(section, 'log_level', fallback='WARNING')
                 if log_level_str not in ('CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'):
@@ -286,65 +343,19 @@ class AppConfig(object):
                 if self.log_level_str != log_level_str:
                     self.set_log_level(log_level_str)
 
-                if ini_version == 1:
-                    # read network config from old file format
-                    dashd_connect_method = config.get(section, 'dashd_connect_method', fallback='rpc')
-                    rpc_user = config.get(section, 'rpc_user', fallback='')
-                    rpc_password = config.get(section, 'rpc_password', fallback='')
-                    rpc_ip = config.get(section, 'rpc_ip', fallback='')
-                    rpc_port = config.get(section, 'rpc_port', fallback='8889')
-                    ros_ssh_host = config.get(section, 'ros_ssh_host', fallback='')
-                    ros_ssh_port = config.get(section, 'ros_ssh_port', fallback='22')
-                    ros_ssh_username = config.get(section, 'ros_ssh_username', fallback='')
-                    ros_rpc_bind_ip = config.get(section, 'ros_rpc_bind_ip', fallback='127.0.0.1')
-                    ros_rpc_bind_port = config.get(section, 'ros_rpc_bind_port', fallback='9998')
-                    ros_rpc_username = config.get(section, 'ros_rpc_username', fallback='')
-                    ros_rpc_password = config.get(section, 'ros_rpc_password', fallback='')
+                dash_network = config.get(section, 'dash_network', fallback='MAINNET')
+                if dash_network not in ('MAINNET', 'TESTNET'):
+                    logging.warning(f'Invalid dash_network value: {dash_network}')
+                    dash_network = 'MAINNET'
+                self.dash_network = dash_network
 
-                    # convert dash network config from config version 1
-                    if ros_ssh_host and ros_ssh_port and ros_ssh_username and ros_rpc_bind_ip and \
-                       ros_rpc_bind_port and ros_rpc_username and ros_rpc_password:
-
-                        # import RPC over SSH configuration
-                        cfg = DashNetworkConnectionCfg('rpc')
-                        cfg.enabled = True if dashd_connect_method == 'rpc_ssh' else False
-                        cfg.host = ros_rpc_bind_ip
-                        cfg.port = ros_rpc_bind_port
-                        cfg.use_ssl = False
-                        cfg.username = ros_rpc_username
-                        cfg.password = ros_rpc_password
-                        cfg.use_ssh_tunnel = True
-                        cfg.ssh_conn_cfg.host = ros_ssh_host
-                        cfg.ssh_conn_cfg.port = ros_ssh_port
-                        cfg.ssh_conn_cfg.username = ros_ssh_username
-                        self.dash_net_configs.append(cfg)
-                        was_default_ssh_in_ini_v1 = cfg.enabled
-
-                    if rpc_user and rpc_password and rpc_ip and rpc_port:
-                        cfg = DashNetworkConnectionCfg('rpc')
-                        cfg.enabled = True if dashd_connect_method == 'rpc' else False
-                        cfg.host = rpc_ip
-                        cfg.port = rpc_port
-                        cfg.use_ssl = False
-                        cfg.username = rpc_user
-                        cfg.password = rpc_password
-                        cfg.use_ssh_tunnel = False
-                        self.dash_net_configs.append(cfg)
-                        was_default_direct_localhost_in_ini_v1 = cfg.enabled and cfg.host == '127.0.0.1'
-                        ini_v1_localhost_rpc_cfg = cfg
-                        if correct_public_nodes:
-                            if cfg.host.lower() == 'alice.dash-dmt.eu':
-                                cfg.host = 'alice.dash-masternode-tool.org'
-                                cfg.port = '443'
-                                configuration_corrected = True
-                            elif cfg.host.lower() == 'luna.dash-dmt.eu':
-                                cfg.host = 'luna.dash-masternode-tool.org'
-                                cfg.port = '443'
-                                configuration_corrected = True
-
-                self.last_bip32_base_path = config.get(section, 'bip32_base_path', fallback="44'/5'/0'/0/0")
+                if self.is_mainnet():
+                    def_bip32_path = "44'/5'/0'/0/0"
+                else:
+                    def_bip32_path = "44'/1'/0'/0/0"
+                self.last_bip32_base_path = config.get(section, 'bip32_base_path', fallback=def_bip32_path)
                 if not self.last_bip32_base_path:
-                    self.last_bip32_base_path = "44'/5'/0'/0/0"
+                    self.last_bip32_base_path = def_bip32_path
                 self.bip32_recursive_search = config.getboolean(section, 'bip32_recursive', fallback=True)
                 self.hw_type = config.get(section, 'hw_type', fallback=HWType.trezor)
                 if self.hw_type not in (HWType.trezor, HWType.keepkey, HWType.ledger_nano_s):
@@ -369,10 +380,20 @@ class AppConfig(object):
                                                                           fallback='1'))
                 self.add_random_offset_to_vote_time = \
                     self.value_to_bool(config.get(section, 'add_random_offset_to_vote_time', fallback='1'))
+                self.encrypt_config_file = \
+                    self.value_to_bool(config.get(section, 'encrypt_config_file', fallback='0'))
+
+                # with ini ver 3 we changed the connection password encryption scheme, so connections in new ini
+                # file will be saved under different section names - with this we want to disallow the old app
+                # version to read such network configuration entries, because passwords won't be decoded properly
+                if ini_version < 3:
+                    conn_cfg_section_name = 'NETCFG'
+                else:
+                    conn_cfg_section_name = 'CONNECTION'
 
                 for section in config.sections():
                     if re.match('MN\d', section):
-                        mn = MasterNodeConfig()
+                        mn = MasternodeConfig()
                         mn.name = config.get(section, 'name', fallback='')
                         mn.ip = config.get(section, 'ip', fallback='')
                         mn.port = config.get(section, 'port', fallback='')
@@ -385,7 +406,7 @@ class AppConfig(object):
                             config.get(section, 'use_default_protocol_version', fallback='1'))
                         mn.protocol_version = config.get(section, 'protocol_version', fallback='')
                         self.masternodes.append(mn)
-                    elif re.match('NETCFG\d', section):
+                    elif re.match(conn_cfg_section_name+'\d', section):
                         # read network configuration from new config file format
                         cfg = DashNetworkConnectionCfg('rpc')
                         cfg.enabled = self.value_to_bool(config.get(section, 'enabled', fallback='1'))
@@ -393,11 +414,13 @@ class AppConfig(object):
                         cfg.port = config.get(section, 'port', fallback='')
                         cfg.use_ssl = self.value_to_bool(config.get(section, 'use_ssl', fallback='0'))
                         cfg.username = config.get(section, 'username', fallback='')
-                        cfg.set_encrypted_password(config.get(section, 'password', fallback=''))
+                        cfg.set_encrypted_password(config.get(section, 'password', fallback=''),
+                                                   config_version=ini_version)
                         cfg.use_ssh_tunnel = self.value_to_bool(config.get(section, 'use_ssh_tunnel', fallback='0'))
                         cfg.ssh_conn_cfg.host = config.get(section, 'ssh_host', fallback='')
                         cfg.ssh_conn_cfg.port = config.get(section, 'ssh_port', fallback='')
                         cfg.ssh_conn_cfg.username = config.get(section, 'ssh_username', fallback='')
+                        cfg.testnet = self.value_to_bool(config.get(section, 'testnet', fallback='0'))
                         self.dash_net_configs.append(cfg)
                         if correct_public_nodes:
                             if cfg.host.lower() == 'alice.dash-dmt.eu':
@@ -408,56 +431,113 @@ class AppConfig(object):
                                 cfg.host = 'luna.dash-masternode-tool.org'
                                 cfg.port = '443'
                                 configuration_corrected = True
-            except Exception:
+
+                # set the new config file name
+                self.app_config_file_name = file_name
+                app_cache.set_value('AppConfig_ConfigFileName', self.app_config_file_name)
+                self.config_file_encrypted = config_file_encrypted
+
+            except CancelException:
+                self.hw_type = hw_type_sav
+                raise
+
+            except Exception as e:
                 logging.exception('Read configuration error:')
+                errors_while_reading = True
+                self.hw_type = hw_type_sav
+                ret =  WndUtils.queryDlg('Configuration file read error: ' + str(e) + '\n\n' +
+                                         'Click \'Restore Defaults\' to continue with default configuration,'
+                                         '\'Open\' to choose another configuration file or \'\Cancel\' to exit.',
+                                 buttons=QMessageBox.RestoreDefaults | QMessageBox.Cancel | QMessageBox.Open,
+                                 default_button=QMessageBox.Yes, icon=QMessageBox.Critical)
+                if ret == QMessageBox.Cancel:
+                    raise CancelException('Couldn\'t read configuration file.')
+                elif ret == QMessageBox.Open:
+                    if self.app_config_file_name:
+                        dir = os.path.dirname(self.app_config_file_name)
+                    else:
+                        dir = self.data_dir
+
+                    file_name = WndUtils.open_config_file_query(dir, None)
+                    if file_name:
+                        self.read_from_file(hw_session, file_name)
+                        return
+                    else:
+                        raise Exception('Couldn\'t read the configuration. Exiting...')
+                self.app_config_file_name = None
+                self.modified = True
+
+        elif file_name:
+            if not create_config_file:
+                raise Exception(f'The configuration file \'{file_name}\' does not exist.')
+            else:
+                self.modified = True
+            # else: file will be created while saving
 
         try:
             cfgs = self.decode_connections(default_config.dashd_default_connections)
             if cfgs:
-                # force import default connections if there is no any in the configuration
-                force_import = (len(self.dash_net_configs) == 0) or \
-                               (self.app_last_version == '0.9.15') # v0.9.15 imported the connections but not saved the cfg
+                # force import default connecticons if there is no any in the configuration
+                force_import = (self.app_last_version == '0.9.15')
 
-                added, updated = self.import_connections(cfgs, force_import=force_import)
-                if not ini_version or (ini_version == 1 and len(added) > 0):
-                    # we are migrating from config.ini version 1
-                    if was_default_ssh_in_ini_v1:
-                        # in v 1 user used connection to RPC over SSH;
-                        # we assume, that he would prefer his previus, trusted server, so we'll deactivate
-                        # added default public connections (user will be able to activate them manually)
-                        for new in added:
-                            new.enabled = False
-                    elif was_default_direct_localhost_in_ini_v1:
-                        # in the old version user used local dash daemon;
-                        # we assume, that user would prefer "public" connections over local, troublesome node
-                        # deactivate user's old cfg
-                        ini_v1_localhost_rpc_cfg.enabled = False
+                added, updated = self.import_connections(cfgs, force_import=force_import, limit_to_network=None)
                 if added or updated:
                     configuration_corrected = True
 
-            if not ini_version or ini_version == 1 or configuration_corrected:
-                # we are migrating settings from old configuration file - save config file in a new format
-                self.save_to_file()
+            if not errors_while_reading:
+                # if there were errors while reading configuration, don't save the file automatically but
+                # let the user change the new file name instead
+                if configuration_corrected:
+                    # we are migrating settings from old configuration file - save config file in a new format
+                    self.save_to_file(hw_session=hw_session)
+                else:
+                    if ini_version < CURRENT_CFG_FILE_VERSION:
+                        self.save_to_file(hw_session=hw_session)
 
         except Exception:
-            pass
+            logging.exception('An exception occurred while loading default connection configuration.')
 
-    def save_to_file(self):
+        self.configure_cache()
+
+    def save_to_file(self, hw_session: HwSessionInfo, file_name: Optional[str] = None):
+        """
+        Saves current configuration to a file with the name 'file_name'. If the 'file_name' argument is empty
+        configuration is saved under the current configuration file name (self.app_config_file_name).
+        :param file_name:
+        :return:
+        """
+
+        if not file_name:
+            file_name = self.app_config_file_name
+        if not file_name:
+            if self.app_config_file_name:
+                dir = os.path.dirname(self.app_config_file_name)
+            else:
+                dir = self.data_dir
+
+            file_name = WndUtils.save_config_file_query(dir, None)
+            if not file_name:
+                WndUtils.warnMsg('File not saved.')
+                return
+
         # backup old ini file
         if self.backup_config_file:
-            if os.path.exists(self.app_config_file_name):
+            if os.path.exists(file_name):
                 tm_str = datetime.datetime.now().strftime('%Y-%m-%d %H_%M')
                 back_file_name = os.path.join(self.cfg_backup_dir, 'config_' + tm_str + '.ini')
                 try:
-                    copyfile(self.app_config_file_name, back_file_name)
+                    copyfile(file_name, back_file_name)
                 except:
                     pass
 
         section = 'CONFIG'
         config = ConfigParser()
         config.add_section(section)
-        config.set(section, 'CFG_VERSION', str(APP_CFG_CUR_VERSION))
+        config.set(section, 'CFG_VERSION', str(CURRENT_CFG_FILE_VERSION))
         config.set(section, 'log_level', self.log_level_str)
+        config.set(section, 'dash_network', self.dash_network)
+        if not self.hw_type:
+            self.hw_type = HWType.trezor
         config.set(section, 'hw_type', self.hw_type)
         config.set(section, 'hw_keepkey_psw_encoding', self.hw_keepkey_psw_encoding)
         config.set(section, 'bip32_base_path', self.last_bip32_base_path)
@@ -469,6 +549,7 @@ class AppConfig(object):
                    '1' if self.read_proposals_external_attributes else '0')
         config.set(section, 'confirm_when_voting', '1' if self.confirm_when_voting else '0')
         config.set(section, 'add_random_offset_to_vote_time', '1' if self.add_random_offset_to_vote_time else '0')
+        config.set(section, 'encrypt_config_file', '1' if self.encrypt_config_file else '0')
 
         # save mn configuration
         for idx, mn in enumerate(self.masternodes):
@@ -488,7 +569,7 @@ class AppConfig(object):
 
         # save dash network connections
         for idx, cfg in enumerate(self.dash_net_configs):
-            section = 'NETCFG' + str(idx+1)
+            section = 'CONNECTION' + str(idx+1)
             config.add_section(section)
             config.set(section, 'method', cfg.method)
             config.set(section, 'enabled', '1' if cfg.enabled else '0')
@@ -503,10 +584,34 @@ class AppConfig(object):
                 config.set(section, 'ssh_port', cfg.ssh_conn_cfg.port)
                 config.set(section, 'ssh_username', cfg.ssh_conn_cfg.username)
                 # SSH password is not saved until HW encrypting feature will be finished
+            config.set(section, 'testnet', '1' if cfg.testnet else '0')
 
-        with open(self.app_config_file_name, 'w') as f_ptr:
+        # ret_info = {}
+        # read_file_encrypted(file_name, ret_info, hw_session)
+        if self.encrypt_config_file:
+            f_ptr = StringIO()
             config.write(f_ptr)
+            f_ptr.seek(0)
+            mem_data = bytes()
+            while True:
+                data_chunk = f_ptr.read(1000)
+                if not data_chunk:
+                    break
+                if isinstance(data_chunk, str):
+                    mem_data += bytes(data_chunk, 'utf-8')
+                else:
+                    mem_data += data_chunk
+
+            write_file_encrypted(file_name, hw_session, mem_data)
+            self.config_file_encrypted = True
+        else:
+            with open(file_name, 'w') as f_ptr:
+                config.write(f_ptr)
+            self.config_file_encrypted = False
+
         self.modified = False
+        self.app_config_file_name = file_name
+        app_cache.set_value('AppConfig_ConfigFileName', self.app_config_file_name)
 
     def value_to_bool(self, value, default=None):
         """
@@ -562,7 +667,7 @@ class AppConfig(object):
         """
         tmp_list = []
         for cfg in self.dash_net_configs:
-            if cfg.enabled:
+            if cfg.enabled and self.is_testnet() == cfg.testnet:
                 tmp_list.append(cfg)
         if self.random_dash_net_config:
             ordered_list = []
@@ -608,7 +713,7 @@ class AppConfig(object):
                     cfg.host = conn_raw['host']
                     cfg.port = conn_raw['port']
                     cfg.username = conn_raw['username']
-                    cfg.set_encrypted_password(conn_raw['password'])
+                    cfg.set_encrypted_password(conn_raw['password'], config_version=CURRENT_CFG_FILE_VERSION)
                     cfg.use_ssl = conn_raw['use_ssl']
                     if cfg.use_ssh_tunnel:
                         if 'ssh_host' in conn_raw:
@@ -617,6 +722,7 @@ class AppConfig(object):
                             cfg.ssh_conn_cfg.port = conn_raw['ssh_port']
                         if 'ssh_user' in conn_raw:
                             cfg.ssh_conn_cfg.port = conn_raw['ssh_user']
+                    cfg.testnet = conn_raw.get('testnet', False)
                     connn_list.append(cfg)
             except Exception as e:
                 logging.exception('Exception while decoding connections.')
@@ -672,7 +778,7 @@ class AppConfig(object):
             encoded_conns.append(ec)
         return json.dumps(encoded_conns, indent=4)
 
-    def import_connections(self, in_conns, force_import):
+    def import_connections(self, in_conns, force_import, limit_to_network: Optional[str]):
         """
         Imports connections from a list. Used at the app's start to process default connections and/or from
           a configuration dialog, when user pastes from a clipboard a string, describing connections he 
@@ -684,19 +790,33 @@ class AppConfig(object):
         added_conns = []
         updated_conns = []
         if in_conns:
+            # import default mainnet connections if there is so mainnet conenctions in the current configuration
+            # the same for testnet
+            mainnet_conn_count = 0
+            testnet_conn_count = 0
+            for conn in self.dash_net_configs:
+                if conn.testnet:
+                    testnet_conn_count += 1
+                else:
+                    mainnet_conn_count += 1
+
             for nc in in_conns:
-                id = nc.get_conn_id()
-                # check if new connection is in existing list
-                conn = self.get_conn_cfg_by_id(id)
-                if not conn:
-                    if force_import or not cache.get_value('imported_default_conn_' + nc.get_conn_id(), False, bool):
-                        # this new connection was not automatically imported before
-                        self.dash_net_configs.append(nc)
-                        added_conns.append(nc)
-                        cache.set_value('imported_default_conn_' + nc.get_conn_id(), True)
-                elif not conn.identical(nc) and force_import:
-                    conn.copy_from(nc)
-                    updated_conns.append(conn)
+                if (self.dash_network == 'MAINNET' and nc.testnet == False) or \
+                   (self.dash_network == 'TESTNET' and nc.testnet == True) or not limit_to_network:
+                    id = nc.get_conn_id()
+                    # check if new connection is in existing list
+                    conn = self.get_conn_cfg_by_id(id)
+                    if not conn:
+                        if force_import or not app_cache.get_value('imported_default_conn_' + nc.get_conn_id(),
+                                                                   False, bool) or \
+                           (testnet_conn_count == 0 and nc.testnet) or  (mainnet_conn_count == 0 and nc.mainnet):
+                            # this new connection was not automatically imported before
+                            self.dash_net_configs.append(nc)
+                            added_conns.append(nc)
+                            app_cache.set_value('imported_default_conn_' + nc.get_conn_id(), True)
+                    elif not conn.identical(nc) and force_import:
+                        conn.copy_from(nc)
+                        updated_conns.append(conn)
         return added_conns, updated_conns
 
     def get_conn_cfg_by_id(self, id):
@@ -734,8 +854,80 @@ class AppConfig(object):
             else:
                 raise Exception('Masternode with this name: ' + mn.name + ' already exists in configuration')
 
+    def is_modified(self) -> bool:
+        modified = self.modified
+        if not modified:
+            for mn in self.masternodes:
+                if mn.modified:
+                    modified = True
+                    break
+        return modified
 
-class MasterNodeConfig:
+    def is_testnet(self) -> bool:
+        return self.dash_network == 'TESTNET'
+
+    def is_mainnet(self) -> bool:
+        return self.dash_network == 'MAINNET'
+
+    def get_block_explorer_tx(self):
+        if self.dash_network == 'MAINNET':
+            return self.block_explorer_tx_mainnet
+        else:
+            return self.block_explorer_tx_testnet
+
+    def get_block_explorer_addr(self):
+        if self.dash_network == 'MAINNET':
+            return self.block_explorer_addr_mainnet
+        else:
+            return self.block_explorer_addr_testnet
+
+    def get_hw_type(self):
+        return self.hw_type
+
+    def initialize_hw_encryption(self, hw_session: HwSessionInfo):
+        if threading.current_thread() != threading.main_thread():
+            raise Exception('This function must be called from the main thread.')
+
+        if not self.fernet:
+            self.hw_encryption_key = None
+            self.fernet = None
+            # encrypt generated_key with hardware wallet: it will be used to encrypt data in db cache
+            try:
+                if self.hw_type in (HWType.trezor, HWType.keepkey):
+                    v = hw_intf.hw_encrypt_value(hw_session, [10, 100, 1000], 'bip32address',
+                                                 self.hw_generated_key, False, False)
+                    self.hw_encryption_key = base64.urlsafe_b64encode(v[0])
+                else:
+                    # Ledger doesn't have encryption features like Trezor, so as an encryption
+                    # key we use the public key of the wallet's BIP32 root
+                    key = app_utils.SHA256.new(hw_session.base_public_key + self.hw_generated_key).digest()
+                    self.hw_encryption_key = base64.urlsafe_b64encode(key)
+
+                self.fernet = Fernet(self.hw_encryption_key)
+                return True
+            except Exception as e:
+                logging.warning("Couldn't encrypt data with hardware wallet: " + str(e))
+                return False
+        else:
+            return True
+
+    def hw_encrypt_string(self, data_str):
+        if self.fernet:
+            return self.fernet.encrypt(data_str)
+        else:
+            return None
+
+    def hw_decrypt_string(self, data_str):
+        if self.fernet:
+            try:
+                return self.fernet.decrypt(data_str)
+            except Exception:
+                return None
+        else:
+            return None
+
+
+class MasternodeConfig:
     def __init__(self):
         self.name = ''
         self.ip = ''
@@ -807,6 +999,7 @@ class DashNetworkConnectionCfg(object):
         self.__use_ssl = False
         self.__use_ssh_tunnel = False
         self.__ssh_conn_cfg = SSHConnectionCfg()
+        self.__testnet = False
 
     def get_description(self):
         if self.__use_ssh_tunnel:
@@ -825,9 +1018,9 @@ class DashNetworkConnectionCfg(object):
         :return: 
         """
         if self.__use_ssh_tunnel:
-            id = 'SSH:' + self.ssh_conn_cfg.host + ':' + self.__host + ':' + self.__port
+            id = 'SSH:' + self.ssh_conn_cfg.host + ':' + self.__host + ':' + self.__port + ':' + str(self.__testnet)
         else:
-            id = 'DIRECT:' + self.__host
+            id = 'DIRECT:' + self.__host + ':' + self.__port + ':' + str(self.__testnet)
         id = bitcoin.sha256(id)
         return id
 
@@ -842,7 +1035,8 @@ class DashNetworkConnectionCfg(object):
                self.use_ssh_tunnel == cfg2.use_ssh_tunnel and \
                (not self.use_ssh_tunnel or (self.ssh_conn_cfg.host == cfg2.ssh_conn_cfg.host and
                                             self.ssh_conn_cfg.port == cfg2.ssh_conn_cfg.port and
-                                            self.ssh_conn_cfg.username == cfg2.ssh_conn_cfg.username))
+                                            self.ssh_conn_cfg.username == cfg2.ssh_conn_cfg.username)) and \
+               self.testnet == cfg2.testnet
 
     def copy_from(self, cfg2):
         """
@@ -855,6 +1049,7 @@ class DashNetworkConnectionCfg(object):
         self.password = cfg2.password
         self.use_ssh_tunnel = cfg2.use_ssh_tunnel
         self.use_ssl = cfg2.use_ssl
+        self.testnet = self.testnet
         if self.use_ssh_tunnel:
             self.ssh_conn_cfg.host = cfg2.ssh_conn_cfg.host
             self.ssh_conn_cfg.port = cfg2.ssh_conn_cfg.port
@@ -927,15 +1122,22 @@ class DashNetworkConnectionCfg(object):
 
     def get_password_encrypted(self):
         try:
-            return encrypt(self.__password, APP_NAME_LONG)
+            psw = encrypt(self.__password, APP_NAME_LONG, iterations=5)
+            return psw
         except:
             return self.__password
 
-    def set_encrypted_password(self, password):
+    def set_encrypted_password(self, password, config_version: int):
         try:
             # check if password is a hexadecimal string - then it probably is an encrypted string with AES
+            if config_version < 3:
+                iterations = 100000
+            else:
+                # we don't need strong encryption of passwords from connections saved in ini file
+                # for strong encryption user can encrypt the whole ini file with hardware wallet
+                iterations = 5
             int(password, 16)
-            p = decrypt(password, APP_NAME_LONG)
+            p = decrypt(password, APP_NAME_LONG, iterations=iterations)
             password = p
         except Exception as e:
             logging.warning('Password decryption error: ' + str(e))
@@ -965,4 +1167,19 @@ class DashNetworkConnectionCfg(object):
     @property
     def ssh_conn_cfg(self):
         return self.__ssh_conn_cfg
+
+    @property
+    def testnet(self):
+        return self.__testnet
+
+    @property
+    def mainnet(self):
+        return not self.__testnet
+
+    @testnet.setter
+    def testnet(self, testnet):
+        if not isinstance(testnet, bool):
+            raise Exception('Ivalid type of "testnet" argument')
+        self.__testnet = testnet
+
 

@@ -135,6 +135,14 @@
    </item>
   </layout>
  </widget>
+ <tabstops>
+  <tabstop>edtRpcHost</tabstop>
+  <tabstop>edtRpcPort</tabstop>
+  <tabstop>edtRpcUsername</tabstop>
+  <tabstop>edtRpcPassword</tabstop>
+  <tabstop>chbRpcSSL</tabstop>
+  <tabstop>btnShowPassword</tabstop>
+ </tabstops>
  <resources/>
  <connections/>
 </ui>

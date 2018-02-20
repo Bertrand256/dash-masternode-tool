@@ -30,9 +30,6 @@ class ColumnsConfigDlg(QDialog, ui_columns_cfg_dlg.Ui_ColumnsConfigDlg, WndUtils
         self.tableWidget.verticalHeader().setDefaultSectionSize(
             self.tableWidget.verticalHeader().fontMetrics().height() + 8)
 
-        self.tableWidget.verticalHeader().setDefaultSectionSize(
-            self.tableWidget.verticalHeader().fontMetrics().height() + 8)
-
         self.tableWidget.verticalHeader().sectionMoved.connect(self.on_tableRowMoved)
 
         self.tableWidget.setRowCount(len(self.columns))

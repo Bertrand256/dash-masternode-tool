@@ -6,14 +6,16 @@ import json
 import binascii
 import logging
 import unicodedata
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict
 from keepkeylib.client import TextUIMixin as keepkey_TextUIMixin
 from keepkeylib.client import ProtocolMixin as keepkey_ProtocolMixin
 from keepkeylib.client import BaseClient as keepkey_BaseClient, CallException
 from keepkeylib import messages_pb2 as keepkey_proto
 from keepkeylib.tx_api import TxApiInsight
 from mnemonic import Mnemonic
-from hw_common import HardwareWalletCancelException, ask_for_pin_callback, ask_for_pass_callback, ask_for_word_callback
+import dash_utils
+from hw_common import HardwareWalletCancelException, ask_for_pin_callback, ask_for_pass_callback, ask_for_word_callback, \
+    HwSessionInfo, select_hw_device
 import keepkeylib.types_pb2 as proto_types
 from wnd_utils import WndUtils
 from hw_common import clean_bip32_path
@@ -68,6 +70,73 @@ class MyKeepkeyClient(keepkey_ProtocolMixin, MyKeepkeyTextUIMixin, keepkey_BaseC
         keepkey_BaseClient.__init__(self, transport)
 
 
+def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[str] = 'NFC',
+                    allow_bootloader_mode: bool = False) \
+        -> Tuple[List[Dict], List[Exception]]:
+    """
+    :return: Tuple[List[Dict <{'client': MyTrezorClient, 'device_id': str, 'desc',: str, 'model': str}>],
+                   List[Exception]]
+    """
+    from keepkeylib.transport_hid import HidTransport
+
+    ret_list = []
+    exceptions: List[Exception] = []
+    device_ids = []
+    was_bootloader_mode = False
+
+    for d in HidTransport.enumerate():
+        try:
+            transport = HidTransport(d)
+            client = MyKeepkeyClient(transport, ask_for_pin_callback, ask_for_pass_callback, passphrase_encoding)
+
+            if client.features.bootloader_mode:
+                if was_bootloader_mode:
+                    # in bootloader mode the device_id attribute isn't available, so for a given client object
+                    # we are unable to distinguish between being the same device reached with the different
+                    # transport and being another device
+                    # for that reason, to avoid returning duplicate clients for the same device, we don't return
+                    # more than one instance of a device in bootloader mod
+                    client.close()
+                    continue
+                was_bootloader_mode = True
+
+            if (not client.features.bootloader_mode or allow_bootloader_mode) and \
+                (client.features.device_id not in device_ids or client.features.bootloader_mode):
+
+                version = f'{client.features.major_version}.{client.features.minor_version}.' \
+                          f'{client.features.patch_version}'
+                if client.features.label:
+                    desc = client.features.label
+                else:
+                    desc = '[UNNAMED]'
+                desc = f'{desc} (ver: {version}, id: {client.features.device_id})'
+
+                c = {
+                    'client': client,
+                    'device_id': client.features.device_id,
+                    'desc': desc,
+                    'model': client.features.model,
+                    'bootloader_mode': client.features.bootloader_mode
+                }
+
+                ret_list.append(c)
+                device_ids.append(client.features.device_id)  # beware: it's empty in bootloader mode
+            else:
+                # the same device is already connected using different connection medium
+                client.close()
+        except Exception as e:
+            logging.warning(
+                f'Cannot create Keepkey client ({d.__class__.__name__}) due to the following error: ' + str(e))
+            exceptions.append(e)
+
+    if not return_clients:
+        for cli in ret_list:
+            cli['client'].close()
+            cli['client'] = None
+
+    return ret_list, exceptions
+
+
 def connect_keepkey(passphrase_encoding: Optional[str] = 'NFC',
                     device_id: Optional[str] = None) -> Optional[MyKeepkeyClient]:
     """
@@ -80,20 +149,39 @@ def connect_keepkey(passphrase_encoding: Optional[str] = 'NFC',
 
     logging.info('Started function')
     def get_client() -> Optional[MyKeepkeyClient]:
-        from keepkeylib.transport_hid import HidTransport
-
-        count = len(HidTransport.enumerate())
-        if not count:
-            logging.warning('Number of Keepkey devices: 0')
-
-        for d in HidTransport.enumerate():
-            transport = HidTransport(d)
-            client = MyKeepkeyClient(transport, ask_for_pin_callback, ask_for_pass_callback, passphrase_encoding)
-            if not device_id or client.features.device_id == device_id:
-                return client
+        hw_clients, exceptions = get_device_list(passphrase_encoding=passphrase_encoding)
+        if not hw_clients:
+            if exceptions:
+                raise exceptions[0]
+        else:
+            selected_client = None
+            if device_id:
+                # we have to select a device with the particular id number
+                for cli in hw_clients:
+                    if cli['device_id'] == device_id:
+                        selected_client = cli['client']
+                        break
+                    else:
+                        cli['client'].close()
+                        cli['client'] = None
             else:
-                client.clear_session()
-                client.close()
+                # we are not forced to automatically select the particular device
+                if len(hw_clients) > 1:
+                    hw_names = [a['desc'] for a in hw_clients]
+
+                    selected_index = select_hw_device(None, 'Select Keepkey device', hw_names)
+                    if selected_index is not None and (0 <= selected_index < len(hw_clients)):
+                        selected_client = hw_clients[selected_index]
+                else:
+                    selected_client = hw_clients[0]['client']
+
+            # close all the clients but the selected one
+            for cli in hw_clients:
+                if cli['client'] != selected_client:
+                    cli['client'].close()
+                    cli['client'] = None
+
+            return selected_client
         return None
 
     # HidTransport.enumerate() has to be called in the main thread - second call from bg thread
@@ -145,91 +233,86 @@ class MyTxApiInsight(TxApiInsight):
         return j
 
 
-def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
+def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[dict], dest_addresses: List[Tuple[str, int, str]], tx_fee):
     """
     Creates a signed transaction.
-    :param main_ui: Main window for configuration data
+    :param hw_session:
     :param utxos_to_spend: list of utxos to send
     :param dest_address: destination (Dash) address
     :param tx_fee: transaction fee
     :return: tuple (serialized tx, total transaction amount in satoshis)
     """
-    tx_api = MyTxApiInsight('insight_dash', None, main_ui.dashd_intf, main_ui.config.cache_dir)
-    client = main_ui.hw_client
+
+    insight_network = 'insight_dash'
+    if hw_session.app_config.is_testnet():
+        insight_network += '_testnet'
+    dash_network = hw_session.app_config.dash_network
+
+    tx_api = MyTxApiInsight(insight_network, '', hw_session.dashd_intf, hw_session.app_config.cache_dir)
+    client = hw_session.hw_client
     client.set_tx_api(tx_api)
     inputs = []
     outputs = []
-    amt = 0
-    for utxo in utxos_to_spend:
+    inputs_amount = 0
+    for utxo_index, utxo in enumerate(utxos_to_spend):
         if not utxo.get('bip32_path', None):
             raise Exception('No BIP32 path for UTXO ' + utxo['txid'])
         address_n = client.expand_path(clean_bip32_path(utxo['bip32_path']))
         it = proto_types.TxInputType(address_n=address_n, prev_hash=binascii.unhexlify(utxo['txid']),
                                      prev_index=utxo['outputIndex'])
         inputs.append(it)
-        amt += utxo['satoshis']
-    amt -= tx_fee
-    amt = int(amt)
+        inputs_amount += utxo['satoshis']
 
-    # check if dest_address is a Dash address or a script address and then set appropriate script_type
-    # https://github.com/dashpay/dash/blob/master/src/chainparams.cpp#L140
-    if dest_address.startswith('7'):
-        stype = proto_types.PAYTOSCRIPTHASH
-    else:
-        stype = proto_types.PAYTOADDRESS
+    outputs_amount = 0
+    for addr, amount, bip32_path in dest_addresses:
+        outputs_amount += amount
+        if addr[0] in dash_utils.get_chain_params(dash_network).B58_PREFIXES_SCRIPT_ADDRESS:
+            stype = proto_types.PAYTOSCRIPTHASH
+            logging.debug('Transaction type: PAYTOSCRIPTHASH' + str(stype))
+        elif addr[0] in dash_utils.get_chain_params(dash_network).B58_PREFIXES_PUBKEY_ADDRESS:
+            stype = proto_types.PAYTOADDRESS
+            logging.debug('Transaction type: PAYTOADDRESS ' + str(stype))
+        else:
+            raise Exception('Invalid prefix of the destination address.')
+        if bip32_path:
+            address_n = client.expand_path(bip32_path)
+        else:
+            address_n = None
 
-    ot = proto_types.TxOutputType(
-        address=dest_address,
-        amount=amt,
-        script_type=stype
-    )
-    outputs.append(ot)
-    signed = client.sign_tx('Dash', inputs, outputs)
-    return signed[1], amt
+        ot = proto_types.TxOutputType(
+            address=addr if address_n is None else None,
+            address_n=address_n,
+            amount=amount,
+            script_type=stype
+        )
+        outputs.append(ot)
+
+    if outputs_amount + tx_fee != inputs_amount:
+        raise Exception('Transaction validation failure: inputs + fee != outputs')
+
+    signed = client.sign_tx(hw_session.app_config.hw_coin_name, inputs, outputs)
+    logging.info('Signed transaction')
+    return signed[1], inputs_amount
 
 
-def sign_message(main_ui, bip32path, message):
-    client = main_ui.hw_client
+def sign_message(hw_session: HwSessionInfo, bip32path, message):
+    client = hw_session.hw_client
     address_n = client.expand_path(clean_bip32_path(bip32path))
-    return client.sign_message('Dash', address_n, message)
+    return client.sign_message(hw_session.app_config.hw_coin_name, address_n, message)
 
 
-def change_pin(main_ui, remove=False):
-    if main_ui.hw_client:
-        main_ui.hw_client.change_pin(remove)
+def change_pin(hw_session: HwSessionInfo, remove=False):
+    if hw_session.hw_client:
+        hw_session.hw_client.change_pin(remove)
     else:
         raise Exception('HW client not set.')
 
 
-def apply_settings(main_ui, label=None, language=None, use_passphrase=None, homescreen=None):
-    if main_ui.hw_client:
-        main_ui.hw_client.apply_settings()
+def apply_settings(hw_session: HwSessionInfo, label=None, language=None, use_passphrase=None, homescreen=None):
+    if hw_session.hw_client:
+        hw_session.hw_client.apply_settings()
     else:
         raise Exception('HW client not set.')
-
-
-def get_entropy(hw_device_id, len_bytes):
-    client = None
-    try:
-        client = connect_keepkey(device_id=hw_device_id)
-
-        if client:
-            client.get_entropy(len_bytes)
-            client.close()
-        else:
-            raise Exception('Couldn\'t connect to Trezor device.')
-    except CallException as e:
-        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
-            raise
-        else:
-            if client:
-                client.close()
-            raise HardwareWalletCancelException('Cancelled')
-
-    except HardwareWalletCancelException:
-        if client:
-            client.close()
-        raise
 
 
 def wipe_device(hw_device_id) -> Tuple[str, bool]:
