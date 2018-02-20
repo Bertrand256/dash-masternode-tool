@@ -2,9 +2,14 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-04
+from collections import Callable
+from functools import partial
 
 from PyQt5 import QtWidgets, QtCore
+from PyQt5.QtCore import Qt, QEventLoop, QPoint, QSize
 from PyQt5.QtCore import QThread
+from PyQt5.QtWidgets import QDialog
+
 from ui import ui_thread_fun_dlg
 
 
@@ -41,9 +46,10 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
     # sets a dialog's progress bar's value
     set_progress_value_signal = QtCore.pyqtSignal(int)
 
-    # signal to configure dialog, args: (bool) show message text (default True), (bool) show progress bar
+    # signal to configure dialog, args: (bool) show message text (default True), (bool) show progress bar,
+    # (int) window maximum width
     # (default false):
-    dlg_config_signal = QtCore.pyqtSignal(object, object, object)
+    dlg_config_signal = QtCore.pyqtSignal(object, object, object, object)
 
     def __init__(self, worker_fun, worker_args, close_after_finish=True, buttons=None, title='', text=None,
                  center_by_window=None):
@@ -74,11 +80,14 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         self.setTextCalled = False
         self.title = title
         self.text = text
+        self.max_width = None
         self.center_by_window = center_by_window
         self.setupUi()
 
     def setupUi(self):
         ui_thread_fun_dlg.Ui_ThreadFunDlg.setupUi(self, self)
+        self.setWindowFlags(self.windowFlags() | Qt.CustomizeWindowHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowCloseButtonHint)
         self.setWindowTitle(self.title)
         self.display_msg_signal.connect(self.setText)
         self.dlg_config_signal.connect(self.onConfigureDialog)
@@ -89,6 +98,7 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         self.progressBar.setVisible(False)
         self.btnBox.clear()
         self.btnBox.setCenterButtons(True)
+
         if self.buttons:
             for btn in self.buttons:
                 assert isinstance(btn, dict)
@@ -134,18 +144,31 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
             self.setTextCalled = True
         self.lblText.setText(text)
 
+        # width = self.lblText.fontMetrics().boundingRect(text).width()
+        # if self.max_width and width > self.max_width:
+        #     width = self.max_width
+        # self.lblText.setFixedWidth(width)
+
+        QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)
+        self.centerByWindow(self.center_by_window)
+
     def setProgressValue(self, value):
         self.progressBar.setValue(value)
 
-    def centerByWindow(self, center_by_window):
+    def centerByWindow(self, center_by_window: QDialog):
         """
         Centers this window by window given by attribute 'center_by_window'
         :param center_by_window: Reference to (parent) window by wich this window will be centered.
         :return: None
         """
-        self.move(center_by_window.frameGeometry().topLeft() + center_by_window.rect().center() - self.rect().center())
+        if self.center_by_window:
+            pg: QPoint = center_by_window.frameGeometry().topLeft()
+            size_diff = center_by_window.rect().center() - self.rect().center()
+            pg.setX( pg.x() + int((size_diff.x())))
+            pg.setY( pg.y() + int((size_diff.y())))
+            self.move(pg)
 
-    def onConfigureDialog(self, show_message=None, show_progress_bar=None, dlg_title=None):
+    def onConfigureDialog(self, show_message=None, show_progress_bar=None, dlg_title=None, max_width=None):
         """
         Configure visibility of this dialog's elements. This method can be called from inside a thread by calling
         signal dlg_config_signal passed inside control dicttionary.
@@ -158,6 +181,11 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
             self.progressBar.setVisible(show_progress_bar)
         if dlg_title:
             self.setWindowTitle(dlg_title)
+        if max_width is not None:
+            self.max_width = max_width
+            self.lblText.setWordWrap(True)
+        else:
+            self.lblText.setWordWrap(False)
 
     def setWorkerResults(self, result, exception):
         self.worker_result = result
@@ -187,7 +215,11 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
 
 
 class CtrlObject(object):
-    pass
+    def __init__(self):
+        self.display_msg_fun: Callable[[str], None] = None
+        self.set_progress_value_fun: Callable[[int], None] = None
+        self.dlg_config_fun: Callable[[bool, bool, str, int],None] = None
+        self.finish: bool = False
 
 
 class WorkerDlgThread(QThread):
@@ -197,7 +229,8 @@ class WorkerDlgThread(QThread):
     sent by external thread function (worker_fun) by calling callback functions passed to it.
     """
 
-    def __init__(self, dialog, worker_fun, worker_fun_args, display_msg_signal, set_progress_value_signal, dlg_config_signal):
+    def __init__(self, dialog, worker_fun, worker_fun_args, display_msg_signal, set_progress_value_signal,
+                 dlg_config_signal):
         """
         Constructor.
         :param worker_fun: external function which will be executed from inside a thread 
@@ -235,14 +268,14 @@ class WorkerDlgThread(QThread):
         """
         self.set_progress_value_signal.emit(value)
 
-    def dlg_config(self, show_message=None, show_progress_bar=None, dlg_title=None):
+    def dlg_config(self, show_message=None, show_progress_bar=None, dlg_title=None, max_width=None):
         """
         Called from a thread function: configures dialog by sending a dediacted signal to a dialog class.
         :param show_message: True if dialog's text area is to be shown.
         :param show_progress_bar: True if dialog's progress bar is to be shown.
         :param dlg_title: New text to show on dialogs title bar.
         """
-        self.dlg_config_signal.emit(show_message, show_progress_bar, dlg_title)
+        self.dlg_config_signal.emit(show_message, show_progress_bar, dlg_title, max_width)
 
     def stop(self):
         """
@@ -264,10 +297,10 @@ class WorkerThread(QThread):
     Helper class for running function inside a thread.
     """
 
-    def __init__(self, worker_fun, worker_fun_args):
+    def __init__(self, parent, worker_fun, worker_fun_args):
         """
         """
-        QThread.__init__(self)
+        QThread.__init__(self, parent=parent)
         self.worker_fun = worker_fun
         self.worker_fun_args = worker_fun_args
 

@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_thread_fun_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.9
+# Created by: PyQt5 UI code generator 5.9.2
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -12,12 +12,24 @@ class Ui_ThreadFunDlg(object):
     def setupUi(self, ThreadFunDlg):
         ThreadFunDlg.setObjectName("ThreadFunDlg")
         ThreadFunDlg.setWindowModality(QtCore.Qt.NonModal)
-        ThreadFunDlg.resize(400, 99)
+        ThreadFunDlg.resize(391, 101)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(ThreadFunDlg.sizePolicy().hasHeightForWidth())
+        ThreadFunDlg.setSizePolicy(sizePolicy)
         ThreadFunDlg.setModal(True)
         self.verticalLayout = QtWidgets.QVBoxLayout(ThreadFunDlg)
         self.verticalLayout.setSpacing(3)
         self.verticalLayout.setObjectName("verticalLayout")
         self.lblText = QtWidgets.QLabel(ThreadFunDlg)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.lblText.sizePolicy().hasHeightForWidth())
+        self.lblText.setSizePolicy(sizePolicy)
+        self.lblText.setText("")
+        self.lblText.setWordWrap(False)
         self.lblText.setOpenExternalLinks(True)
         self.lblText.setObjectName("lblText")
         self.verticalLayout.addWidget(self.lblText)
@@ -41,7 +53,6 @@ class Ui_ThreadFunDlg(object):
     def retranslateUi(self, ThreadFunDlg):
         _translate = QtCore.QCoreApplication.translate
         ThreadFunDlg.setWindowTitle(_translate("ThreadFunDlg", "Dialog"))
-        self.lblText.setText(_translate("ThreadFunDlg", "<html><head/><body><p><br/></p></body></html>"))
 
 
 if __name__ == "__main__":

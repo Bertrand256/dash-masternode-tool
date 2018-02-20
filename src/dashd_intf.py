@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
-
+import bitcoin
 import os
 import re
 import socket
@@ -12,18 +12,18 @@ import threading
 import time
 import datetime
 import logging
-
 import simplejson
 from PyQt5.QtCore import QThread
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from paramiko import AuthenticationException, PasswordRequiredException, SSHException
 from paramiko.ssh_exception import NoValidConnectionsError
+import app_cache
+import app_utils
 from app_config import AppConfig
 from random import randint
 from wnd_utils import WndUtils
 import socketserver
 import select
-from os.path import expanduser
 from PyQt5.QtWidgets import QMessageBox
 from psw_cache import SshPassCache, UserCancelledConnection
 from common import AttrsProtected
@@ -47,9 +47,11 @@ class ForwardServer (socketserver.ThreadingTCPServer):
 class Handler(socketserver.BaseRequestHandler):
     def handle(self):
         try:
+            logging.debug('Handler, starting ssh_transport.open_channel')
             chan = self.ssh_transport.open_channel(kind='direct-tcpip',
                                                    dest_addr=(self.chain_host, self.chain_port),
                                                    src_addr=self.request.getpeername())
+            logging.debug('Handler, started ssh_transport.open_channel')
         except Exception as e:
             logging.error('open_channel error: ' + str(e))
             if self.broken_conn_callback is not None:
@@ -67,11 +69,13 @@ class Handler(socketserver.BaseRequestHandler):
                     if len(data) == 0:
                         break
                     chan.send(data)
+                    logging.debug(f'SSH tunnel - sent {len(data)} bytes')
                 if chan in r:
                     data = chan.recv(1024)
                     if len(data) == 0:
                         break
                     self.request.send(data)
+                    logging.debug(f'SSH tunnel - received {len(data)} bytes')
             logging.debug('Finishing Handler.handle')
         except socket.error as e:
             logging.error('Handler socker.error occurred: ' + str(e))
@@ -121,6 +125,8 @@ class SSHTunnelThread(QThread):
 
         try:
             self.ready_event.set()
+            logging.debug('Started SSHTunnelThread, local port forwarding 127.0.0.1:%s -> %s:%s' %
+                          (str(self.local_port), self.remote_ip, str(self.remote_port)))
             self.forward_server = ForwardServer(('127.0.0.1', self.local_port), SubHander)
             self.forward_server.serve_forever()
             logging.debug('Stopped local port forwarding 127.0.0.1:%s -> %s:%s' %
@@ -253,6 +259,9 @@ class DashdSSH(object):
                                               on_finish_thread_callback=self.on_tunnel_thread_finish)
             self.ssh_thread.start()
             ready_event.wait(10)
+
+            # wait a moment for the tunnel to come-up
+            time.sleep(0.1)
             logging.debug('Started local port forwarding 127.0.0.1:%s -> %s:%s' %
                           (str(local_port), remote_ip, str(remote_port)))
         else:
@@ -464,7 +473,7 @@ def json_cache_wrapper(func, intf, cache_file_ident):
         except:
             pass
 
-        # if not found, call the function
+        # if not found in cache, call the original function
         j = func(*args, **kwargs)
 
         try:
@@ -478,26 +487,18 @@ def json_cache_wrapper(func, intf, cache_file_ident):
 
 
 class DashdInterface(WndUtils):
-    def __init__(self, config, window, connection=None, on_connection_begin_callback=None,
-                 on_connection_try_fail_callback=None, on_connection_finished_callback=None):
-        WndUtils.__init__(self, app_config=config)
-        assert isinstance(config, AppConfig)
+    def __init__(self, window,
+                 on_connection_initiated_callback=None,
+                 on_connection_failed_callback=None,
+                 on_connection_successful_callback=None,
+                 on_connection_disconnected_callback=None):
+        WndUtils.__init__(self, app_config=None)
 
-        self.config = config
-        self.db_intf = self.config.db_intf
-
-        # conn configurations are used from the first item in the list; if one fails, then next is taken
-        if connection:
-            # this parameter is used for testing specific connection
-            self.connections = [connection]
-        else:
-            # get connection list orderd by priority of use
-            self.connections = self.config.get_ordered_conn_list()
+        self.config = None
+        self.db_intf = None
+        self.connections = []
         self.cur_conn_index = 0
-        if self.connections:
-            self.cur_conn_def = self.connections[self.cur_conn_index]
-        else:
-            self.cur_conn_def = None
+        self.cur_conn_def = None
 
         # below is the connection with which particular RPC call has started; if connection is switched because of
         # problems with some nodes, switching stops if we close round and return to the starting connection
@@ -513,13 +514,38 @@ class DashdInterface(WndUtils):
         self.rpc_url = None
         self.proxy = None
         self.http_conn = None  # HTTPConnection object passed to the AuthServiceProxy (for convinient connection reset)
-        self.on_connection_begin_callback = on_connection_begin_callback
-        self.on_connection_try_fail_callback = on_connection_try_fail_callback
-        self.on_connection_finished_callback = on_connection_finished_callback
+        self.on_connection_initiated_callback = on_connection_initiated_callback
+        self.on_connection_failed_callback = on_connection_failed_callback
+        self.on_connection_successful_callback = on_connection_successful_callback
+        self.on_connection_disconnected_callback = on_connection_disconnected_callback
         self.last_error_message = None
-        self.governanceinfo = None  # cached result of getgovernanceinfo query
         self.http_lock = threading.Lock()
 
+    def initialize(self, config: AppConfig, connection=None, for_testing_connections_only=False):
+        self.config = config
+        self.app_config = config
+        self.db_intf = self.config.db_intf
+
+        # conn configurations are used from the first item in the list; if one fails, then next is taken
+        if connection:
+            # this parameter is used for testing specific connection
+            self.connections = [connection]
+        else:
+            # get connection list orderd by priority of use
+            self.connections = self.config.get_ordered_conn_list()
+
+        self.cur_conn_index = 0
+        if self.connections:
+            self.cur_conn_def = self.connections[self.cur_conn_index]
+        else:
+            self.cur_conn_def = None
+
+        if not for_testing_connections_only:
+            self.load_data_from_db_cache()
+
+    def load_data_from_db_cache(self):
+        self.masternodes.clear()
+        self.masternodes_by_ident.clear()
         cur = self.db_intf.get_cursor()
         cur2 = self.db_intf.get_cursor()
         db_modified = False
@@ -571,17 +597,19 @@ class DashdInterface(WndUtils):
             self.db_intf.release_cursor()
             self.db_intf.release_cursor()
 
-    def apply_new_cfg(self):
-        """
-        Called after any of connection config changed.
-        """
+    def reload_configuration(self):
+        """Called after modification of connections' configuration or changes having impact on the file name
+        associated to database cache."""
+
         # get connection list orderd by priority of use
         self.disconnect()
         self.connections = self.config.get_ordered_conn_list()
         self.cur_conn_index = 0
-        if not len(self.connections):
-            raise Exception('There is no connections to Dash network enabled in the configuration.')
-        self.cur_conn_def = self.connections[self.cur_conn_index]
+        if len(self.connections):
+            self.cur_conn_def = self.connections[self.cur_conn_index]
+            self.load_data_from_db_cache()
+        else:
+            self.cur_conn_def = None
 
     def disconnect(self):
         if self.active:
@@ -591,6 +619,8 @@ class DashdInterface(WndUtils):
                 del self.ssh
                 self.ssh = None
             self.active = False
+            if self.on_connection_disconnected_callback:
+                self.on_connection_disconnected_callback()
 
     def mark_call_begin(self):
         self.starting_conn = self.cur_conn_def
@@ -682,8 +712,8 @@ class DashdInterface(WndUtils):
             logging.debug("Trying to open connection: %s" % self.cur_conn_def.get_description())
             try:
                 # make the owner know, we are connecting
-                if self.on_connection_begin_callback:
-                    self.on_connection_begin_callback()
+                if self.on_connection_initiated_callback:
+                    self.on_connection_initiated_callback()
             except:
                 pass
 
@@ -700,8 +730,8 @@ class DashdInterface(WndUtils):
                     logging.error('error in ssh.connect')
                     try:
                         # make the owner know, connection attempt failed
-                        if self.on_connection_try_fail_callback:
-                            self.on_connection_try_fail_callback()
+                        if self.on_connection_failed_callback:
+                            self.on_connection_failed_callback()
                     except:
                         logging.exception('on_connection_try_fail_callback call exception')
                     raise
@@ -712,7 +742,7 @@ class DashdInterface(WndUtils):
                 local_port = None
                 for try_nr in range(1, 10):
                     try:
-                        logging.debug('beginning ssh.open_tunnel')
+                        logging.debug(f'beginning ssh.open_tunnel, try: {try_nr}')
                         local_port = randint(2000, 50000)
                         self.ssh.open_tunnel(local_port,
                                              self.cur_conn_def.host,
@@ -720,8 +750,7 @@ class DashdInterface(WndUtils):
                         success = True
                         break
                     except Exception as e:
-                        logging.error('error in ssh.open_tunnel loop')
-                        pass
+                        logging.exception('error in ssh.open_tunnel loop: ' + str(e))
                 logging.debug('finished ssh.open_tunnel loop')
                 if not success:
                     logging.error('finished ssh.open_tunnel loop with error')
@@ -746,27 +775,32 @@ class DashdInterface(WndUtils):
                 self.http_conn = httplib.HTTPConnection(rpc_host, rpc_port, timeout=5)
 
             self.rpc_url += rpc_user + ':' + rpc_password + '@' + rpc_host + ':' + str(rpc_port)
-            logging.debug('AuthServiceProxy begin: %s' % self.rpc_url)
+            logging.debug('AuthServiceProxy configured to: %s' % self.rpc_url)
             self.proxy = AuthServiceProxy(self.rpc_url, timeout=1000, connection=self.http_conn)
-            logging.debug('AuthServiceProxy end')
 
             try:
                 # check the connection
                 self.http_conn.connect()
-                logging.debug('Successfully connected')
+                logging.debug('Successfully connected AuthServiceProxy')
 
                 try:
                     # make the owner know, we successfully finished connection
-                    if self.on_connection_finished_callback:
-                        self.on_connection_finished_callback()
+                    if self.on_connection_successful_callback:
+                        self.on_connection_successful_callback()
                 except:
                     logging.exception('on_connection_finished_callback call exception')
             except:
                 logging.exception('Connection failed')
+
                 try:
                     # make the owner know, connection attempt failed
-                    if self.on_connection_try_fail_callback:
-                        self.on_connection_try_fail_callback()
+                    if self.on_connection_failed_callback:
+                        self.on_connection_failed_callback()
+
+                    if self.ssh:
+                        # if there is a ssh connection established earlier, disconnect it because apparently it isn't
+                        # functioning
+                        self.ssh.disconnect()
                 except:
                     logging.exception('on_connection_try_fail_callback call exception')
                 raise
@@ -793,9 +827,18 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
-    def getinfo(self):
+    def getinfo(self, verify_node: bool = True):
         if self.open():
-            return self.proxy.getinfo()
+            info = self.proxy.getinfo()
+            if verify_node:
+                node_under_testnet = info.get('testnet')
+                if self.config.is_testnet() and not node_under_testnet:
+                    raise Exception('This RPC node works under Dash MAINNET, but your current configuration is '
+                                    'for TESTNET.')
+                elif self.config.is_mainnet() and node_under_testnet:
+                    raise Exception('This RPC node works under Dash TESTNET, but your current configuration is '
+                                    'for MAINNET.')
+            return info
         else:
             raise Exception('Not connected')
 
@@ -930,7 +973,7 @@ class DashdInterface(WndUtils):
         if self.open():
 
             if len(args) == 1 and args[0] == 'full':
-                last_read_time = self.get_cache_value('MasternodesLastReadTime', 0, int)
+                last_read_time = app_cache.get_value(f'MasternodesLastReadTime_{self.app_config.dash_network}', 0, int)
                 logging.info("MasternodesLastReadTime: %d" % last_read_time)
 
                 if self.masternodes and data_max_age > 0 and \
@@ -991,7 +1034,7 @@ class DashdInterface(WndUtils):
                                 self.masternodes_by_ident.pop(mn.ident,0)
                                 del self.masternodes[mn_index]
 
-                        self.set_cache_value('MasternodesLastReadTime', int(time.time()))
+                        app_cache.set_value(f'MasternodesLastReadTime_{self.app_config.dash_network}', int(time.time()))
                         self.update_mn_queue_values()
                     finally:
                         if db_modified:
@@ -1008,9 +1051,9 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
-    def getaddressbalance(self, address):
+    def getaddressbalance(self, addresses):
         if self.open():
-            return self.proxy.getaddressbalance({'addresses': [address]}).get('balance')
+            return self.proxy.getaddressbalance({'addresses': addresses})
         else:
             raise Exception('Not connected')
 
@@ -1085,11 +1128,16 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
-    def getgovernanceinfo(self, skip_cache=False):
+    def getgovernanceinfo(self):
         if self.open():
-            if skip_cache or not self.governanceinfo:
-                self.governanceinfo = self.proxy.getgovernanceinfo()
-            return self.governanceinfo
+            return self.proxy.getgovernanceinfo()
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def getsuperblockbudget(self, block_index):
+        if self.open():
+            return self.proxy.getsuperblockbudget(block_index)
         else:
             raise Exception('Not connected')
 

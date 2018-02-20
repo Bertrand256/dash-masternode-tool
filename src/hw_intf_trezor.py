@@ -2,19 +2,19 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
-import json
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict
 import simplejson
 import binascii
 import unicodedata
-
+from decimal import Decimal
 from mnemonic import Mnemonic
 from trezorlib.client import TextUIMixin as trezor_TextUIMixin, ProtocolMixin as trezor_ProtocolMixin, \
     BaseClient as trezor_BaseClient, CallException
 from trezorlib.tx_api import TxApiInsight
-from hw_common import HardwareWalletCancelException, ask_for_pass_callback, ask_for_pin_callback, ask_for_word_callback
-from trezorlib import messages_pb2 as trezor_proto
-import trezorlib.types_pb2 as proto_types
+import dash_utils
+from hw_common import HardwareWalletCancelException, ask_for_pass_callback, ask_for_pin_callback, ask_for_word_callback, \
+    select_hw_device, HwSessionInfo
+from trezorlib import messages as trezor_proto
 import logging
 from wnd_utils import WndUtils
 
@@ -28,12 +28,18 @@ class MyTrezorTextUIMixin(trezor_TextUIMixin):
         self.__mnemonic = Mnemonic('english')
 
     def callback_PassphraseRequest(self, msg):
+        if msg.on_device is True:
+            return trezor_proto.PassphraseAck()
+
         passphrase = self.ask_for_pass_fun(msg)
         if passphrase is None:
             raise HardwareWalletCancelException('Cancelled')
         else:
             passphrase = unicodedata.normalize('NFKD', passphrase)
         return trezor_proto.PassphraseAck(passphrase=passphrase)
+
+    def callback_PassphraseStateRequest(self, msg):
+        return trezor_proto.PassphraseStateAck()
 
     def callback_PinMatrixRequest(self, msg):
         if msg.type == 1:
@@ -50,8 +56,8 @@ class MyTrezorTextUIMixin(trezor_TextUIMixin):
         return trezor_proto.PinMatrixAck(pin=pin)
 
     def callback_WordRequest(self, msg):
-        if msg.type in (proto_types.WordRequestType_Matrix9,
-                        proto_types.WordRequestType_Matrix6):
+        if msg.type in (trezor_proto.WordRequestType.Matrix9,
+                        trezor_proto.WordRequestType.Matrix6):
             return self.callback_RecoveryMatrix(msg)
 
         msg = "Enter one word of mnemonic: "
@@ -68,6 +74,105 @@ class MyTrezorClient(trezor_ProtocolMixin, MyTrezorTextUIMixin, trezor_BaseClien
         trezor_BaseClient.__init__(self, transport)
 
 
+def all_transports():
+    transports = []
+    try:
+        from trezorlib.transport_bridge import BridgeTransport
+        transports.append(BridgeTransport)
+    except:
+        pass
+
+    try:
+        from trezorlib.transport_hid import HidTransport
+        transports.append(HidTransport)
+    except:
+        pass
+
+    try:
+        from trezorlib.transport_udp import UdpTransport
+        transports.append(UdpTransport)
+    except:
+        pass
+
+    try:
+        from trezorlib.transport_webusb import WebUsbTransport
+        transports.append(WebUsbTransport)
+    except:
+        pass
+
+    return transports
+
+
+def enumerate_devices():
+    return [device
+            for transport in all_transports()
+            for device in transport.enumerate()]
+
+
+def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = False) \
+        -> Tuple[List[Dict], List[Exception]]:
+    """
+    :return: Tuple[List[Dict <{'client': MyTrezorClient, 'device_id': str, 'desc',: str, 'model': str}>],
+                   List[Exception]]
+    """
+    ret_list = []
+    exceptions: List[Exception] = []
+    device_ids = []
+    was_bootloader_mode = False
+
+    devices = enumerate_devices()
+    for d in devices:
+        try:
+            client = MyTrezorClient(d, ask_for_pin_callback, ask_for_pass_callback)
+
+            if client.features.bootloader_mode:
+                if was_bootloader_mode:
+                    # in bootloader mode the device_id attribute isn't available, so for a given client object
+                    # we are unable to distinguish between being the same device reached with the different
+                    # transport and being another device
+                    # for that reason, to avoid returning duplicate clients for the same device, we don't return
+                    # more than one instance of a device in bootloader mod
+                    client.close()
+                    continue
+                was_bootloader_mode = True
+
+            if (not client.features.bootloader_mode or allow_bootloader_mode) and \
+                (client.features.device_id not in device_ids or client.features.bootloader_mode):
+
+                version = f'{client.features.major_version}.{client.features.minor_version}.' \
+                          f'{client.features.patch_version}'
+                if client.features.label:
+                    desc = client.features.label
+                else:
+                    desc = '[UNNAMED]'
+                desc = f'{desc} (ver: {version}, id: {client.features.device_id})'
+
+                c = {
+                    'client': client,
+                    'device_id': client.features.device_id,
+                    'desc': desc,
+                    'model': client.features.model,
+                    'bootloader_mode': client.features.bootloader_mode
+                }
+
+                ret_list.append(c)
+                device_ids.append(client.features.device_id)  # beware: it's empty in bootloader mode
+            else:
+                # the same device is already connected using different connection medium
+                client.close()
+        except Exception as e:
+            logging.warning(
+                f'Cannot create Trezor client ({d.__class__.__name__}) due to the following error: ' + str(e))
+            exceptions.append(e)
+
+    if not return_clients:
+        for cli in ret_list:
+            cli['client'].close()
+            cli['client'] = None
+
+    return ret_list, exceptions
+
+
 def connect_trezor(device_id: Optional[str] = None) -> Optional[MyTrezorClient]:
     """
     Connect to a Trezor device.
@@ -77,19 +182,40 @@ def connect_trezor(device_id: Optional[str] = None) -> Optional[MyTrezorClient]:
 
     logging.info('Started function')
     def get_client() -> Optional[MyTrezorClient]:
-        from trezorlib.transport_hid import HidTransport
-        count = len(HidTransport.enumerate())
-        if not count:
-            logging.warning('Number of Trezor devices: 0')
 
-        for d in HidTransport.enumerate():
-            transport = HidTransport(d)
-            client = MyTrezorClient(transport, ask_for_pin_callback, ask_for_pass_callback)
-            if not device_id or client.features.device_id == device_id:
-                return client
+        hw_clients, exceptions = get_device_list()
+        if not hw_clients:
+            if exceptions:
+                raise exceptions[0]
+        else:
+            selected_client = None
+            if device_id:
+                # we have to select a device with the particular id number
+                for cli in hw_clients:
+                    if cli['device_id'] == device_id:
+                        selected_client = cli['client']
+                        break
+                    else:
+                        cli['client'].close()
+                        cli['client'] = None
             else:
-                client.clear_session()
-                client.close()
+                # we are not forced to automatically select the particular device
+                if len(hw_clients) > 1:
+                    hw_names = [a['desc'] for a in hw_clients]
+
+                    selected_index = select_hw_device(None, 'Select Trezor device', hw_names)
+                    if selected_index is not None and (0 <= selected_index < len(hw_clients)):
+                        selected_client = hw_clients[selected_index]['client']
+                else:
+                    selected_client = hw_clients[0]['client']
+
+            # close all the clients but the selected one
+            for cli in hw_clients:
+                if cli['client'] != selected_client:
+                    cli['client'].close()
+                    cli['client'] = None
+
+            return selected_client
         return None
 
     # HidTransport.enumerate() has to be called in the main thread - second call from bg thread
@@ -141,33 +267,67 @@ class MyTxApiInsight(TxApiInsight):
                 pass
         return j
 
+    def get_tx(self, txhash):
+        # method moved from TxApiInsight from which this class is derived. Reason: an error of casting vout['value']
+        # to Decimal in the original method which occurres in some circumstances and causes the original value to be
+        # distorted after the cast
+        data = self.fetch_json('tx', txhash)
 
-TxApiDash = TxApiInsight(network='insight_dash', url='https://dash-bitcore1.trezor.io/api/')
+        t = trezor_proto.TransactionType()
+        t.version = data['version']
+        t.lock_time = data['locktime']
+
+        for vin in data['vin']:
+            i = t._add_inputs()
+            if 'coinbase' in vin.keys():
+                i.prev_hash = b"\0" * 32
+                i.prev_index = 0xffffffff  # signed int -1
+                i.script_sig = binascii.unhexlify(vin['coinbase'])
+                i.sequence = vin['sequence']
+
+            else:
+                i.prev_hash = binascii.unhexlify(vin['txid'])
+                i.prev_index = vin['vout']
+                i.script_sig = binascii.unhexlify(vin['scriptSig']['hex'])
+                i.sequence = vin['sequence']
+
+        for vout in data['vout']:
+            o = t._add_bin_outputs()
+            o.amount = round(Decimal(vout['value'] * 100000000))  # fixed here
+            o.script_pubkey = binascii.unhexlify(vout['scriptPubKey']['hex'])
+
+        return t
 
 
-def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
+def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[dict], dest_addresses: List[Tuple[str, int, str]], tx_fee):
     """
     Creates a signed transaction.
-    :param main_ui: Main window for configuration data
+    :param hw_session:
     :param utxos_to_spend: list of utxos to send
-    :param dest_address: destination (Dash) address
+    :param dest_addresses: destination addresses. Fields: 0: dest Dash address. 1: the output value in satoshis,
+        2: the bip32 path of the address if the output is the change address or None otherwise
     :param tx_fee: transaction fee
     :return: tuple (serialized tx, total transaction amount in satoshis)
     """
-    # tx_api = MyTxApiInsight('insight_dash', None, main_ui.dashd_intf, main_ui.config.cache_dir)
-    tx_api = TxApiDash
-    client = main_ui.hw_client
+
+    insight_network = 'insight_dash'
+    if hw_session.app_config.is_testnet():
+        insight_network += '_testnet'
+    dash_network = hw_session.app_config.dash_network
+
+    tx_api = MyTxApiInsight(insight_network, '', hw_session.dashd_intf, hw_session.app_config.cache_dir)
+    client = hw_session.hw_client
     client.set_tx_api(tx_api)
     inputs = []
     outputs = []
-    amt = 0
+    inputs_amount = 0
     for utxo_index, utxo in enumerate(utxos_to_spend):
         if not utxo.get('bip32_path', None):
             raise Exception('No BIP32 path for UTXO ' + utxo['txid'])
         address_n = client.expand_path(utxo['bip32_path'])
-        it = proto_types.TxInputType(address_n=address_n, prev_hash=binascii.unhexlify(utxo['txid']),
+        it = trezor_proto.TxInputType(address_n=address_n, prev_hash=binascii.unhexlify(utxo['txid']),
                                      prev_index=int(utxo['outputIndex']))
-        logging.info('BIP32 path: %s, address_n: %s, utxo_index: %s, prev_hash: %s, prev_index %s' %
+        logging.debug('BIP32 path: %s, address_n: %s, utxo_index: %s, prev_hash: %s, prev_index %s' %
                       (utxo['bip32_path'],
                        str(address_n),
                        str(utxo_index),
@@ -175,66 +335,51 @@ def prepare_transfer_tx(main_ui, utxos_to_spend, dest_address, tx_fee):
                        str(utxo['outputIndex'])
                       ))
         inputs.append(it)
-        amt += utxo['satoshis']
-    amt -= tx_fee
-    amt = int(amt)
+        inputs_amount += utxo['satoshis']
 
-    # check if dest_address is a Dash address or a script address and then set appropriate script_type
-    # https://github.com/dashpay/dash/blob/master/src/chainparams.cpp#L140
-    if dest_address.startswith('7'):
-        stype = proto_types.PAYTOSCRIPTHASH
-        logging.info('Transaction type: PAYTOSCRIPTHASH' + str(stype))
-    else:
-        stype = proto_types.PAYTOADDRESS
-        logging.info('Transaction type: PAYTOADDRESS ' + str(stype))
+    outputs_amount = 0
+    for addr, amount, bip32_path in dest_addresses:
+        outputs_amount += amount
+        if addr[0] in dash_utils.get_chain_params(dash_network).B58_PREFIXES_SCRIPT_ADDRESS:
+            stype = trezor_proto.OutputScriptType.PAYTOSCRIPTHASH
+            logging.debug('Transaction type: PAYTOSCRIPTHASH' + str(stype))
+        elif addr[0] in dash_utils.get_chain_params(dash_network).B58_PREFIXES_PUBKEY_ADDRESS:
+            stype = trezor_proto.OutputScriptType.PAYTOADDRESS
+            logging.debug('Transaction type: PAYTOADDRESS ' + str(stype))
+        else:
+            raise Exception('Invalid prefix of the destination address.')
+        if bip32_path:
+            address_n = client.expand_path(bip32_path)
+        else:
+            address_n = None
 
-    ot = proto_types.TxOutputType(
-        address=dest_address,
-        amount=amt,
-        script_type=stype
-    )
-    logging.info('dest_address length: ' + str(len(dest_address)))
-    outputs.append(ot)
-    signed = client.sign_tx('Dash', inputs, outputs)
+        ot = trezor_proto.TxOutputType(
+            address=addr if address_n is None else None,
+            address_n=address_n,
+            amount=amount,
+            script_type=stype
+        )
+        outputs.append(ot)
+
+    if outputs_amount + tx_fee != inputs_amount:
+        raise Exception('Transaction validation failure: inputs + fee != outputs')
+
+    signed = client.sign_tx(hw_session.app_config.hw_coin_name, inputs, outputs)
     logging.info('Signed transaction')
-    return signed[1], amt
+    return signed[1], inputs_amount
 
 
-def sign_message(main_ui, bip32path, message):
-    client = main_ui.hw_client
+def sign_message(hw_session: HwSessionInfo, bip32path, message):
+    client = hw_session.hw_client
     address_n = client.expand_path(bip32path)
-    return client.sign_message('Dash', address_n, message)
+    return client.sign_message(hw_session.app_config.hw_coin_name, address_n, message)
 
 
-def change_pin(main_ui, remove=False):
-    if main_ui.hw_client:
-        main_ui.hw_client.change_pin(remove)
+def change_pin(hw_session: HwSessionInfo, remove=False):
+    if hw_session.hw_client:
+        hw_session.hw_client.change_pin(remove)
     else:
         raise Exception('HW client not set.')
-
-
-def get_entropy(hw_device_id, len_bytes):
-    client = None
-    try:
-        client = connect_trezor(hw_device_id)
-
-        if client:
-            client.get_entropy(len_bytes)
-            client.close()
-        else:
-            raise Exception('Couldn\'t connect to Trezor device.')
-    except CallException as e:
-        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
-            raise
-        else:
-            if client:
-                client.close()
-            raise HardwareWalletCancelException('Cancelled')
-
-    except HardwareWalletCancelException:
-        if client:
-            client.close()
-        raise
 
 
 def wipe_device(hw_device_id) -> Tuple[str, bool]:

@@ -6,7 +6,7 @@ from PyQt5.QtCore import pyqtSlot
 from PyQt5.QtWidgets import QMessageBox, QDialog, QLayout
 import hw_intf as hw_intf
 import wnd_utils as wnd_utils
-from app_config import HWType
+from app_defs import HWType
 from ui import ui_hw_setup_dlg
 
 
@@ -15,13 +15,13 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
         QDialog.__init__(self)
         wnd_utils.WndUtils.__init__(self, main_ui.config)
         self.main_ui = main_ui
-        self.main_ui.connectHardwareWallet()
+        self.main_ui.connect_hardware_wallet()
         self.hw_client = self.main_ui.hw_client
         self.version = '?'
         self.pin_protection = None
         self.passphrase_protection = None
         if self.hw_client:
-            self.version = hw_intf.get_hw_firmware_version(main_ui, self.hw_client)
+            self.version = hw_intf.get_hw_firmware_version(self.main_ui.hw_session)
             self.read_hw_features()
         self.setupUi()
 

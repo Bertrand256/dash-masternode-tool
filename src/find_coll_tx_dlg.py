@@ -5,14 +5,17 @@
 import datetime
 import logging
 from PyQt5.QtCore import Qt, pyqtSlot, QModelIndex
-from PyQt5.QtWidgets import QMessageBox, QDialog, QLayout, QTableWidgetItem, QDialogButtonBox
+from PyQt5.QtWidgets import QMessageBox, QDialog, QLayout, QTableWidgetItem, QDialogButtonBox, QAbstractButton
+
+import app_utils
 import wnd_utils as wnd_utils
 from dashd_intf import DashdIndexException
 from ui import ui_find_coll_tx_dlg
 
 
+# noinspection PyArgumentList,PyArgumentList
 class FindCollateralTxDlg(QDialog, ui_find_coll_tx_dlg.Ui_FindCollateralTxDlg, wnd_utils.WndUtils):
-    def __init__(self, parent, dashd_intf, dash_address):
+    def __init__(self, parent, dashd_intf, dash_address, read_only):
         QDialog.__init__(self, parent=parent)
         wnd_utils.WndUtils.__init__(self, parent.config)
         self.main_wnd = parent
@@ -20,6 +23,7 @@ class FindCollateralTxDlg(QDialog, ui_find_coll_tx_dlg.Ui_FindCollateralTxDlg, w
         self.dash_address = dash_address
         self.utxos = []
         self.block_count = 0
+        self.read_only = read_only
         self.setupUi()
 
     def setupUi(self):
@@ -30,11 +34,9 @@ class FindCollateralTxDlg(QDialog, ui_find_coll_tx_dlg.Ui_FindCollateralTxDlg, w
             self.lblMessage.setVisible(False)
 
             self.lblMessage.setVisible(True)
-            self.lblMessage.setText('<b style="color:orange">Reading transactions, please wait...<b>')
+            self.lblMessage.setText('<span style="color:orange">Reading transactions, please wait...</span>')
 
-            self.runInThread(self.load_utxos_thread, (), self.display_utxos)
-
-            # self.threadFunctionDialog(self.load_utxos_thread, (), True, center_by_window=self.main_wnd)
+            self.run_thread(self, self.load_utxos_thread, (), self.display_utxos)
             self.updateUi()
         except:
             logging.exception('Exception occurred')
@@ -42,8 +44,11 @@ class FindCollateralTxDlg(QDialog, ui_find_coll_tx_dlg.Ui_FindCollateralTxDlg, w
 
     def updateUi(self):
         items = self.tableWidget.selectedItems()
-        selected = len(items) > 0
-        self.buttonBox.button(QDialogButtonBox.Ok).setEnabled(selected)
+        if not self.read_only and len(items) > 0:
+            selected = True
+        else:
+            selected = False
+        self.buttonBox.button(QDialogButtonBox.Apply).setEnabled(selected)
 
     def display_utxos(self):
         def item(value):
@@ -67,11 +72,19 @@ class FindCollateralTxDlg(QDialog, ui_find_coll_tx_dlg.Ui_FindCollateralTxDlg, w
             if sh.width() < 700:
                 sh.setWidth(700)
             self.setBaseSize(sh)
-            self.lblMessage.setVisible(False)
+            if self.read_only:
+                msg = f'<span style="color:blue">Found 1000 Dash transaction(s):' \
+                      f'</span>'
+            else:
+                msg = f'<span style="color:blue">Found 1000 Dash transaction(s). Click the "Apply" button to copy' \
+                      f' the transaction id/index to the selected masternode configuration.</span>'
+
+            self.lblMessage.setText(msg)
+            self.lblMessage.setVisible(True)
             self.centerByWindow(self.main_wnd)
         else:
-            self.lblMessage.setText('<b style="color:red">Found no unspent transactions with 1000 Dash '
-                                    'amount sent to address %s.<b>' %
+            self.lblMessage.setText('<span style="color:red">Found no unspent 1000 Dash transactions  '
+                                    'sent to address %s.</span>' %
                                     self.dash_address)
             self.lblMessage.setVisible(True)
 
@@ -83,11 +96,6 @@ class FindCollateralTxDlg(QDialog, ui_find_coll_tx_dlg.Ui_FindCollateralTxDlg, w
                 self.errorMsg('Dash daemon not connected')
             else:
                 try:
-                    # ctrl.dlg_config_fun(dlg_title="Loading unspent transaction outputs...",
-                    #                     show_message=True,
-                    #                     show_progress_bar=False)
-                    # ctrl.display_msg_fun('<b>Loading unspent transaction outputs. Please wait...</b>')
-
                     self.block_count = self.dashd_intf.getblockcount()
                     self.utxos = self.dashd_intf.getaddressutxos([self.dash_address])
                     self.utxos = [utxo for utxo in self.utxos if utxo['satoshis'] == 100000000000 ]
@@ -97,7 +105,7 @@ class FindCollateralTxDlg(QDialog, ui_find_coll_tx_dlg.Ui_FindCollateralTxDlg, w
                         for utxo in self.utxos:
                             blockhash = self.dashd_intf.getblockhash(utxo.get('height'))
                             bh = self.dashd_intf.getblockheader(blockhash)
-                            utxo['time_str'] = self.main_wnd.config.to_string(datetime.datetime.fromtimestamp(bh['time']))
+                            utxo['time_str'] = app_utils.to_string(datetime.datetime.fromtimestamp(bh['time']))
                             utxo['confirmations'] = self.block_count - bh.get('height') + 1
                     except Exception as e:
                         self.errorMsg(str(e))
@@ -118,9 +126,10 @@ class FindCollateralTxDlg(QDialog, ui_find_coll_tx_dlg.Ui_FindCollateralTxDlg, w
         else:
             return None, None
 
-    @pyqtSlot()
-    def on_buttonBox_accepted(self):
-        self.accept()
+    @pyqtSlot(QAbstractButton)
+    def on_buttonBox_clicked(self, button):
+        if button == self.buttonBox.button(QDialogButtonBox.Apply):
+            self.accept()
 
     @pyqtSlot()
     def on_buttonBox_rejected(self):
@@ -132,4 +141,5 @@ class FindCollateralTxDlg(QDialog, ui_find_coll_tx_dlg.Ui_FindCollateralTxDlg, w
 
     @pyqtSlot(QModelIndex)
     def on_tableWidget_doubleClicked(self):
-        self.accept()
+        if not self.read_only:
+            self.accept()

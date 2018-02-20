@@ -7,7 +7,7 @@ import base64
 from PyQt5.QtWidgets import QDialog
 import wnd_utils as wnd_utils
 import hw_intf
-from app_config import HWType
+from app_defs import HWType
 from ui import ui_sign_message_dlg
 import logging
 from hw_common import HardwareWalletCancelException
@@ -46,7 +46,7 @@ class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.W
                                      'remove any extra characters and try again.')
                         return
 
-                sig = hw_intf.sign_message(self.main_ui, self.bip32path, msg_to_sign)
+                sig = hw_intf.hw_sign_message(self.main_ui.hw_session, self.bip32path, msg_to_sign)
                 signed = base64.b64encode(sig.signature)
                 # hex_message = binascii.hexlify(sig.signature).decode('base64')
                 self.edtSignedMessage.setPlainText(signed.decode('ascii'))
