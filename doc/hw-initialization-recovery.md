@@ -9,7 +9,7 @@
     * [Hardware wallet recovery from hexadecimal entropy](hw-initr-entropy-mode.md)
     * [Hardware wallet initialization using newly generated seed words](hw-initr-new-seed.md)
     * [Hardware wallet wiping](hw-initr-wipe.md)
-  * [Updating hardware wallet firmware](doc/hw-initr-update-firmware.md)
+  * [Updating hardware wallet firmware](hw-initr-update-firmware.md)
  * [Running DMT on an offline Linux system](hw-initr-live-cd-linux.md)
 
 ## Introduction
@@ -52,7 +52,7 @@ List of available functions:
 - [Hardware wallet recovery from hexadecimal entropy](hw-initr-entropy-mode.md)
 - [Hardware wallet initialization using newly generated seed words](hw-initr-new-seed.md)
 - [Hardware wallet wiping](hw-initr-wipe.md)
-- [Updating hardware wallet firmware](doc/hw-initr-update-firmware.md)
+- [Updating hardware wallet firmware](hw-initr-update-firmware.md)
 
 > For Ledger Nano S wallets, only two of the above options are available (second and third) – other options are not supported by the official Ledger API, so it was not possible to create a GUI for them within DMT. This, however, is not a major problem, since these functions are already available through the device interface directly.
 
