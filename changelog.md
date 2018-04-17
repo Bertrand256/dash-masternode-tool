@@ -1,3 +1,24 @@
+## [0.9.18] - 2018-04-17
+
+**Added**
+- Support for Dash Testnet
+- Support for Trezor T hardware wallet
+- Switching between different configurations
+- Config files encryption with hardware wallets
+- Toolbar and main menu in the main app window
+- Transaction preview window
+- Uploading firmware to hardware wallets (dedicated mainly to upload a custom firmware with testnet support)
+
+**Changed**
+- Improvements in payment window: added multiple recipients, improved UTXO selection, saving recipient list in an
+external file (can be encrypted with hardware wallet)
+- Proposal window: additional filtering ("Only new", "Not voted"), voting on multiple proposals at once
+
+**Fixed**
+- "400 Bad request" error when sending transactions with more than 35 inputs (reconfiguration of the "public" RPC nodes)
+- A few rare errors when connecting to a remote node via SSH tunnel
+- QThread: Destroyed while thread is still runningAborted (core dumped)
+
 ## [0.9.17] - 2018-01-25
 
 **Fixed**
