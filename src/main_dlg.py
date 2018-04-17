@@ -22,7 +22,7 @@ from PyQt5 import QtWidgets
 from PyQt5.QtCore import QSize, pyqtSlot, QEventLoop, QMutex, QWaitCondition, QUrl
 from PyQt5.QtGui import QFont, QIcon, QDesktopServices
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle, QInputDialog
+from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle, QInputDialog, QApplication
 from PyQt5.QtWidgets import QMessageBox
 from common import CancelException
 from config_dlg import ConfigDlg
@@ -147,7 +147,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.action_sign_message_for_cur_mn.setIconVisibleInMenu(False)
         self.action_hw_configuration.setIconVisibleInMenu(False)
         self.action_hw_initialization_recovery.setIconVisibleInMenu(False)
-
 
         # add masternodes' info to the combobox
         self.curMasternode = None
@@ -1584,7 +1583,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
                     lastseen_str = app_utils.to_string(lastseen)
                     lastseen_ago = app_utils.seconds_to_human(time.time() - float(mn_info.lastseen),
-                                                               out_seconds=False) + ' ago'
+                        out_unit_auto_adjust = True) + ' ago'
                 else:
                     lastseen_str = 'never'
                     lastseen_ago = ''
@@ -1593,12 +1592,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
                     lastpaid_str = app_utils.to_string(lastpaid)
                     lastpaid_ago = app_utils.seconds_to_human(time.time() - float(mn_info.lastpaidtime),
-                                                               out_seconds=False) + ' ago'
+                                                              out_unit_auto_adjust=True) + ' ago'
                 else:
                     lastpaid_str = 'never'
                     lastpaid_ago = ''
 
-                activeseconds_str = app_utils.seconds_to_human(int(mn_info.activeseconds), out_seconds=False)
+                activeseconds_str = app_utils.seconds_to_human(int(mn_info.activeseconds), out_unit_auto_adjust=True)
                 if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
                     color = 'green'
                 else:
@@ -1766,3 +1765,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def on_action_open_proposals_window_triggered(self):
         ui = ProposalsDlg(self, self.dashd_intf)
         ui.exec_()
+
+    @pyqtSlot(bool)
+    def on_action_about_qt_triggered(self, enabled):
+        QApplication.aboutQt()

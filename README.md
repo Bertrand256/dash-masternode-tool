@@ -23,6 +23,7 @@
    * [Changing a hardware wallet PIN/passphrase](#changing-a-hardware-wallet-pinpassphrase)
    * [Browsing and voting on proposals](doc/proposals.md)
    * [Hardware wallet initialization/recovery](doc/hw-initialization-recovery.md)
+     * [Updating hardware wallet firmware](doc/hw-initr-update-firmware.md)
  * Building the DMT executables
     * [macOS](doc/build-dmt-mac.md)
     * [Windows](doc/build-dmt-windows.md)
@@ -40,35 +41,38 @@ A server with the Dash daemon software installed will operate as a Dash full nod
 
 This action can be carried out using the *Dash Core* reference software client. As can be expected, this requires sending 1000 Dash to an address controlled by the *Dash Core* wallet. After the recent increase in the value of Dash and a burst in the amount of malware distributed over the Internet, you do not have to be paranoid to conclude that keeping large amounts of funds in a software wallet is not the most secure option. For these reasons, it is highly recommended to use a **hardware wallet** for this purpose.
 
-## Dash Masternode Tool
+# Dash Masternode Tool
 
 The main purpose of the application is to give masternode operators (MNOs) the ability to send the `start masternode` command through an easy to use a graphical user interface if the masternode collateral is controlled by a hardware wallet such as Trezor, KeepKey or Ledger.
 
-### Feature list
+## Feature list
 
-* Sending the `start masternode` command if the collateral is controlled by a hardware wallet.
-* Transferring masternode earnings safely, without touching the 1000 Dash funding transaction.
-* Signing messages with a hardware wallet.
-* Voting on proposals.
+* Sending the `start masternode` command if the collateral is controlled by a hardware wallet
+* Transferring masternode earnings safely, without touching the 1000 Dash funding transaction
+* Signing messages with a hardware wallet
+* Voting on proposals
+* Initialization/recovery of hardware wallets seeds
+* Updating of hardware wallets firmware (Trezor/KeepKey)
+* Support for Dash Testnet
 
-### Supported hardware wallets
+## Supported hardware wallets
 
-- [x] Trezor
+- [x] Trezor (model One and T)
 - [x] KeepKey
 - [x] Ledger Nano S
 
 Most of the application features are accessible from the main program window:  
 ![Main window](doc/img/dmt-main-window.png)
 
-## Configuration
+# Configuration
 
-### Setting up the hardware wallet type
+## Setting up the hardware wallet type
  * Click the `Configure` button.
  * Select the `Miscellaneous` tab in the configuration dialog that appears.
  * Depending on the type of your hardware wallet, select the `Trezor`, `KeepKey` or `Ledger Nano S` option.  
      ![Configuration window](doc/img/dmt-config-dlg-misc.png)
 
-### Connection setup
+## Connection setup
 
 Most of the application features involve exchanging data between the application itself and the Dash network. To do this, *DMT* needs to connect to one of the full nodes on the network, specifically one which can handle JSON-RPC requests. This node plays the role of a gateway for *DMT* to the Dash network. It does not matter which full node node provides the service, because all nodes reach consensus by synchronizing information between each other on the Dash network.
 
@@ -77,7 +81,7 @@ Depending on your preferences (and skills) you can choose one of three possible 
  * [Connection to a remote node through an SSH tunnel](doc/config-connection-ssh.md), if you want to work with a remote Dash daemon (like your masternode) through an SSH tunnel.
  * [Connection to "public" JSON-RPC nodes](doc/config-connection-proxy.md), if you want to use nodes provided by other users.
 
-### Masternode setup
+## Masternode setup
 
 Here we make the following assumptions:
   * You already have a server running the Dash daemon software (*dashd*) that you want to use as a masternode. If you don't, you will need to install and configure one first by following the guide on the [Dash Wiki](https://dashpay.atlassian.net/wiki/spaces/DOC/pages/113934340).
@@ -90,7 +94,7 @@ Further configuration steps depend on whether you already have a masternode cont
 [Scenario A - moving masternode management from Dash Core](doc/config-masternodes-a.md)  
 [Scenario B - configuration of a new masternode](doc/config-masternodes-b.md)
 
-### Command line parameters
+## Command line parameters
 
 The application currently supports the following command-line parameters:
 * `--data-dir`: a path to a directory in which the application will create all the needed files, such as: configuration file, cache and log files; it can be useful for users who want to avoid leaving any of the application files on the computer - which by default are created in the user's home directory - and insted to keep them on an external drive
@@ -99,9 +103,9 @@ The application currently supports the following command-line parameters:
 
 
 
-## Features
+# Features
 
-### Starting a masternode
+## Starting a masternode
 
 Once you set up the Dash daemon and perform the required *DMT* configuration, you need to broadcast the `start masternode` message to the Dash network, so the other Dash nodes recognize your daemon as a masternode and add it to the payment queue.
 
@@ -151,40 +155,51 @@ The steps are as follows:
   In case of failure, the message text may vary, depending on the nature of the problem. Example:  
   ![Failed to start masternode](doc/img/startmn-failed-error.png)
 
-### Transferring masternode earnings
+## Transferring masternode earnings
 
 DMT version 0.9.4 and above allows you to transfer your masternode earnings. Unlike other Dash wallets, DMT gives you a 100% control over which *unspent transaction outputs* (utxo) you want to transfer. This has the same effect as the `Coin control` functionality implemented in the *Dash Core* wallet.
 
 The `Transfer funds` window shows all *UTXOs* of the currently selected Masternode (mode 1), all Masternodes in current configuration (mode 2) or any address controlled by a hardware wallet (mode 3). All *UTXOs* not used as collateral are initially selected. All collateral *UTXOs* (1000 Dash) are initially hidden to avoid unintentionally spending collateral funds and thus breaking MN. You can show these hidden entries by unchecking the `Hide collateral utxos` option.
 
-To show the `Transfer funds` window, click the `Tools` button. Then, from the popup menu choose:
+To show the `Transfer funds` window, click the `Tools` menu. Then, from the popup menu choose:
  * `Transfer funds from current Masternode's address` (mode 1)
  * `Transfer funds from all Masternodes addresses` (mode 2)
- * `Transfer funds from any HW address` (mode 3)
+ * `Transfer funds from any address` (mode 3)
 
-Sending masternode payouts:  
+The same you can achieve by clicking of the three buttons from the right side of the app's toolbar:
+![Transfer masternode funds window](doc/img/dmt-transfer-funds-tool-buttons.png)
+
+Transferring funds from masternode collateral addresses (mode 2):  
 ![Transfer masternode funds window](doc/img/dmt-transfer-funds.png)
 
-Transferring funds from any address controlled by a hardware wallet:  
+Transferring funds from any address controlled by a hardware wallet, using BIP32 path as an input (mode 3):  
 ![Transfer funds from any address window](doc/img/dmt-transfer-funds-any-address.png)
 
-Select all *UTXOs* you wish to include in your transaction, verify the transaction fee and click the `Send` button. After signing the transaction with your hardware wallet, the application will ask you for confirmation to broadcast the signed transaction to the Dash network.  
+and using *wallet account* as an input (mode 3):  
+![Transfer funds from any address window](doc/img/dmt-transfer-funds-any-address-account.png)
+
+> Important: rows with a red font in the *Confirmations* column and a gray background are related to so-called *coinbase* transactions, that don't have the required number of confirmations to forward them. You should restrain from sending them and wait for them to receive at least 100 confirmations. 
+
+To send funds, select all *UTXOs* you wish to include in your transaction, enter the details of the recipient(s), verify the transaction fee and click the `Prepare Transaction` button on the bottom: 
+![Broadcast signed transaction confirmation](doc/img/dmt-transfer-funds-select-utxos.png)
+
+After signing the transaction with your hardware wallet, the application will display a summary and will ask you for confirmation for broadcasting the signed transaction to the Dash network.  
 ![Broadcast signed transaction confirmation](doc/img/dmt-transfer-funds-broadcast.png)
 
-After clicking `Yes`, the application broadcasts the transaction and then shows a message box with a transaction ID as a hyperlink directing to a Dash block explorer:  
+After clicking `Send Transaction`, the application broadcasts the transaction and then shows a confirmation with a transaction ID as a hyperlink directing to a Dash block explorer:  
 ![Transaction sent](doc/img/dmt-transfer-funds-confirmation.png)
 
-### Signing messages with a hardware wallet
+## Signing messages with a hardware wallet
 
 To sign a message with your hardware wallet, click the `Tools` button and then select the `Sign message with HW for current Masternode's address` menu item. The `Sign message` window appears:  
 ![Sign message window](doc/img/dmt-hw-sign-message.png)
 
-### Changing hardware wallet PIN/passphrase
+## Changing hardware wallet PIN/passphrase
 
 Click the `Tools` button and select the `Hardware wallet PIN/Passphrase configuration` item. The following window will appear to guide you through the steps of changing the PIN/passphrase:  
 ![Hardware wallet setup window](doc/img/dmt-hardware-wallet-config.png)
 
-### Downloads
+## Downloads
 
 This application is written in Python 3, but requires several additional libraries to run. These libraries in turn require the installation of a C++ compiler. All in all, compiling DMT from source is not trivial for non-technical people, especially the steps carried out under Linux (though this will be documented soon).
 
@@ -195,7 +210,7 @@ For this reason, in addition to providing the source code on GitHub, binary vers
 
 Binary versions of the latest release can be downloaded from: https://github.com/Bertrand256/dash-masternode-tool/releases/latest.
 
-#### Verification of the binary files
+### Verification of the application binary files
 Beginning with version 0.9.15, each binary file forming part of a release has a corresponding signature file that you can use to verify the authenticity of the downloaded binary file (to ensure it has not been corrupted or replaced with a counterfeit) and confirm that it has been signed by the application author (Keybase user: bertrand256).
 
 The verification method described below is based on use of the Keybase application, so if you have not already done so, download the installer from https://keybase.io/download and install the app.

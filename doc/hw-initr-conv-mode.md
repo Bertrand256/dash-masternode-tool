@@ -1,5 +1,5 @@
 
-## Hardware wallet recovery - convenient mode
+# Hardware wallet recovery - convenient mode
 
 This procedure differs from safe mode in that the words composing the recovery seed are entered in a special editor, all visible at the same time. While this method is more convenient than entering each word separately in a random order, it also has some important consequences impacting the security of the procedure.
 
@@ -12,19 +12,19 @@ This procedure differs from safe mode in that the words composing the recovery s
 >
 > For the purposes of this scenario, it is also best to use a system launched from a live CD (as described [here](hw-initr-live-cd-linux.md)), that ceases to exist as a system once it has been turned off. This ensures that there is no trace of confidential information stored anywhere.
 
-##### Step 1: Select the type of hardware wallet in use in the first step of the wizard
+#### Step 1: Select the type of hardware wallet in use in the first step of the wizard
 ![Select hardware wallet type](img/hwri/rec-hwtype.png)
 
-##### Step 2: Select the `Recover hardware wallet from seed words – convenient` option  
+#### Step 2: Select the `Recover hardware wallet from seed words – convenient` option  
 ![Select action](img/hwri/rec-action-conv.png)
 
-##### Step 3: Select the number of words in your recovery seed   
+#### Step 3: Select the number of words in your recovery seed   
 ![Number of words](img/hwri/rec-number-of-words.png)
 
-##### Step 4: Enter all recovery seed words in the corresponding fields  
+#### Step 4: Enter all recovery seed words in the corresponding fields  
 ![Input words](img/hwri/rec-words-input.png)
 
-##### Step 5: Define hardware wallet configuration options  
+#### Step 5: Define hardware wallet configuration options  
 Note: for Ledger Nano S devices, this window is slightly more complex than in case of Trezor and KeepKey.
 
 **Options for Trezor and KeepKey devices**  
@@ -44,7 +44,7 @@ In this step of the wizard, it is possible to preview the Dash addresses that wi
 
 There is also an option to change the BIP32 path to something other than the default, as well as verify the influence of passphrase on the addresses generated.
 
-##### Step 6: Accept the security prompt 
+#### Step 6: Accept the security prompt 
 In this step, Trezor and KeepKey devices (quite reasonably) display a warning, informing the user that it might not be safe to import the entire recovery seed from the computer to the device at once. As mentioned before, if at any point a complete recovery seed is found on a working OS, and the computer is (or will be) connected to the Internet, there is a risk that the data could be intercepted by unauthorized parties, which could potentially result in financial loss.
 
 ![Recovering Trezor private seed](img/hwri/trezor-recover-private-seed.jpg)

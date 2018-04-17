@@ -644,6 +644,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
             bip32_to_address = {}  # for saving addresses read from HW by BIP32 path
             total_satoshis = 0
+            coinbase_locked_exist = False
 
             # verify if:
             #  - utxo is the masternode collateral transation
@@ -658,6 +659,9 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
                             default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
                         return
+                if utxo['coinbase_locked']:
+                    coinbase_locked_exist = True
+
                 bip32_path = utxo.get('bip32_path', None)
                 if not bip32_path:
                     self.errorMsg('No BIP32 path for UTXO: %s. Cannot continue.' % utxo['txid'])
@@ -675,6 +679,14 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                                   (utxo_idx+1, bip32_path, addr_hw, utxo['address']))
                     return
 
+            if coinbase_locked_exist:
+                if self.queryDlg(
+                        "Warning: you have selected at least one coinbase transaction without the required number of "
+                        "confirmations (100). Your transaction will probably be rejected by the network.\n\n"
+                        "Do you really want to continue?",
+                        buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                        default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
+                    return
             try:
                 dest_data = self.wdg_dest_adresses.get_tx_destination_data()
                 if dest_data:
