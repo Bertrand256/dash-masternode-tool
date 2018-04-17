@@ -31,12 +31,12 @@ On the `Voting History` tab you can view:
  * An incremental chart of votes over time.
  * A chart of changed votes over time (MNOs can change their vote at any time during the voting period).
  * A chart summarizing YES, NO and ABSTAIN vote counts.  
-    ![Voting history tab](img/dmt-proposals-voting-history.png)
+    ![Voting history tab](img/dmt-proposals-voting-history.png)  
 
-  Vote change chart:  
-    ![Vote change chart](img/dmt-proposals-vote-change-chart.png)
+    Vote change chart:  
+    ![Vote change chart](img/dmt-proposals-vote-change-chart.png)  
 
-  Vote summary chart:  
+    Vote summary chart:  
     ![Vote summary chart](img/dmt-proposals-vote-summary-chart.png)
 
 ### Casting votes
