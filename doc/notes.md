@@ -18,11 +18,15 @@ let's say Trezor, choose NFKD. On the other hand, if you'd like to have address-
 between DMT and the KeepKey official client app, use NFC. 
 
 ## Note DMT0002
-Hardware wallet does not support Dash TESTNET.
+Current versions of the all three hardware wallets supported by the application do not support Dash TESTNET. It is possible though, making a few modifications to the firmware source code of Trezor and KeepKey devices, to make them support Testnet. 
+
+For those who do not want to do it on their own, I have prepared firmware for Trezor One and for KeepKey with that support. It's available for manual download from the following url: https://github.com/Bertrand256/dash-masternode-tool/tree/master/hardware-wallets/firmware, but it can also be automatically downloaded and installed using the [Hardware wallet initialization/recovery](hw-initialization-recovery.md) window`.  
+
+**Important:** due tu a bug in the latest Trezor bootloader, custom firmwares can't be executed, To avoid users' confusion, custom firmware for this device with Testnet support isn't currently shown by DMT app, nor is visible on the project website.
 
 ## Note DMT0003
-Remember to close other applications connected the same hardware wallet device that DMT 
+Remember to close other applications connected to the same hardware wallet device DMT 
 communicates with, for example web browsers with open online wallet apps, Chrome wallet apps, etc. 
-The communication with the device by these applications may distort data exchanged by DMT, which 
+Communication with the device by these applications may distort data exchanged by DMT, which 
 may result in unexpected bahavior like returning different Dash address than the one for which 
 the query was sent.

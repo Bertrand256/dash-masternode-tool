@@ -139,14 +139,27 @@ def decrypt(input_str, key, iterations=100000):
 
 
 def seconds_to_human(number_of_seconds, out_seconds=True, out_minutes=True, out_hours=True, out_weeks=True,
-                     out_days=True):
+                     out_days=True, out_unit_auto_adjust=False):
     """
     Converts number of seconds to string representation.
     :param out_seconds: False, if seconds part in output is to be trucated
     :param number_of_seconds: number of seconds.
+    :param out_unit_auto_adjust: if True, funcion automatically decides what parts of the date-time diff
+      passed as an argument will become part of the output string. For example, if number_of_seconds is bigger than
+      days, there is no sense to show seconds part.
     :return: string representation of time delta
     """
     human_strings = []
+
+    if out_unit_auto_adjust:
+        if number_of_seconds > 600:  # don't show seconds if time > 10 min
+            out_seconds = False
+            if number_of_seconds > 86400:  # don't show minutes if time > 10 hours
+                out_minutes = False
+                if number_of_seconds > 864000:  # don't show hours if time > 10 days
+                    out_hours = False
+                    if number_of_seconds > 6048000:
+                        out_days = False
 
     weeks = 0
     days = 0

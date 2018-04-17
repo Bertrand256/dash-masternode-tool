@@ -845,7 +845,10 @@
     <addaction name="action_save_config_file"/>
     <addaction name="action_save_config_file_as"/>
     <addaction name="separator"/>
+    <addaction name="action_open_settings_window"/>
+    <addaction name="separator"/>
     <addaction name="action_about_app"/>
+    <addaction name="action_about_qt"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuTools"/>
@@ -938,6 +941,9 @@
    <property name="toolTip">
     <string>Settings</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::PreferencesRole</enum>
+   </property>
   </action>
   <action name="action_open_proposals_window">
    <property name="text">
@@ -976,10 +982,24 @@
    <property name="text">
     <string>About DashMasternodeTool...</string>
    </property>
+   <property name="menuRole">
+    <enum>QAction::AboutRole</enum>
+   </property>
   </action>
   <action name="action_import_masternode_conf">
    <property name="text">
     <string>Import masternodes from the masternode.conf file...</string>
+   </property>
+  </action>
+  <action name="action_about_qt">
+   <property name="text">
+    <string>About Qt...</string>
+   </property>
+   <property name="toolTip">
+    <string>About Qt</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::AboutQtRole</enum>
    </property>
   </action>
  </widget>

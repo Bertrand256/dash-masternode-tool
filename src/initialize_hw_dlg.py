@@ -1252,6 +1252,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             project_url = app_defs.PROJECT_URL.replace('//github.com', '//raw.githubusercontent.com')
             if not project_url.endswith('/'):
                 project_url += '/'
+            project_url += 'master/'
 
             url = urllib.parse.urljoin(project_url, 'hardware-wallets/firmware/firmware-sources.json')
             ctrl.display_msg_fun(f'<b>Downloading firmware sources from:</b><br>{url}<br><br>Please wait...')
