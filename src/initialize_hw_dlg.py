@@ -594,7 +594,9 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                             self.run_thread_dialog(do_wipe, (hw_client,), True, center_by_window=self)
                         except Exception as e:
                             msg = str(e)
-                            if not re.match('.*disconnected*.', msg, re.IGNORECASE):
+                            if not re.match('.*disconnected*.', msg, re.IGNORECASE) and \
+                                    not re.match('.*Could not write message \(error=400 str=LIBUSB_ERROR_PIPE\)', msg,
+                                                 re.IGNORECASE):
                                 raise
 
                         if self.queryDlg('Reconnect the device in bootloader mode and click "OK" to continue.',
