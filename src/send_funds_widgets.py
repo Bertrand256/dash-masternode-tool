@@ -615,7 +615,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         if self.app_config.is_testnet():
             fee_multiplier = 10  # in testnet large transactions tend to get stuck if the fee is "normal"
         else:
-            fee_multiplier = 0
+            fee_multiplier = 1
 
         if self.inputs_total_amount > 0.0:
             bytes = (self.inputs_count * 148) + (recipients_count * 34) + 10
@@ -805,49 +805,6 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
                 addr.clear_validation_results()
 
             self.update_change_and_fee()
-
-    def update_change_amount(self, allow_fee_recalculate: bool) -> None:  #todo: to removal
-        was_change_before = (self.change_amount > 0.0)
-        self.change_amount = self.calculate_the_change()
-        if self.inputs_total_amount - self.fee_amount != 0:
-            change_pct = round(self.change_amount * 100 / (self.inputs_total_amount - self.fee_amount), 8) + 0
-        else:
-            change_pct = 0.0
-
-        if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT:
-            left_second_unit_str = app_utils.to_string(round(change_pct, 3)) + '%'
-            self.edt_change_amount.setText(app_utils.to_string(round(self.change_amount, 8)))
-        elif self.values_unit == OUTPUT_VALUE_UNIT_PERCENT:
-            left_second_unit_str = app_utils.to_string(round(self.change_amount, 8)) + ' Dash'
-            sum = 0.0
-            for addr in self.recipients:
-                sum += addr.get_value(default_value=0.0)
-            self.edt_change_amount.setText(app_utils.to_string(round(100 - sum, 8)))
-        else:
-            raise Exception('Invalid unit')
-
-        msg = ''
-        if self.change_amount < 0:
-            used_amount = round(self.inputs_total_amount - self.change_amount, 8) + 0
-            msg = f'Not enough funds - used amount: ' \
-                  f'{used_amount}, available: {self.inputs_total_amount}. Adjust ' \
-                  f'the output values.'
-        else:
-            if was_change_before != (self.change_amount > 0.0):
-                # added or removed output for the change, this will change the size of the transation and
-                # the fee
-                if allow_fee_recalculate:
-                    self.fee_amount = self.calculate_fee()
-                    old_status = self.edt_fee_value.blockSignals(True)
-                    try:
-                        self.edt_fee_value.setText(app_utils.to_string(self.fee_amount))
-                    finally:
-                        self.edt_fee_value.blockSignals(old_status)
-
-                self.display_totals()
-
-        self.lbl_second_unit.setText(left_second_unit_str)
-        self.display_message(msg, 'red')
 
     def validate_output_data(self) -> bool:
         ret = True
