@@ -1100,9 +1100,9 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
-    def sendrawtransaction(self, tx):
+    def sendrawtransaction(self, tx, use_instant_send):
         if self.open():
-            return self.proxy.sendrawtransaction(tx)
+            return self.proxy.sendrawtransaction(tx, False, use_instant_send)
         else:
             raise Exception('Not connected')
 
