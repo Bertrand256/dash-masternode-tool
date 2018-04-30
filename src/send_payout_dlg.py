@@ -651,6 +651,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             #  - the utxo Dash (signing) address matches the hardware wallet address for a given path
             for utxo_idx, utxo in enumerate(utxos):
                 total_satoshis += utxo['satoshis']
+                logging.info(f'UTXO satosis: {utxo["satoshis"]}')
                 if utxo['collateral']:
                     if self.queryDlg(
                             "Warning: you are going to transfer masternode's collateral (1000 Dash) transaction "
@@ -690,13 +691,21 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             try:
                 dest_data = self.wdg_dest_adresses.get_tx_destination_data()
                 if dest_data:
-                    total_satoshis_real = 0
+                    total_satoshis_actual = 0
                     for dd in dest_data:
-                        total_satoshis_real += dd[1]
+                        total_satoshis_actual += dd[1]
+                        logging.info(f'dest amount: {dd[1]}')
 
                     fee = self.wdg_dest_adresses.get_tx_fee()
-                    if total_satoshis != total_satoshis_real + fee:
-                        raise Exception('Data validation failure')
+                    use_is = self.wdg_dest_adresses.get_use_instant_send()
+                    logging.info(f'fee: {fee}')
+                    if total_satoshis != total_satoshis_actual + fee:
+                        logging.warning(f'total_satoshis ({total_satoshis}) != total_satoshis_real '
+                                        f'({total_satoshis_actual}) + fee ({fee})')
+                        logging.warning(f'total_satoshis_real + fee: {total_satoshis_actual + fee}')
+
+                        if abs(total_satoshis - total_satoshis_actual - fee) > 10:
+                            raise Exception('Data validation failure')
 
                     try:
                         serialized_tx, amount_to_send = prepare_transfer_tx(
@@ -710,7 +719,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     if len(tx_hex) > 90000:
                         self.errorMsg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
                     else:
-                        tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex)
+                        tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex, use_is)
                         if tx_dlg.exec_():
                             amount, sel_utxos = self.get_selected_utxos()
                             if sel_utxos:

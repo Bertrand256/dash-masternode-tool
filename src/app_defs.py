@@ -8,8 +8,8 @@ APP_NAME_SHORT = 'DashMasternodeTool'
 APP_NAME_LONG = 'Dash Masternode Tool'
 APP_DATA_DIR_NAME = '.dmt'
 PROJECT_URL = 'https://github.com/Bertrand256/dash-masternode-tool'
-FEE_SAT_PER_BYTE = 1
-MIN_TX_FEE = 2000
+FEE_DUFF_PER_BYTE = 1
+MIN_TX_FEE = 1000
 SCREENSHOT_MODE = False
 
 
