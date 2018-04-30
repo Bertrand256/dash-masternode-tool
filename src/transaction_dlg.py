@@ -29,6 +29,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                  config: AppConfig,
                  dashd_intf: DashdInterface,
                  raw_transaction: str,
+                 use_instant_send: bool,
                  decoded_transaction: Optional[dict] = None,
                  dependent_transactions: Optional[dict] = None
                  ):
@@ -40,6 +41,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
         self.dashd_intf = dashd_intf
         self.transaction_sent = False
         self.raw_transaction = raw_transaction
+        self.use_instant_send = use_instant_send
         self.tx_id = None  # will be decoded from rawtransaction
         self.tx_size = None  # as above
         self.decoded_transaction: Optional[dict] = decoded_transaction
@@ -182,6 +184,7 @@ td.lbl{{text-align: right;vertical-align: top}} p.lbl{{margin: 0 5px 0 0; font-w
     <tr><td class="lbl"><p class="lbl">Total amount:</p></td><td>{app_utils.to_string(inputs_total)} Dash</td><td></td></tr>
     <tr><td class="lbl"><p class="lbl">Fee:</p></td><td>{app_utils.to_string(fee)} Dash</td><td></td></tr>
     <tr><td class="lbl"><p class="lbl">Transaction size:</p></td><td>{tx_size_str}</td><td></td></tr>
+    <tr><td class="lbl"><p class="lbl">InstantSend:</p></td><td>{'YES' if self.use_instant_send else 'NO'}</td><td></td></tr>
     {recipients}
  </table></p></body></html>"""
 
@@ -205,7 +208,7 @@ td.lbl{{text-align: right;vertical-align: top}} p.lbl{{margin: 0 5px 0 0; font-w
     @pyqtSlot(bool)
     def on_btn_broadcast_clicked(self):
         try:
-            txid = self.dashd_intf.sendrawtransaction(self.raw_transaction)
+            txid = self.dashd_intf.sendrawtransaction(self.raw_transaction, self.use_instant_send)
             if txid != self.tx_id:
                 logging.warning('TXID returned by sendrawtransaction differs from the original txid')
                 self.tx_id = txid

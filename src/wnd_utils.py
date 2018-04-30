@@ -2,17 +2,18 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+import functools
 import logging
 import os
 import threading
 import traceback
 from functools import partial
-from typing import Callable, Optional, NewType, Any, Tuple
+from typing import Callable, Optional, NewType, Any, Tuple, Dict
 import app_utils
 import thread_utils
 import time
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop
+from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap
 from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit
 import math
@@ -24,6 +25,7 @@ class WndUtils:
 
     def __init__(self, app_config=None):
         self.app_config = app_config
+        self.debounce_timers: Dict[str, QTimer] = {}
 
     def messageDlg(self, message):
         ui = message_dlg.MessageDlg(self, message)
@@ -265,6 +267,19 @@ class WndUtils:
                 elem = QLocale.toString(app_utils.get_default_locale(), elem if elem is not None else '')
             csv_row.append(elem.replace(delim, delim_replacement))
         file_ptr.write(delim.join(csv_row) + '\n')
+
+    def debounce_call(self, name: str, function_to_call: Callable, delay_ms: int):
+        def tm_timeout(timer: QTimer, function_to_call: Callable):
+            timer.stop()
+            function_to_call()
+
+        if name not in self.debounce_timers:
+            tm = QTimer(self)
+            tm.timeout.connect(functools.partial(tm_timeout, tm, function_to_call))
+            self.debounce_timers[name] = tm
+        else:
+            tm = self.debounce_timers[name]
+        tm.start(delay_ms)
 
 
 class DeadlockException(Exception):

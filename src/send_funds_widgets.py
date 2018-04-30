@@ -3,19 +3,20 @@
 # Author: Bertrand256
 # Created on: 2018-03
 import logging
+import math
 import re
 from functools import partial
 from typing import List, Callable, Optional, Tuple
 import sys
 import os
 from PyQt5 import QtCore, QtWidgets
-from PyQt5.QtCore import QSize, QEventLoop, QObject, QTimer, QVariant
+from PyQt5.QtCore import QSize, QEventLoop, QObject, QTimer, QVariant, pyqtSlot
 from PyQt5.QtWidgets import QPushButton, QToolButton, QWidgetItem, QSpacerItem, QLayout, QHBoxLayout, QLineEdit, \
-    QLabel, QComboBox, QMenu, QMessageBox, QVBoxLayout
+    QLabel, QComboBox, QMenu, QMessageBox, QVBoxLayout, QCheckBox
 import app_cache
 import app_utils
 import dash_utils
-from app_defs import FEE_SAT_PER_BYTE, MIN_TX_FEE
+from app_defs import FEE_DUFF_PER_BYTE, MIN_TX_FEE
 from encrypted_files import write_file_encrypted, read_file_encrypted
 from hw_common import HwSessionInfo
 from wnd_utils import WndUtils
@@ -131,6 +132,8 @@ class SendFundsDestinationItem(QObject):
     def set_value(self, value):
         old_state = self.edt_amount.blockSignals(True)
         try:
+            if value == '':
+                value = None
             if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT:
                 self.value_amount = value
             elif self.values_unit == OUTPUT_VALUE_UNIT_PERCENT:
@@ -155,16 +158,20 @@ class SendFundsDestinationItem(QObject):
                 self.lbl_second_unit_value.setText('')
 
     def re_calculate_second_unit_value(self):
-        if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT:
-            # calculate the percent-value based on the inputs total amount and our item's amount
-            if self.inputs_total_amount and self.value_amount is not None:
-                self.value_percent = round(self.value_amount * 100 / self.inputs_total_amount, 8)
-                self.display_second_unit_value()
-        elif self.values_unit == OUTPUT_VALUE_UNIT_PERCENT:
-            # calculate the amount value based on inputs total amount and our item's percent-value
-            if self.inputs_total_amount is not None and self.value_percent is not None:
-                self.value_amount = round(self.inputs_total_amount * self.value_percent / 100, 8)
-                self.display_second_unit_value()
+        try:
+            if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT:
+                # calculate the percent-value based on the inputs total amount and our item's amount
+                if self.inputs_total_amount and self.value_amount is not None:
+                    self.value_percent = round(self.value_amount * 100 / self.inputs_total_amount, 8)
+                    self.display_second_unit_value()
+            elif self.values_unit == OUTPUT_VALUE_UNIT_PERCENT:
+                # calculate the amount value based on inputs total amount and our item's percent-value
+                if self.inputs_total_amount is not None and self.value_percent is not None:
+                    self.value_amount = round(math.floor(self.inputs_total_amount * self.value_percent * 1e8 / 100) / 1e8,
+                                              8)
+                    self.display_second_unit_value()
+        except Exception as e:
+            raise
 
     def set_inputs_total_amount(self, amount):
         self.inputs_total_amount = amount
@@ -233,12 +240,12 @@ class SendFundsDestinationItem(QObject):
         self.set_style_sheet()
 
 
-class SendFundsDestination(QtWidgets.QWidget):
+class SendFundsDestination(QtWidgets.QWidget, WndUtils):
     resized_signal = QtCore.pyqtSignal()
 
     def __init__(self, parent, parent_dialog, app_config, hw_session: HwSessionInfo):
         QtWidgets.QWidget.__init__(self, parent)
-        self.app_config = app_config
+        WndUtils.__init__(self, app_config=app_config)
         self.parent_dialog = parent_dialog
         self.hw_session = hw_session
         self.recipients: List[SendFundsDestinationItem] = []
@@ -247,10 +254,13 @@ class SendFundsDestination(QtWidgets.QWidget):
         self.address_widget_width = None
         self.inputs_total_amount = 0.0
         self.fee_amount = 0.0
+        self.add_to_fee = 0.0
         self.inputs_count = 0
+        self.change_amount = 0.0
+        self.use_instant_send = False
         self.values_unit = OUTPUT_VALUE_UNIT_AMOUNT
         self.tm_calculate_change_value = QTimer(self)
-        self.tm_calculate_change_value.timeout.connect(self.on_tm_calculate_change_value)
+        self.tm_debounce__ = QTimer(self)
         self.current_file_name = ''
         self.current_file_encrypted = False
         self.recent_data_files = []  # recent used data files
@@ -349,7 +359,7 @@ class SendFundsDestination(QtWidgets.QWidget):
 
         # controls for the 'change' address/amount (it's placed in the last row of the addresses grid layout):
         self.lbl_change_address = QLabel(self.scroll_area_widget)
-        self.lbl_change_address.setText('Change address')
+        self.lbl_change_address.setText('The change address')
         self.lbl_change_address.setAlignment(QtCore.Qt.AlignRight|QtCore.Qt.AlignTrailing|QtCore.Qt.AlignVCenter)
         self.lay_addresses.addWidget(self.lbl_change_address, 0, 0)
         # the 'change' address combobox:
@@ -373,7 +383,7 @@ class SendFundsDestination(QtWidgets.QWidget):
         self.lay_addresses.addWidget(self.lbl_second_unit, 0, 4)
         # spacer
         spacer = QtWidgets.QSpacerItem(20, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.lay_addresses.addItem(spacer, 0, 5)
+        self.lay_addresses.addItem(spacer, 0, 6)
 
         # the last row of the grid layout is dedicated to 'fee' controls
         self.lbl_fee = QLabel(self.scroll_area_widget)
@@ -388,7 +398,7 @@ class SendFundsDestination(QtWidgets.QWidget):
         self.lay_addresses.addItem(self.lay_fee_value, 1, 1)
         self.edt_fee_value = QLineEdit(self.scroll_area_widget)
         self.edt_fee_value.setFixedWidth(100)
-        self.edt_fee_value.textChanged.connect(self.on_edt_fee_value_changed)
+        self.edt_fee_value.textChanged.connect(self.on_edt_fee_value_textChanged)
         self.lay_fee_value.addWidget(self.edt_fee_value)
         self.btn_get_default_fee = QToolButton(self.scroll_area_widget)
         self.btn_get_default_fee.setText('\u2b06')
@@ -397,6 +407,15 @@ class SendFundsDestination(QtWidgets.QWidget):
         self.btn_get_default_fee.clicked.connect(self.on_btn_get_default_fee_clicked)
         self.lay_fee_value.addWidget(self.btn_get_default_fee)
         self.lay_fee_value.addStretch(0)
+
+        # instant send
+        self.lbl_instant_send = QLabel(self.scroll_area_widget)
+        self.lbl_instant_send.setAlignment(QtCore.Qt.AlignRight|QtCore.Qt.AlignTrailing|QtCore.Qt.AlignVCenter)
+        self.lbl_instant_send.setText('Use InstantSend')
+        self.chb_instant_send = QCheckBox(self.scroll_area_widget)
+        self.chb_instant_send.toggled.connect(self.on_chb_instant_send_toggled)
+        self.lay_addresses.addWidget(self.lbl_instant_send, 2, 0)
+        self.lay_addresses.addWidget(self.chb_instant_send, 2, 1)
 
         # below the addresses grid place a label dedicated do display messages
         self.lbl_message = QLabel(Form)
@@ -479,7 +498,7 @@ class SendFundsDestination(QtWidgets.QWidget):
                                                 self.address_widget_width)
             rcp_item.sig_remove_address.connect(self.remove_dest_address)
             rcp_item.sig_use_all_funds.connect(self.use_all_funds_for_address)
-            rcp_item.sig_amount_changed.connect(self.amount_changed)
+            rcp_item.sig_amount_changed.connect(self.on_dest_amount_changed)
             rcp_item.set_output_value_unit(self.values_unit)
             rcp_item.set_inputs_total_amount(self.inputs_total_amount - self.fee_amount)
             self.recipients.append(rcp_item)
@@ -487,8 +506,7 @@ class SendFundsDestination(QtWidgets.QWidget):
         QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)
         self.resized_signal.emit()
         self.show_hide_remove_buttons()
-        self.display_totals()
-        self.set_default_fee()
+        self.update_change_and_fee()
 
     def remove_item_from_layout(self, item):
         if item:
@@ -525,9 +543,7 @@ class SendFundsDestination(QtWidgets.QWidget):
         QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)
         self.resized_signal.emit()
         self.show_hide_remove_buttons()
-        self.set_default_fee()
-        # self.calculate_change_amount()
-        self.display_totals()
+        self.update_change_and_fee()
 
     def use_all_funds_for_address(self, address_item):
         row_idx = self.recipients.index(address_item)
@@ -548,20 +564,184 @@ class SendFundsDestination(QtWidgets.QWidget):
         if left < 0:
             left = 0.0
         address_item.set_value(left)
-        self.update_change_amount()
+        self.change_amount = 0.0
+        if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT:
+            self.update_fee()
+            ch = self.change_amount = self.calculate_the_change()
+            if ch < 0:
+                self.change_amount = ch
+                self.update_the_change_ui()
+        elif self.values_unit == OUTPUT_VALUE_UNIT_PERCENT:
+            # in this mode, due to the pct -> dash conversion for each of the outputs, there can be left a reminder,
+            # that has to be added to the change or the fee, depending on its value
+            self.update_change_and_fee()
 
-    def amount_changed(self, addres_item):
-        """ Activated after changing value in the 'amount' edit box of a recipient address. """
-        self.init_calculate_change_value()
+    def on_dest_amount_changed(self, dest_item: SendFundsDestinationItem):
+        self.debounce_call('dest_amount', self.update_change_and_fee, 400)
 
-    def on_edt_fee_value_changed(self, text):
+    def get_number_of_recipients(self):
+        if self.change_amount > 0.0:
+            change_recipient = 1
+        else:
+            change_recipient = 0
+        return len(self.recipients) + change_recipient
+
+    def calculate_the_change(self) -> float:
+        """Returns the change value in Dash."""
+        sum = 0.0
+        for addr in self.recipients:
+            sum += addr.get_value(default_value=0.0)
+
+        if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT:
+            change_amount = round(self.inputs_total_amount - sum - self.fee_amount, 8) + 0  # eliminate -0.0
+        elif self.values_unit == OUTPUT_VALUE_UNIT_PERCENT:
+            sum_amount = 0.0
+            for addr in self.recipients:
+                amt = addr.get_value_amount()
+                if amt:
+                    sum_amount += amt
+            change_amount = round(self.inputs_total_amount - self.fee_amount - sum_amount, 8) + 0
+        else:
+            raise Exception('Invalid unit')
+        return change_amount
+
+    def calculate_fee(self, change_amount = None) -> float:
+        if change_amount is None:
+            change_amount = self.change_amount
+        recipients_count = len(self.recipients)
+        if change_amount > 0.0:
+            recipients_count += 1
+
+        if self.app_config.is_testnet():
+            fee_multiplier = 10  # in testnet large transactions tend to get stuck if the fee is "normal"
+        else:
+            fee_multiplier = 0
+
+        if self.inputs_total_amount > 0.0:
+            bytes = (self.inputs_count * 148) + (recipients_count * 34) + 10
+            fee = round(bytes * FEE_DUFF_PER_BYTE, 8)
+            if not fee:
+                fee = MIN_TX_FEE
+            fee = round(fee * fee_multiplier / 1e8, 8)
+        else:
+            fee = 0.0
+
+        if self.use_instant_send:
+            is_fee = 0.0001 * self.inputs_count
+            fee = max(is_fee, fee)
+
+        return fee
+
+    def set_total_value_to_recipients(self):
+        for addr in self.recipients:
+            addr.set_inputs_total_amount(self.inputs_total_amount - self.fee_amount)
+            addr.clear_validation_results()
+
+    def update_change_and_fee(self):
+        self.fee_amount = self.calculate_fee()
+        recipients_count = self.get_number_of_recipients()
+        self.set_total_value_to_recipients()
+        self.change_amount = self.calculate_the_change()
+        self.add_to_fee = 0.0
+        if 0 < self.change_amount < 0.00000010:
+            self.add_to_fee = self.change_amount
+            self.change_amount = 0.0
+
+        if recipients_count != self.get_number_of_recipients():
+            # the fee was prevoiusly calculated for different number of outputs
+            # realculate it
+            self.fee_amount = self.calculate_fee()
+            self.set_total_value_to_recipients()
+
+        fee_and_reminder = round(self.fee_amount + self.add_to_fee, 8)
+
+        # apply the fee and the change values
+        edt_fee_old_state = self.edt_fee_value.blockSignals(True)
+        try:
+            self.edt_fee_value.setText(app_utils.to_string(fee_and_reminder))
+        finally:
+            self.edt_fee_value.blockSignals(edt_fee_old_state)
+        self.update_the_change_ui()
+        self.display_totals()
+
+    def update_fee(self):
+        self.fee_amount = self.calculate_fee()
+        self.set_total_value_to_recipients()
+        self.add_to_fee = 0.0
+
+        # apply the fee and the change values
+        edt_fee_old_state = self.edt_fee_value.blockSignals(True)
+        try:
+            self.edt_fee_value.setText(app_utils.to_string(round(self.fee_amount, 8)))
+        finally:
+            self.edt_fee_value.blockSignals(edt_fee_old_state)
+        self.update_the_change_ui()
+        self.display_totals()
+
+    def update_change(self):
+        self.change_amount = self.calculate_the_change()
+        self.add_to_fee = 0.0
+
+        # apply the fee and the change values
+        edt_change_old_state = self.edt_change_amount.blockSignals(True)
+        try:
+            self.edt_change_amount.setText(app_utils.to_string(self.change_amount))
+        finally:
+            self.edt_change_amount.blockSignals(edt_change_old_state)
+        self.update_the_change_ui()
+        self.display_totals()
+
+    def update_the_change_ui(self):
+        msg = ''
+        if self.change_amount < 0:
+            used_amount = round(self.inputs_total_amount - self.change_amount, 8) + 0
+            msg = f'Not enough funds - used amount: ' \
+                  f'{used_amount}, available: {self.inputs_total_amount}. Adjust ' \
+                  f'the output values.'
+        self.display_message(msg, 'red')
+
+        if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT:
+            if self.inputs_total_amount - self.fee_amount - self.add_to_fee != 0:
+                change_pct = self.change_amount * 100 / \
+                             (self.inputs_total_amount - self.fee_amount - self.add_to_fee) + 0
+            else:
+                change_pct = 0.0
+            the_change_second_unit_str = app_utils.to_string(round(change_pct, 3)) + '%'
+            the_change_first_unit_str = app_utils.to_string(round(self.change_amount, 8))
+        else:
+            # pct
+            the_change_second_unit_str = app_utils.to_string(self.change_amount) + ' Dash'
+            if self.inputs_total_amount - self.fee_amount - self.add_to_fee > 0:
+                change_pct = (self.change_amount * 100) / (self.inputs_total_amount - self.fee_amount - self.add_to_fee)
+            else:
+                change_pct = 0.0
+            the_change_first_unit_str = app_utils.to_string(round(change_pct, 3))
+
+        self.edt_change_amount.setText(the_change_first_unit_str)
+        self.lbl_second_unit.setText(the_change_second_unit_str)
+
+    def read_fee_value_from_ui(self):
+        text = self.edt_fee_value.text()
         if not text:
             text = '0.0'
         try:
             self.fee_amount = float(text)
-            self.init_calculate_change_value()
+            self.set_total_value_to_recipients()
+            self.update_change()
         except Exception:
             self.display_message('Invalid \'transaction fee\' value.', 'red')  # display error message
+
+    def on_edt_fee_value_textChanged(self, text):
+        self.debounce_call('fee_value', self.read_fee_value_from_ui, 400)
+
+    @pyqtSlot(bool)
+    def on_chb_instant_send_toggled(self, checked):
+        self.use_instant_send = checked
+        if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT and len(self.recipients) >= 1:
+            self.update_fee()
+            self.use_all_funds_for_address(self.recipients[0])
+        else:
+            self.update_change_and_fee()
 
     def show_hide_change_address(self, visible):
         if visible != self.change_controls_visible:
@@ -620,44 +800,25 @@ class SendFundsDestination(QtWidgets.QWidget):
                 elif self.values_unit == OUTPUT_VALUE_UNIT_PERCENT:
                     self.recipients[0].set_value(100.0)
 
-            old_state = self.edt_fee_value.blockSignals(True)
-            self.edt_fee_value.setText(app_utils.to_string(self.fee_amount))
-            self.edt_fee_value.blockSignals(old_state)
-
             for addr in self.recipients:
                 addr.set_inputs_total_amount(amount - self.fee_amount)
                 addr.clear_validation_results()
 
-            self.edt_fee_value.update()
-            self.update_change_amount()
-            self.display_totals()
+            self.update_change_and_fee()
 
-    def calculate_change_value(self) -> float:
-        """Returns the change value in Dash."""
-        sum = 0.0
-        for addr in self.recipients:
-            sum += addr.get_value(default_value=0.0)
-
-        if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT:
-            change_amount = round(self.inputs_total_amount - sum - self.fee_amount, 8) + 0  # eliminate -0.0
-        elif self.values_unit == OUTPUT_VALUE_UNIT_PERCENT:
-            change_amount = round((100.0 - sum) * (self.inputs_total_amount - self.fee_amount) / 100 , 8)
-        else:
-            raise Exception('Invalid unit')
-        return change_amount
-
-    def update_change_amount(self) -> None:
-        change_amount = self.calculate_change_value()
+    def update_change_amount(self, allow_fee_recalculate: bool) -> None:  #todo: to removal
+        was_change_before = (self.change_amount > 0.0)
+        self.change_amount = self.calculate_the_change()
         if self.inputs_total_amount - self.fee_amount != 0:
-            change_pct = round(change_amount * 100 / (self.inputs_total_amount - self.fee_amount), 8) + 0
+            change_pct = round(self.change_amount * 100 / (self.inputs_total_amount - self.fee_amount), 8) + 0
         else:
             change_pct = 0.0
 
         if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT:
             left_second_unit_str = app_utils.to_string(round(change_pct, 3)) + '%'
-            self.edt_change_amount.setText(app_utils.to_string(round(change_amount, 8)))
+            self.edt_change_amount.setText(app_utils.to_string(round(self.change_amount, 8)))
         elif self.values_unit == OUTPUT_VALUE_UNIT_PERCENT:
-            left_second_unit_str = app_utils.to_string(round(change_amount, 8)) + ' Dash'
+            left_second_unit_str = app_utils.to_string(round(self.change_amount, 8)) + ' Dash'
             sum = 0.0
             for addr in self.recipients:
                 sum += addr.get_value(default_value=0.0)
@@ -666,11 +827,25 @@ class SendFundsDestination(QtWidgets.QWidget):
             raise Exception('Invalid unit')
 
         msg = ''
-        if change_amount < 0:
-            used_amount = round(self.inputs_total_amount - change_amount, 8) + 0
+        if self.change_amount < 0:
+            used_amount = round(self.inputs_total_amount - self.change_amount, 8) + 0
             msg = f'Not enough funds - used amount: ' \
                   f'{used_amount}, available: {self.inputs_total_amount}. Adjust ' \
                   f'the output values.'
+        else:
+            if was_change_before != (self.change_amount > 0.0):
+                # added or removed output for the change, this will change the size of the transation and
+                # the fee
+                if allow_fee_recalculate:
+                    self.fee_amount = self.calculate_fee()
+                    old_status = self.edt_fee_value.blockSignals(True)
+                    try:
+                        self.edt_fee_value.setText(app_utils.to_string(self.fee_amount))
+                    finally:
+                        self.edt_fee_value.blockSignals(old_status)
+
+                self.display_totals()
+
         self.lbl_second_unit.setText(left_second_unit_str)
         self.display_message(msg, 'red')
 
@@ -686,44 +861,8 @@ class SendFundsDestination(QtWidgets.QWidget):
             self.display_message('')
         return ret
 
-    def on_tm_calculate_change_value(self):
-        self.tm_calculate_change_value.stop()
-        for addr_item in self.recipients:
-            addr_item.set_inputs_total_amount(self.inputs_total_amount - self.fee_amount)
-        self.update_change_amount()
-
-    def calculate_fee(self):
-        if self.inputs_total_amount > 0.0:
-            bytes = (self.inputs_count * 148) + (len(self.recipients) * 34) + 10
-            fee = round(bytes * FEE_SAT_PER_BYTE, 8)
-            if not fee:
-                fee = MIN_TX_FEE
-            fee = round(fee / 1e8, 8)
-        else:
-            fee = 0.0
-        return fee
-
-    def get_tx_fee(self):
-        if self.fee_amount < 0.0:
-            raise Exception('Invalid the fee value.')
-        return round(self.fee_amount * 1e8)
-
-    def init_calculate_change_value(self):
-        self.tm_calculate_change_value.start(100)
-
-    def set_default_fee(self):
-        self.fee_amount = self.calculate_fee()
-
-        old_status = self.edt_fee_value.blockSignals(True)
-        try:
-            self.edt_fee_value.setText(app_utils.to_string(self.fee_amount))
-        finally:
-            self.edt_fee_value.blockSignals(old_status)
-        self.edt_fee_value.update()
-        self.init_calculate_change_value()
-
     def on_btn_get_default_fee_clicked(self):
-        self.set_default_fee()
+        self.update_change_and_fee()
 
     def set_dest_addresses(self, addresses: List):
         if len(addresses) > 0:
@@ -763,7 +902,7 @@ class SendFundsDestination(QtWidgets.QWidget):
         self.set_change_value_label()
         for addr_item in self.recipients:
             addr_item.set_output_value_unit(self.values_unit)
-        self.update_change_amount()
+        self.update_change_and_fee()
 
     def update_ui_value_unit(self):
         if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT:
@@ -780,11 +919,12 @@ class SendFundsDestination(QtWidgets.QWidget):
         return file_name
 
     def display_totals(self):
-        bytes = (self.inputs_count * 148) + (len(self.recipients) * 34) + 10
+        recipients = self.get_number_of_recipients()
+        bytes = (self.inputs_count * 148) + (recipients * 34) + 10
         text = f'<span class="label"><b>Total value of selected inputs:</b>&nbsp;</span><span class="value">&nbsp;{self.inputs_total_amount} Dash&nbsp;</span>'
         if self.inputs_total_amount > 0:
             text += f'<span class="label">&nbsp;<b>Inputs:</b>&nbsp;</span><span class="value">&nbsp;{self.inputs_count}&nbsp;</span>' \
-                    f'<span class="label">&nbsp;<b>Outputs:</b>&nbsp;</span><span class="value">&nbsp;{len(self.recipients)}&nbsp;</span>' \
+                    f'<span class="label">&nbsp;<b>Outputs:</b>&nbsp;</span><span class="value">&nbsp;{recipients}&nbsp;</span>' \
                     f'<span class="label">&nbsp;<b>Transaction size:</b>&nbsp;</span><span class="value">&nbsp;{bytes} B&nbsp;</span>'
         self.lbl_totals.setText(text)
 
@@ -810,6 +950,9 @@ class SendFundsDestination(QtWidgets.QWidget):
                              icon=QMessageBox.Warning) == QMessageBox.Ok:
             self.set_dest_addresses([('', '')])
             self.use_all_funds_for_address(self.recipients[0])
+            self.current_file_name = ''
+            self.update_mru_menu_items()
+            self.display_totals()
 
     def save_to_file(self, save_encrypted):
         if self.current_file_name and os.path.exists(os.path.dirname(self.current_file_name)):
@@ -941,8 +1084,7 @@ class SendFundsDestination(QtWidgets.QWidget):
                 self.current_file_encrypted = file_encrypted
                 self.add_menu_item_to_mru(self.current_file_name)
                 self.update_mru_menu_items()
-                self.update_change_amount()
-                self.display_totals()
+                self.update_change_and_fee()
         except Exception as e:
             self.update_mru_menu_items()
             logging.exception('Exception while reading file with recipients data.')
@@ -987,9 +1129,7 @@ class SendFundsDestination(QtWidgets.QWidget):
             [2]: bip32 path of the address if the item is a change address, otherwise None
         """
         if self.validate_output_data():
-            change_amount = self.calculate_change_value()
-            if change_amount < 0.0:
-                self.update_change_amount()  # here an appropriate message will be displayed
+            if self.change_amount < 0.0:
                 raise Exception('Not enough funds!!!')
 
             dest_data = []
@@ -998,11 +1138,11 @@ class SendFundsDestination(QtWidgets.QWidget):
                 value = round(addr.get_value_amount() * 1e8)
                 dest_data.append((dest_addr, value, None))
 
-            if change_amount > 0.0:
+            if self.change_amount > 0.0:
                 change_address_idx = self.cbo_change_address.currentIndex()
                 if change_address_idx >= 0 and change_address_idx < len(self.change_addresses):
                     dest_data.append((self.change_addresses[change_address_idx][0],
-                                      round(change_amount * 1e8),
+                                      round(self.change_amount * 1e8),
                                       self.change_addresses[change_address_idx][1]))
                 else:
                     raise Exception('Invalid address for the change.')
@@ -1021,3 +1161,11 @@ class SendFundsDestination(QtWidgets.QWidget):
             if dest_addr:
                 dest_data.append((dest_addr,))
         return dest_data
+
+    def get_tx_fee(self) -> int:
+        if self.fee_amount + self.add_to_fee < 0.0:
+            raise Exception('Invalid the fee value.')
+        return round((self.fee_amount + self.add_to_fee) * 1e8)
+
+    def get_use_instant_send(self):
+        return self.use_instant_send
