@@ -16,6 +16,8 @@ import threading
 import time
 import codecs
 from functools import partial
+
+import bitcoin
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtChart import QChart, QChartView, QLineSeries, QDateTimeAxis, QValueAxis, QBarSet, QBarSeries, \
     QBarCategoryAxis
@@ -29,6 +31,7 @@ import urllib.request
 import ssl
 import app_cache
 import app_utils
+import base58
 import wnd_utils as wnd_utils
 import dash_utils
 from app_config import MasternodeConfig
@@ -714,7 +717,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 def reload_ext_attrs_thread(ctrl):
                     cur = self.db_intf.get_cursor()
                     try:
-                        cur.execute("update PROPOSALS set title=null, owner=null, ext_attributes_loaded=0")
+                        cur.execute("update PROPOSALS set title=null, owner=null, ext_attributes_loaded=0, "
+                                    "ext_attributes_load_time=0")
                         self.db_intf.commit()
                         if self.read_external_attibutes(self.proposals):
                             WndUtils.call_in_main_thread(display_data)
@@ -1231,7 +1235,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 " url, payment_address, type, hash, collateral_hash, f_blockchain_validity,"
                                 " f_cached_valid, f_cached_delete, f_cached_funding, f_cached_endorsed, object_type,"
                                 " is_valid_reason, dmt_active, dmt_create_time, dmt_deactivation_time, id,"
-                                " dmt_voting_last_read_time, owner, title, ext_attributes_loaded "
+                                " dmt_voting_last_read_time, owner, title, ext_attributes_loaded, "
+                                "ext_attributes_load_time "
                                 "FROM PROPOSALS where dmt_active=1"
                             )
 
@@ -1281,6 +1286,18 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 prop.set_value('owner', row[26])
                                 prop.set_value('title', row[27])
                                 prop.ext_attributes_loaded = True if row[28] else False
+
+                                ext_attributes_load_time = 0 if not row[29] else row[29]
+                                if prop.ext_attributes_loaded:
+                                    if not row[26] and not row[27] and time.time() - ext_attributes_load_time > 86400:
+                                        # reload external attributes is the 'owner' and 'title' are ampty
+                                        prop.ext_attributes_loaded = False
+                                    elif (time.time() - ext_attributes_load_time > 86400 * 3) and \
+                                        (prop.get_value('payment_end') > datetime.datetime.now()):
+                                        # reload external attributes of the active proposals every x days in case
+                                        # the proposal title changed
+                                        prop.ext_attributes_loaded = False
+
                                 prop.apply_values(self.masternodes, self.last_superblock_time,
                                                   self.next_superblock_time)
                                 self.proposals.append(prop)
@@ -1444,14 +1461,18 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             if prop.marker:
                                 if prop.modified:
                                     cur.execute(
-                                        'UPDATE PROPOSALS set owner=?, title=?, ext_attributes_loaded=1 where id=?',
-                                        (prop.get_value('owner'), prop.get_value('title'), prop.db_id))
+                                        'UPDATE PROPOSALS set owner=?, title=?, ext_attributes_loaded=1, '
+                                        'ext_attributes_load_time=? where id=?',
+                                        (prop.get_value('owner'), prop.get_value('title'), int(time.time()),
+                                         prop.db_id))
                                     modified_ext_attributes = True
                                 elif not prop.ext_attributes_loaded:
                                     # ext attributes loaded but empty; set ext_attributes_loaded to 1 to avoid reading
                                     # the same information the next time
-                                    cur.execute('UPDATE PROPOSALS set ext_attributes_loaded=1 where id=?',
-                                                (prop.db_id,))
+                                    cur.execute(
+                                        'UPDATE PROPOSALS set ext_attributes_loaded=1, ext_attributes_load_time=? '
+                                        'where id=?',
+                                        (int(time.time()), prop.db_id))
                                 prop.ext_attributes_loaded = True
 
                         self.db_intf.commit()
@@ -1720,8 +1741,23 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             # save the selected rows to restore them after refreshing
             sel_props = self.get_selected_proposals()
+
+            # save the focused row number
+            cur_index = self.propsView.currentIndex()
+            current_row = -1
+            if cur_index:
+                source_row = self.proxyModel.mapToSource(cur_index)
+                if source_row:
+                    current_row = source_row.row()
+
             self.propsModel.beginResetModel()
             self.propsModel.endResetModel()
+
+            # restore the focused row
+            if current_row >= 0:
+                idx = self.propsModel.index(current_row, 0)
+                idx = self.proxyModel.mapFromSource(idx)
+                self.propsView.setCurrentIndex(idx)
 
             # restore the selection
             sel = QItemSelection()
@@ -1733,9 +1769,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     source_row_idx = self.propsModel.index(row_nr, 0)
                     dest_index = self.proxyModel.mapFromSource(source_row_idx)
                     if dest_index:
-                        if not sel_model.isSelected(dest_index):
-                            sel.select(dest_index, dest_index)
-                            sel_modified = True
+                        sel.select(dest_index, dest_index)
+                        sel_modified = True
                 except Exception:
                     pass
             if sel_modified:
@@ -2656,7 +2691,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     else:
                         msg = "Error while broadcasting vote message: " + str(e)
                         # write some info to the log file for analysis in case of problems
-                        logging.info('masternode_priv_key: %s' % str(mn_info.masternode_config.privateKey))
+                        logging.info('masternode_pub_key: %s' %
+                                     str(dash_utils.privkey_to_pubkey(mn_info.masternode_config.privateKey)))
+                        logging.info('masternode_pub_key_hash: %s' %
+                                     str(dash_utils.pubkey_to_address(dash_utils.privkey_to_pubkey(
+                                         mn_info.masternode_config.privateKey), self.app_config.dash_network)))
                         logging.info('masternode_tx_hash: %s' % str(mn_info.masternode_config.collateralTx))
                         logging.info('masternode_tx_index: %s' % str(mn_info.masternode_config.collateralTxIndex))
                         logging.info('governance_hash: %s' % prop_hash)

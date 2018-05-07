@@ -103,9 +103,9 @@ def validate_address(address: str, dash_network: typing.Optional[str]) -> bool:
             prefix_valid = (prefix == ChainParamsMainNet.PREFIX_PUBKEY_ADDRESS or
                             prefix == ChainParamsTestNet.PREFIX_PUBKEY_ADDRESS)
         if prefix_valid:
-            pukey_hash = data[:-4]
+            pubkey_hash = data[:-4]
             checksum = data[-4:]
-            if bitcoin.bin_dbl_sha256(pukey_hash)[0:4] == checksum:
+            if bitcoin.bin_dbl_sha256(pubkey_hash)[0:4] == checksum:
                 return True
     return False
 
@@ -123,6 +123,11 @@ def generate_privkey(dash_network: str):
     data = bytes([get_chain_params(dash_network).PREFIX_SECRET_KEY]) + bytes.fromhex(privkey)
     checksum = bitcoin.bin_dbl_sha256(data)[0:4]
     return base58.b58encode(data + checksum)
+
+
+def privkey_to_pubkey(privkey):
+    pub = bitcoin.privkey_to_pubkey(privkey)
+    return pub
 
 
 def num_to_varint(a):

@@ -132,7 +132,7 @@ class DBCache(object):
                         " f_cached_valid INTEGER, f_cached_delete INTEGER, f_cached_funding INTEGER, "
                         " f_cached_endorsed INTEGER, object_type INTEGER, is_valid_reason TEXT, dmt_active INTEGER, "
                         " dmt_create_time TEXT, dmt_deactivation_time TEXT, dmt_voting_last_read_time INTEGER,"
-                        " ext_attributes_loaded INTEGER, owner TEXT, title TEXT)")
+                        " ext_attributes_loaded INTEGER, owner TEXT, title TEXT, ext_attributes_load_time INTEGER)")
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_PROPOSALS_HASH ON PROPOSALS(hash)")
 
             # upgrade schema do v 0.9.11:
@@ -141,6 +141,7 @@ class DBCache(object):
             prop_owner_exists = False
             prop_title_exists = False
             ext_attributes_loaded_exists = False
+            ext_attributes_load_time_exists = False
             for col in columns:
                 if col[1] == 'owner':
                     prop_owner_exists = True
@@ -148,7 +149,10 @@ class DBCache(object):
                     prop_title_exists = True
                 elif col[1] == 'ext_attributes_loaded':
                     ext_attributes_loaded_exists = True
-                if prop_owner_exists and prop_title_exists and ext_attributes_loaded_exists:
+                elif col[1] == 'ext_attributes_load_time':
+                    ext_attributes_load_time_exists = True
+                if prop_owner_exists and prop_title_exists and ext_attributes_loaded_exists and \
+                        ext_attributes_load_time_exists:
                     break
             if not ext_attributes_loaded_exists:
                 # column for saving information whether additional attributes has been read from external sources
@@ -160,6 +164,9 @@ class DBCache(object):
             if not prop_title_exists:
                 # proposal's title from an external source like DashCentral.org
                 cur.execute("ALTER TABLE PROPOSALS ADD COLUMN title TEXT")
+            if not ext_attributes_load_time_exists:
+                # proposal's title from an external source like DashCentral.org
+                cur.execute("ALTER TABLE PROPOSALS ADD COLUMN ext_attributes_load_time INTEGER")
 
             cur.execute("CREATE TABLE IF NOT EXISTS VOTING_RESULTS(id INTEGER PRIMARY KEY, proposal_id INTEGER,"
                         " masternode_ident TEXT, voting_time TEXT, voting_result TEXT,"
