@@ -3016,10 +3016,11 @@ class ProposalFilterProxyModel(QSortFilterProxyModel):
             if source_row >= 0 and source_row < len(self.proposals):
                 prop: Proposal = self.proposals[source_row]
                 if self.filter_text:
+                    filter_text_lower = self.filter_text.lower()
                     will_show = False
                     for col_idx in self.filter_columns:
                         data = str(prop.get_value(col_idx))
-                        if data and data.lower().find(self.filter_text) >= 0:
+                        if data and data.lower().find(filter_text_lower) >= 0:
                             will_show = True
                             break
 
