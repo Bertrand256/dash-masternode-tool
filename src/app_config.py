@@ -947,6 +947,20 @@ class MasternodeConfig:
         if not self.lock_modified_change:
             self.modified = True
 
+    def copy_from(self, src_mn):
+        self.ip = src_mn.ip
+        self.port = src_mn.port
+        self.privateKey = src_mn.privateKey
+        self.collateralBip32Path = src_mn.collateralBip32Path
+        self.collateralAddress = src_mn.collateralAddress
+        self.collateralTx = src_mn.collateralTx
+        self.collateralTxIndex = src_mn.collateralTxIndex
+        self.use_default_protocol_version = src_mn.use_default_protocol_version
+        self.protocol_version = src_mn.protocol_version
+        self.new = True
+        self.modified = True
+        self.lock_modified_change = False
+
 
 class SSHConnectionCfg(object):
     def __init__(self):
