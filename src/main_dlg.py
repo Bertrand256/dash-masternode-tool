@@ -37,7 +37,7 @@ import app_utils
 from initialize_hw_dlg import HwInitializeDlg
 from proposals_dlg import ProposalsDlg
 from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT
-from app_defs import PROJECT_URL, HWType, get_note_url
+from app_defs import PROJECT_URL, HWType, get_note_url, MN_PRIVKEY_GEN_COMPRESSED
 from dash_utils import bip32_path_n_to_string
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_common import HardwareWalletCancelException, HardwareWalletPinException, HwSessionInfo
@@ -827,7 +827,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_btnNewMn_clicked(self):
-        self.newMasternodeConfig()
+        self.newMasternodeConfig(copy_values_from_current=False)
 
     @pyqtSlot(bool)
     def on_btnDeleteMn_clicked(self):
@@ -844,6 +844,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.cboMasternodes.removeItem(self.cboMasternodes.currentIndex())
             self.config.modified = True
             self.update_edit_controls_state()
+
+    @pyqtSlot(bool)
+    def on_btnDuplicateMn_clicked(self):
+        self.newMasternodeConfig(copy_values_from_current=True)
 
     @pyqtSlot(bool)
     def on_btnEditMn_clicked(self):
@@ -1105,6 +1109,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.btnHwAddressToBip32.setEnabled(editing)
             self.btnDeleteMn.setEnabled(self.curMasternode is not None)
             self.btnEditMn.setEnabled(not self.editing_enabled and self.curMasternode is not None)
+            self.btnDuplicateMn.setEnabled(self.curMasternode is not None)
             self.action_save_config_file.setEnabled(self.config.is_modified())
             self.action_disconnect_hw.setEnabled(True if self.hw_client else False)
             self.btnRefreshMnStatus.setEnabled(self.curMasternode is not None)
@@ -1115,23 +1120,32 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             update_fun()
 
-    def newMasternodeConfig(self):
+    def newMasternodeConfig(self, copy_values_from_current: bool = False):
         new_mn = MasternodeConfig()
         new_mn.new = True
+        cur_masternode_sav = self.curMasternode
         self.curMasternode = new_mn
-        # find new, not used masternode name proposal
+
+        if copy_values_from_current and cur_masternode_sav:
+            mn_template = cur_masternode_sav.name
+        else:
+            mn_template = 'MN'
         name_found = None
         for nr in range(1, 100):
             exists = False
             for mn in self.config.masternodes:
-                if mn.name == 'MN' + str(nr):
+                if mn.name == mn_template + str(nr):
                     exists = True
                     break
             if not exists:
-                name_found = 'MN' + str(nr)
+                name_found = mn_template + str(nr)
                 break
         if name_found:
             new_mn.name = name_found
+
+        if copy_values_from_current and cur_masternode_sav:
+            new_mn.copy_from(cur_masternode_sav)
+
         self.config.masternodes.append(new_mn)
         self.editing_enabled = True
         old_index = self.cboMasternodes.currentIndex()
@@ -1244,7 +1258,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if retval == QMessageBox.No:
                 return
 
-        wif = dash_utils.generate_privkey(self.config.dash_network)
+        wif = dash_utils.generate_privkey(self.config.dash_network, compressed=MN_PRIVKEY_GEN_COMPRESSED)
         self.curMasternode.privateKey = wif
         self.edtMnPrivateKey.setText(wif)
         self.curMnModified()

@@ -11,6 +11,7 @@ PROJECT_URL = 'https://github.com/Bertrand256/dash-masternode-tool'
 FEE_DUFF_PER_BYTE = 1
 MIN_TX_FEE = 1000
 SCREENSHOT_MODE = False
+MN_PRIVKEY_GEN_COMPRESSED = True  # todo: testing
 
 
 class HWType:
