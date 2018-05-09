@@ -110,7 +110,7 @@ def validate_address(address: str, dash_network: typing.Optional[str]) -> bool:
     return False
 
 
-def generate_privkey(dash_network: str):
+def generate_privkey(dash_network: str, compressed: bool = False):
     """
     Based on Andreas Antonopolous work from 'Mastering Bitcoin'.
     """
@@ -120,6 +120,8 @@ def generate_privkey(dash_network: str):
         privkey = bitcoin.random_key()
         decoded_private_key = bitcoin.decode_privkey(privkey, 'hex')
         valid = 0 < decoded_private_key < bitcoin.N
+    if compressed:
+        privkey += '01'
     data = bytes([get_chain_params(dash_network).PREFIX_SECRET_KEY]) + bytes.fromhex(privkey)
     checksum = bitcoin.bin_dbl_sha256(data)[0:4]
     return base58.b58encode(data + checksum)
@@ -211,6 +213,17 @@ def wif_to_privkey(wif_key: str, dash_network: str):
         return None
 
 
+def wif_privkey_to_uncompressed(wif_key: str):
+    privkey_encoded = base58.b58decode(wif_key)
+    if len(privkey_encoded) == 38 and privkey_encoded[33] == 0x01:
+        # [1-byte prefix][32-byte privkey][optional 1-byte compression suffix][4-byte checksum]
+        data = privkey_encoded[:33]
+        checksum = bitcoin.bin_dbl_sha256(data)[0:4]
+        return base58.b58encode(data + checksum)
+    else:
+        return wif_key
+
+
 def privkey_valid(privkey):
     try:
         pk = bitcoin.decode_privkey(privkey, 'wif')
@@ -240,7 +253,12 @@ def electrum_sig_hash(message):
 
 
 def ecdsa_sign(msg: str, wif_priv_key: str, dash_network: str):
-    """Signs a message with the Elliptic Curve algorithm."""
+    """Signs a message with the Elliptic Curve algorithm.
+    Note: Dash core uses uncompressed public keys, so if the private key passed as an argument
+    is of compressed format, convert it to an uncompressed
+    """
+    wif_priv_key = wif_privkey_to_uncompressed(wif_priv_key)
+
     v, r, s = bitcoin.ecdsa_raw_sign(electrum_sig_hash(msg), wif_priv_key)
     sig = bitcoin.encode_sig(v, r, s)
     pubkey = bitcoin.privkey_to_pubkey(wif_to_privkey(wif_priv_key, dash_network))
