@@ -1024,6 +1024,25 @@
     <enum>QAction::AboutQtRole</enum>
    </property>
   </action>
+  <action name="action_gen_mn_priv_key_compressed">
+   <property name="text">
+    <string>Generate masternode private key (compressed)</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Alt+C</string>
+   </property>
+  </action>
+  <action name="action_gen_mn_priv_key_uncompressed">
+   <property name="text">
+    <string>Generate masternode private key (uncompressed)</string>
+   </property>
+   <property name="toolTip">
+    <string>Generate masternode private key (uncompressed)</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Alt+U</string>
+   </property>
+  </action>
  </widget>
  <tabstops>
   <tabstop>cboMasternodes</tabstop>

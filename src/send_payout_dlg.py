@@ -26,6 +26,7 @@ import hw_intf
 from app_defs import HWType
 from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
+from hw_common import HardwareWalletCancelException
 from hw_intf import prepare_transfer_tx, get_address
 from thread_fun_dlg import WorkerThread, CtrlObject
 from wnd_utils import WndUtils, ReadOnlyTableCellDelegate
@@ -245,8 +246,9 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.rawtransactions = {}
         self.masternodes = main_ui.config.masternodes
         self.masternode_addresses: List[Tuple[str, str]] = []  #  Tuple: address, bip32 path
-        for mn in self.masternodes:
+        for idx, mn in enumerate(self.masternodes):
             self.masternode_addresses.append((mn.collateralAddress, mn.collateralBip32Path))
+            logging.debug(f'WalletDlg initial_mn_sel({idx}) addr - path: {mn.collateralAddress}-{mn.collateralBip32Path}')
 
         self.dashd_intf: DashdInterface = main_ui.dashd_intf
         self.db_intf: DBCache = main_ui.config.db_intf
@@ -639,7 +641,10 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
         amount, utxos = self.get_selected_utxos()
         if len(utxos):
-            if not self.main_ui.connect_hardware_wallet():
+            try:
+                if not self.main_ui.connect_hardware_wallet():
+                    return
+            except HardwareWalletCancelException:
                 return
 
             bip32_to_address = {}  # for saving addresses read from HW by BIP32 path
@@ -710,6 +715,10 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     try:
                         serialized_tx, amount_to_send = prepare_transfer_tx(
                             self.main_ui.hw_session, utxos, dest_data, fee, self.rawtransactions)
+                    except HardwareWalletCancelException:
+                        # user cancelled the operations
+                        hw_intf.cancel_hw_operation(self.main_ui.hw_session.hw_client)
+                        return
                     except Exception:
                         logging.exception('Exception when preparing the transaction.')
                         raise
@@ -814,28 +823,31 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     on_thread_finish=partial(apply_utxos, new_utxos, existing_utxos))
 
 
-        if self.utxo_src_mode == 1 or \
-                (self.main_ui.connect_hardware_wallet() and
-                 self.app_config.initialize_hw_encryption(self.main_ui.hw_session)):
+        try:
+            if self.utxo_src_mode == 1 or \
+                    (self.main_ui.connect_hardware_wallet() and
+                     self.app_config.initialize_hw_encryption(self.main_ui.hw_session)):
 
-            if self.last_utxos_source_hash != self.get_utxo_src_cfg_hash():
-                # clear current utxo data in grid
-                self.utxos.clear()
-                self.utxos_dict.clear()
-                self.table_model.setUtxos(self.utxos, self.masternodes)
-                self.update_recipient_area_utxos()
-
-            if not self.load_utxos_thread_ref:
-                # remember what input addresses configuration was when starting
-                self.last_utxos_source_hash = self.get_utxo_src_cfg_hash()
-
-                self.load_utxos_thread_ref = self.run_thread(
-                    self, self.load_utxos_thread, (new_utxos, existing_utxos),
-                    on_thread_finish=partial(apply_utxos, new_utxos, existing_utxos))
-            else:
                 if self.last_utxos_source_hash != self.get_utxo_src_cfg_hash():
-                    # source utxos configuration changed: stop the thread and execute again
-                    self.load_utxos_thread_ref.stop()
+                    # clear current utxo data in grid
+                    self.utxos.clear()
+                    self.utxos_dict.clear()
+                    self.table_model.setUtxos(self.utxos, self.masternodes)
+                    self.update_recipient_area_utxos()
+
+                if not self.load_utxos_thread_ref:
+                    # remember what input addresses configuration was when starting
+                    self.last_utxos_source_hash = self.get_utxo_src_cfg_hash()
+
+                    self.load_utxos_thread_ref = self.run_thread(
+                        self, self.load_utxos_thread, (new_utxos, existing_utxos),
+                        on_thread_finish=partial(apply_utxos, new_utxos, existing_utxos))
+                else:
+                    if self.last_utxos_source_hash != self.get_utxo_src_cfg_hash():
+                        # source utxos configuration changed: stop the thread and execute again
+                        self.load_utxos_thread_ref.stop()
+        except HardwareWalletCancelException:
+            pass
 
     def load_utxos_thread(self, ctrl: CtrlObject, new_utxos_out, existing_utxos_out):
         """
@@ -958,9 +970,11 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
                         addr_chunk = []
                         addr_to_bip32 = {}
+                        logging.debug(f'Got BIP32path-address pair chunk: {len(addr_path_chunk)}')
                         for a, p in addr_path_chunk:
                             addr_chunk.append(a)
                             addr_to_bip32[a] = p
+                            logging.debug(f'Adding BIP32path-address pair for UTXO load: {p} - {a}')
 
                         balance = self.dashd_intf.getaddressbalance(addr_chunk)
                         if balance.get('received') == 0:
@@ -993,6 +1007,8 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                                     utxo['confirmations'] = cur_block_height - utxo.get('height') + 1
                                     utxo['coinbase_locked'] = False
                                     utxo['bip32_path'] = addr_to_bip32.get(utxo['address'])
+                                    if not utxo['bip32_path']:
+                                        logging.warning(f'BIP32 path not found for address: {utxo["address"]}')
 
                                     try:
                                         # verify whether it's a coinbase transaction and if so,if it has

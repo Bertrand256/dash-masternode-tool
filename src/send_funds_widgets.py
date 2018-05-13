@@ -78,6 +78,8 @@ class SendFundsDestinationItem(QObject):
 
         # label for the second unit (e.g. percent if self.values_unit equals OUTPUT_VALUE_UNIT_AMOUNT)
         self.lbl_second_unit_value = QLabel(Form)
+        self.lbl_second_unit_value.setTextInteractionFlags(
+            QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse)
         self.main_layout.addWidget(self.lbl_second_unit_value, self.row_number, 4)
 
         self.btn_remove_address = QToolButton(Form)
@@ -380,6 +382,8 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.lay_addresses.addWidget(self.edt_change_amount, 0, 3)
         # label dedicated to the second-unit value (e.g percentage if the main unit is set to (Dash) amount value)
         self.lbl_second_unit = QLabel(self.scroll_area_widget)
+        self.lbl_second_unit.setTextInteractionFlags(
+            QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse)
         self.lay_addresses.addWidget(self.lbl_second_unit, 0, 4)
         # spacer
         spacer = QtWidgets.QSpacerItem(20, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
@@ -588,15 +592,21 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
 
     def calculate_the_change(self) -> float:
         """Returns the change value in Dash."""
+        print('-- calculate_the_change -- ')
         sum = 0.0
-        for addr in self.recipients:
-            sum += addr.get_value(default_value=0.0)
+        for idx, addr in enumerate(self.recipients):
+            amt = addr.get_value(default_value=0.0)
+            sum += amt
+            print(f'recipient {idx}: {amt}')
+
+        print(f'sum of all recipients: {sum}')
+        print(f'self.inputs_total_amount: {self.inputs_total_amount}')
 
         if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT:
             change_amount = round(self.inputs_total_amount - sum - self.fee_amount, 8) + 0  # eliminate -0.0
         elif self.values_unit == OUTPUT_VALUE_UNIT_PERCENT:
             sum_amount = 0.0
-            for addr in self.recipients:
+            for idx, addr in enumerate(self.recipients):
                 amt = addr.get_value_amount()
                 if amt:
                     sum_amount += amt
@@ -638,10 +648,14 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
             addr.clear_validation_results()
 
     def update_change_and_fee(self):
+        print('-- update_change_and_fee -- ')
         self.fee_amount = self.calculate_fee()
+        print(f'fee_amount: {self.fee_amount}')
         recipients_count = self.get_number_of_recipients()
+        print(f'number of recipients: {recipients_count}')
         self.set_total_value_to_recipients()
         self.change_amount = self.calculate_the_change()
+        print(f'change_amount: {self.change_amount}')
         self.add_to_fee = 0.0
         if 0 < self.change_amount < 0.00000010:
             self.add_to_fee = self.change_amount
@@ -651,7 +665,10 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
             # the fee was prevoiusly calculated for different number of outputs
             # realculate it
             self.fee_amount = self.calculate_fee()
+            print(f'fee_amount 2: {self.fee_amount}')
             self.set_total_value_to_recipients()
+            self.change_amount = self.calculate_the_change()
+            print(f'change_amount 2: {self.change_amount}')
 
         fee_and_reminder = round(self.fee_amount + self.add_to_fee, 8)
 
@@ -786,6 +803,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
             last_total_amount = self.inputs_total_amount
             last_fee_amount = self.fee_amount
             self.inputs_total_amount = amount
+            self.change_amount = 0.0
             self.fee_amount = self.calculate_fee()
 
             if (len(self.recipients) == 1 or
