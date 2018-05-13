@@ -19,7 +19,7 @@ import bitcoin
 import logging
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
-from PyQt5.QtCore import QSize, pyqtSlot, QEventLoop, QMutex, QWaitCondition, QUrl
+from PyQt5.QtCore import QSize, pyqtSlot, QEventLoop, QMutex, QWaitCondition, QUrl, Qt
 from PyQt5.QtGui import QFont, QIcon, QDesktopServices
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle, QInputDialog, QApplication
@@ -37,7 +37,7 @@ import app_utils
 from initialize_hw_dlg import HwInitializeDlg
 from proposals_dlg import ProposalsDlg
 from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT
-from app_defs import PROJECT_URL, HWType, get_note_url, MN_PRIVKEY_GEN_COMPRESSED
+from app_defs import PROJECT_URL, HWType, get_note_url
 from dash_utils import bip32_path_n_to_string
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_common import HardwareWalletCancelException, HardwareWalletPinException, HwSessionInfo
@@ -147,6 +147,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.action_sign_message_for_cur_mn.setIconVisibleInMenu(False)
         self.action_hw_configuration.setIconVisibleInMenu(False)
         self.action_hw_initialization_recovery.setIconVisibleInMenu(False)
+
+        # register dialog-type actions:
+        self.addAction(self.action_gen_mn_priv_key_uncompressed)
+        self.addAction(self.action_gen_mn_priv_key_compressed)
 
         # add masternodes' info to the combobox
         self.curMasternode = None
@@ -760,6 +764,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.setStatus2Text('<b>HW status:</b> connected to %s' % hw_intf.get_hw_label(self.hw_client),
                                         'green')
                     self.update_edit_controls_state()
+                except HardwareWalletCancelException:
+                    raise
                 except Exception as e:
                     try:
                         self.disconnect_hardware_wallet()
@@ -770,6 +776,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.errorMsg(str(e))
 
                 ret = self.hw_client
+            except HardwareWalletCancelException:
+                raise
             except HardwareWalletPinException as e:
                 self.errorMsg(e.msg)
                 if self.hw_client:
@@ -1107,6 +1115,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.btnGenerateMNPrivateKey.setEnabled(editing)
             self.btnHwBip32ToAddress.setEnabled(editing)
             self.btnHwAddressToBip32.setEnabled(editing)
+            self.action_gen_mn_priv_key_uncompressed.setEnabled(editing)
+            self.action_gen_mn_priv_key_compressed.setEnabled(editing)
             self.btnDeleteMn.setEnabled(self.curMasternode is not None)
             self.btnEditMn.setEnabled(not self.editing_enabled and self.curMasternode is not None)
             self.btnDuplicateMn.setEnabled(self.curMasternode is not None)
@@ -1246,8 +1256,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             logging.warning('curMasternode == None')
 
-    @pyqtSlot(bool)
-    def on_btnGenerateMNPrivateKey_clicked(self):
+    def generate_mn_priv_key(self, compressed: bool):
         if self.edtMnPrivateKey.text():
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Warning)
@@ -1258,10 +1267,22 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if retval == QMessageBox.No:
                 return
 
-        wif = dash_utils.generate_privkey(self.config.dash_network, compressed=MN_PRIVKEY_GEN_COMPRESSED)
+        wif = dash_utils.generate_privkey(self.config.dash_network, compressed=compressed)
         self.curMasternode.privateKey = wif
         self.edtMnPrivateKey.setText(wif)
         self.curMnModified()
+
+    @pyqtSlot(bool)
+    def on_btnGenerateMNPrivateKey_clicked(self):
+        self.generate_mn_priv_key(compressed=False)
+
+    @pyqtSlot(bool)
+    def on_action_gen_mn_priv_key_uncompressed_triggered(self, checked):
+        self.generate_mn_priv_key(compressed=False)
+
+    @pyqtSlot(bool)
+    def on_action_gen_mn_priv_key_compressed_triggered(self, checked):
+        self.generate_mn_priv_key(compressed=True)
 
     @pyqtSlot(bool)
     def on_btnHwBip32ToAddress_clicked(self):

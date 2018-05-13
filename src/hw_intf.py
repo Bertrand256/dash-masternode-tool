@@ -209,13 +209,19 @@ def disconnect_hw(hw_client):
     try:
         hw_type = get_hw_type(hw_client)
         if hw_type in (HWType.trezor, HWType.keepkey):
-            hw_client.clear_session()
+            hw_client.cancel()
             hw_client.close()
         elif hw_type == HWType.ledger_nano_s:
             hw_client.dongle.close()
     except Exception as e:
         # probably already disconnected
         logging.exception('Disconnect HW error')
+
+
+def cancel_hw_operation(hw_client):
+    hw_type = get_hw_type(hw_client)
+    if hw_type in (HWType.trezor, HWType.keepkey):
+        hw_client.cancel()
 
 
 def get_hw_label(hw_client):
