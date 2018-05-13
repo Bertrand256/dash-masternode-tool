@@ -386,6 +386,10 @@ class Ui_MainWindow(object):
         self.action_about_qt = QtWidgets.QAction(MainWindow)
         self.action_about_qt.setMenuRole(QtWidgets.QAction.AboutQtRole)
         self.action_about_qt.setObjectName("action_about_qt")
+        self.action_gen_mn_priv_key_compressed = QtWidgets.QAction(MainWindow)
+        self.action_gen_mn_priv_key_compressed.setObjectName("action_gen_mn_priv_key_compressed")
+        self.action_gen_mn_priv_key_uncompressed = QtWidgets.QAction(MainWindow)
+        self.action_gen_mn_priv_key_uncompressed.setObjectName("action_gen_mn_priv_key_uncompressed")
         self.menuTools.addAction(self.action_transfer_funds_for_cur_mn)
         self.menuTools.addAction(self.action_transfer_funds_for_all_mns)
         self.menuTools.addAction(self.action_transfer_funds_for_any_address)
@@ -518,6 +522,11 @@ class Ui_MainWindow(object):
         self.action_import_masternode_conf.setText(_translate("MainWindow", "Import masternodes from the masternode.conf file..."))
         self.action_about_qt.setText(_translate("MainWindow", "About Qt..."))
         self.action_about_qt.setToolTip(_translate("MainWindow", "About Qt"))
+        self.action_gen_mn_priv_key_compressed.setText(_translate("MainWindow", "Generate masternode private key (compressed)"))
+        self.action_gen_mn_priv_key_compressed.setShortcut(_translate("MainWindow", "Ctrl+Alt+C"))
+        self.action_gen_mn_priv_key_uncompressed.setText(_translate("MainWindow", "Generate masternode private key (uncompressed)"))
+        self.action_gen_mn_priv_key_uncompressed.setToolTip(_translate("MainWindow", "Generate masternode private key (uncompressed)"))
+        self.action_gen_mn_priv_key_uncompressed.setShortcut(_translate("MainWindow", "Ctrl+Alt+U"))
 
 
 if __name__ == "__main__":
