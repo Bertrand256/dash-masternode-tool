@@ -81,7 +81,6 @@ class Handler(socketserver.BaseRequestHandler):
             logging.error('Handler socker.error occurred: ' + str(e))
         except Exception as e:
             logging.error('Handler exception occurred: ' + str(e))
-            print(str(e))
         finally:
             chan.close()
             self.request.close()

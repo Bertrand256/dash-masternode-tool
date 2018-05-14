@@ -1,3 +1,14 @@
+## [0.9.19] - 2018-05-13
+
+**Added**
+- InstantSend support in the payment window
+- Duplicate masternode feature (main window)
+
+**Fixed**
+- Deselecting proposals after casting votes
+- Data validation error in the payment window
+- Filter by text issue in the proposals window
+
 ## [0.9.18] - 2018-04-17
 
 **Added**

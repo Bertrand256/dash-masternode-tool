@@ -247,7 +247,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.masternodes = main_ui.config.masternodes
         self.masternode_addresses: List[Tuple[str, str]] = []  #  Tuple: address, bip32 path
         for idx, mn in enumerate(self.masternodes):
-            self.masternode_addresses.append((mn.collateralAddress, mn.collateralBip32Path))
+            self.masternode_addresses.append((mn.collateralAddress.strip(), mn.collateralBip32Path.strip()))
             logging.debug(f'WalletDlg initial_mn_sel({idx}) addr - path: {mn.collateralAddress}-{mn.collateralBip32Path}')
 
         self.dashd_intf: DashdInterface = main_ui.dashd_intf
@@ -451,14 +451,14 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         if enc_json_str:
             try:
                 # hw encryption key may be not available so use the generated key to not save addresses as plain text
-                self.encryption_key = base64.urlsafe_b64encode(self.generated_key)
+                self.encryption_key = base64.urlsafe_b64encode(self.app_config.hw_generated_key)
                 fernet = Fernet(self.encryption_key)
                 enc_json_str = bytes(enc_json_str, 'ascii')
                 json_str = fernet.decrypt(enc_json_str)
                 json_str = json_str.decode('ascii')
                 self.recipient_list_from_cache = simplejson.loads(json_str)
             except Exception:
-                logging.warning('Cannot save data to cache.')
+                logging.exception('Cannot restore data from cache.')
 
 
     def save_cache_settings(self):
@@ -494,14 +494,14 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         if rcp_list:
             try:
                 # hw encryption key may be not available so use the generated key to not save addresses as plain text
-                self.encryption_key = base64.urlsafe_b64encode(self.generated_key)
+                self.encryption_key = base64.urlsafe_b64encode(self.app_config.hw_generated_key)
                 fernet = Fernet(self.encryption_key)
                 rcp_json_str = simplejson.dumps(rcp_list)
                 enc_json_str = bytes(rcp_json_str, 'ascii')
                 rcp_data = fernet.encrypt(enc_json_str)
                 rcp_data = rcp_data.decode('ascii')
             except Exception:
-                logging.warning('Cannot save data to cache.')
+                logging.exception('Cannot save data to cache.')
         app_cache.set_value(CACHE_ITEM_LAST_RECIPIENTS.replace('%NETWORK%', self.app_config.dash_network), rcp_data)
 
     @pyqtSlot(int)
