@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2018-03
+import sys
+
 import re
 from typing import Optional
 import simplejson
@@ -157,26 +159,33 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                                 url = url.replace('%TXID%', self.tx_id)
                                 send_tx_row = f'<tr><td class="lbl"><p class="lbl">Transaction ID:</p></td><td><a href="{url}">{self.tx_id}</a></td></tr>'
 
+                        if sys.platform in ('win32', 'linux'):
+                            base_font_size = '11'
+                            title_font_size = '17'
+                        else:
+                            base_font_size = '13'
+                            title_font_size = '20'
+
                         if self.transaction_sent:
                             title = 'Transaction summary - sent'
                             subtitle = '<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; ' \
                                        'margin-right:0px; -qt-block-indent:0; text-indent:0px; ' \
                                        'background-color:#2eb82e;color:white; padding: 1px 3px 1px 3px; ' \
-                                       'border-radius: 3px;"><span style=" font-size:14pt;">' \
+                                       f'border-radius: 3px;"><span style=" font-size:{base_font_size}pt;">' \
                                        'Transaction successfully sent...</span></p>'
                         else:
                             title = 'Transaction summary - ready to send'
                             subtitle = '<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; ' \
                                        'margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=' \
-                                       '"font-size:14pt;">Click the <b>&lt;Send transaction&gt;</b> button to ' \
+                                       f'"font-size:{base_font_size}pt;">Click the <b>&lt;Send transaction&gt;</b> button to ' \
                                        'broadcast the transaction.</span></p>'
 
                         summary = f"""<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">
 <html><head><meta name="qrichtext" content="1" /><style type="text/css">
 td.lbl{{text-align: right;vertical-align: top}} p.lbl{{margin: 0 5px 0 0; font-weight: bold}} p.val{{margin: 0 0 0 8px; color: navy}}
-</style></head><body style=" font-family:'.SF NS Text'; font-size:13pt; font-weight:400; font-style:normal; margin-left:10px;margin-right:10px;">
-<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:20pt; font-weight:600;">{title}</span></p>
-<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:14pt;"><br /></p>
+</style></head><body style="font-size:{base_font_size}pt; font-weight:400; font-style:normal; margin-left:10px;margin-right:10px;">
+<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:{title_font_size}pt; font-weight:600;">{title}</span></p>
+<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:{base_font_size}pt;"><br /></p>
 {subtitle}
 <p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">
  <table>
