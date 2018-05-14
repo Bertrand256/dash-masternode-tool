@@ -49,6 +49,7 @@ class Ui_TransactionDlg(object):
         self.stacket_widget.addWidget(self.page_2)
         self.verticalLayout.addWidget(self.stacket_widget)
         self.gridLayout = QtWidgets.QGridLayout()
+        self.gridLayout.setContentsMargins(6, 2, 6, 6)
         self.gridLayout.setSpacing(0)
         self.gridLayout.setObjectName("gridLayout")
         self.btn_details = QtWidgets.QPushButton(TransactionDlg)

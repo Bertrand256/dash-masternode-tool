@@ -54,7 +54,7 @@ class SendFundsDestinationItem(QObject):
         self.main_layout.addWidget(self.lbl_dest_address, self.row_number, 0)
 
         self.edt_dest_address = QLineEdit(Form)
-        self.edt_dest_address.setFixedWidth(self.address_widget_width)
+        self.edt_dest_address.setMinimumWidth(self.address_widget_width)
         self.main_layout.addWidget(self.edt_dest_address, self.row_number, 1)
 
         self.lbl_amount = QLabel(Form)
@@ -357,7 +357,6 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.lay_addresses.setSpacing(3)
         self.lay_addresses.setContentsMargins(0, 0, 0, 0)
         self.lay_scroll_area.addLayout(self.lay_addresses)
-        self.lay_scroll_area.addStretch(0)
 
         # controls for the 'change' address/amount (it's placed in the last row of the addresses grid layout):
         self.lbl_change_address = QLabel(self.scroll_area_widget)
@@ -369,7 +368,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         width = self.cbo_change_address.fontMetrics().width('XvqNXF23dRBksxjW3VQGrBtJw7vkhWhenQ')
         self.address_widget_width = width + 40
         # combobox width on macos needs to be tweaked:
-        self.cbo_change_address.setFixedWidth(self.address_widget_width + {'darwin': 5}.get(sys.platform, 0))
+        self.cbo_change_address.setMinimumWidth(self.address_widget_width + {'darwin': 5}.get(sys.platform, 0))
         self.lay_addresses.addWidget(self.cbo_change_address, 0, 1)
         self.lbl_change_amount = QLabel(self.scroll_area_widget)
         self.set_change_value_label()
@@ -385,9 +384,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.lbl_second_unit.setTextInteractionFlags(
             QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse)
         self.lay_addresses.addWidget(self.lbl_second_unit, 0, 4)
-        # spacer
-        spacer = QtWidgets.QSpacerItem(20, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.lay_addresses.addItem(spacer, 0, 6)
+        self.lay_addresses.setColumnStretch(6, 1)
 
         # the last row of the grid layout is dedicated to 'fee' controls
         self.lbl_fee = QLabel(self.scroll_area_widget)
