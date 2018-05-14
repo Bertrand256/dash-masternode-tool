@@ -59,11 +59,8 @@ The final step of the DMT build process compresses the executable file created d
 
 ### Install *Visual C++ 2015 Build Tools*
 
-* Open your preferred web browser and go to http://landinghub.visualstudio.com/visual-cpp-build-tools
+* Download the installer from http://go.microsoft.com/fwlink/?LinkId=691126:
 
-* Download the installer:
-
-  ![Install Visual C++ 2015 Build  Tools](img/build-dmt/bwin-install-vstools-1.jpg)
 
 * Run the installer with the *Default* option selected and click the *Install* button:
 
