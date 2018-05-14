@@ -298,6 +298,13 @@ class Proposal(AttrsProtected):
                 return True
         return False
 
+    def voted_by_user(self, vote: str):
+        for umn in self.user_masternodes:
+            mnv = self.votes_by_masternode_ident.get(umn.masternode.ident)
+            if mnv:
+                if mnv[1] == vote:
+                    return True
+        return False
 
 class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def __init__(self, parent, dashd_intf):
@@ -361,12 +368,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.next_budget_approved = None
         self.next_budget_requested_pct = None
         self.next_budget_approved_pct = None
+        self.next_budget_approved_by_user_yes_votes = None
         self.proposals_last_read_time = 0
         self.current_proposal = None
         self.propsModel = None
         self.proxyModel = None
         self.votesModel = None
         self.votesProxyModel = None
+        self.votes_loaded = False
         self.last_chart_type = None
         self.last_chart_proposal = None
         self.controls_initialized = False
@@ -789,6 +798,28 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         if link == '#close':
             self.lblMessage.setVisible(False)
 
+    def calculate_budget_summary(self):
+        total_amount_requested = 0.0
+        total_amount_approved = 0.0
+        total_amount_approved_by_user_yes_vote = 0.0
+        total_pct_approved = None
+        total_pct_requested = None
+        for p in self.proposals:
+            if p.voting_in_progress:
+                total_amount_requested += p.get_value('payment_amount')
+                if p.voting_status == 1:
+                    total_amount_approved += p.get_value('payment_amount')
+                    if p.voted_by_user('YES'):
+                        total_amount_approved_by_user_yes_vote += p.get_value('payment_amount')
+        if self.next_budget_amount:
+            total_pct_approved = round(total_amount_approved * 100 / self.next_budget_amount, 2)
+            total_pct_requested = round(total_amount_requested * 100 / self.next_budget_amount, 2)
+        self.next_budget_requested = total_amount_requested
+        self.next_budget_approved = total_amount_approved
+        self.next_budget_requested_pct = total_pct_requested
+        self.next_budget_approved_pct = total_pct_approved
+        self.next_budget_approved_by_user_yes_votes = total_amount_approved_by_user_yes_vote
+
     def display_budget_summary(self):
         def disp(msg):
             if msg:
@@ -798,6 +829,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 self.lblBudgetSummary.setVisible(False)
                 self.lblBudgetSummary.setText('')
 
+        self.calculate_budget_summary()
         next_sb_dt = datetime.datetime.fromtimestamp(self.next_superblock_time)
         voting_deadline_dt = datetime.datetime.fromtimestamp(self.next_voting_deadline)
         if self.voting_deadline_passed:
@@ -824,24 +856,38 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         if self.next_budget_approved is not None:
             budget_approved = f'<td><b>Budget approved:</b> {app_utils.to_string(round(self.next_budget_approved))} Dash '
             if self.next_budget_approved_pct is not None:
-                budget_approved += f'({app_utils.to_string(round(self.next_budget_approved_pct))} %)'
+                budget_approved += f'({app_utils.to_string(round(self.next_budget_approved_pct))}%)'
             budget_approved += '</td>'
 
         budget_requested = ''
         if self.next_budget_requested is not None:
             budget_requested = f'<td><b>Budget requested:</b> {app_utils.to_string(round(self.next_budget_requested))} Dash '
             if self.next_budget_requested_pct is not None:
-                budget_requested += f'({app_utils.to_string(round(self.next_budget_requested_pct))} %)'
+                budget_requested += f'({app_utils.to_string(round(self.next_budget_requested_pct))}%)'
             budget_requested += '</td>'
         bra = ''
         if budget_approved and budget_requested:
             bra = '<tr>' + budget_approved + budget_requested + '</tr>'
 
+        budget_approved_user_yes = ''
+        # if self.votes_loaded:
+        #     if self.next_budget_approved_by_user_yes_votes is not None:
+        #         budget_approved_user_yes = \
+        #             f'<tr><td colspan="2"><b>Budget approved by your YES votes:</b> ' \
+        #             f'{app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes))} Dash '
+        #         if self.next_budget_amount:
+        #             budget_approved_user_yes += \
+        #                 f'({app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_amount, 2))}% of total'
+        #             if self.next_budget_approved is not None:
+        #                 budget_approved_user_yes += f', {app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_approved, 2))}% of approved'
+        #             budget_approved_user_yes += ')'
+        #         budget_approved_user_yes += '</td></tr>'
+
         message = '<html><head></head><style>td{padding-right:10px}</style><body>' \
                   f'<table style="margin-left:6px">' \
                   f'<tr><td><b>Next superblock date:</b> {app_utils.to_string(next_sb_dt)}</td>' \
                   f'<td><b>Voting deadline:</b> {app_utils.to_string(voting_deadline_dt)}{dl_add_info}</td></tr>' \
-                  f'{bra}<tr><td><b>Budget available:</b> {app_utils.to_string(round(self.next_budget_amount))} Dash</td><td></td></tr>' \
+                  f'{bra}{budget_approved_user_yes}<tr><td><b>Budget available:</b> {app_utils.to_string(round(self.next_budget_amount))} Dash</td><td></td></tr>' \
                   f'</table></body></html>'
 
         if not self.finishing:
@@ -1331,6 +1377,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     # read voting data from DB (only for "voting" columns)
                     self.read_voting_from_db(self.columns)
                     WndUtils.call_in_main_thread(self.refresh_filter)  # vote data can have impact on filter
+                    WndUtils.call_in_main_thread(self.display_budget_summary)
 
                 except CloseDialogException:
                     raise
@@ -1523,7 +1570,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             if prop:
                                 prop.apply_vote(mn_ident, datetime.datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S'),
                                                 row[2])
-
+            self.votes_loaded = True
         except CloseDialogException:
             logging.info('Closing the dialog.')
 
@@ -1537,6 +1584,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
     def read_voting_from_network_thread(self, ctrl, force_reload_all, proposals):
         self.read_voting_from_network(force_reload_all, proposals)
+        WndUtils.call_in_main_thread(self.display_budget_summary)
 
     def read_voting_from_network(self, force_reload_all, proposals):
         """
@@ -1794,24 +1842,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     self.propsView.setColumnWidth(col_idx, 430)
 
             self.update_proposals_order_no()
-
-            # calculate budget utilization
-            total_amount_requested = 0.0
-            total_amount_approved = 0.0
-            total_pct_approved = None
-            total_pct_requested = None
-            for p in self.proposals:
-                if p.voting_in_progress:
-                    total_amount_requested += p.get_value('payment_amount')
-                    if p.voting_status == 1:
-                        total_amount_approved += p.get_value('payment_amount')
-            if self.next_budget_amount:
-                total_pct_approved = round(total_amount_approved * 100 / self.next_budget_amount, 2)
-                total_pct_requested = round(total_amount_requested * 100 / self.next_budget_amount, 2)
-            self.next_budget_requested = total_amount_requested
-            self.next_budget_approved = total_amount_approved
-            self.next_budget_requested_pct = total_pct_requested
-            self.next_budget_approved_pct = total_pct_approved
             self.display_budget_summary()
 
             logging.debug("Display proposals' data time: " + str(time.time() - tm_begin))
@@ -1824,12 +1854,12 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def on_btnProposalsRefresh_clicked(self):
         self.btnProposalsRefresh.setEnabled(False)
         self.btnVotesRefresh.setEnabled(False)
-        self.run_thread(self, self.refresh_proposalls_thread, (),
+        self.run_thread(self, self.refresh_proposals_thread, (),
                         on_thread_finish=self.enable_refresh_buttons,
                         on_thread_exception=self.enable_refresh_buttons,
                         skip_raise_exception=True)
 
-    def refresh_proposalls_thread(self, ctrl):
+    def refresh_proposals_thread(self, ctrl):
         self.read_proposals_from_network()
 
         proposals = []
