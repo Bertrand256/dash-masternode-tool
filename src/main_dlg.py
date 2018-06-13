@@ -1336,6 +1336,32 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         except Exception as e:
             self.errorMsg(str(e))
 
+    def create_mn_broadcast_msg(self, mn_protocol_version: int, ping_block_hash: str, masternode: MasternodeConfig,
+                                sig_time: int = None) \
+            -> dash_utils.CMasternodeBroadcast:
+
+        if not sig_time:
+            sig_time = int(time.time())
+        mn_privkey = dash_utils.wif_to_privkey(masternode.privateKey, self.config.dash_network)
+        if not mn_privkey:
+            raise Exception(f'Cannot convert masternode private key (masternode: {masternode.name})')
+        mn_pubkey = bitcoin.privkey_to_pubkey(masternode.privateKey)
+        mn_pubkey = bytes.fromhex(mn_pubkey)
+
+        addr_pubkey = hw_intf.get_address_and_pubkey(self.hw_session, masternode.collateralBip32Path)
+        collateral_pubkey = addr_pubkey.get('publicKey')
+
+        mn_broadcast = dash_utils.CMasternodeBroadcast(
+            masternode.ip, masternode.port, collateral_pubkey, mn_pubkey, masternode.collateralTx,
+            int(masternode.collateralTxIndex), ping_block_hash, sig_time, mn_protocol_version)
+
+        signature = mn_broadcast.sign_message(masternode.collateralBip32Path, hw_intf.hw_sign_message, self.hw_session,
+                                              masternode.privateKey, self.config.dash_network)
+        if signature.address != masternode.collateralAddress:
+            raise Exception('%s address signature mismatch.' % self.getHwName())
+
+        return mn_broadcast
+
     @pyqtSlot(bool)
     def on_btnBroadcastMn_clicked(self):
         """
@@ -1394,27 +1420,16 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.errorMsg('Cannot convert masternode private key')
                 return
             mn_pubkey = bitcoin.privkey_to_pubkey(mn_privkey)
+            mn_pubkey = bytes.fromhex(mn_pubkey)
 
             self.connect_hardware_wallet()
             if not self.hw_client:
                 return
 
-            seq = 0xffffffff
             block_count = self.dashd_intf.getblockcount()
             block_hash = self.dashd_intf.getblockhash(block_count - 12)
-            vintx = bytes.fromhex(self.curMasternode.collateralTx)[::-1].hex()
-            vinno = int(self.curMasternode.collateralTxIndex).to_bytes(4, byteorder='big')[::-1].hex()
-            vinsig = '00'
-            vinseq = seq.to_bytes(4, byteorder='big')[::-1].hex()
-            ipv6map = '00000000000000000000ffff'
-            ipdigit = map(int, self.curMasternode.ip.split('.'))
-            for i in ipdigit:
-                ipv6map += i.to_bytes(1, byteorder='big')[::-1].hex()
-            ipv6map += int(self.curMasternode.port).to_bytes(2, byteorder='big').hex()
-
             addr = hw_intf.get_address_and_pubkey(self.hw_session, self.curMasternode.collateralBip32Path)
             hw_collateral_address = addr.get('address').strip()
-            collateral_pubkey = addr.get('publicKey')
             cfg_collateral_address = self.curMasternode.collateralAddress.strip()
 
             if not cfg_collateral_address:
@@ -1479,75 +1494,34 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
                     return
 
-            collateral_in = dash_utils.num_to_varint(len(collateral_pubkey)).hex() + collateral_pubkey.hex()
-            delegate_in = dash_utils.num_to_varint(len(mn_pubkey) / 2).hex() + mn_pubkey
             sig_time = int(time.time())
 
             info = self.dashd_intf.getinfo(verify_node=True)
             node_protocol_version = int(info['protocolversion'])
             if self.curMasternode.use_default_protocol_version or not self.curMasternode.protocol_version:
-                protocol_version = node_protocol_version
+                mn_protocol_version = node_protocol_version
             else:
-                protocol_version = self.curMasternode.protocol_version
+                mn_protocol_version = self.curMasternode.protocol_version
 
-            serialize_for_sig = self.curMasternode.ip + ':' + self.curMasternode.port + str(int(sig_time)) + \
-                                binascii.unhexlify(bitcoin.hash160(collateral_pubkey))[::-1].hex() + \
-                                binascii.unhexlify(bitcoin.hash160(bytes.fromhex(mn_pubkey)))[::-1].hex() + \
-                                str(protocol_version)
+            # create a masternode broadcast message
+            mn_broadcast = self.create_mn_broadcast_msg(mn_protocol_version, block_hash, self.curMasternode, sig_time)
+            broadcast_msg = '01' + mn_broadcast.serialize(node_protocol_version, mn_protocol_version)
 
-            sig = hw_intf.hw_sign_message(self.hw_session, self.curMasternode.collateralBip32Path, serialize_for_sig)
-
-            if sig.address != hw_collateral_address:
-                self.errorMsg('%s address mismatch after signing.' % self.getHwName())
-                return
-            sig1 = sig.signature.hex()
-            logging.debug('Start MN message signature: ' + sig.signature.hex())
-            logging.debug('Start MN message sig_time: ' + str(sig_time))
-
-            work_sig_time = sig_time.to_bytes(8, byteorder='big')[::-1].hex()
-            work_protoversion = int(protocol_version).to_bytes(4, byteorder='big')[::-1].hex()
-            last_ping_block_hash = bytes.fromhex(block_hash)[::-1].hex()
-
-            last_ping_serialize_for_sig = dash_utils.serialize_input_str(
-                self.curMasternode.collateralTx,
-                self.curMasternode.collateralTxIndex,
-                seq,
-                '') + block_hash + str(sig_time)
-
-            r = dash_utils.ecdsa_sign(last_ping_serialize_for_sig, self.curMasternode.privateKey,
-                                      self.config.dash_network)
-            sig2 = (base64.b64decode(r).hex())
-            logging.debug('Start MN message signature2: ' + sig2)
-
-            work = vintx + vinno + vinsig + vinseq \
-                   + ipv6map + collateral_in + delegate_in \
-                   + dash_utils.num_to_varint(len(sig1) / 2).hex() + sig1 \
-                   + work_sig_time + work_protoversion \
-                   + vintx + vinno + vinsig + vinseq \
-                   + last_ping_block_hash + work_sig_time \
-                   + dash_utils.num_to_varint(len(sig2) / 2).hex() + sig2
-
-            work = '01' + work
-            if node_protocol_version >= 70208:
-                work = work + '0001000100'
-
-            ret = self.dashd_intf.masternodebroadcast("decode", work)
+            ret = self.dashd_intf.masternodebroadcast("decode", broadcast_msg)
             if ret['overall'].startswith('Successfully decoded broadcast messages for 1 masternodes'):
                 if self.queryDlg(f'Press "Yes" if you want to broadcast start masternode message (protocol version: '
-                                 f'{protocol_version}) or "Cancel" to exit.',
+                                 f'{mn_protocol_version}) or "Cancel" to exit.',
                                 buttons=QMessageBox.Yes | QMessageBox.Cancel,
                                 default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Cancel:
                     return
 
-                ret = self.dashd_intf.masternodebroadcast("relay", work)
+                ret = self.dashd_intf.masternodebroadcast("relay", broadcast_msg)
 
                 match = re.search("relayed broadcast messages for (\d+) masternodes.*failed to relay (\d+), total 1",
                                   ret['overall'])
 
                 failed_count = 0
-                ok_count = 0
                 if match and len(match.groups()):
-                    ok_count = int(match.group(1))
                     failed_count = int(match.group(2))
 
                 overall = ret['overall']
@@ -1557,7 +1531,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     del ret['overall']
                     keys = list(ret.keys())
                     if len(keys):
-                        # get the first (and currently the only) error message
+                        # get the first (and currently the only one) error message
                         errorMessage = ret[keys[0]].get('errorMessage')
 
                 if failed_count == 0:
@@ -1573,9 +1547,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if self.hw_client:
                 self.hw_client.init_device()
 
-        except Exception as e:
-            self.errorMsg(str(e))
+        except AssertionError:
             logging.exception('Exception occurred.')
+            self.errorMsg('Assertion error.')
+
+        except Exception as e:
+            logging.exception('Exception occurred.')
+            self.errorMsg(str(e))
 
     def get_masternode_status(self, masternode):
         """
@@ -1610,7 +1588,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if not self.curMasternode.collateralTxIndex:
                 return '<span style="color:red">Enter the collateral TX index</span>'
 
-            mns_info = self.dashd_intf.get_masternodelist('full', data_max_age=120)  # read new data from the network
+            mns_info = self.dashd_intf.get_masternodelist('full', data_max_age=5)  # read new data from the network
                                                                                      # every 120 seconds
             mn_info = self.dashd_intf.masternodes_by_ident.get(collateral_id)
             if mn_info:

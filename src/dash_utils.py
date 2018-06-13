@@ -4,6 +4,7 @@
 # Created on: 2017-03
 
 import binascii
+import base64
 import typing
 import bitcoin
 import base58
@@ -193,7 +194,6 @@ def wif_to_privkey(wif_key: str, dash_network: str):
     """
     Based on project: https://github.com/chaeplin/dashmnb with some changes related to usage of bitcoin library.
     """
-    wif_compressed = (52 == len(wif_key))
     privkey_encoded = base58.b58decode(wif_key).hex()
     wif_version = privkey_encoded[:2]
     wif_prefix = get_chain_params(dash_network).PREFIX_SECRET_KEY
@@ -203,11 +203,7 @@ def wif_to_privkey(wif_key: str, dash_network: str):
     check = binascii.unhexlify(bitcoin.dbl_sha256(vs))[0:4]
 
     if wif_version == wif_prefix.to_bytes(1, byteorder='big').hex() and checksum == check.hex():
-        if wif_compressed:
-            privkey = privkey_encoded[2:-10]
-        else:
-            privkey = privkey_encoded[2:-8]
-
+        privkey = privkey_encoded[2:-8]
         return privkey
     else:
         return None
@@ -227,8 +223,8 @@ def wif_privkey_to_uncompressed(wif_key: str):
 def privkey_valid(privkey):
     try:
         pk = bitcoin.decode_privkey(privkey, 'wif')
-        pkhex = bitcoin.encode_privkey(pk, 'hex')
-        if len(pkhex) in (62, 64):
+        pkbin = bytes.fromhex(bitcoin.encode_privkey(pk, 'hex'))
+        if len(pkbin) == 32 or (len(pkbin) == 33 and pkbin[-1] == 1):
             return True
         else:
             return False
@@ -257,7 +253,7 @@ def ecdsa_sign(msg: str, wif_priv_key: str, dash_network: str):
     Note: Dash core uses uncompressed public keys, so if the private key passed as an argument
     is of compressed format, convert it to an uncompressed
     """
-    wif_priv_key = wif_privkey_to_uncompressed(wif_priv_key)
+    # wif_priv_key = wif_privkey_to_uncompressed(wif_priv_key)
 
     v, r, s = bitcoin.ecdsa_raw_sign(electrum_sig_hash(msg), wif_priv_key)
     sig = bitcoin.encode_sig(v, r, s)
@@ -346,3 +342,103 @@ def extract_pkh_from_locking_script(script):
     raise Exception('Non-standard locking script type (should be P2PKH)')
 
 
+class COutPoint(object):
+    def __init__(self, hash: str, index: int):
+        self.hash: bytes = bytes.fromhex(hash)
+        self.index: int = index
+
+    def serialize(self):
+        ser_str = self.hash[::-1].hex()
+        ser_str += int(self.index).to_bytes(4, byteorder='little').hex()
+        return ser_str
+
+
+class CTxIn(object):
+    def __init__(self, prevout: COutPoint):
+        self.prevout: COutPoint = prevout
+        self.script = ''
+        self.sequence = 0xffffffff
+
+    def serialize(self):
+        return self.prevout.serialize() + '00' + self.sequence.to_bytes(4, byteorder='little').hex()
+
+
+class CMasternodePing(object):
+    def __init__(self, mn_outpoint: COutPoint, block_hash, sig_time):
+        self.mn_outpoint: COutPoint = mn_outpoint  # protocol >= 70209
+        self.mn_tx_in = CTxIn(mn_outpoint)  # protocol <= 70208
+        self.block_hash: str = block_hash
+        self.sig_time: int = sig_time
+        self.sig = None
+
+    def sign_message(self, priv_key, dash_network):
+        s = f'CTxIn(COutPoint({self.mn_outpoint.hash.hex()}, {self.mn_outpoint.index}), scriptSig=){self.block_hash}' \
+            f'{str(self.sig_time)}'
+        r = ecdsa_sign(s, priv_key, dash_network)
+        self.sig = base64.b64decode(r)
+        return self.sig
+
+    def serialize(self, dest_node_version: int):
+        if dest_node_version <= 70208:
+            ser_str = self.mn_tx_in.serialize()
+        else:
+            ser_str = self.mn_outpoint.serialize()
+        ser_str += bytes.fromhex(self.block_hash)[::-1].hex()
+        ser_str += self.sig_time.to_bytes(8, byteorder='little').hex()
+        ser_str += num_to_varint(len(self.sig)).hex() + self.sig.hex()
+        return ser_str
+
+
+class CMasternodeBroadcast(object):
+    def __init__(self, mn_ip: str, mn_port: int, pubkey_collateral: bytes, pubkey_masternode: bytes,
+                 collateral_tx: str, collateral_tx_index: int, block_hash: str, sig_time: int, protocol_version: int):
+        self.mn_ip: str = mn_ip
+        self.mn_port: int = mn_port
+        self.pubkey_collateral: bytes = pubkey_collateral
+        self.pubkey_masternode: bytes = pubkey_masternode
+        self.sig = None
+        self.sig_time: int = sig_time
+        self.protocol_version: int = protocol_version
+        self.collateral_outpoint = COutPoint(collateral_tx, int(collateral_tx_index))
+        self.mn_ping: CMasternodePing = CMasternodePing(self.collateral_outpoint, block_hash, sig_time)
+
+    def sign_message(self, collateral_bip32_path: str, hw_sign_message_fun: typing.Callable, hw_session,
+                     mn_privkey_wif: str, dash_network: str):
+
+        self.mn_ping.sign_message(mn_privkey_wif, dash_network)
+
+        str_for_serialize = self.mn_ip + ':' + str(self.mn_port) + str(self.sig_time) + \
+            binascii.unhexlify(bitcoin.hash160(self.pubkey_collateral))[::-1].hex() + \
+            binascii.unhexlify(bitcoin.hash160(self.pubkey_masternode))[::-1].hex() + \
+            str(self.protocol_version)
+
+        self.sig = hw_sign_message_fun(hw_session, collateral_bip32_path, str_for_serialize)
+        return self.sig
+
+    def serialize(self, dest_node_version, protocol_version):
+        if not self.sig:
+            raise Exception('Message not signed.')
+
+        if dest_node_version <= 70208:
+            ser_str = self.mn_ping.mn_tx_in.serialize()
+        else:
+            ser_str = self.mn_ping.mn_outpoint.serialize()
+
+        addr = '00000000000000000000ffff'
+        ip_elems = map(int, self.mn_ip.split('.'))
+        for i in ip_elems:
+            addr += i.to_bytes(1, byteorder='big').hex()
+        addr += int(self.mn_port).to_bytes(2, byteorder='big').hex()
+
+        ser_str += addr
+        ser_str += num_to_varint(len(self.pubkey_collateral)).hex() + self.pubkey_collateral.hex()
+        ser_str += num_to_varint(len(self.pubkey_masternode)).hex() + self.pubkey_masternode.hex()
+        ser_str += num_to_varint(len(self.sig.signature)).hex() + self.sig.signature.hex()
+        ser_str += self.sig_time.to_bytes(8, byteorder='little').hex()
+        ser_str += int(protocol_version).to_bytes(4, byteorder='little').hex()
+        ser_str += self.mn_ping.serialize(dest_node_version)
+
+        if dest_node_version == 70208:
+            ser_str += '0001000100'
+
+        return ser_str

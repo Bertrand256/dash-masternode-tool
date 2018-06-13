@@ -21,7 +21,6 @@ with open(os.path.join(base_dir, 'version.txt')) as fptr:
 
 add_files = [
  ('img/dmt.png','/img'),
- ('img/dash.ico','/img'),
  ('img/dmt.ico','/img'),
  ('img/arrow-right.ico','/img'),
  ('img/hw-disconnect.png','/img'),

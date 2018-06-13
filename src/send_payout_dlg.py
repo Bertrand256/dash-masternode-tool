@@ -873,10 +873,18 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     if self.mn_src_index is not None:
                         if self.mn_src_index == len(self.masternode_addresses):
                             # show addresses of all masternodes
-                            for chunk_nr in range(int(math.ceil(len(self.masternode_addresses) / ADDRESS_CHUNK))):
+                            # prepare a unique list of mn addresses
+                            tmp_addresses = []
+                            addr_path_pairs = []
+                            for x in self.masternode_addresses:
+                                if x[0] not in tmp_addresses:
+                                    tmp_addresses.append(x[0])
+                                    addr_path_pairs.append((x[0], x[1]))
+
+                            for chunk_nr in range(int(math.ceil(len(addr_path_pairs) / ADDRESS_CHUNK))):
                                 if self.finishing or thread_ctrl.finish:
                                     return
-                                yield [x for x in self.masternode_addresses[
+                                yield [x for x in addr_path_pairs[
                                                   chunk_nr * ADDRESS_CHUNK : (chunk_nr + 1) * ADDRESS_CHUNK] if x[0] and x[1]]
                         elif self.mn_src_index < len(self.masternode_addresses) and self.mn_src_index >= 0:
                             if self.finishing or thread_ctrl.finish:
