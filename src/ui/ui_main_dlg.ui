@@ -287,7 +287,7 @@
               <string/>
              </property>
              <property name="inputMask">
-              <string>00009</string>
+              <string/>
              </property>
              <property name="placeholderText">
               <string>default</string>
