@@ -306,6 +306,7 @@ class Proposal(AttrsProtected):
                     return True
         return False
 
+
 class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def __init__(self, parent, dashd_intf):
         QDialog.__init__(self, parent=parent)
@@ -349,12 +350,25 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.proposals = []
         self.proposals_by_hash = {}  # dict of Proposal object indexed by proposal hash
         self.proposals_by_db_id = {}
-        self.masternodes = []
+        self.masternodes: List[Masternode] = []
         self.masternodes_by_ident = {}
-        self.masternodes_by_db_id = {}
+
+        self.masternodes_cfg: List[MasternodeConfig] = []
+        pkeys = []
+        mn_idents = []
+        for idx, mn in enumerate(self.main_wnd.config.masternodes):
+            mn_ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
+            if mn_ident not in mn_idents:
+                if dash_utils.privkey_valid(mn.privateKey):
+                    if mn.privateKey not in pkeys:
+                        pkeys.append(mn.privateKey)
+                        mn_idents.append(mn_ident)
+                        self.masternodes_cfg.append(mn)
+                else:
+                    logging.warning('Invalid private key for masternode ' + mn.name)
 
         # masternodes existing in the user's configuration, which can vote - list of VotingMasternode objects
-        self.users_masternodes = []
+        self.users_masternodes: List[VotingMasternode] = []
         self.users_masternodes_by_ident = {}
 
         self.mn_count = None
@@ -437,9 +451,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.votesView.setSortingEnabled(True)
 
             # create model serving data to the view
-            self.votesModel = VotesModel(self, self.masternodes, self.masternodes_by_db_id,
-                                         self.users_masternodes_by_ident,
-                                         self.db_intf)
+            self.votesModel = VotesModel(self, self.masternodes, self.users_masternodes_by_ident, self.db_intf)
             self.votesProxyModel = VotesFilterProxyModel(self)
             self.votesProxyModel.setSourceModel(self.votesModel)
             self.votesView.setModel(self.votesProxyModel)
@@ -534,20 +546,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     #     self.add_voting_column(name, caption, my_masternode=False,
                     #                            insert_before_column=self.column_index_by_name('payment_start'))
 
-        # define "dynamic" columns that show voting results for user's masternodes
-        pkeys = []
-        for idx, mn in enumerate(self.main_wnd.config.masternodes):
+        # define "dynamic" columns showing the user voting results
+        for idx, mn in enumerate(self.masternodes_cfg):
             mn_ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
-            if mn_ident:
-                if dash_utils.privkey_valid(mn.privateKey):
-                    if mn.privateKey not in pkeys:
-                        self.add_voting_column(mn_ident, 'Vote (' + mn.name + ')', my_masternode=True,
-                                               insert_before_column=self.column_index_by_name('absolute_yes_count'))
-                        pkeys.append(mn.privateKey)
-                    else:
-                        logging.warning('Masternode %s private key already used. Skipping...' % mn.name)
-                else:
-                    logging.warning('Invalid private key for masternode ' + mn.name)
+            self.add_voting_column(mn_ident, 'Vote (' + mn.name + ')', my_masternode=True,
+                                   insert_before_column=self.column_index_by_name('absolute_yes_count'))
 
         # set the visual order of columns with none
         for idx, col in enumerate(self.columns):
@@ -771,7 +774,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         if my_masternode is None:
             # check if the specified masternode is in the user configuration; if so, mark the column
             # that it can't be removed
-            for idx, mn in enumerate(self.main_wnd.config.masternodes):
+            for mn in enumerate(self.masternodes_cfg):
                 mn_ident_cfg = mn.collateralTx + '-' + str(mn.collateralTxIndex)
                 if mn_ident_cfg == mn_ident:
                     col.my_masternode = True
@@ -1225,7 +1228,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     # prepare a dict of user's masternodes configs (app_config.MasternodeConfig); key: masternode
                     # ident (transaction id-transaction index)
                     users_mn_configs_by_ident = {}
-                    for mn_cfg in self.main_wnd.config.masternodes:
+                    for mn_cfg in self.masternodes_cfg:
                         ident = mn_cfg.collateralTx + '-' + mn_cfg.collateralTxIndex
                         if not ident in users_mn_configs_by_ident:
                             users_mn_configs_by_ident[ident] = mn_cfg
@@ -1246,7 +1249,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                         # add mn to an ident indexed dict
                         self.masternodes_by_ident[mn.ident] = mn
-                        self.masternodes_by_db_id[mn.db_id] = mn
 
                         mn_cfg = users_mn_configs_by_ident.get(mn.ident)
                         if mn_cfg:
@@ -1257,7 +1259,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                     # sort user masternodes according to the order from the app's configuration
                     self.users_masternodes.sort(
-                        key=lambda vmn: self.main_wnd.config.masternodes.index(vmn.masternode_config))
+                        key=lambda vmn: self.masternodes_cfg.index(vmn.masternode_config))
 
                     if self.db_intf.db_active:
                         try:
@@ -1631,7 +1633,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                             self.display_message('Reading voting data %d of %d' % (row_idx+1, len(proposals)))
                             tm_begin = time.time()
-                            votes = self.dashd_intf.gobject("getvotes", prop.get_value('hash'))
+                            try:
+                                votes = self.dashd_intf.gobject("getvotes", prop.get_value('hash'))
+                            except Exception:
+                                logging.exception('Exception occurred while calling getvotes')
+                                continue
                             network_duration += (time.time() - tm_begin)
 
                             for v_key in votes:
@@ -1639,8 +1645,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                     raise CloseDialogException
 
                                 v = votes[v_key]
-                                match = re.search("CTxIn\(COutPoint\(([A-Fa-f0-9]+)\s*\,\s*(\d+).+\:(\d+)\:(\w+)", v)
-                                if len(match.groups()) == 4:
+                                match = re.search("CTxIn\(COutPoint\(([A-Fa-f0-9]+)\s*\,\s*(\d+).+\:(\d+)\:(\w+)", v)  # v12.2
+                                if not match or len(match.groups()) != 4:
+                                    match = re.search("([A-Fa-f0-9]+)\-(\d+)\:(\d+)\:(\w+)", v)  # v12.3
+
+                                if match and len(match.groups()) == 4:
                                     mn_ident = match.group(1) + '-' + match.group(2)
                                     voting_timestamp = int(match.group(3))
                                     voting_time = datetime.datetime.fromtimestamp(voting_timestamp)
@@ -1650,7 +1659,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                     if voting_timestamp > cur_vote_max_date:
                                         cur_vote_max_date = voting_timestamp
 
-                                    if voting_timestamp >= (last_vote_max_date - 3600) or force_reload_all:
+                                    if voting_timestamp >= (last_vote_max_date - 3600 * 3) or force_reload_all:
                                         # check if vote exists in the database
                                         if cur:
                                             tm_begin = time.time()
@@ -1673,7 +1682,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                             votes_added.append((prop, mn, voting_time, voting_result, mn_ident, v_key))
 
                                 else:
-                                    logging.warning('Proposal %s, parsing unsuccessful for voting: %s' % (prop.hash, v))
+                                    logging.warning('Proposal %s, parsing unsuccessful for voting: %s' %
+                                                    (prop.get_value('hash'), v))
 
                             proposals_updated.append(prop)
 
@@ -1976,7 +1986,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 if source_row.row() not in rows:
                     rows.append(source_row.row())
                     self.correct_proposal_hyperlink_color(source_row.row(), False)
-
 
     def get_selected_proposals(self, active_voting_only: bool = False):
         props = []
@@ -2652,7 +2661,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                      f"</b>'<br>on behalf of the masternode: {mn_info.masternode_config.name} "
                                      f"({mn_info.masternode_config.ip})")
 
-                sig_time = int(time.time())
+                sig_time = time.time()
                 step = 1
                 vote_sig = ''
                 serialize_for_sig = ''
@@ -2687,6 +2696,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                         vote_code + '|' + \
                                         str(sig_time)
 
+                    logging.info('Vote message to sign: ' + serialize_for_sig)
                     step = 2
                     vote_sig = dash_utils.ecdsa_sign(serialize_for_sig, mn_info.masternode_config.privateKey,
                                                      self.app_config.dash_network)
@@ -3234,11 +3244,10 @@ class VotesFilterProxyModel(QSortFilterProxyModel):
 
 
 class VotesModel(QAbstractTableModel):
-    def __init__(self, proposals_dlg, masternodes, masternodes_by_db_id, users_masternodes_by_ident, db_intf):
+    def __init__(self, proposals_dlg, masternodes, users_masternodes_by_ident, db_intf):
         QAbstractTableModel.__init__(self, proposals_dlg)
         self.proposals_dlg = proposals_dlg
         self.masternodes = masternodes
-        self.masternodes_by_db_id = masternodes_by_db_id
         self.db_intf = db_intf
         self.users_masternodes_by_ident = users_masternodes_by_ident
         self.only_my_votes = False

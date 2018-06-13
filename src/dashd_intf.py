@@ -17,6 +17,8 @@ from PyQt5.QtCore import QThread
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from paramiko import AuthenticationException, PasswordRequiredException, SSHException
 from paramiko.ssh_exception import NoValidConnectionsError
+from typing import List
+
 import app_cache
 import app_utils
 from app_config import AppConfig
@@ -908,7 +910,7 @@ class DashdInterface(WndUtils):
                      (str(duration1), str(duration2), str(duration3)))
 
     @control_rpc_call
-    def get_masternodelist(self, *args, data_max_age=MASTERNODES_CACHE_VALID_SECONDS):
+    def get_masternodelist(self, *args, data_max_age=MASTERNODES_CACHE_VALID_SECONDS) -> List[Masternode]:
         """
         Returns masternode list, read from the Dash network or from the internal cache.
         :param args: arguments passed to the 'masternodelist' RPC call
@@ -917,7 +919,7 @@ class DashdInterface(WndUtils):
             value of 0 forces reading of the new data from the network
         :return: list of Masternode objects, matching the 'args' arguments
         """
-        def parse_mns(mns_raw):
+        def parse_mns(mns_raw) -> List[Masternode]:
             """
             Parses dictionary of strings returned from the RPC to Masternode object list.
             :param mns_raw: Dict of masternodes in format of RPC masternodelist command
