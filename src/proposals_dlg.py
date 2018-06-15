@@ -836,7 +836,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         next_sb_dt = datetime.datetime.fromtimestamp(self.next_superblock_time)
         voting_deadline_dt = datetime.datetime.fromtimestamp(self.next_voting_deadline)
         if self.voting_deadline_passed:
-            dl_add_info = '<span style="color:red"> (passed)<span>'
+            dl_add_info = '<span style="color:red"> (passed)</span>'
         else:
             dl_add_info = ''
             dl_diff = self.next_voting_deadline - time.time()
@@ -853,7 +853,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 else:
                     dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=False, out_hours=False,
                                                         out_days=True, out_weeks=False)
-                dl_add_info = f'<span> ({dl_str})<span>'
+                dl_add_info = f'<span> ({dl_str})</span>'
 
         budget_approved = ''
         if self.next_budget_approved is not None:
@@ -880,13 +880,13 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         #             f'{app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes))} Dash '
         #         if self.next_budget_amount:
         #             budget_approved_user_yes += \
-        #                 f'({app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_amount, 2))}% of total'
+        #                 f'({app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_amount, 2))}% of total buget'
         #             if self.next_budget_approved is not None:
-        #                 budget_approved_user_yes += f', {app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_approved, 2))}% of approved'
+        #                 budget_approved_user_yes += f', {app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_approved, 2))}% of approved budget'
         #             budget_approved_user_yes += ')'
         #         budget_approved_user_yes += '</td></tr>'
 
-        message = '<html><head></head><style>td{padding-right:10px}</style><body>' \
+        message = '<html><head></head><style>td{padding-right:10px;white-space:nowrap;}</style><body>' \
                   f'<table style="margin-left:6px">' \
                   f'<tr><td><b>Next superblock date:</b> {app_utils.to_string(next_sb_dt)}</td>' \
                   f'<td><b>Voting deadline:</b> {app_utils.to_string(voting_deadline_dt)}{dl_add_info}</td></tr>' \
@@ -2661,7 +2661,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                      f"</b>'<br>on behalf of the masternode: {mn_info.masternode_config.name} "
                                      f"({mn_info.masternode_config.ip})")
 
-                sig_time = time.time()
+                cur_ts = int(time.time())
+                sig_time = cur_ts
                 step = 1
                 vote_sig = ''
                 serialize_for_sig = ''
@@ -2675,10 +2676,12 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         last_vote_ts = None
 
                     if self.main_wnd.config.add_random_offset_to_vote_time:
-                        if last_vote_ts is not None and time.time() - last_vote_ts < 1800:
-                            # if there is a vote for this masternode/proposal, new vote timestamp
-                            # cannot be less than the last one, because it will be covered by it
-                            sig_time = int(last_vote_ts) + random.randint(0, 1800)
+
+                        if last_vote_ts is not None: # and cur_ts - last_vote_ts < 1800:
+                            # new vote's timestamp cannot be less than the last vote for this proposal-mn pair
+                            min_bound = int(last_vote_ts)
+                            max_bound = cur_ts + 1800
+                            sig_time = random.randint(min_bound, max_bound)
                         else:
                             sig_time += random.randint(-1800, 1800)
 
