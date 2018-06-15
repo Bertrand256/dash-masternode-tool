@@ -265,7 +265,7 @@
            <item>
             <widget class="QCheckBox" name="chbUseDefaultProtocolVersion">
              <property name="toolTip">
-              <string>Use the protocol version number (from the RPC node) when starting masternode</string>
+              <string>Use the default protocol version when starting masternode</string>
              </property>
              <property name="text">
               <string>Use default protocol version</string>
@@ -399,7 +399,7 @@
               </size>
              </property>
              <property name="toolTip">
-              <string>Dash address of the 1000 Dash collateral, coverted from BIP32 path with hardware wallet.</string>
+              <string>Dash address of the masternode 1000 Dash collateral</string>
              </property>
              <property name="readOnly">
               <bool>false</bool>

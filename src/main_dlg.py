@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
-
+import simplejson
 import base64
 import binascii
 import datetime
@@ -60,7 +60,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.hw_client = None
         self.config = AppConfig()
         self.config.init(app_path)
-
         WndUtils.set_app_config(self, self.config)
 
         self.dashd_intf = DashdInterface(window=None,
@@ -75,6 +74,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.config,
             dashd_intf=self.dashd_intf)
 
+        self.remote_app_params = {}
         self.dashd_info = {}
         self.is_dashd_syncing = False
         self.dashd_connection_ok = False
@@ -214,6 +214,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         self.action_open_log_file.setText = 'Open log file (%s)' % self.config.log_file
         self.update_edit_controls_state()
+        if self.remote_app_params:
+            self.update_ui_default_protocol()
 
     def load_configuration_from_file(self, file_name) -> None:
         """
@@ -372,6 +374,18 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.config.check_for_updates:
             self.run_thread(self, self.check_for_updates_thread, (force_check,))
 
+    def load_remote_params(self):
+        try:
+            import urllib.request
+            response = urllib.request.urlopen(
+                'https://raw.githubusercontent.com/Bertrand256/dash-masternode-tool/master/app-params.json')
+            contents = response.read()
+            app_remote_params = simplejson.loads(contents)
+            return app_remote_params
+        except Exception:
+            logging.exception('Error while loading app-params.json')
+            return {}
+
     def check_for_updates_thread(self, ctrl, force_check):
         """
         Thread function checking whether there is a new version of the application on Github page.
@@ -382,43 +396,41 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         :return: None
         """
         try:
-            import urllib.request
-            cur_date_str = datetime.datetime.now().strftime('%Y-%m-%d')
+            self.remote_app_params = self.load_remote_params()
 
-            response = urllib.request.urlopen(
-                'https://raw.githubusercontent.com/Bertrand256/dash-masternode-tool/master/version.txt')
-            contents = response.read()
-            lines = contents.decode().splitlines()
-            remote_version_str = app_utils.extract_app_version(lines)
-            remote_ver = app_utils.version_str_to_number(remote_version_str)
-            local_ver = app_utils.version_str_to_number(self.config.app_version)
+            if self.remote_app_params:
+                remote_version_str = self.remote_app_params.get("appVersion")
+                remote_ver = app_utils.version_str_to_number(remote_version_str)
+                local_ver = app_utils.version_str_to_number(self.config.app_version)
 
-            if remote_ver > local_ver:
-                if sys.platform == 'win32':
-                    item_name = 'exe_win'
-                    no_bits = platform.architecture()[0].replace('bit', '')
-                    if no_bits == '32':
-                        item_name += '32'
-                elif sys.platform == 'darwin':
-                    item_name = 'exe_mac'
+                if remote_ver > local_ver:
+                    if sys.platform == 'win32':
+                        item_name = 'win'
+                        no_bits = platform.architecture()[0].replace('bit', '')
+                        if no_bits == '32':
+                            item_name += '32'
+                        else:
+                            item_name += '64'
+                    elif sys.platform == 'darwin':
+                        item_name = 'mac'
+                    else:
+                        item_name = 'linux'
+                    exe_url = ''
+                    exe_down = self.remote_app_params.get('exeDownloads')
+                    if exe_down:
+                        exe_url = exe_down.get(item_name)
+                    if exe_url:
+                        msg = "New version (" + remote_version_str + ') available: <a href="' + exe_url + '">download</a>.'
+                    else:
+                        msg = "New version (" + remote_version_str + ') available. Go to the project website: <a href="' + \
+                              PROJECT_URL + '">open</a>.'
+
+                    self.setMessage(msg, 'green')
                 else:
-                    item_name = 'exe_linux'
-                exe_url = ''
-                for line in lines:
-                    elems = [x.strip() for x in line.split('=')]
-                    if len(elems) == 2 and elems[0] == item_name:
-                        exe_url = elems[1].strip("'")
-                        break
-                if exe_url:
-                    msg = "New version (" + remote_version_str + ') available: <a href="' + exe_url + '">download</a>.'
-                else:
-                    msg = "New version (" + remote_version_str + ') available. Go to the project website: <a href="' + \
-                          PROJECT_URL + '">open</a>.'
+                    if force_check:
+                        self.setMessage("You have the latest version of %s." % APP_NAME_SHORT, 'green')
 
-                self.setMessage(msg, 'green')
-            else:
-                if force_check:
-                    self.setMessage("You have the latest version of %s." % APP_NAME_SHORT, 'green')
+                self.call_in_main_thread(self.update_ui_default_protocol)
         except Exception as e:
             pass
 
@@ -450,10 +462,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.edtMnCollateralAddress.setText(self.curMasternode.collateralAddress if self.curMasternode else '')
             self.edtMnCollateralTx.setText(self.curMasternode.collateralTx if self.curMasternode else '')
             self.edtMnCollateralTxIndex.setText(self.curMasternode.collateralTxIndex if self.curMasternode else '')
-            use_default_protocol = self.curMasternode.use_default_protocol_version if self.curMasternode else True
+            use_default_protocol = True
+            if self.curMasternode:
+                use_default_protocol = self.curMasternode.use_default_protocol_version if self.curMasternode else True
             self.chbUseDefaultProtocolVersion.setChecked(use_default_protocol)
-            self.edtMnProtocolVersion.setText(self.curMasternode.protocol_version if self.curMasternode else '')
-            self.edtMnProtocolVersion.setVisible(not use_default_protocol)
+            self.edtMnProtocolVersion.setText(self.curMasternode.protocol_version if self.curMasternode and
+                                                                                     not use_default_protocol else '')
+            self.edtMnProtocolVersion.setEnabled(not use_default_protocol)
             self.lblMnStatus.setText('')
         finally:
             self.edtMnName.blockSignals(edtMnName_state)
@@ -483,6 +498,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.disconnect_hardware_wallet()
             self.display_window_title()
             self.update_edit_controls_state()
+            if self.remote_app_params:
+                self.update_ui_default_protocol()
         del dlg
 
     @pyqtSlot(bool)
@@ -1106,7 +1123,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.edtMnName.setReadOnly(not editing)
             self.edtMnPort.setReadOnly(not editing)
             self.chbUseDefaultProtocolVersion.setEnabled(editing)
-            self.edtMnProtocolVersion.setEnabled(editing)
+            self.edtMnProtocolVersion.setEnabled(editing and not self.curMasternode.use_default_protocol_version)
             self.edtMnPrivateKey.setReadOnly(not editing)
             self.edtMnCollateralBip32Path.setReadOnly(not editing)
             self.edtMnCollateralAddress.setReadOnly(not editing)
@@ -1129,6 +1146,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.call_in_main_thread(update_fun)
         else:
             update_fun()
+
+    def update_ui_default_protocol(self):
+        """Update placeholder text of the protocol edit control. """
+        prot = None
+        if self.remote_app_params:
+            dp = self.remote_app_params.get('defaultDashdProtocol')
+            if dp:
+                prot = str(dp.get(self.config.dash_network.lower()))
+        self.edtMnProtocolVersion.setPlaceholderText(prot)
 
     def newMasternodeConfig(self, copy_values_from_current: bool = False):
         new_mn = MasternodeConfig()
@@ -1205,7 +1231,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.curMasternode:
             self.curMnModified()
             self.curMasternode.use_default_protocol_version = use_default
-            self.edtMnProtocolVersion.setVisible(not use_default)
+            self.edtMnProtocolVersion.setEnabled(not use_default)
+            if use_default:
+                self.curMasternode.protocol_version = ''
+                self.edtMnProtocolVersion.setText('')
 
     @pyqtSlot(str)
     def on_edtMnProtocolVersion_textEdited(self, version):
@@ -1336,6 +1365,18 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         except Exception as e:
             self.errorMsg(str(e))
 
+    def get_default_protocol(self) -> int:
+        prot = None
+        if not self.remote_app_params:
+            self.remote_app_params = self.load_remote_params()
+            if self.remote_app_params:
+                self.update_ui_default_protocol()
+        if self.remote_app_params:
+            dp = self.remote_app_params.get('defaultDashdProtocol')
+            if dp:
+                prot = dp.get(self.config.dash_network.lower())
+        return prot
+
     def create_mn_broadcast_msg(self, mn_protocol_version: int, ping_block_hash: str, masternode: MasternodeConfig,
                                 sig_time: int = None) \
             -> dash_utils.CMasternodeBroadcast:
@@ -1419,8 +1460,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if not mn_privkey:
                 self.errorMsg('Cannot convert masternode private key')
                 return
-            mn_pubkey = bitcoin.privkey_to_pubkey(mn_privkey)
-            mn_pubkey = bytes.fromhex(mn_pubkey)
 
             self.connect_hardware_wallet()
             if not self.hw_client:
@@ -1499,9 +1538,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             info = self.dashd_intf.getinfo(verify_node=True)
             node_protocol_version = int(info['protocolversion'])
             if self.curMasternode.use_default_protocol_version or not self.curMasternode.protocol_version:
-                mn_protocol_version = node_protocol_version
+                mn_protocol_version = self.get_default_protocol()
+                if not mn_protocol_version:
+                    mn_protocol_version = node_protocol_version
             else:
-                mn_protocol_version = self.curMasternode.protocol_version
+                try:
+                    mn_protocol_version = int(self.curMasternode.protocol_version)
+                except Exception:
+                    self.errorMsg('Invalid protocol version for this masternode. Should be integer.')
+                    return
 
             # create a masternode broadcast message
             mn_broadcast = self.create_mn_broadcast_msg(mn_protocol_version, block_hash, self.curMasternode, sig_time)
@@ -1509,8 +1554,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
             ret = self.dashd_intf.masternodebroadcast("decode", broadcast_msg)
             if ret['overall'].startswith('Successfully decoded broadcast messages for 1 masternodes'):
+                dashd_version = {70208: 'v12.2',
+                                 70209: 'v12.3'}.get(mn_protocol_version, '')
+                if dashd_version:
+                    dashd_version = f', dashd {dashd_version}'
+
                 if self.queryDlg(f'Press "Yes" if you want to broadcast start masternode message (protocol version: '
-                                 f'{mn_protocol_version}) or "Cancel" to exit.',
+                                 f'{mn_protocol_version}{dashd_version}) or "Cancel" to exit.',
                                 buttons=QMessageBox.Yes | QMessageBox.Cancel,
                                 default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Cancel:
                     return
@@ -1772,7 +1822,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                             self.curMnModified()
                             self.update_edit_controls_state()
         else:
-            logging.warning("curMasternode or collateralAddress empty")
+            self.errorMsg('Enter the masternode collateral address.')
 
     @pyqtSlot(bool)
     def on_action_open_proposals_window_triggered(self):
@@ -1782,3 +1832,4 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot(bool)
     def on_action_about_qt_triggered(self, enabled):
         QApplication.aboutQt()
+
