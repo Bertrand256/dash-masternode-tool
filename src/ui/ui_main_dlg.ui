@@ -82,7 +82,7 @@
          <item row="0" column="1">
           <layout class="QHBoxLayout" name="horizontalLayout_4" stretch="3,0,0,0,0,0">
            <property name="spacing">
-            <number>3</number>
+            <number>8</number>
            </property>
            <item>
             <widget class="QComboBox" name="cboMasternodes">
@@ -205,6 +205,9 @@
          </item>
          <item row="2" column="1">
           <layout class="QHBoxLayout" name="horizontalLayout_3">
+           <property name="spacing">
+            <number>8</number>
+           </property>
            <item>
             <widget class="QLineEdit" name="edtMnIp">
              <property name="sizePolicy">
@@ -253,7 +256,7 @@
              </property>
              <property name="maximumSize">
               <size>
-               <width>55</width>
+               <width>70</width>
                <height>16777215</height>
               </size>
              </property>
@@ -276,7 +279,7 @@
             <widget class="QLineEdit" name="edtMnProtocolVersion">
              <property name="maximumSize">
               <size>
-               <width>60</width>
+               <width>80</width>
                <height>16777215</height>
               </size>
              </property>
@@ -683,7 +686,7 @@
             </size>
            </property>
            <property name="toolTip">
-            <string>Masternode's private key. Use your own or click the button &lt;Generate new&gt; to create a new and random private key with the use of 'bitcoin' library.</string>
+            <string>Masternode's private key. Use your own or click the button &lt;Generate new&gt; to create a new and random private key with the use of 'bitcoin' library</string>
            </property>
           </widget>
          </item>
