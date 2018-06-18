@@ -1,3 +1,12 @@
+## [0.9.20] - 2018-06-18
+
+**Added**
+- Dash daemon v12.3 support (protocol 70209/70210)
+- Default protocol version is now stored in the project GitHub repo
+
+**Fixed**
+- vote timespamp fix when casting series of subsequent votes for the same proposal/masternode and the random offset option
+
 ## [0.9.19] - 2018-05-13
 
 **Added**
