@@ -292,7 +292,6 @@ class AppConfig(object):
         if os.path.exists(file_name):
             config = ConfigParser()
             try:
-                self.hw_type = None
                 while True:
                     mem_file = ''
                     ret_info = {}
