@@ -2,11 +2,8 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
-import base64
 import threading
 from functools import partial
-
-import bitcoin
 from PyQt5 import QtWidgets, QtCore
 from typing import List, Optional, Callable, ByteString, Tuple
 from PyQt5.QtWidgets import QDialog, QCheckBox, QRadioButton
@@ -26,6 +23,25 @@ class HardwareWalletCancelException(Exception):
 class HardwareWalletPinException(Exception):
     def __init__(self, msg):
         self.msg = msg
+
+
+def get_hw_type(hw_client):
+    """
+    Return hardware wallet type (HWType) based on reference to a hw client.
+    """
+    if hw_client:
+        t = type(hw_client).__name__
+
+        if t.lower().find('trezor') >= 0:
+            return HWType.trezor
+        elif t.lower().find('keepkey') >= 0:
+            return HWType.keepkey
+        elif t.lower().find('btchip') >= 0:
+            return HWType.ledger_nano_s
+        else:
+            raise Exception('Unknown hardware wallet type')
+    else:
+        raise Exception('Hardware wallet not connected')
 
 
 class HwSessionInfo(object):
@@ -59,7 +75,11 @@ class HwSessionInfo(object):
 
     @property
     def hw_type(self):
-        return self.__app_config.hw_type
+        hw_client = self.hw_client
+        hw_type = None
+        if hw_client:
+            hw_type = get_hw_type(hw_client)
+        return hw_type
 
     @property
     def app_config(self):

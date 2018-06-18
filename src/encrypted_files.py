@@ -13,7 +13,8 @@ from app_utils import SHA256, write_bytes_buf, write_int_list_buf, read_bytes_fr
 from common import CancelException
 from dash_utils import num_to_varint, read_varint_from_file, bip32_path_n_to_string
 from hw_common import HwSessionInfo
-from hw_intf import hw_encrypt_value, hw_decrypt_value, hw_sign_message, get_address_and_pubkey
+from hw_intf import hw_encrypt_value, hw_decrypt_value, hw_sign_message, get_address_and_pubkey, connect_hw, \
+    disconnect_hw
 from wnd_utils import WndUtils
 
 
@@ -77,6 +78,13 @@ def prepare_hw_encryption_attrs(hw_session: HwSessionInfo, label: str) -> \
 def write_file_encrypted(file_name: str, hw_session: HwSessionInfo, data: bytes):
     label = os.path.basename(file_name)
 
+    if hw_session.app_config.hw_type:
+        if not hw_session.hw_client:
+            if not hw_session.hw_connect():
+                return
+    else:
+        raise Exception('Invalid hardware wallet type in the app configuration.')
+
     protocol, hw_type_bin, bip32_path_n, encryption_key, encrypted_key_bin, pub_key_hash = \
         prepare_hw_encryption_attrs(hw_session, label)
 
@@ -113,126 +121,144 @@ def write_file_encrypted(file_name: str, hw_session: HwSessionInfo, data: bytes)
 def read_file_encrypted(file_name: str, ret_attrs: dict, hw_session: HwSessionInfo):
     ret_attrs['encrypted'] = False
 
-    with open(file_name, 'rb') as f_ptr:
+    hw_client_internal = None
 
-        data = f_ptr.read(len(DMT_ENCRYPTED_DATA_PREFIX))
-        if data == DMT_ENCRYPTED_DATA_PREFIX:
-            ret_attrs['encrypted'] = True
+    try:
+        with open(file_name, 'rb') as f_ptr:
 
-            protocol = read_varint_from_file(f_ptr)
-            if protocol == 1:  # with Trezor method + Fernet
+            data = f_ptr.read(len(DMT_ENCRYPTED_DATA_PREFIX))
+            if data == DMT_ENCRYPTED_DATA_PREFIX:
+                ret_attrs['encrypted'] = True
 
-                hw_type_bin = read_varint_from_file(f_ptr)
-                hw_type = {
-                        1: HWType.trezor,
-                        2: HWType.keepkey,
-                        3: HWType.ledger_nano_s
-                    }.get(hw_type_bin)
+                protocol = read_varint_from_file(f_ptr)
+                if protocol == 1:  # with Trezor method + Fernet
 
-                if hw_type:
+                    hw_type_bin = read_varint_from_file(f_ptr)
+                    hw_type = {
+                            1: HWType.trezor,
+                            2: HWType.keepkey,
+                            3: HWType.ledger_nano_s
+                        }.get(hw_type_bin)
 
-                    if not hw_session.hw_type:
-                        # probably application is calling this function before configuration was loaded (e.g. when
-                        # decrypting encrypted config file) set the hw type to that from encrypted file and try to
-                        # connect to the device
-                        hw_session.app_config.hw_type = hw_type
-
-                    if not hw_session.hw_client:
-                        hw_session.app_config.hw_type = hw_type
-                        if not hw_session.hw_connect():
-                            raise NotConnectedToHardwareWallet(
-                                f'This file was encrypted with {HWType.get_desc(hw_type)} hardware wallet, which'
-                                ' has to be connected to decrypt the file.')
-
-                    if not ((hw_type in (HWType.trezor, HWType.keepkey) and
-                             hw_session.hw_type in (HWType.trezor, HWType.keepkey)) or (hw_type == hw_session.hw_type)):
-                        raise Exception(f'This file was encrypted with a different hardware wallet type '
-                                        f'({HWType.get_desc(hw_type)}) than the one currently connected '
-                                        f'({HWType.get_desc(hw_session.hw_type)}). \n\n'
-                                        f'Encryption methods for these devices are not compatible.')
-
-                    data_label_bin = read_bytes_from_file(f_ptr)
-                    label = base64.urlsafe_b64decode(data_label_bin).decode('utf-8')
-
-                    encrypted_key_bin = read_bytes_from_file(f_ptr)
-
-                    bip32_path_n = read_int_list_from_file(f_ptr)
-
-                    pub_key_hash_hdr = read_bytes_from_file(f_ptr)
-
-                    while True:
-                        if hw_session.hw_type in (HWType.trezor, HWType.keepkey):
-                            key_bin, pub_key = hw_decrypt_value(hw_session, bip32_path_n, label=label,
-                                                                value=encrypted_key_bin)
-                        elif hw_session.hw_type == HWType.ledger_nano_s:
-
-                            display_label = f'<b>Click the sign message confirmation button on the <br>hardware wallet ' \
-                                            f'to decrypt \'{label}\'.</b>'
-                            bip32_path_str = bip32_path_n_to_string(bip32_path_n)
-                            sig = hw_sign_message(hw_session, bip32_path_str, encrypted_key_bin.hex(),
-                                                  display_label=display_label)
-                            adr_pk = get_address_and_pubkey(hw_session, bip32_path_str)
-
-                            pub_key = adr_pk.get('publicKey')
-                            key_bin = SHA256.new(sig.signature).digest()
-
+                    if hw_type:
+                        if hw_session.app_config.hw_type == hw_type:
+                            if not hw_session.hw_client:
+                                if not hw_session.hw_connect():
+                                    raise NotConnectedToHardwareWallet(
+                                        f'This file was encrypted with {HWType.get_desc(hw_type)} hardware wallet, '
+                                        f'which has to be connected to the computer decrypt the file.')
                         else:
-                            raise Exception('Invalid hardware wallet type.')
+                            # enctypted file uses other type of hardware wallet than the one currently connected -
+                            # create a separate (temporary) hw session for it
+                            def _get_client():
+                                return hw_client_internal
 
-                        pub_key_hash = SHA256.new(pub_key).digest()
+                            try:
+                                hw_session = HwSessionInfo(get_hw_client_function=_get_client,
+                                                           hw_connect_function=None,
+                                                           hw_disconnect_function=None,
+                                                           app_config=hw_session.app_config,
+                                                           dashd_intf=hw_session.dashd_intf)
 
-                        if pub_key_hash_hdr == pub_key_hash:
-                            break
+                                hw_client_internal = connect_hw(hw_session=hw_session,
+                                                                device_id=None,
+                                                                passphrase_encoding='NFKD',
+                                                                hw_type=hw_type)
+                            except Exception:
+                                raise
 
-                        url = get_note_url('DMT0003')
-                        if WndUtils.queryDlg(
-                                message='Inconsistency between encryption and decryption keys.\n\n' 
-                                        'The reason may be using a different passphrase than it was used '
-                                        'for encryption or running another application communicating with the device '
-                                        f'simultaneously, like Trezor web wallet (see <a href="{url}">here</a>).\n\n' 
-                                        'Do you want to try again?',
-                                buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                                default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
-                            raise CancelException('User cancelled.')
+                        data_label_bin = read_bytes_from_file(f_ptr)
+                        label = base64.urlsafe_b64decode(data_label_bin).decode('utf-8')
 
-                    key = base64.urlsafe_b64encode(key_bin)
-                    fer = Fernet(key)
+                        encrypted_key_bin = read_bytes_from_file(f_ptr)
+                        bip32_path_n = read_int_list_from_file(f_ptr)
+                        pub_key_hash_hdr = read_bytes_from_file(f_ptr)
 
-                    while True:
-                        # data is written in blocks; if front of each block there is a block size value
-                        data_bin = f_ptr.read(8)
-                        if len(data_bin) == 0:
-                            break  # end of file
-                        elif len(data_bin) < 8:
-                            raise ValueError('File end before read completed.')
+                        while True:
+                            if hw_session.hw_type in (HWType.trezor, HWType.keepkey):
+                                key_bin, pub_key = hw_decrypt_value(hw_session, bip32_path_n, label=label,
+                                                                    value=encrypted_key_bin)
+                            elif hw_session.hw_type == HWType.ledger_nano_s:
 
-                        data_chunk_size = int.from_bytes(data_bin, byteorder='little')
-                        if data_chunk_size < 0 or data_chunk_size > 2000000000:
-                            raise ValueError('Data corrupted: invalid data chunk size.')
+                                display_label = f'<b>Click the sign message confirmation button on the <br>' \
+                                                f'hardware wallet to decrypt \'{label}\'.</b>'
+                                bip32_path_str = bip32_path_n_to_string(bip32_path_n)
+                                sig = hw_sign_message(hw_session, bip32_path_str, encrypted_key_bin.hex(),
+                                                      display_label=display_label)
+                                adr_pk = get_address_and_pubkey(hw_session, bip32_path_str)
 
-                        data_bin = f_ptr.read(data_chunk_size)
-                        if data_chunk_size != len(data_bin):
-                            raise ValueError('File end before read completed.')
-                        data_base64 = base64.urlsafe_b64encode(data_bin)
-                        try:
-                            data_decr = fer.decrypt(data_base64)
-                        except InvalidToken:
-                            raise Exception('Couldn\'t decrypt file (IvalidToken error). The file is probably '
-                                            'corrupted or is encrypted with a different encryption method.')
-                        yield data_decr
+                                pub_key = adr_pk.get('publicKey')
+                                key_bin = SHA256.new(sig.signature).digest()
+
+                            else:
+                                raise Exception('Invalid hardware wallet type.')
+
+                            pub_key_hash = SHA256.new(pub_key).digest()
+
+                            if pub_key_hash_hdr == pub_key_hash:
+                                break
+
+                            url = get_note_url('DMT0003')
+                            if WndUtils.queryDlg(
+                                    message='Inconsistency between encryption and decryption keys.\n\n' 
+                                            'The reason may be using a different passphrase than it was used '
+                                            'for encryption or running another application communicating with the '
+                                            'device simultaneously, like Trezor web wallet (see <a href="{url}">'
+                                            'here</a>).\n\n' 
+                                            'Do you want to try again?',
+                                    buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                    default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
+                                raise CancelException('User cancelled.')
+                            if hw_client_internal:
+                                disconnect_hw(hw_client_internal)
+                                hw_client_internal = connect_hw(hw_session=hw_session,
+                                                                device_id=None,
+                                                                passphrase_encoding='NFKD',
+                                                                hw_type=hw_type)
+                            else:
+                                hw_session.hw_disconnect()
+
+                        key = base64.urlsafe_b64encode(key_bin)
+                        fer = Fernet(key)
+
+                        while True:
+                            # data is written in blocks; if front of each block there is a block size value
+                            data_bin = f_ptr.read(8)
+                            if len(data_bin) == 0:
+                                break  # end of file
+                            elif len(data_bin) < 8:
+                                raise ValueError('File end before read completed.')
+
+                            data_chunk_size = int.from_bytes(data_bin, byteorder='little')
+                            if data_chunk_size < 0 or data_chunk_size > 2000000000:
+                                raise ValueError('Data corrupted: invalid data chunk size.')
+
+                            data_bin = f_ptr.read(data_chunk_size)
+                            if data_chunk_size != len(data_bin):
+                                raise ValueError('File end before read completed.')
+                            data_base64 = base64.urlsafe_b64encode(data_bin)
+                            try:
+                                data_decr = fer.decrypt(data_base64)
+                            except InvalidToken:
+                                raise Exception('Couldn\'t decrypt file (IvalidToken error). The file is probably '
+                                                'corrupted or is encrypted with a different encryption method.')
+                            yield data_decr
+                    else:
+                        raise ValueError('Invalid hardware wallet type value.')
                 else:
-                    raise ValueError('Invalid hardware wallet type value.')
+                    raise ValueError('Invalid protocol value.')
             else:
-                raise ValueError('Invalid protocol value.')
-        else:
-            # the data inside the file isn't encrypted
+                # the data inside the file isn't encrypted
 
-            # read and yield raw data
-            while True:
-                # data is written in blocks; if front of each block there is a block size value
-                data += f_ptr.read(ENC_FILE_BLOCK_SIZE)
-                if not len(data):
-                    break
-                yield data
-                data = bytes()
+                # read and yield raw data
+                while True:
+                    # data is written in blocks; if front of each block there is a block size value
+                    data += f_ptr.read(ENC_FILE_BLOCK_SIZE)
+                    if not len(data):
+                        break
+                    yield data
+                    data = bytes()
 
+    finally:
+        if hw_client_internal:
+            disconnect_hw(hw_client_internal)
