@@ -7,7 +7,7 @@ from typing import Optional, Tuple, List, ByteString, Callable, Dict
 import sys
 import dash_utils
 from dash_utils import bip32_path_n_to_string
-from hw_common import HardwareWalletPinException, HwSessionInfo
+from hw_common import HardwareWalletPinException, HwSessionInfo, get_hw_type
 import logging
 from app_defs import HWType
 from wnd_utils import WndUtils
@@ -51,8 +51,8 @@ def control_hw_call(func):
                 # protect against simultaneous access to the same device from different threads
                 hw_session.acquire_client()
 
-                control_trezor_keepkey_libs(hw_session.app_config.hw_type)
-                if hw_session.app_config.hw_type == HWType.trezor:
+                control_trezor_keepkey_libs(hw_session.hw_type)
+                if hw_session.hw_type == HWType.trezor:
 
                     import hw_intf_trezor as trezor
                     import trezorlib.client as client
@@ -61,7 +61,7 @@ def control_hw_call(func):
                     except client.PinException as e:
                         raise HardwareWalletPinException(e.args[1])
 
-                elif hw_session.app_config.hw_type == HWType.keepkey:
+                elif hw_session.hw_type == HWType.keepkey:
 
                     import hw_intf_keepkey as keepkey
                     import keepkeylib.client as client
@@ -70,12 +70,12 @@ def control_hw_call(func):
                     except client.PinException as e:
                         raise HardwareWalletPinException(e.args[1])
 
-                elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
+                elif hw_session.hw_type == HWType.ledger_nano_s:
 
                     ret = func(*args, **kwargs)
 
                 else:
-                    raise Exception('Uknown hardware wallet type: ' + hw_session.app_config.hw_type)
+                    raise Exception('Uknown hardware wallet type: ' + hw_session.hw_type)
             finally:
                 hw_session.release_client()
 
@@ -184,25 +184,6 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
 
     else:
         raise Exception('Invalid HW type: ' + str(hw_type))
-
-
-def get_hw_type(hw_client):
-    """
-    Return hardware wallet type (HWType) based on reference to a hw client.
-    """
-    if hw_client:
-        t = type(hw_client).__name__
-
-        if t.lower().find('trezor') >= 0:
-            return HWType.trezor
-        elif t.lower().find('keepkey') >= 0:
-            return HWType.keepkey
-        elif t.lower().find('btchip') >= 0:
-            return HWType.ledger_nano_s
-        else:
-            raise Exception('Unknown hardware wallet type')
-    else:
-        raise Exception('Hardware wallet not connected')
 
 
 def disconnect_hw(hw_client):

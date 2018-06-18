@@ -1649,7 +1649,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if mn_info.lastseen > 0:
                     lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
                     lastseen_str = app_utils.to_string(lastseen)
-                    lastseen_ago = time.time() - float(mn_info.lastseen)
+                    lastseen_ago = int(time.time()) - int(mn_info.lastseen)
                     if lastseen_ago >= 2:
                         lastseen_ago_str = app_utils.seconds_to_human(lastseen_ago, out_unit_auto_adjust = True) + \
                                            ' ago'
@@ -1661,7 +1661,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if mn_info.lastpaidtime > 0:
                     lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
                     lastpaid_str = app_utils.to_string(lastpaid)
-                    lastpaid_ago = time.time() - float(mn_info.lastpaidtime)
+                    lastpaid_ago = int(time.time()) - int(mn_info.lastpaidtime)
                     if lastpaid_ago >= 2:
                         lastpaid_ago_str = app_utils.seconds_to_human(lastpaid_ago, out_unit_auto_adjust=True) + ' ago'
                     else:
