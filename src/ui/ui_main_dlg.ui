@@ -281,7 +281,7 @@
               </size>
              </property>
              <property name="toolTip">
-              <string>Enter the protocol version number to be sent at masternode start time</string>
+              <string>The protocol version number to be sent at masternode start time</string>
              </property>
              <property name="statusTip">
               <string/>
