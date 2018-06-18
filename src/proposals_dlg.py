@@ -2679,7 +2679,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                         if last_vote_ts is not None: # and cur_ts - last_vote_ts < 1800:
                             # new vote's timestamp cannot be less than the last vote for this proposal-mn pair
-                            min_bound = int(last_vote_ts)
+                            min_bound = max(int(last_vote_ts), cur_ts - 1800)
                             max_bound = cur_ts + 1800
                             sig_time = random.randint(min_bound, max_bound)
                         else:

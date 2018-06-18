@@ -466,7 +466,7 @@ class Ui_MainWindow(object):
         self.edtMnPort.setToolTip(_translate("MainWindow", "The Masternode\'s TCP port number for incoming communication with other nodes"))
         self.chbUseDefaultProtocolVersion.setToolTip(_translate("MainWindow", "Use the default protocol version when starting masternode"))
         self.chbUseDefaultProtocolVersion.setText(_translate("MainWindow", "Use default protocol version"))
-        self.edtMnProtocolVersion.setToolTip(_translate("MainWindow", "Enter the protocol version number to be sent at masternode start time"))
+        self.edtMnProtocolVersion.setToolTip(_translate("MainWindow", "The protocol version number to be sent at masternode start time"))
         self.edtMnProtocolVersion.setPlaceholderText(_translate("MainWindow", "default"))
         self.edtMnCollateralTx.setToolTip(_translate("MainWindow", "The collateral transaction hash from the 1000 Dash deposit"))
         self.label_7.setText(_translate("MainWindow", "TX index:"))
