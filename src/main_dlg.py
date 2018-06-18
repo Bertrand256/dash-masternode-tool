@@ -399,36 +399,39 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.remote_app_params = self.load_remote_params()
 
             if self.remote_app_params:
-                remote_version_str = self.remote_app_params.get("appVersion")
-                remote_ver = app_utils.version_str_to_number(remote_version_str)
-                local_ver = app_utils.version_str_to_number(self.config.app_version)
+                remote_version_str = self.remote_app_params.get("appCurrentVersion")
+                if remote_version_str:
+                    remote_ver = app_utils.version_str_to_number(remote_version_str)
+                    local_ver = app_utils.version_str_to_number(self.config.app_version)
 
-                if remote_ver > local_ver:
-                    if sys.platform == 'win32':
-                        item_name = 'win'
-                        no_bits = platform.architecture()[0].replace('bit', '')
-                        if no_bits == '32':
-                            item_name += '32'
+                    if remote_ver > local_ver:
+                        if sys.platform == 'win32':
+                            item_name = 'win'
+                            no_bits = platform.architecture()[0].replace('bit', '')
+                            if no_bits == '32':
+                                item_name += '32'
+                            else:
+                                item_name += '64'
+                        elif sys.platform == 'darwin':
+                            item_name = 'mac'
                         else:
-                            item_name += '64'
-                    elif sys.platform == 'darwin':
-                        item_name = 'mac'
-                    else:
-                        item_name = 'linux'
-                    exe_url = ''
-                    exe_down = self.remote_app_params.get('exeDownloads')
-                    if exe_down:
-                        exe_url = exe_down.get(item_name)
-                    if exe_url:
-                        msg = "New version (" + remote_version_str + ') available: <a href="' + exe_url + '">download</a>.'
-                    else:
-                        msg = "New version (" + remote_version_str + ') available. Go to the project website: <a href="' + \
-                              PROJECT_URL + '">open</a>.'
+                            item_name = 'linux'
+                        exe_url = ''
+                        exe_down = self.remote_app_params.get('exeDownloads')
+                        if exe_down:
+                            exe_url = exe_down.get(item_name)
+                        if exe_url:
+                            msg = "New version (" + remote_version_str + ') available: <a href="' + exe_url + '">download</a>.'
+                        else:
+                            msg = "New version (" + remote_version_str + ') available. Go to the project website: <a href="' + \
+                                  PROJECT_URL + '">open</a>.'
 
-                    self.setMessage(msg, 'green')
-                else:
-                    if force_check:
-                        self.setMessage("You have the latest version of %s." % APP_NAME_SHORT, 'green')
+                        self.setMessage(msg, 'green')
+                    else:
+                        if force_check:
+                            self.setMessage("You have the latest version of %s." % APP_NAME_SHORT, 'green')
+                elif force_check:
+                    self.setMessage("Could not read the remote version number.", 'orange')
 
                 self.call_in_main_thread(self.update_ui_default_protocol)
         except Exception as e:
@@ -1555,7 +1558,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             ret = self.dashd_intf.masternodebroadcast("decode", broadcast_msg)
             if ret['overall'].startswith('Successfully decoded broadcast messages for 1 masternodes'):
                 dashd_version = {70208: 'v12.2',
-                                 70209: 'v12.3'}.get(mn_protocol_version, '')
+                                 70209: 'v12.3',
+                                 70210: 'v12.3'}.get(mn_protocol_version, '')
                 if dashd_version:
                     dashd_version = f', dashd {dashd_version}'
 
@@ -1638,27 +1642,33 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if not self.curMasternode.collateralTxIndex:
                 return '<span style="color:red">Enter the collateral TX index</span>'
 
-            mns_info = self.dashd_intf.get_masternodelist('full', data_max_age=5)  # read new data from the network
-                                                                                     # every 120 seconds
+            mns_info = self.dashd_intf.get_masternodelist('full', data_max_age=30)  # read new data from the network
+                                                                                    # every 30 seconds
             mn_info = self.dashd_intf.masternodes_by_ident.get(collateral_id)
             if mn_info:
                 if mn_info.lastseen > 0:
                     lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
                     lastseen_str = app_utils.to_string(lastseen)
-                    lastseen_ago = app_utils.seconds_to_human(time.time() - float(mn_info.lastseen),
-                        out_unit_auto_adjust = True) + ' ago'
+                    lastseen_ago = time.time() - float(mn_info.lastseen)
+                    if lastseen_ago >= 2:
+                        lastseen_ago_str = app_utils.seconds_to_human(lastseen_ago, out_unit_auto_adjust = True) + \
+                                           ' ago'
+                    else:
+                        lastseen_ago_str = 'a few seconds ago'
                 else:
                     lastseen_str = 'never'
-                    lastseen_ago = ''
 
                 if mn_info.lastpaidtime > 0:
                     lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
                     lastpaid_str = app_utils.to_string(lastpaid)
-                    lastpaid_ago = app_utils.seconds_to_human(time.time() - float(mn_info.lastpaidtime),
-                                                              out_unit_auto_adjust=True) + ' ago'
+                    lastpaid_ago = time.time() - float(mn_info.lastpaidtime)
+                    if lastpaid_ago >= 2:
+                        lastpaid_ago_str = app_utils.seconds_to_human(lastpaid_ago, out_unit_auto_adjust=True) + ' ago'
+                    else:
+                        lastpaid_ago_str = 'a few seconds ago'
                 else:
                     lastpaid_str = 'never'
-                    lastpaid_ago = ''
+                    lastpaid_ago_str = ''
 
                 activeseconds_str = app_utils.seconds_to_human(int(mn_info.activeseconds), out_unit_auto_adjust=True)
                 if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
@@ -1687,9 +1697,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                          '</style>' \
                          '<table>' \
                          f'<tr><td class="title">Status:</td><td class="value"><span style="color:{color}">{mn_info.status}</span>' \
-                         f'</td><td>v.{str(mn_info.protocol)}</td></tr>' \
-                         f'<tr><td class="title">Last Seen:</td><td class="value">{lastseen_str}</td><td class="ago">{lastseen_ago}</td></tr>' \
-                         f'<tr><td class="title">Last Paid:</td><td class="value">{lastpaid_str}</td><td class="ago">{lastpaid_ago}</td></tr>' \
+                         f'</td><td>v{str(mn_info.protocol)}</td></tr>' \
+                         f'<tr><td class="title">Last Seen:</td><td class="value">{lastseen_str}</td><td class="ago">{lastseen_ago_str}</td></tr>' \
+                         f'<tr><td class="title">Last Paid:</td><td class="value">{lastpaid_str}</td><td class="ago">{lastpaid_ago_str}</td></tr>' \
                          f'{bal_entry}' \
                          f'<tr><td class="title">Active Duration:</td><td class="value" colspan="2">{activeseconds_str}</td></tr>' \
                          f'<tr><td class="title">Queue/Count:</td><td class="value" colspan="2">{str(mn_info.queue_position)}/{enabled_mns_count}</td></tr>' \
