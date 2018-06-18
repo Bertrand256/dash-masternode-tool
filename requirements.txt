@@ -1,6 +1,6 @@
 python-bitcoinrpc>=1.0
 bitcoin>=1.1.42
-trezor>=0.9.1
+trezor==0.9.1
 keepkey
 PyQt5==5.9.2
 PyQtChart==5.9.2
