@@ -13,6 +13,7 @@ import re
 import sys
 import threading
 import time
+import ssl
 from functools import partial
 from typing import Optional, Tuple, Dict
 import bitcoin
@@ -92,6 +93,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.recent_config_files.append(file_name)
 
         self.setupUi()
+        ssl._create_default_https_context = ssl._create_unverified_context
 
     def setupUi(self):
         ui_main_dlg.Ui_MainWindow.setupUi(self, self)

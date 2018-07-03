@@ -5,6 +5,7 @@
 
 import binascii
 import base64
+import logging
 import typing
 import bitcoin
 import base58
@@ -95,19 +96,22 @@ def validate_address(address: str, dash_network: typing.Optional[str]) -> bool:
     :dash_network: the dash network type against which the address will be validated; if the value is None, then
       the network type prefix validation will be skipped
     """
-    data = base58.b58decode(address)
-    if len(data) > 5:
-        prefix = data[0]
-        if dash_network:
-            prefix_valid = (prefix == get_chain_params(dash_network).PREFIX_PUBKEY_ADDRESS)
-        else:
-            prefix_valid = (prefix == ChainParamsMainNet.PREFIX_PUBKEY_ADDRESS or
-                            prefix == ChainParamsTestNet.PREFIX_PUBKEY_ADDRESS)
-        if prefix_valid:
-            pubkey_hash = data[:-4]
-            checksum = data[-4:]
-            if bitcoin.bin_dbl_sha256(pubkey_hash)[0:4] == checksum:
-                return True
+    try:
+        data = base58.b58decode(address)
+        if len(data) > 5:
+            prefix = data[0]
+            if dash_network:
+                prefix_valid = (prefix == get_chain_params(dash_network).PREFIX_PUBKEY_ADDRESS)
+            else:
+                prefix_valid = (prefix == ChainParamsMainNet.PREFIX_PUBKEY_ADDRESS or
+                                prefix == ChainParamsTestNet.PREFIX_PUBKEY_ADDRESS)
+            if prefix_valid:
+                pubkey_hash = data[:-4]
+                checksum = data[-4:]
+                if bitcoin.bin_dbl_sha256(pubkey_hash)[0:4] == checksum:
+                    return True
+    except Exception:
+        logging.exception('Address validation failure.')
     return False
 
 
