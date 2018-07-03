@@ -819,6 +819,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             total_pct_requested = round(total_amount_requested * 100 / self.next_budget_amount, 2)
         self.next_budget_requested = total_amount_requested
         self.next_budget_approved = total_amount_approved
+        self.next_budget_left = self.next_budget_amount - self.next_budget_approved
+        if self.next_budget_left < 0:
+            self.next_budget_left = 0
         self.next_budget_requested_pct = total_pct_requested
         self.next_budget_approved_pct = total_pct_approved
         self.next_budget_approved_by_user_yes_votes = total_amount_approved_by_user_yes_vote
@@ -844,6 +847,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 if dl_diff < 3600:
                     dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=True, out_hours=False,
                                                         out_days=False, out_weeks=False)
+                elif dl_diff < 3600 * 3:
+                    dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=True, out_hours=True,
+                                                        out_days=False, out_weeks=False)
                 elif dl_diff < 3600 * 24:
                     dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=False, out_hours=True,
                                                         out_days=False, out_weeks=False)
@@ -859,39 +865,40 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         if self.next_budget_approved is not None:
             budget_approved = f'<td><b>Budget approved:</b> {app_utils.to_string(round(self.next_budget_approved))} Dash '
             if self.next_budget_approved_pct is not None:
-                budget_approved += f'({app_utils.to_string(round(self.next_budget_approved_pct))}%)'
+                budget_approved += f'({app_utils.to_string(round(self.next_budget_approved_pct, 2))}%)'
             budget_approved += '</td>'
 
         budget_requested = ''
         if self.next_budget_requested is not None:
             budget_requested = f'<td><b>Budget requested:</b> {app_utils.to_string(round(self.next_budget_requested))} Dash '
             if self.next_budget_requested_pct is not None:
-                budget_requested += f'({app_utils.to_string(round(self.next_budget_requested_pct))}%)'
+                budget_requested += f'({app_utils.to_string(round(self.next_budget_requested_pct, 2))}%)'
             budget_requested += '</td>'
         bra = ''
         if budget_approved and budget_requested:
             bra = '<tr>' + budget_approved + budget_requested + '</tr>'
 
         budget_approved_user_yes = ''
-        # if self.votes_loaded:
-        #     if self.next_budget_approved_by_user_yes_votes is not None:
-        #         budget_approved_user_yes = \
-        #             f'<tr><td colspan="2"><b>Budget approved by your YES votes:</b> ' \
-        #             f'{app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes))} Dash '
-        #         if self.next_budget_amount:
-        #             budget_approved_user_yes += \
-        #                 f'({app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_amount, 2))}% of total buget'
-        #             if self.next_budget_approved is not None:
-        #                 budget_approved_user_yes += f', {app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_approved, 2))}% of approved budget'
-        #             budget_approved_user_yes += ')'
-        #         budget_approved_user_yes += '</td></tr>'
+        if self.votes_loaded:
+            if self.next_budget_approved_by_user_yes_votes is not None:
+                budget_approved_user_yes = \
+                    f'<tr><td colspan="2"><b>Budget approved by your YES votes:</b> ' \
+                    f'{app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes))} Dash '
+                if self.next_budget_amount:
+                    budget_approved_user_yes += \
+                        f'({app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_amount, 2))}% of the available buget'
+                    if self.next_budget_approved is not None:
+                        budget_approved_user_yes += f', {app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_approved, 2))}% of the approved budget'
+                    budget_approved_user_yes += ')'
+                budget_approved_user_yes += '</td></tr>'
 
         message = '<html><head></head><style>td{padding-right:10px;white-space:nowrap;}</style><body>' \
                   f'<table style="margin-left:6px">' \
                   f'<tr><td><b>Next superblock date:</b> {app_utils.to_string(next_sb_dt)}</td>' \
                   f'<td><b>Voting deadline:</b> {app_utils.to_string(voting_deadline_dt)}{dl_add_info}</td></tr>' \
-                  f'{bra}{budget_approved_user_yes}<tr><td><b>Budget available:</b> {app_utils.to_string(round(self.next_budget_amount))} Dash</td><td></td></tr>' \
-                  f'</table></body></html>'
+                  f'{bra}<tr><td><b>Budget available:</b> {app_utils.to_string(round(self.next_budget_amount))} Dash</td>' \
+                  f'<td><b>Budget left:</b> {app_utils.to_string(round(self.next_budget_left))} Dash</td></tr>' \
+                  f'{budget_approved_user_yes}</table></body></html>'
 
         if not self.finishing:
             if threading.current_thread() != threading.main_thread():
