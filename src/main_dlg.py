@@ -757,11 +757,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         found_testnet_support = False
                         self.config.hw_coin_name = ''
                         if self.config.hw_type in (HWType.trezor, HWType.keepkey):
-                            for coin in self.hw_client.features.coins:
-                                if coin.coin_name.upper() == 'DASH TESTNET' or coin.coin_shortcut.upper() == 'TDASH':
+                            try:
+                                addr = self.hw_client.get_address('Dash Testnet', [0, 0], False)
+                                if dash_utils.validate_address(addr, self.config.dash_network):
                                     found_testnet_support = True
-                                    self.config.hw_coin_name = coin.coin_name
-                                    break
+                                    self.config.hw_coin_name = 'Dash Testnet'
+                            except Exception as e:
+                                logging.exception('Failed when looking for Dash testnet support')
                         elif self.config.hw_type == HWType.ledger_nano_s:
                             addr = hw_intf.get_address(self.hw_session,
                                                        dash_utils.get_default_bip32_path(self.config.dash_network))
