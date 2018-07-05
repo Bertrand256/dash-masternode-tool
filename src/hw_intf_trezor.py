@@ -8,21 +8,21 @@ import binascii
 import unicodedata
 from decimal import Decimal
 from mnemonic import Mnemonic
-from trezorlib.client import TextUIMixin as trezor_TextUIMixin, ProtocolMixin as trezor_ProtocolMixin, \
-    BaseClient as trezor_BaseClient, CallException
+from trezorlib.client import TextUIMixin, ProtocolMixin, BaseClient, CallException
 from trezorlib.tx_api import TxApiInsight
+from trezorlib import messages as trezor_proto
+from trezorlib.transport import enumerate_devices
 import dash_utils
 from hw_common import HardwareWalletCancelException, ask_for_pass_callback, ask_for_pin_callback, ask_for_word_callback, \
     select_hw_device, HwSessionInfo
-from trezorlib import messages as trezor_proto
 import logging
 from wnd_utils import WndUtils
 
 
-class MyTrezorTextUIMixin(trezor_TextUIMixin):
+class MyTrezorTextUIMixin(TextUIMixin):
 
-    def __init__(self, transport, ask_for_pin_fun, ask_for_pass_fun):
-        trezor_TextUIMixin.__init__(self, transport)
+    def __init__(self, ask_for_pin_fun, ask_for_pass_fun, *args, **kwargs):
+        super(TextUIMixin, self).__init__(*args, **kwargs)
         self.ask_for_pin_fun = ask_for_pin_fun
         self.ask_for_pass_fun = ask_for_pass_fun
         self.__mnemonic = Mnemonic('english')
@@ -67,47 +67,10 @@ class MyTrezorTextUIMixin(trezor_TextUIMixin):
         return trezor_proto.WordAck(word=word)
 
 
-class MyTrezorClient(trezor_ProtocolMixin, MyTrezorTextUIMixin, trezor_BaseClient):
-    def __init__(self, transport, ask_for_pin_fun, ask_for_pass_fun):
-        trezor_ProtocolMixin.__init__(self, transport, ask_for_pin_fun, ask_for_pass_fun)
-        MyTrezorTextUIMixin.__init__(self, transport, ask_for_pin_fun, ask_for_pass_fun)
-        trezor_BaseClient.__init__(self, transport)
-
-
-def all_transports():
-    transports = []
-    try:
-        from trezorlib.transport_bridge import BridgeTransport
-        transports.append(BridgeTransport)
-    except:
-        pass
-
-    try:
-        from trezorlib.transport_hid import HidTransport
-        transports.append(HidTransport)
-    except:
-        pass
-
-    try:
-        from trezorlib.transport_udp import UdpTransport
-        transports.append(UdpTransport)
-    except:
-        pass
-
-    try:
-        from trezorlib.transport_webusb import WebUsbTransport
-        transports.append(WebUsbTransport)
-    except:
-        pass
-
-    return transports
-
-
-def enumerate_devices():
-    return [device
-            for transport in all_transports()
-            for device in transport.enumerate()]
-
+class MyTrezorClient(ProtocolMixin, MyTrezorTextUIMixin, BaseClient):
+    def __init__(self, transport, ask_for_pin_fun, ask_for_pass_fun, *args, **kwargs):
+        super().__init__(transport=transport, ask_for_pin_fun=ask_for_pin_fun, ask_for_pass_fun=ask_for_pass_fun,
+                         *args, **kwargs)
 
 def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = False) \
         -> Tuple[List[Dict], List[Exception]]:
