@@ -303,6 +303,7 @@ def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[dict], d
     outputs_amount = 0
     for addr, amount, bip32_path in dest_addresses:
         outputs_amount += amount
+        addr = addr.strip()
         if addr[0] in dash_utils.get_chain_params(dash_network).B58_PREFIXES_SCRIPT_ADDRESS:
             stype = trezor_proto.OutputScriptType.PAYTOSCRIPTHASH
             logging.debug('Transaction type: PAYTOSCRIPTHASH' + str(stype))

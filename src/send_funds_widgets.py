@@ -183,7 +183,10 @@ class SendFundsDestinationItem(QObject):
         self.edt_dest_address.setText(address)
 
     def get_address(self):
-        return self.edt_dest_address.text()
+        addr = self.edt_dest_address.text()
+        if addr:
+            addr = addr.strip()
+        return addr
 
     def set_output_value_unit(self, unit):
         old_state = self.edt_amount.blockSignals(True)
@@ -212,7 +215,7 @@ class SendFundsDestinationItem(QObject):
         address = self.edt_dest_address.text()
         if not address:
             valid = False
-        elif not dash_utils.validate_address(address, self.app_config.dash_network):
+        elif not dash_utils.validate_address(address.strip(), self.app_config.dash_network):
             valid = False
         else:
             self.message = None
