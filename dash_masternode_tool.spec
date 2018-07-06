@@ -60,15 +60,18 @@ lib_path = next(p for p in sys.path if 'site-packages' in p)
 #    if not found:
 #        raise Exception('File vcruntime140.dll not found in the system path.')
 
-# add bitcoin library data file
 add_files.append( (os.path.join(lib_path, 'bitcoin/english.txt'),'/bitcoin') )
 add_files.append( (os.path.join(lib_path, 'mnemonic/wordlist/english.txt'),'/mnemonic/wordlist') )
+add_files.append( (os.path.join(lib_path, 'trezorlib/coins.json'),'/trezorlib') )
+add_files.append( (os.path.join(lib_path, 'trezorlib/transport'),'trezorlib/transport') )
+add_files.append( (os.path.join(lib_path, 'trezorlib/protocol_v1.py'),'trezorlib') )
+add_files.append( (os.path.join(lib_path, 'trezorlib/protocol_v2.py'),'trezorlib') )
 
 a = Analysis(['src/dash_masternode_tool.py'],
              pathex=[base_dir],
              binaries=[],
              datas=add_files,
-             hiddenimports=[],
+             hiddenimports=['usb1'],
              hookspath=[],
              runtime_hooks=[],
              excludes=[],
