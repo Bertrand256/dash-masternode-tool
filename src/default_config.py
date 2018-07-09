@@ -27,14 +27,6 @@ dashd_default_connections = [
     },
     {
         "use_ssh_tunnel": False,
-        "host": "test.stats.dash.org",
-        "port": "8080",
-        "username": "dashmnb",
-        "password": "67414141414142617879305a31576c6e7754726c683876645a497853354a557057356938423976676e6e5a35343746334571584477434b356d2d737a763261666972426d4575527a337150484a6b7541454c6c51776762734e6343796d6751526e413d3d",
-        "use_ssl": True
-    },
-    {
-        "use_ssh_tunnel": False,
         "host": "testnet1.dash-masternode-tool.org",
         "port": "8443",
         "username": "dmtuser",
