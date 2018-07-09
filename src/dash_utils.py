@@ -406,17 +406,21 @@ class CMasternodeBroadcast(object):
         self.collateral_outpoint = COutPoint(collateral_tx, int(collateral_tx_index))
         self.mn_ping: CMasternodePing = CMasternodePing(self.collateral_outpoint, block_hash, sig_time)
 
+    def get_message_to_sign(self):
+        str_for_serialize = self.mn_ip + ':' + str(self.mn_port) + str(self.sig_time) + \
+            binascii.unhexlify(bitcoin.hash160(self.pubkey_collateral))[::-1].hex() + \
+            binascii.unhexlify(bitcoin.hash160(self.pubkey_masternode))[::-1].hex() + \
+            str(self.protocol_version)
+        return str_for_serialize
+
     def sign_message(self, collateral_bip32_path: str, hw_sign_message_fun: typing.Callable, hw_session,
                      mn_privkey_wif: str, dash_network: str):
 
         self.mn_ping.sign_message(mn_privkey_wif, dash_network)
 
-        str_for_serialize = self.mn_ip + ':' + str(self.mn_port) + str(self.sig_time) + \
-            binascii.unhexlify(bitcoin.hash160(self.pubkey_collateral))[::-1].hex() + \
-            binascii.unhexlify(bitcoin.hash160(self.pubkey_masternode))[::-1].hex() + \
-            str(self.protocol_version)
-
+        str_for_serialize = self.get_message_to_sign()
         self.sig = hw_sign_message_fun(hw_session, collateral_bip32_path, str_for_serialize)
+
         return self.sig
 
     def serialize(self, dest_node_version, protocol_version):
