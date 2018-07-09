@@ -31,6 +31,7 @@ class Ui_ThreadFunDlg(object):
         self.lblText.setText("")
         self.lblText.setWordWrap(False)
         self.lblText.setOpenExternalLinks(True)
+        self.lblText.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse|QtCore.Qt.TextSelectableByKeyboard|QtCore.Qt.TextSelectableByMouse)
         self.lblText.setObjectName("lblText")
         self.verticalLayout.addWidget(self.lblText)
         self.progressBar = QtWidgets.QProgressBar(ThreadFunDlg)

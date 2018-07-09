@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+import hashlib
 import sqlite3
 from typing import Optional, Tuple, List, ByteString, Callable, Dict
 import sys
@@ -273,10 +274,14 @@ def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend, dest_addresse
 def hw_sign_message(hw_session: HwSessionInfo, bip32path, message, display_label: str = None):
     def sign(ctrl, display_label):
         ctrl.dlg_config_fun(dlg_title="Confirm message signing.", show_progress_bar=False)
-        if display_label:
-            ctrl.display_msg_fun(display_label)
-        else:
-            ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet...</b>')
+        if not display_label:
+            if hw_session.app_config.hw_type == HWType.ledger_nano_s:
+                message_hash = hashlib.sha256(message.encode('ascii')).hexdigest().upper()
+                display_label = '<b>Click the confirmation button on your hardware wallet to sign the message...</b><br>' \
+                                '<br><b>Message:</b><br><span>' + message + '</span><br><br><b>SHA256 hash</b>:<br>' + message_hash
+            else:
+                display_label = '<b>Click the confirmation button on your hardware wallet to sign the message...</b>'
+        ctrl.display_msg_fun(display_label)
 
         if hw_session.app_config.hw_type == HWType.trezor:
             import hw_intf_trezor as trezor
