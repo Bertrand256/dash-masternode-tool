@@ -1272,7 +1272,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def on_edtMnCollateralAddress_textChanged(self):
         if self.curMasternode:
             self.curMnModified()
-            self.curMasternode.collateralAddress = self.edtMnCollateralAddress.text()
+            self.curMasternode.collateralAddress = self.edtMnCollateralAddress.text().strip()
             self.update_edit_controls_state()
             if self.curMasternode.collateralAddress:
                 self.btnHwAddressToBip32.setEnabled(True)
@@ -1408,7 +1408,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         signature = mn_broadcast.sign_message(masternode.collateralBip32Path, hw_intf.hw_sign_message, self.hw_session,
                                               masternode.privateKey, self.config.dash_network)
-        if signature.address != masternode.collateralAddress:
+        if signature.address != masternode.collateralAddress.strip():
             raise Exception('%s address signature mismatch.' % self.getHwName())
 
         return mn_broadcast
@@ -1561,6 +1561,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             # create a masternode broadcast message
             mn_broadcast = self.create_mn_broadcast_msg(mn_protocol_version, block_hash, self.curMasternode, sig_time)
             broadcast_msg = '01' + mn_broadcast.serialize(node_protocol_version, mn_protocol_version)
+            logging.info('MN broadcast message: ' + broadcast_msg)
 
             ret = self.dashd_intf.masternodebroadcast("decode", broadcast_msg)
             if ret['overall'].startswith('Successfully decoded broadcast messages for 1 masternodes'):
