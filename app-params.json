@@ -9,5 +9,14 @@
   "defaultDashdProtocol": {
     "mainnet": 70210,
     "testnet": 70210
-  }
+  },
+  "sporks": [
+    {
+      "name": "SPORK_6_NEW_SIGS",
+      "active": {
+        "mainnet": false,
+        "testnet": true
+      }
+    }
+  ]
 }
