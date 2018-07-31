@@ -929,15 +929,15 @@ class AppConfig(object):
 class MasternodeConfig:
     def __init__(self):
         self.name = ''
-        self.ip = ''
-        self.port = '9999'
-        self.privateKey = ''
-        self.collateralBip32Path = ''
-        self.collateralAddress = ''
-        self.collateralTx = ''
-        self.collateralTxIndex = ''
+        self.__ip = ''
+        self.__port = '9999'
+        self.__privateKey = ''
+        self.__collateralBip32Path = ''
+        self.__collateralAddress = ''
+        self.__collateralTx = ''
+        self.__collateralTxIndex = ''
         self.use_default_protocol_version = True
-        self.protocol_version = ''
+        self.__protocol_version = ''
         self.new = False
         self.modified = False
         self.lock_modified_change = False
@@ -959,6 +959,118 @@ class MasternodeConfig:
         self.new = True
         self.modified = True
         self.lock_modified_change = False
+
+    @property
+    def ip(self):
+        if self.__ip:
+            return self.__ip.strip()
+        else:
+            return self.__ip
+
+    @ip.setter
+    def ip(self, new_ip):
+        if new_ip:
+            self.__ip = new_ip.strip()
+        else:
+            self.__ip = new_ip
+
+    @property
+    def port(self):
+        if self.__port:
+            return self.__port.strip()
+        else:
+            return self.__port
+
+    @port.setter
+    def port(self, new_port):
+        if new_port:
+            self.__port = new_port.strip()
+        else:
+            self.__port = new_port
+
+    @property
+    def privateKey(self):
+        if self.__privateKey:
+            return self.__privateKey.strip()
+        else:
+            return self.__privateKey
+
+    @privateKey.setter
+    def privateKey(self, new_private_key):
+        if new_private_key:
+            self.__privateKey = new_private_key.strip()
+        else:
+            self.__privateKey = new_private_key
+
+    @property
+    def collateralBip32Path(self):
+        if self.__collateralBip32Path:
+            return self.__collateralBip32Path.strip()
+        else:
+            return self.__collateralBip32Path
+
+    @collateralBip32Path.setter
+    def collateralBip32Path(self, new_collateral_bip32_path):
+        if new_collateral_bip32_path:
+            self.__collateralBip32Path = new_collateral_bip32_path.strip()
+        else:
+            self.__collateralBip32Path = new_collateral_bip32_path
+
+    @property
+    def collateralAddress(self):
+        if self.__collateralAddress:
+            return self.__collateralAddress.strip()
+        else:
+            return self.__collateralAddress
+
+    @collateralAddress.setter
+    def collateralAddress(self, new_collateral_address):
+        if new_collateral_address:
+            self.__collateralAddress = new_collateral_address.strip()
+        else:
+            self.__collateralAddress = new_collateral_address
+
+    @property
+    def collateralTx(self):
+        if self.__collateralTx:
+            return self.__collateralTx.strip()
+        else:
+            return self.__collateralTx
+
+    @collateralTx.setter
+    def collateralTx(self, new_collateral_tx):
+        if new_collateral_tx:
+            self.__collateralTx = new_collateral_tx.strip()
+        else:
+            self.__collateralTx = new_collateral_tx
+
+    @property
+    def collateralTxIndex(self):
+        if self.__collateralTxIndex:
+            return self.__collateralTxIndex.strip()
+        else:
+            return self.__collateralTxIndex
+
+    @collateralTxIndex.setter
+    def collateralTxIndex(self, new_collateral_tx_index):
+        if new_collateral_tx_index:
+            self.__collateralTxIndex = new_collateral_tx_index.strip()
+        else:
+            self.__collateralTxIndex = new_collateral_tx_index
+
+    @property
+    def protocol_version(self):
+        if self.__protocol_version:
+            return self.__protocol_version.strip()
+        else:
+            return self.__protocol_version
+
+    @protocol_version.setter
+    def protocol_version(self, new_protocol_version):
+        if new_protocol_version:
+            self.__protocol_version = new_protocol_version.strip()
+        else:
+            self.__protocol_version = new_protocol_version
 
 
 class SSHConnectionCfg(object):
