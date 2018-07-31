@@ -436,8 +436,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.setMessage("Could not read the remote version number.", 'orange')
 
                 self.call_in_main_thread(self.update_ui_default_protocol)
-        except Exception as e:
-            pass
+        except Exception:
+            logging.exception('Exception occurred')
 
     def display_masternode_config(self, set_mn_list_index):
         if self.curMasternode and set_mn_list_index:
@@ -1375,19 +1375,38 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         except Exception as e:
             self.errorMsg(str(e))
 
-    def get_default_protocol(self) -> int:
-        prot = None
+    def read_remote_app_params(self):
         if not self.remote_app_params:
             self.remote_app_params = self.load_remote_params()
             if self.remote_app_params:
                 self.update_ui_default_protocol()
+
+    def get_default_protocol(self) -> int:
+        self.read_remote_app_params()
+        prot = None
         if self.remote_app_params:
             dp = self.remote_app_params.get('defaultDashdProtocol')
             if dp:
                 prot = dp.get(self.config.dash_network.lower())
         return prot
 
-    def create_mn_broadcast_msg(self, mn_protocol_version: int, ping_block_hash: str, masternode: MasternodeConfig,
+    def get_spork_state(self, spork_nr: int, default_state: bool):
+        state = default_state
+        self.read_remote_app_params()
+        if self.remote_app_params:
+            sporks = self.remote_app_params.get('sporks')
+            if sporks and isinstance(sporks, list):
+                for spork in sporks:
+                    name = spork.get('name', '')
+                    active = spork.get('active')
+                    if name.find('SPORK_' + str(spork_nr) + '_') == 0:
+                        state = active.get(self.config.dash_network.lower())
+        return state
+
+    def create_mn_broadcast_msg(self, mn_protocol_version: int,
+                                ping_block_hash: bytes,
+                                rpc_node_protocol_version: int,
+                                masternode: MasternodeConfig,
                                 sig_time: int = None) \
             -> dash_utils.CMasternodeBroadcast:
 
@@ -1403,11 +1422,21 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         collateral_pubkey = addr_pubkey.get('publicKey')
 
         mn_broadcast = dash_utils.CMasternodeBroadcast(
-            masternode.ip, masternode.port, collateral_pubkey, mn_pubkey, masternode.collateralTx,
-            int(masternode.collateralTxIndex), ping_block_hash, sig_time, mn_protocol_version)
+            masternode.ip,
+            masternode.port,
+            collateral_pubkey,
+            mn_pubkey,
+            bytes.fromhex(masternode.collateralTx),
+            int(masternode.collateralTxIndex),
+            ping_block_hash,
+            sig_time,
+            mn_protocol_version,
+            rpc_node_protocol_version,
+            spork6_active=self.get_spork_state(6, False)
+        )
 
-        signature = mn_broadcast.sign_message(masternode.collateralBip32Path, hw_intf.hw_sign_message, self.hw_session,
-                                              masternode.privateKey, self.config.dash_network)
+        signature = mn_broadcast.sign(masternode.collateralBip32Path, hw_intf.hw_sign_message, self.hw_session,
+                                      masternode.privateKey, self.config.dash_network)
         if signature.address != masternode.collateralAddress.strip():
             raise Exception('%s address signature mismatch.' % self.getHwName())
 
@@ -1448,13 +1477,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 return
         else:
             self.errorMsg("No masternode selected.")
+            return
 
         self.checkDashdConnection(wait_for_check_finish=True)
         if not self.dashd_connection_ok:
             self.errorMsg("Connection to Dash daemon is not established.")
             return
         if self.is_dashd_syncing:
-            self.warnMsg("Dash daemon to which you are connected is synchronizing. You have to wait "
+            self.warnMsg("The Dash daemon you are connected to is currently synchronizing. You need wait "
                          "until it's finished.")
             return
 
@@ -1476,7 +1506,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 return
 
             block_count = self.dashd_intf.getblockcount()
-            block_hash = self.dashd_intf.getblockhash(block_count - 12)
+            block_count_for_mn_ping = block_count - 12
+            block_hash_for_mn_ping = bytes.fromhex(self.dashd_intf.getblockhash(block_count_for_mn_ping))
             addr = hw_intf.get_address_and_pubkey(self.hw_session, self.curMasternode.collateralBip32Path)
             hw_collateral_address = addr.get('address').strip()
             cfg_collateral_address = self.curMasternode.collateralAddress.strip()
@@ -1546,11 +1577,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             sig_time = int(time.time())
 
             info = self.dashd_intf.getinfo(verify_node=True)
-            node_protocol_version = int(info['protocolversion'])
+            rpc_node_protocol_version = int(info['protocolversion'])
             if self.curMasternode.use_default_protocol_version or not self.curMasternode.protocol_version:
                 mn_protocol_version = self.get_default_protocol()
                 if not mn_protocol_version:
-                    mn_protocol_version = node_protocol_version
+                    mn_protocol_version = rpc_node_protocol_version
             else:
                 try:
                     mn_protocol_version = int(self.curMasternode.protocol_version)
@@ -1559,9 +1590,17 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     return
 
             # create a masternode broadcast message
-            mn_broadcast = self.create_mn_broadcast_msg(mn_protocol_version, block_hash, self.curMasternode, sig_time)
-            broadcast_msg = '01' + mn_broadcast.serialize(node_protocol_version, mn_protocol_version)
-            logging.info('MN broadcast message: ' + broadcast_msg)
+            mn_broadcast = self.create_mn_broadcast_msg(mn_protocol_version, block_hash_for_mn_ping,
+                                                        rpc_node_protocol_version, self.curMasternode,
+                                                        sig_time)
+            broadcast_msg = '01' + mn_broadcast.serialize()
+            logging.info('MNB broadcast message: ' + broadcast_msg)
+            logging.info(f'MNB Ping block count: {block_count_for_mn_ping}')
+            logging.info(f'MNB Ping block hash: {block_hash_for_mn_ping.hex()}')
+            logging.info(f'MNB sigTime: {sig_time}')
+            logging.info(f'MNB sigTime datestr: {str(datetime.datetime.fromtimestamp(sig_time))}')
+            logging.info(f'{str(mn_broadcast)}')
+
 
             ret = self.dashd_intf.masternodebroadcast("decode", broadcast_msg)
             if ret['overall'].startswith('Successfully decoded broadcast messages for 1 masternodes'):
