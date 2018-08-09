@@ -1,3 +1,4 @@
+from bitcoin import compress, bin_hash160
 from btchip.btchip import *
 from btchip.btchipComm import getDongle
 import logging
@@ -7,6 +8,7 @@ from wnd_utils import WndUtils
 from dash_utils import *
 from PyQt5.QtWidgets import QMessageBox
 import unicodedata
+from bip32utils import Base58
 
 
 def process_ledger_exceptions(func):
@@ -133,11 +135,36 @@ def get_address_and_pubkey(client, bip32_path):
         bip32_path = bip32_path[2:]
 
     nodedata = client.getWalletPublicKey(bip32_path)
-
     return {
         'address': nodedata.get('address').decode('utf-8'),
         'publicKey': compress_public_key(nodedata.get('publicKey'))
     }
+
+
+@process_ledger_exceptions
+def get_xpub(client, bip32_path):
+    bip32_path = clean_bip32_path(bip32_path)
+    bip32_path.strip()
+    if bip32_path.lower().find('m/') >= 0:
+        bip32_path = bip32_path[2:]
+    path_n = bip32_path_string_to_n(bip32_path)
+    parent_bip32_path = bip32_path_n_to_string(path_n[:-1])
+    depth = len(path_n)
+    index = path_n[-1]
+
+    nodedata = client.getWalletPublicKey(bip32_path)
+    pubkey = compress(nodedata.get('publicKey'))
+    chaincode = nodedata.get('chainCode')
+
+    parent_nodedata = client.getWalletPublicKey(parent_bip32_path)
+    parent_pubkey = compress(parent_nodedata['publicKey'])
+    parent_fingerprint = bin_hash160(parent_pubkey)[:4]
+
+    xpub_raw = bytes.fromhex('0488b21e') + depth.to_bytes(1, 'big') + parent_fingerprint + index.to_bytes(4, 'big') + \
+           chaincode + pubkey
+    xpub = Base58.check_encode(xpub_raw)
+
+    return xpub
 
 
 def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, secondary_pin: str):

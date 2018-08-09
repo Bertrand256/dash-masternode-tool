@@ -10,4 +10,5 @@ requests>=2.18.4
 mnemonic>=0.18
 simplejson
 cryptography
+bip32utils
 -e git+https://github.com/Bertrand256/btchip-python#egg=btchip-python

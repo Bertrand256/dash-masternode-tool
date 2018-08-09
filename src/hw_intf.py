@@ -397,6 +397,37 @@ def get_address_and_pubkey(hw_session: HwSessionInfo, bip32_path):
             raise Exception('Unknown hwardware wallet type: ' + hw_session.app_config.hw_type)
 
 
+@control_hw_call
+def get_xpub(hw_session: HwSessionInfo, bip32_path):
+    client = hw_session.hw_client
+    if client:
+        if isinstance(bip32_path, str):
+            bip32_path.strip()
+            if bip32_path.lower().find('m/') >= 0:
+                # keepkey library doesn't like the m prefix
+                bip32_path = bip32_path[2:]
+
+        if hw_session.app_config.hw_type in (HWType.trezor, HWType.keepkey):
+            if isinstance(bip32_path, str):
+                # trezor/keepkey require bip32 path argument as an array of integers
+                bip32_path = client.expand_path(bip32_path)
+
+            return client.get_public_node(bip32_path).xpub
+
+        elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
+            import hw_intf_ledgernano as ledger
+
+            if isinstance(bip32_path, list):
+                # ledger requires bip32 path argument as a string
+                bip32_path = bip32_path_n_to_string(bip32_path)
+
+            return ledger.get_xpub(client, bip32_path)
+        else:
+            raise Exception('Unknown hwardware wallet type: ' + hw_session.app_config.hw_type)
+    else:
+        raise Exception('HW client not open.')
+
+
 def get_address_ext(hw_session: HwSessionInfo,
                     bip32_path_n: List[int],
                     db_cursor: sqlite3.Cursor,
