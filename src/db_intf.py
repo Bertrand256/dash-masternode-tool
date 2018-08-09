@@ -5,6 +5,7 @@
 import sqlite3
 import logging
 import threading
+from typing import List
 import thread_utils
 
 
@@ -121,7 +122,9 @@ class DBCache(object):
                         " protocol TEXT, payee TEXT, last_seen INTEGER, active_seconds INTEGER,"
                         " last_paid_time INTEGER, last_paid_block INTEGER, ip TEXT,"
                         " dmt_active INTEGER, dmt_create_time TEXT, dmt_deactivation_time TEXT)")
+
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_MASTERNODES_DMT_ACTIVE ON MASTERNODES(dmt_active)")
+
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_MASTERNODES_IDENT ON MASTERNODES(ident)")
 
             # create structures for proposals:
@@ -133,6 +136,7 @@ class DBCache(object):
                         " f_cached_endorsed INTEGER, object_type INTEGER, is_valid_reason TEXT, dmt_active INTEGER, "
                         " dmt_create_time TEXT, dmt_deactivation_time TEXT, dmt_voting_last_read_time INTEGER,"
                         " ext_attributes_loaded INTEGER, owner TEXT, title TEXT, ext_attributes_load_time INTEGER)")
+
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_PROPOSALS_HASH ON PROPOSALS(hash)")
 
             # upgrade schema do v 0.9.11:
@@ -154,6 +158,7 @@ class DBCache(object):
                 if prop_owner_exists and prop_title_exists and ext_attributes_loaded_exists and \
                         ext_attributes_load_time_exists:
                     break
+
             if not ext_attributes_loaded_exists:
                 # column for saving information whether additional attributes has been read from external sources
                 # like DashCentral.org (1: yes, 0: no)
@@ -171,20 +176,70 @@ class DBCache(object):
             cur.execute("CREATE TABLE IF NOT EXISTS VOTING_RESULTS(id INTEGER PRIMARY KEY, proposal_id INTEGER,"
                         " masternode_ident TEXT, voting_time TEXT, voting_result TEXT,"
                         "hash TEXT)")
+
             cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_HASH ON VOTING_RESULTS(hash)")
+
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_1 ON VOTING_RESULTS(proposal_id)")
+
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_2 ON VOTING_RESULTS(masternode_ident)")
 
             # Create table for storing live data for example last read time of proposals
             cur.execute("CREATE TABLE IF NOT EXISTS LIVE_CONFIG(symbol text PRIMARY KEY, value TEXT)")
+
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_LIVE_CONFIG_SYMBOL ON LIVE_CONFIG(symbol)")
 
             cur.execute("CREATE TABLE IF NOT EXISTS ADDRESS_HD_TREE(id INTEGER PRIMARY KEY, ident TEXT)")
+
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_ADDRESS_TREE_1 ON ADDRESS_HD_TREE(ident)")
 
-            cur.execute("CREATE TABLE IF NOT EXISTS ADDRESS(id INTEGER PRIMARY KEY,"
-                        "tree_id INTEGER, path TEXT, address TEXT)")
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_ADDRESS_1 ON ADDRESS(tree_id, path)")
+            if not self.table_columns_exist('address', ['parent_id', 'xpub_hash', 'balance', 'address_index',
+                                                        'last_scan_block_height', 'tree_id']):
+                cur.execute("drop table if exists address")
+
+            cur.execute("CREATE TABLE IF NOT EXISTS address(id INTEGER PRIMARY KEY,"
+                        "xpub_hash TEXT, parent_id INTEGER, address_index INTEGER, address TEXT, path TEXT, "
+                        "tree_id INTEGER, balance INTEGER, received INTEGER, is_change INTEGER , "
+                        "last_scan_block_height INTEGER)")
+
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_address_1 ON address(xpub_hash)")
+
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_address_2 ON address(parent_id, address_index)")
+
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_address_3 ON address(address)")
+
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_address_4 ON address(tree_id)")
+
+            cur.execute("CREATE TABLE IF NOT EXISTS tx(id INTEGER PRIMARY KEY, tx_hash TEXT, block_height INTEGER,"
+                        "block_timestamp INTEGER, coinbase INTEGER)")
+
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_1 ON tx(tx_hash)")
+
+            cur.execute("CREATE TABLE IF NOT EXISTS tx_output(id INTEGER PRIMARY KEY, address_id INEGER, "
+                        "address TEXT NOT NULL, tx_id INTEGER NOT NULL, output_index INTEGER NOT NULL, "
+                        "satoshis INTEGER NOT NULL, spent_tx_id INTEGER, spent_input_index INTEGER)")
+
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_output_1 ON tx_output(tx_id, output_index)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_output_2 ON tx_output(address_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_output_3 ON tx_output(address)")
+
+            cur.execute("CREATE TABLE IF NOT EXISTS tx_input(id INTEGER PRIMARY KEY, address_id INEGER NOT NULL, "
+                        "tx_id INTEGER NOT NULL, input_index INTEGER NOT NULL, satoshis INTEGER NOT NULL)")
+
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_input_1 ON tx_input(tx_id, input_index)")
+
+
         except Exception:
             logging.exception('Exception while initializing database.')
             raise
+
+    def table_columns_exist(self, table_name, column_names: List[str]):
+        cur = self.db_conn.cursor()
+        try:
+            cur.execute(f"PRAGMA table_info({table_name})")
+            cols_existing = [col[1] for col in cur.fetchall()]
+            for c in column_names:
+                if c not in cols_existing:
+                    return False
+        finally:
+            cur.close()
+        return True

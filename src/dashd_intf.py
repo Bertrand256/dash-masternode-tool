@@ -1150,3 +1150,17 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
+    @control_rpc_call
+    def getaddressdeltas(self, *args):
+        if self.open():
+            return self.proxy.getaddressdeltas(*args)
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def getaddresstxids(self, *args):
+        if self.open():
+            return self.proxy.getaddressdeltas(*args)
+        else:
+            raise Exception('Not connected')
+
