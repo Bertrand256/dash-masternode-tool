@@ -18,6 +18,14 @@ class AttrsProtected(object):
         """
         self.__allow_attr_definition = False
 
+    def add_attribute(self, attr_name):
+        old_state = self.__allow_attr_definition
+        try:
+            self.__allow_attr_definition = True
+            super().__setattr__(attr_name, None)
+        finally:
+            self.__allow_attr_definition = old_state
+
     def __setattr__(self, name, value):
         if name == '_AttrsProtected__allow_attr_definition' or self.__allow_attr_definition or hasattr(self, name):
             super().__setattr__(name, value)

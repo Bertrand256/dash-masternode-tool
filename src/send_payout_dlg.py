@@ -24,11 +24,13 @@ import app_utils
 import dash_utils
 import hw_intf
 from app_defs import HWType
+from bip32_addresses import Bip32Addresses
 from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
 from hw_common import HardwareWalletCancelException
 from hw_intf import prepare_transfer_tx, get_address
 from thread_fun_dlg import WorkerThread, CtrlObject
+from tx_history_widgets import TransactionsModel, TransactionsProxyModel
 from wnd_utils import WndUtils, ReadOnlyTableCellDelegate
 from ui import ui_send_payout_dlg
 from send_funds_widgets import SendFundsDestination
@@ -284,6 +286,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.main_ui = main_ui
         self.grid_column_widths = []
         self.recipient_list_from_cache = []
+        self.tab_transactions_model = None
         self.setupUi()
 
     def setupUi(self):
@@ -309,6 +312,8 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         # set utxo table default column widths
         for col, w in enumerate(self.grid_column_widths):
             self.tableView.setColumnWidth(col, w)
+
+        self.setup_transactions_table_view()
 
         self.chbHideCollateralTx.toggled.connect(self.chbHideCollateralTxToggled)
 
@@ -460,7 +465,6 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             except Exception:
                 logging.exception('Cannot restore data from cache.')
 
-
     def save_cache_settings(self):
         app_cache.save_window_size(self)
         if self.initial_mn_sel is None:
@@ -503,6 +507,22 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             except Exception:
                 logging.exception('Cannot save data to cache.')
         app_cache.set_value(CACHE_ITEM_LAST_RECIPIENTS.replace('%NETWORK%', self.app_config.dash_network), rcp_data)
+
+    def setup_transactions_table_view(self):
+        self.tabViewTransactions.setSortingEnabled(True)
+        self.tx_model = TransactionsModel(self)
+        self.tx_proxy_model = TransactionsProxyModel(self)
+        # self.tabViewTransactions.sortByColumn(self.table_model.column_index_by_name('confirmations'), Qt.AscendingOrder)
+        # self.restore_cache_settings()
+
+        self.tx_proxy_model.setSourceModel(self.tx_model)
+        self.tabViewTransactions.setModel(self.tx_proxy_model)
+        self.tabViewTransactions.setItemDelegate(ReadOnlyTableCellDelegate(self.tabViewTransactions))
+        self.tabViewTransactions.verticalHeader().setDefaultSectionSize(self.tabViewTransactions.verticalHeader().fontMetrics().height() + 4)
+
+        for idx, col in enumerate(self.tx_model.columns):
+            if not col.visible:
+                self.tabViewTransactions.setColumnHidden(idx, True)
 
     @pyqtSlot(int)
     def on_cbo_address_source_mode_currentIndexChanged(self, index):
@@ -850,6 +870,67 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             pass
 
     def load_utxos_thread(self, ctrl: CtrlObject, new_utxos_out, existing_utxos_out):
+        """
+        Thread gets UTXOs from the network and returns the new items (not existing in the self.utxo list)
+        :param ctrl:
+        :param new_utxos_out: Here will be returned all the new UTXOs.
+        :param existing_utxos_out: In this list will be returned all UTXOs which existed in the self.utxo list before
+        """
+        ADDRESS_CHUNK = 10
+        if not self.finishing and not ctrl.finish:
+            self.set_message(f'Reading unspent transaction outputs...')
+
+        def get_addresses_to_scan(thread_ctrl: CtrlObject):
+            try:
+                if self.utxo_src_mode == 1:
+
+                    pass
+
+                elif self.utxo_src_mode == 2:
+
+                    addr_count = 0
+                    account_nr = 1
+                    addr_n = dash_utils.bip32_path_string_to_n(self.hw_account_base_bip32_path)
+                    addr_n.append(0x80000000 + account_nr)
+                    path = dash_utils.bip32_path_n_to_string(addr_n)
+                    bip32a = Bip32Addresses(self.main_ui.hw_session, self.db_intf, self.dashd_intf,
+                                            self.app_config.dash_network)
+
+                    try:
+                        bip32a.read_account_txs(path)
+
+                        # chunk_nr = 0
+                        # chunk_size = 1000
+                        # change = 0
+                        # nr = 0
+                        # while True:
+                        #     for db_id, addr in bip32a.list_account_addresses(
+                        #             path, change, chunk_nr * chunk_size, chunk_size):
+                        #         nr += 1
+                        #         if nr > 1000:
+                        #             break
+                        #     break
+                        #     chunk_nr += 1
+                        pass
+                    finally:
+                        pass
+
+                elif self.utxo_src_mode == 3:
+                    pass
+
+            except Exception as e:
+                logging.exception('Exception occurred')
+                raise
+
+        if not self.dashd_intf.open():
+            self.errorMsg('Dash daemon not connected')
+        else:
+            tm_begin = time.time()
+
+            get_addresses_to_scan(ctrl)
+
+
+    def load_utxos_thread_old(self, ctrl: CtrlObject, new_utxos_out, existing_utxos_out):
         """
         Thread gets UTXOs from the network and returns the new items (not existing in the self.utxo list)
         :param ctrl:
