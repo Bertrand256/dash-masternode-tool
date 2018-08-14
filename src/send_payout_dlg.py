@@ -24,7 +24,7 @@ import app_utils
 import dash_utils
 import hw_intf
 from app_defs import HWType
-from bip32_addresses import Bip32Addresses
+from bip44_wallet import Bip44Wallet, UtxoType
 from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
 from hw_common import HardwareWalletCancelException
@@ -37,12 +37,12 @@ from send_funds_widgets import SendFundsDestination
 from transaction_dlg import TransactionDlg
 
 
-class PaymentTableModel(QAbstractTableModel):
-    def __init__(self, parent, hide_collaterals_utxos, parent_wnd):
+class UtxoTableModel(QAbstractTableModel):
+    def __init__(self, parent, parent_wnd):
         QAbstractTableModel.__init__(self, parent)
         self.checked = False
-        self.utxos = []
-        self.hide_collaterals_utxos = hide_collaterals_utxos
+        self.utxos: List[UtxoType] = []
+        self.utxo_by_id: Dict[int, UtxoType] = {}
         self.parent_wnd = parent_wnd
         self.columns = [
             # field_name, column header, visible, default col width
@@ -52,7 +52,7 @@ class PaymentTableModel(QAbstractTableModel):
             ('time_str', 'TX Date/Time', True, 140),
             ('address', 'Address', True, 140),
             ('txid', 'TX ID', True, 220),
-            ('outputIndex', 'TX Idx', True, 40)
+            ('output_index', 'TX Idx', True, 40)
         ]
 
     def column_index_by_name(self, name: str) -> Optional[int]:
@@ -60,19 +60,6 @@ class PaymentTableModel(QAbstractTableModel):
             if name == col[0]:
                 return idx
         return None
-
-    def setHideCollateralsUtxos(self, hide):
-        old_state = self.hide_collaterals_utxos
-        self.hide_collaterals_utxos = hide
-        if hide != old_state:
-            # check wheter the collateral utxo is currently showing; it will be hidden in a moment
-            was_collateral = False
-            for utxo in self.utxos:
-                if utxo.get('collateral', False):
-                    was_collateral = True
-                    break
-        self.beginResetModel()
-        self.endResetModel()
 
     def columnCount(self, parent=None, *args, **kwargs):
         return len(self.columns)
@@ -107,26 +94,22 @@ class PaymentTableModel(QAbstractTableModel):
                     if role in (Qt.DisplayRole, Qt.EditRole):
                         field_name = self.columns[col][0]
                         if field_name == 'satoshis':
-                            return app_utils.to_string(round(utxo['satoshis'] / 1e8, 8))
+                            return app_utils.to_string(round(utxo.satoshis / 1e8, 8))
                         else:
-                            return app_utils.to_string(utxo.get(field_name, ''))
+                            return app_utils.to_string(utxo.__getattribute__(field_name))
 
                     elif role == Qt.ForegroundRole:
-                        if utxo['collateral']:
+                        if utxo.is_collateral:
                             return QColor(Qt.red)
-                        elif utxo['coinbase_locked']:
+                        elif utxo.coinbase_locked:
                             if col == 1:
                                 return QtGui.QColor('red')
                             else:
                                 return QtGui.QColor('gray')
-                        elif utxo.get('spent_date'):
-                            return QtGui.QColor('black')  # spen transactions
 
                     elif role == Qt.BackgroundRole:
-                        if utxo['coinbase_locked']:
+                        if utxo.coinbase_locked:
                             return QtGui.QColor('lightgray')
-                        elif utxo.get('spent_date'):
-                            return QtGui.QColor('lightgray')  # spent transactions
 
                     elif role == Qt.TextAlignmentRole:
                         if col in (0, 1):
@@ -137,7 +120,7 @@ class PaymentTableModel(QAbstractTableModel):
     def setUtxos(self, utxos, masternodes):
         def utxo_assigned_to_collateral(utxo):
             for mn in masternodes:
-                if mn.collateralTx == utxo['txid'] and str(mn.collateralTxIndex) == str(utxo['outputIndex']):
+                if mn.collateralTx == utxo.txid and str(mn.collateralTxIndex) == str(utxo.output_index):
                     return True
             return False
 
@@ -149,13 +132,18 @@ class PaymentTableModel(QAbstractTableModel):
 
         for utxo in utxos:
             if utxo_assigned_to_collateral(utxo):
-                utxo['collateral'] = True
+                utxo.is_collateral = True
             else:
-                utxo['collateral'] = False
-            utxo['mn'] = mn_by_address(utxo['address'])
+                utxo.is_collateral = False
+            utxo.mn = mn_by_address(utxo['address'])
         self.utxos = utxos
         self.beginResetModel()
         self.endResetModel()
+
+    def add_utxo(self, utxo: UtxoType):
+        if not utxo.id in self.utxo_by_id:
+            self.utxos.append(utxo)
+            self.utxo_by_id[utxo.id] = utxo
 
 
 class UtxoListProxyModel(QSortFilterProxyModel):
@@ -163,7 +151,7 @@ class UtxoListProxyModel(QSortFilterProxyModel):
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.utxo_model: PaymentTableModel = None
+        self.utxo_model: UtxoTableModel = None
         self.hide_collateral_utxos = True
 
     def filterAcceptsRow(self, source_row, source_parent):
@@ -172,7 +160,7 @@ class UtxoListProxyModel(QSortFilterProxyModel):
         if 0 <= source_row < len(self.utxo_model.utxos):
             if self.hide_collateral_utxos:
                 utxo = self.utxo_model.utxos[source_row]
-                if utxo.get('collateral'):
+                if utxo.is_collateral:
                     will_show = False
         return will_show
 
@@ -200,8 +188,8 @@ class UtxoListProxyModel(QSortFilterProxyModel):
 
             if 0 <= right_row_index < len(self.utxo_model.utxos):
                 right_prop = self.utxo_model.utxos[right_row_index]
-                left_value = left_utxo.get(col_name)
-                right_value = right_prop.get(col_name)
+                left_value = left_utxo.__getattribute__(col_name)
+                right_value = right_prop.__getattribute__(col_name)
                 if isinstance(left_value, (int, float)) and isinstance(right_value, (int, float)):
                     if not reverse:
                         return left_value < right_value
@@ -254,13 +242,11 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
         self.dashd_intf: DashdInterface = main_ui.dashd_intf
         self.db_intf: DBCache = main_ui.config.db_intf
-        self.table_model = None
+        self.utxo_table_model = UtxoTableModel(None, self)
         self.finishing = False  # true if closing window
         self.load_utxos_thread_ref: Optional[WorkerThread] = None
         self.last_utxos_source_hash = ''
         self.initial_mn_sel = initial_mn_sel
-        self.utxos = []
-        self.utxos_dict = {}  # key: txid + outputIndex, value: utxo dict
 
         # 1: masternode collateral address
         # 2: wallet account (the account number and base bip32 path are selected from the GUI by a user)
@@ -287,6 +273,10 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.grid_column_widths = []
         self.recipient_list_from_cache = []
         self.tab_transactions_model = None
+
+        self.bip44_wallet = Bip44Wallet(self.main_ui.hw_session, self.db_intf, self.dashd_intf,
+                                        self.app_config.dash_network)
+
         self.setupUi()
 
     def setupUi(self):
@@ -298,13 +288,12 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.setIcon(self.btnUncheckAll, 'uncheck.png')
 
         self.tableView.setSortingEnabled(True)
-        self.table_model = PaymentTableModel(None, self.chbHideCollateralTx.isChecked(), self)
         self.utxo_proxy = UtxoListProxyModel(self)
         self.utxo_proxy.set_hide_collateral_utxos(True)
-        self.tableView.sortByColumn(self.table_model.column_index_by_name('confirmations'), Qt.AscendingOrder)
+        self.tableView.sortByColumn(self.utxo_table_model.column_index_by_name('confirmations'), Qt.AscendingOrder)
         self.restore_cache_settings()
 
-        self.utxo_proxy.setSourceModel(self.table_model)
+        self.utxo_proxy.setSourceModel(self.utxo_table_model)
         self.tableView.setModel(self.utxo_proxy)
         self.tableView.setItemDelegate(ReadOnlyTableCellDelegate(self.tableView))
         self.tableView.verticalHeader().setDefaultSectionSize(self.tableView.verticalHeader().fontMetrics().height() + 4)
@@ -437,7 +426,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         else:
             self.hw_src_bip32_path = dash_utils.get_default_bip32_path(self.app_config.dash_network)
 
-        self.grid_column_widths = app_cache.get_value(CACHE_ITEM_COL_WIDTHS, self.table_model.getDefaultColWidths(),
+        self.grid_column_widths = app_cache.get_value(CACHE_ITEM_COL_WIDTHS, self.utxo_table_model.getDefaultColWidths(),
                                                       list)
 
         sel_nasternode = app_cache.get_value(
@@ -488,7 +477,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
         # save column widths
         widths = []
-        for col in range(self.table_model.columnCount()):
+        for col in range(self.utxo_table_model.columnCount()):
             widths.append(self.tableView.columnWidth(col))
         app_cache.set_value(CACHE_ITEM_COL_WIDTHS, widths)
 
@@ -644,8 +633,8 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         # block_old = sel.blockSignals(True)
         sel_modified = False
         s = QItemSelection()
-        for row_idx, utxo in enumerate(self.utxos):
-            index = self.table_model.index(row_idx, 0)
+        for row_idx, utxo in enumerate(self.utxo_table_model.utxos):
+            index = self.utxo_table_model.index(row_idx, 0)
             if not utxo['coinbase_locked'] and not utxo.get('spent_date'):
                 if not sel.isSelected(index):
                     sel_modified = True
@@ -677,7 +666,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             for utxo_idx, utxo in enumerate(utxos):
                 total_satoshis += utxo['satoshis']
                 logging.info(f'UTXO satosis: {utxo["satoshis"]}')
-                if utxo['collateral']:
+                if utxo.is_collateral:
                     if self.queryDlg(
                             "Warning: you are going to transfer masternode's collateral (1000 Dash) transaction "
                             "output. Proceeding will result in broken masternode.\n\n"
@@ -756,8 +745,8 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                                 for utxo_idx, utxo in enumerate(sel_utxos):
                                     utxo['spent_date'] = time.time()
 
-                                self.table_model.beginResetModel()
-                                self.table_model.endResetModel()
+                                self.utxo_table_model.beginResetModel()
+                                self.utxo_table_model.endResetModel()
             except Exception as e:
                 logging.exception('Unknown error occurred.')
                 self.errorMsg(str(e))
@@ -778,7 +767,10 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             hash = hash + ':' + str(self.hw_src_bip32_path)
         return hash
 
-    def load_utxos(self):
+    def __load_utxos(self):
+        pass
+
+    def load_utxos2(self):
         new_utxos = []
         existing_utxos = []
         def apply_utxos(new_utxos: List[dict], existing_utxos: List[dict]):
@@ -810,27 +802,28 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     change_addresses: UtxoSrcAddrList = []
                     change_addresses_dict = {}
 
-                    for idx in reversed(range(len(self.utxos))):
-                        u = self.utxos[idx]
-                        if u not in existing_utxos:
-                            del self.utxos_dict[self.utxos[idx]['key']]
-                            del self.utxos[idx]
-                        else:
-                            if not change_addresses_dict.get(u['address']):
-                                change_addresses.append((u['address'], u['bip32_path']))
-                                change_addresses_dict[u['address']] = 1
+                    # for idx in reversed(range(len(self.utxos))):
+                    #     u = self.utxos[idx]
+                    #     if u not in existing_utxos:
+                    #         # del self.utxos_dict[self.utxos[idx]['key']]
+                    #         # del self.utxos[idx]
+                    #         pass
+                    #     else:
+                    #         if not change_addresses_dict.get(u['address']):
+                    #             change_addresses.append((u['address'], u['bip32_path']))
+                    #             change_addresses_dict[u['address']] = 1
 
                     # add all new utxos
-                    for u in new_utxos:
-                        self.utxos.append(u)
-                        self.utxos_dict[u['key']] = u
-                        if not change_addresses_dict.get(u['address']):
-                            change_addresses.append((u['address'], u['bip32_path']))
-                            change_addresses_dict[u['address']] = 1
+                    # for u in new_utxos:
+                    #     # self.utxos.append(u)
+                    #     # self.utxos_dict[u['key']] = u
+                    #     if not change_addresses_dict.get(u['address']):
+                    #         change_addresses.append((u['address'], u['bip32_path']))
+                    #         change_addresses_dict[u['address']] = 1
 
-                    self.utxos.sort(key=itemgetter('height'), reverse=True)
-                    self.table_model.setUtxos(self.utxos, self.masternodes)
-                    self.wdg_dest_adresses.set_change_addresses(change_addresses)
+                    # self.utxos.sort(key=itemgetter('height'), reverse=True)
+                    # self.utxo_table_model.setUtxos(self.utxos, self.masternodes)
+                    # self.wdg_dest_adresses.set_change_addresses(change_addresses)
                 finally:
                     self.load_utxos_thread_ref = None
             else:
@@ -842,7 +835,6 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     self, self.load_utxos_thread, (new_utxos, existing_utxos),
                     on_thread_finish=partial(apply_utxos, new_utxos, existing_utxos))
 
-
         try:
             if self.utxo_src_mode == 1 or \
                     (self.main_ui.connect_hardware_wallet() and
@@ -850,9 +842,9 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
                 if self.last_utxos_source_hash != self.get_utxo_src_cfg_hash():
                     # clear current utxo data in grid
-                    self.utxos.clear()
-                    self.utxos_dict.clear()
-                    self.table_model.setUtxos(self.utxos, self.masternodes)
+                    # self.utxos.clear()
+                    # self.utxos_dict.clear()
+                    # self.utxo_table_model.setUtxos(self.utxos, self.masternodes)
                     self.update_recipient_area_utxos()
 
                 if not self.load_utxos_thread_ref:
@@ -869,51 +861,19 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         except HardwareWalletCancelException:
             pass
 
-    def load_utxos_thread(self, ctrl: CtrlObject, new_utxos_out, existing_utxos_out):
-        """
-        Thread gets UTXOs from the network and returns the new items (not existing in the self.utxo list)
-        :param ctrl:
-        :param new_utxos_out: Here will be returned all the new UTXOs.
-        :param existing_utxos_out: In this list will be returned all UTXOs which existed in the self.utxo list before
-        """
-        ADDRESS_CHUNK = 10
-        if not self.finishing and not ctrl.finish:
-            self.set_message(f'Reading unspent transaction outputs...')
+    def load_utxos(self, ctrl: CtrlObject = None):
 
-        def get_addresses_to_scan(thread_ctrl: CtrlObject):
+        # if not self.finishing and not ctrl.finish:
+        #     self.set_message(f'Reading unspent transaction outputs...')
+
+        def list_utxos(thread_ctrl: CtrlObject):
             try:
                 if self.utxo_src_mode == 1:
-
                     pass
-
                 elif self.utxo_src_mode == 2:
 
-                    addr_count = 0
-                    account_nr = 1
-                    addr_n = dash_utils.bip32_path_string_to_n(self.hw_account_base_bip32_path)
-                    addr_n.append(0x80000000 + account_nr)
-                    path = dash_utils.bip32_path_n_to_string(addr_n)
-                    bip32a = Bip32Addresses(self.main_ui.hw_session, self.db_intf, self.dashd_intf,
-                                            self.app_config.dash_network)
-
-                    try:
-                        bip32a.read_account_txs(path)
-
-                        # chunk_nr = 0
-                        # chunk_size = 1000
-                        # change = 0
-                        # nr = 0
-                        # while True:
-                        #     for db_id, addr in bip32a.list_account_addresses(
-                        #             path, change, chunk_nr * chunk_size, chunk_size):
-                        #         nr += 1
-                        #         if nr > 1000:
-                        #             break
-                        #     break
-                        #     chunk_nr += 1
-                        pass
-                    finally:
-                        pass
+                    for utxo in self.bip44_wallet.list_bip32_account_utxos(self.hw_account_number):
+                        yield utxo
 
                 elif self.utxo_src_mode == 3:
                     pass
@@ -925,10 +885,22 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         if not self.dashd_intf.open():
             self.errorMsg('Dash daemon not connected')
         else:
-            tm_begin = time.time()
 
-            get_addresses_to_scan(ctrl)
+            if self.main_ui.connect_hardware_wallet() and \
+                self.app_config.initialize_hw_encryption(self.main_ui.hw_session):
 
+                # self.bip44_wallet.read_account_bip32_txs(self.hw_account_number)
+
+                cnt1 = len(self.utxo_table_model.utxos)
+                for utxo in list_utxos(ctrl):
+                    self.utxo_table_model.add_utxo(utxo)
+                cnt2 = len(self.utxo_table_model.utxos)
+
+                row_count = cnt2 - cnt1
+                if row_count:
+                    # self.utxo_table_model.insertRows(cnt1, cnt2-cnt1)
+                    self.utxo_table_model.beginResetModel()
+                    self.utxo_table_model.endResetModel()
 
     def load_utxos_thread_old(self, ctrl: CtrlObject, new_utxos_out, existing_utxos_out):
         """
@@ -1087,7 +1059,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                                     return
 
                                 utxo_key = utxo['txid'] + '-' + str(utxo['outputIndex'])
-                                cached_utxo = self.utxos_dict.get(utxo_key)
+                                # cached_utxo = self.utxos_dict.get(utxo_key)
                                 if not cached_utxo:
                                     blockhash = self.dashd_intf.getblockhash(utxo.get('height'))
                                     bh = self.dashd_intf.getblockheader(blockhash)
@@ -1154,10 +1126,10 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         for row in rows:
             source_row = self.utxo_proxy.mapToSource(row)
             row_idx = source_row.row()
-            if 0 <= row_idx < len(self.utxos):
-                utxo = self.utxos[row_idx]
+            if 0 <= row_idx < len(self.utxo_table_model.utxos):
+                utxo = self.utxo_table_model.utxos[row_idx]
                 utxos.append(utxo)
-                amount += utxo['satoshis']
+                amount += utxo.satoshis
 
         return amount, utxos
 

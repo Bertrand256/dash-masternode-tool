@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-07
+import collections
+
 
 class AttrsProtected(object):
     """
@@ -37,3 +39,13 @@ class CancelException(Exception):
     def __init__(self, *args, **kwargs):
         Exception.__init__(self, *args, *kwargs)
 
+
+def namedtuple_defaults(typename, field_names, default_values=()):
+    T = collections.namedtuple(typename, field_names)
+    T.__new__.__defaults__ = (None,) * len(T._fields)
+    if isinstance(default_values, collections.Mapping):
+        prototype = T(**default_values)
+    else:
+        prototype = T(*default_values)
+    T.__new__.__defaults__ = tuple(prototype)
+    return T
