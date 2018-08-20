@@ -24,6 +24,7 @@ from db_intf import DBCache
 TX_QUERY_ADDR_CHUNK_SIZE = 10
 ADDRESS_SCAN_GAP_LIMIT = 20
 MAX_ADDRESSES_TO_SCAN = 1000
+MAX_BIP44_ACCOUNTS = 200
 
 
 AddressType = Dict[str, Any]  # based on the database 'address' table; Dict[str <field name> , Any <field value>]
@@ -44,6 +45,56 @@ class UtxoType(AttrsProtected):
         self.is_collateral = False
         self.coinbase_locked = False
         self.masternode = None
+        self.set_attr_protection()
+
+
+class Bip44AccountType(AttrsProtected):
+    def __init__(self, id: int, xpub_hash: str, address_index: int, bip32_path: str, balance: int, received: int,
+                 name: str):
+        super(Bip44AccountType, self).__init__()
+        self.id: Optional[int] = id
+        self.xpub_hash: str = xpub_hash
+        self.address_index: Optional[int] = address_index
+        self.bip32_path: Optional[int] = bip32_path
+        self.balance: Optional[int] = balance
+        self.received: Optional[int] = received
+        self.name: Optional[str] = name
+        self.set_attr_protection()
+
+    def get_hardened_index(self):
+        if self.address_index >= 0x80000000:
+            return self.address_index - 0x80000000
+        else:
+            return None
+
+    def get_account_name(self):
+        if self.name:
+            return self.name
+        else:
+            nr = self.get_hardened_index()
+            if nr is not None:
+                return f'Account #' + str(nr + 1)
+            else:
+                return f'Account *' + str(self.address_index)
+
+    def update_from(self, a: 'Bip44AccountType') -> bool:
+        """
+        :param a:
+        :return: True if any of the attributes have been updated
+        """
+        if a.id != self.id or a.xpub_hash != self.xpub_hash or a.address_index != self.address_index or \
+            a.bip32_path != self.bip32_path or a.balance != self.balance or a.received != self.received or \
+            a.name != self.name:
+
+            self.id = a.id
+            self.xpub_hash = self.xpub_hash
+            self.address_index = self.address_index
+            self.bip32_path = self.bip32_path
+            self.balance = self.balance
+            self.received = self.received
+            self.name = self.name
+            return True
+        return False
 
 
 class Bip44Wallet(object):
@@ -53,7 +104,14 @@ class Bip44Wallet(object):
         self.dash_network = dash_network
         self.db_intf = db_intf
         self.dashd_intf = dashd_intf
-        self._xpub_cache: Dict[str, str] =  {}  # Dict[str <hd_tree_id + ':' + bip32_path>, str <xpub>]
+        self.txs_added: Dict[int, int] = {}
+        self.utxos_added: Dict[int, int] = {}
+        self.utxos_removed: Dict[int, int] = {}
+
+    def reset_tx_diffs(self):
+        self.txs_added.clear()
+        self.utxos_added.clear()
+        self.utxos_removed.clear()
 
     def get_tree_id(self, db_cursor):
         db_cursor.execute('select id from ADDRESS_HD_TREE where ident=?', (self.hw_session.hd_tree_ident,))
@@ -64,18 +122,6 @@ class Bip44Wallet(object):
         else:
             db_id = row[0]
         return db_id
-
-    def get_address_db_id(self, path_n: List[int], db_cursor):
-        if len(path_n) > 1:
-            return self.get_address_db_id(path_n[:-1], db_cursor)
-        elif len(path_n) == 1:
-            tree_id = self.get_tree_id(db_cursor)
-            db_cursor.execute('select id from address where tree_id=?', (tree_id,))
-            r = db_cursor.fetchone()
-            if r:
-                return r[0]
-            else:
-                pass
 
     def _get_xpub_db_addr(self, xpub: str, bip32_path: Optional[str], is_change: bool, parent_id: Optional[int]) \
             -> AddressType:
@@ -181,12 +227,13 @@ class Bip44Wallet(object):
                 self.db_intf.commit()
             self.db_intf.release_cursor()
 
-    def get_account_base_address(self, account_nr: int) -> Bip44AccountBaseAddress:
+    def get_account_base_address(self, account_index: int) -> Bip44AccountBaseAddress:
         """
-        :return: Tuple[str <xpub>, id <address db id>, str <bip32 path>]
+        :param account_index: for hardened accounts the value should be equal or grater than 0x80000000
+        :return:
         """
         b32_path = self.hw_session.base_bip32_path
-        path_n = bip32_path_string_to_n(b32_path) + [0x80000000 + account_nr]
+        path_n = bip32_path_string_to_n(b32_path) + [account_index]
         account_bip32_path = bip32_path_n_to_string(path_n)
         account_xpub = hw_intf.get_xpub(self.hw_session, account_bip32_path)
         addr = self._get_xpub_db_addr(account_xpub, account_bip32_path, False, None)
@@ -233,13 +280,29 @@ class Bip44Wallet(object):
             diff = time.time() - tm_begin
             logging.info(f'list_account_addresses exec time: {diff}s, keys count: {count}')
 
-    def read_account_bip32_txs(self, account_nr: int):
+    def fetch_all_accounts_txs(self):
+        for idx in range(MAX_BIP44_ACCOUNTS):
+            account_address_index = 0x80000000 + idx
+            self.read_account_txs(account_address_index)
+
+            db_cursor = self.db_intf.get_cursor()
+            try:
+                base_addr = self.get_account_base_address(account_address_index)
+                db_cursor.execute("select id, received from address where id=?", (base_addr.id,))
+                id, received = db_cursor.fetchone()
+                if not id or not received:
+                    break
+            finally:
+                self.db_intf.release_cursor()
+
+    def read_account_txs(self, account_index: int):
+        logging.info(f'read_account_bip32_txs account index: {account_index}')
         tm_begin = time.time()
 
-        if account_nr < 0:
+        if account_index < 0:
             raise Exception('Invalid account number')
 
-        base_addr = self.get_account_base_address(account_nr)
+        base_addr = self.get_account_base_address(account_index)
         account_key = BIP32Key.fromExtendedKey(base_addr.xpub)
 
         for change in (0, 1):
@@ -274,9 +337,6 @@ class Bip44Wallet(object):
         # addresses whose balances have been changed during this processing
         addr_bal_updated: Dict[int, bool] = {}
 
-        # new transactions or transactions whose utxos have been spent during this processing:
-        txs_updated: Dict[int, bool] = {}
-
         cur_block_height = self.dashd_intf.getblockcount()
 
         empty_addresses = 0
@@ -287,7 +347,7 @@ class Bip44Wallet(object):
 
             if len(addresses) >= TX_QUERY_ADDR_CHUNK_SIZE:
 
-                self._process_addresses_txs(addresses, cur_block_height, txs_updated, addr_bal_updated)
+                self._process_addresses_txs(addresses, cur_block_height, addr_bal_updated)
 
                 # count the number of addresses with no associated transactions starting from the end
                 _empty_addresses = 0
@@ -318,7 +378,7 @@ class Bip44Wallet(object):
                     break
 
         if len(addresses):
-            self._process_addresses_txs(addresses, cur_block_height, txs_updated, addr_bal_updated)
+            self._process_addresses_txs(addresses, cur_block_height, addr_bal_updated)
 
         # update addresses' 'balance' and 'received'
         if addr_bal_updated:
@@ -350,7 +410,7 @@ class Bip44Wallet(object):
                 self.db_intf.release_cursor()
 
     def _process_addresses_txs(self, addr_info_list: List[AddressType], max_block_height: int,
-                               txs_updated: Dict[int, bool], addr_bal_updated: Dict[int, bool]):
+                               addr_bal_updated: Dict[int, bool]):
 
         addrinfo_by_address = {}
         addresses = []
@@ -375,7 +435,7 @@ class Bip44Wallet(object):
                 for tx_entry in txids:
                     address = tx_entry.get('address')
                     addr_db_id = addrinfo_by_address[address].get('id')
-                    self._process_tx_entry(tx_entry, addr_db_id, address, db_cursor, addr_bal_updated, txs_updated)
+                    self._process_tx_entry(tx_entry, addr_db_id, address, db_cursor, addr_bal_updated)
 
                 # update the last scan block height info for each of the addresses
                 for addr_info in addr_info_list:
@@ -388,7 +448,7 @@ class Bip44Wallet(object):
                 self.db_intf.release_cursor()
 
     def _process_tx_entry(self, tx_entry: Dict, addr_db_id: int, address: str, db_cursor,
-                          addr_bal_updated: Dict[int, bool], txs_updated: Dict[int, bool]):
+                          addr_bal_updated: Dict[int, bool]):
 
         tx_id, tx_json = self._get_tx_db_id(tx_entry.get('txid'), db_cursor)
         tx_index = tx_entry.get('index')
@@ -402,13 +462,18 @@ class Bip44Wallet(object):
             if not row:
                 db_cursor.execute('insert into tx_output(address_id, address, tx_id, output_index, satoshis) '
                                   'values(?,?,?,?,?)', (addr_db_id, address, tx_id, tx_index, satoshis))
-                txs_updated[tx_id] = True
+                self.txs_added[tx_id] = tx_id
                 addr_bal_updated[addr_db_id] = True
+                out_db_id = db_cursor.lastrowid
             else:
+                out_db_id = row[0]
                 if addr_db_id != row[1]:
-                    db_cursor.execute('update tx_output set address_id=? where id=?', (addr_db_id, row[0]))
-                    txs_updated[tx_id] = True
+                    db_cursor.execute('update tx_output set address_id=? where id=?', (addr_db_id, out_db_id))
+                    self.txs_added[tx_id] = tx_id
                     addr_bal_updated[addr_db_id] = True
+
+            if out_db_id not in self.utxos_added:
+                self.utxos_added[out_db_id] = out_db_id
         else:
             # outgoing transaction entry
             db_cursor.execute('select id from tx_input where tx_id=? and input_index=?', (tx_id, tx_index))
@@ -421,7 +486,7 @@ class Bip44Wallet(object):
             if not row:
                 db_cursor.execute('insert into tx_input(tx_id, input_index, address_id, satoshis) values(?,?,?,?)',
                                   (tx_id, tx_index, addr_db_id, satoshis))
-                txs_updated[tx_id] = True
+                self.txs_added[tx_id] = tx_id
                 addr_bal_updated[addr_db_id] = True
 
             tx_vin = tx_json.get('vin')
@@ -431,16 +496,23 @@ class Bip44Wallet(object):
                 related_tx_index = related_tx_vin.get('vout')
                 related_tx_db_id, _ = self._get_tx_db_id(related_txid, db_cursor)
 
-                # related transaction should already be in the database cache
+                # the related transaction should already be in the database cache
                 db_cursor.execute('select id, spent_tx_id, spent_input_index from tx_output where tx_id=? '
                                   'and output_index=?', (related_tx_db_id, related_tx_index))
                 row = db_cursor.fetchone()
                 if row:
+                    out_db_id = row[0]
                     if row[1] != tx_id or row[2] != tx_index:
                         db_cursor.execute('update tx_output set spent_tx_id=?, spent_input_index=? where id=?',
-                                          (tx_id, tx_index, row[0]))
-                        txs_updated[related_tx_db_id] = True
+                                          (tx_id, tx_index, out_db_id))
+                        self.txs_added[tx_id] = tx_id
                         addr_bal_updated[addr_db_id] = True
+
+                    # todo: check this and continue here
+                    if out_db_id in self.utxos_added:
+                        del self.utxos_added[out_db_id]
+                    else:
+                        self.utxos_removed[out_db_id] = out_db_id
                 else:
                     logging.warning(f'Could not find the related transaction for this tx entry. Txid: {related_txid}, '
                                     f'index: {tx_index}')
@@ -492,15 +564,14 @@ class Bip44Wallet(object):
             tx_id = row[0]
         return tx_id, tx_json
 
-    def list_bip32_account_utxos(self, account_nr: int) -> Generator[UtxoType, None, None]:
+    def list_bip32_account_utxos(self, account_index: int) -> Generator[UtxoType, None, None]:
         """
-        :param account_nr: the account number (0-based)
-        :return:
+        :param account_index: for hardened account the value should be >= 0x80000000
         """
-        if account_nr < 0:
+        if account_index < 0:
             raise Exception('Invalid account number')
 
-        base_addr = self.get_account_base_address(account_nr)
+        base_addr = self.get_account_base_address(account_index)
         cur_block_height = self.dashd_intf.getblockcount()
 
         db_cursor = self.db_intf.get_cursor()
@@ -527,6 +598,19 @@ class Bip44Wallet(object):
                 utxo.coinbase_locked = True if coinbase and utxo.confirmations < 100 else False
                 yield utxo
 
+        finally:
+            self.db_intf.release_cursor()
+
+    def list_accounts(self) -> Generator[Bip44AccountType, None, None]:
+        db_cursor = self.db_intf.get_cursor()
+        try:
+            tree_id = self.get_tree_id(db_cursor)
+
+            db_cursor.execute("select id, xpub_hash, address_index, path, balance, received from address where "
+                              "parent_id is null and tree_id=? order by address_index", (tree_id,))
+
+            for id, xpub_hash, address_index, bip32_path, balance, received in db_cursor.fetchall():
+                yield Bip44AccountType(id, xpub_hash, address_index, bip32_path, balance, received, '')
         finally:
             self.db_intf.release_cursor()
 
