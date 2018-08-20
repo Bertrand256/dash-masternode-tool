@@ -10,11 +10,10 @@ import time
 import logging
 import math
 from functools import partial
-from operator import itemgetter
 from typing import Tuple, List, Optional, Dict
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSlot, QStringListModel, QItemSelectionModel, \
-    QItemSelection, QSortFilterProxyModel
+    QItemSelection, QSortFilterProxyModel, QAbstractItemModel, QModelIndex, QObject, QAbstractListModel
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox, QSplitter, QVBoxLayout, QPushButton, \
     QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout
@@ -23,11 +22,12 @@ import app_cache
 import app_utils
 import dash_utils
 import hw_intf
+from app_config import MasternodeConfig
 from app_defs import HWType
-from bip44_wallet import Bip44Wallet, UtxoType
+from bip44_wallet import Bip44Wallet, UtxoType, Bip44AccountType
 from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
-from hw_common import HardwareWalletCancelException
+from hw_common import HardwareWalletCancelException, HwSessionInfo
 from hw_intf import prepare_transfer_tx, get_address
 from thread_fun_dlg import WorkerThread, CtrlObject
 from tx_history_widgets import TransactionsModel, TransactionsProxyModel
@@ -38,7 +38,7 @@ from transaction_dlg import TransactionDlg
 
 
 class UtxoTableModel(QAbstractTableModel):
-    def __init__(self, parent, parent_wnd):
+    def __init__(self, parent, parent_wnd, masternode_list: List[MasternodeConfig]):
         QAbstractTableModel.__init__(self, parent)
         self.checked = False
         self.utxos: List[UtxoType] = []
@@ -51,9 +51,18 @@ class UtxoTableModel(QAbstractTableModel):
             ('bip32_path', 'Path', True, 100),
             ('time_str', 'TX Date/Time', True, 140),
             ('address', 'Address', True, 140),
+            ('masternode', 'Masternode', True, 40),
             ('txid', 'TX ID', True, 220),
             ('output_index', 'TX Idx', True, 40)
         ]
+
+        self.mn_by_collateral_tx: Dict[str, MasternodeConfig] = {}
+        self.mn_by_collateral_address: Dict[str, MasternodeConfig] = {}
+
+        for mn in masternode_list:
+            ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
+            self.mn_by_collateral_tx[ident] = mn
+            self.mn_by_collateral_address[mn.collateralAddress] = mn
 
     def column_index_by_name(self, name: str) -> Optional[int]:
         for idx, col in enumerate(self.columns):
@@ -95,6 +104,9 @@ class UtxoTableModel(QAbstractTableModel):
                         field_name = self.columns[col][0]
                         if field_name == 'satoshis':
                             return app_utils.to_string(round(utxo.satoshis / 1e8, 8))
+                        elif field_name == 'masternode':
+                            if utxo.masternode:
+                                return utxo.masternode.name
                         else:
                             return app_utils.to_string(utxo.__getattribute__(field_name))
 
@@ -117,33 +129,20 @@ class UtxoTableModel(QAbstractTableModel):
 
         return QVariant()
 
-    def setUtxos(self, utxos, masternodes):
-        def utxo_assigned_to_collateral(utxo):
-            for mn in masternodes:
-                if mn.collateralTx == utxo.txid and str(mn.collateralTxIndex) == str(utxo.output_index):
-                    return True
-            return False
-
-        def mn_by_address(address):
-            for mn in masternodes:
-                if mn.collateralAddress == address:
-                    return mn.name
-            return ''
-
-        for utxo in utxos:
-            if utxo_assigned_to_collateral(utxo):
-                utxo.is_collateral = True
-            else:
-                utxo.is_collateral = False
-            utxo.mn = mn_by_address(utxo['address'])
-        self.utxos = utxos
-        self.beginResetModel()
-        self.endResetModel()
-
     def add_utxo(self, utxo: UtxoType):
         if not utxo.id in self.utxo_by_id:
             self.utxos.append(utxo)
             self.utxo_by_id[utxo.id] = utxo
+            ident = utxo.txid + '-' + str(utxo.output_index)
+            if ident in self.mn_by_collateral_tx:
+                utxo.is_collateral = True
+            mn = self.mn_by_collateral_address.get(utxo.address, None)
+            if mn:
+                utxo.masternode = mn
+
+    def clear_utxos(self):
+        self.utxos.clear()
+        self.utxo_by_id.clear()
 
 
 class UtxoListProxyModel(QSortFilterProxyModel):
@@ -205,18 +204,73 @@ class UtxoListProxyModel(QSortFilterProxyModel):
         return super().lessThan(left, right)
 
 
+class AccountListModel(QAbstractListModel):
+    def __init__(self, parent):
+        QAbstractItemModel.__init__(self, parent)
+        self.accounts: List[Bip44AccountType] = []
+        self.modified = False
+
+    def columnCount(self, parent=None, *args, **kwargs):
+        return 1
+
+    def rowCount(self, parent=None, *args, **kwargs):
+        return len(self.accounts)
+
+    def data(self, index, role=None):
+        if index.isValid():
+            row = index.row()
+            if row < len(self.accounts):
+                account = self.accounts[row]
+                if account:
+                    if role in (Qt.DisplayRole, Qt.EditRole):
+                        return account.get_account_name()
+        return QVariant()
+
+    def reset_modified(self):
+        self.modified = False
+
+    def account_by_id(self, id: int) -> Optional[Bip44AccountType]:
+        for a in self.accounts:
+            if a.id == id:
+                return a
+        return None
+
+    def account_by_address_index(self, address_index: int) -> Optional[Bip44AccountType]:
+        for a in self.accounts:
+            if a.address_index == address_index:
+                return a
+        return None
+
+    def add_account(self, account: Bip44AccountType):
+        existing_account = self.account_by_id(account.id)
+        if not existing_account:
+            self.accounts.append(account)
+            self.modified = True
+        else:
+            if existing_account.update_from(account):
+                self.modified = True
+
+    def clear_accounts(self):
+        self.accounts.clear()
+
+    def sort_accounts(self):
+        self.accounts.sort(key=lambda x: x.address_index)
+
+
 UtxoSrcAddr = Tuple[str, str]  # Dash address (in HW) to be scanned for UTXOs (address, bip32 path)
 UtxoSrcAddrList = List[UtxoSrcAddr]
 
 
 CACHE_ITEM_UTXO_SOURCE_MODE = 'WalletDlg_UtxoSourceMode'
-CACHE_ITEM_HW_ACCOUNT_NUMBERS = 'WalletDlg_UtxoSrc_HwAccountNumbers'
 CACHE_ITEM_HW_ACCOUNT_BASE_PATH = 'WalletDlg_UtxoSrc_HwAccountBasePath_%NETWORK%'
-CACHE_ITEM_HW_ACCOUNT_NUMBER = 'WalletDlg_UtxoSrc_HwAccountNumber'
+CACHE_ITEM_HW_ACCOUNT_ADDR_INDEX = 'WalletDlg_UtxoSrc_HwAccountAddressIndex'
 CACHE_ITEM_HW_SRC_BIP32_PATH = 'WalletDlg_UtxoSrc_HwBip32Path_%NETWORK%'
 CACHE_ITEM_UTXO_SRC_MASTRNODE = 'WalletDlg_UtxoSrc_Masternode_%NETWORK%'
 CACHE_ITEM_COL_WIDTHS = 'WalletDlg_ColWidths'
 CACHE_ITEM_LAST_RECIPIENTS = 'WalletDlg_LastRecipients_%NETWORK%'
+CACHE_ITEM_MAIN_SPLITTER_SIZES = 'WalletDlg_MainSplitterSizes'
+
+FETCH_DATA_INTERVAL_SECONDS = 30
 
 
 class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
@@ -242,7 +296,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
         self.dashd_intf: DashdInterface = main_ui.dashd_intf
         self.db_intf: DBCache = main_ui.config.db_intf
-        self.utxo_table_model = UtxoTableModel(None, self)
+        self.utxo_table_model = UtxoTableModel(None, self, self.masternodes)
         self.finishing = False  # true if closing window
         self.load_utxos_thread_ref: Optional[WorkerThread] = None
         self.last_utxos_source_hash = ''
@@ -257,9 +311,8 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.mn_src_index = None
 
         # for self.utxo_src_mode == 2
-        self.hw_account_numbers = [x for x in range(5)]
         self.hw_account_base_bip32_path = ''
-        self.hw_account_number = None
+        self.hw_account_address_index = None  # bip44 account address index; for account #1 (1-based) the values is 0x80000000
 
         # for self.utxo_src_mode == 3
         self.hw_src_bip32_path = None
@@ -274,7 +327,12 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.recipient_list_from_cache = []
         self.tab_transactions_model = None
 
-        self.bip44_wallet = Bip44Wallet(self.main_ui.hw_session, self.db_intf, self.dashd_intf,
+        self.account_list_model = AccountListModel(self)
+        self.load_data_event = threading.Event()
+        self.fetch_txs_event = threading.Event()
+        self.hw_session: HwSessionInfo = self.main_ui.hw_session
+
+        self.bip44_wallet = Bip44Wallet(self.hw_session, self.db_intf, self.dashd_intf,
                                         self.app_config.dash_network)
 
         self.setupUi()
@@ -297,6 +355,9 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.tableView.setModel(self.utxo_proxy)
         self.tableView.setItemDelegate(ReadOnlyTableCellDelegate(self.tableView))
         self.tableView.verticalHeader().setDefaultSectionSize(self.tableView.verticalHeader().fontMetrics().height() + 4)
+
+
+        self.listWalletAccounts.setModel(self.account_list_model)
 
         # set utxo table default column widths
         for col, w in enumerate(self.grid_column_widths):
@@ -345,15 +406,6 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.edt_src_bip32_path.setText(self.hw_src_bip32_path)
         self.edt_src_bip32_path.blockSignals(False)
 
-        self.cbo_hw_account_nr.blockSignals(True)
-        self.cbo_hw_account_nr.addItems([str(x + 1) for x in self.hw_account_numbers])
-        try:
-            idx = self.hw_account_numbers.index(self.hw_account_number)
-            self.cbo_hw_account_nr.setCurrentIndex(idx)
-        except Exception:
-            pass
-        self.cbo_hw_account_nr.blockSignals(False)
-
         if self.mn_src_index is None and len(self.masternodes) > 0:
             self.mn_src_index = 0
 
@@ -381,28 +433,33 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.splitter.setStretchFactor(0, 1)
         self.splitter.setStretchFactor(1, 0)
 
-        self.cbo_hw_account_nr.setFixedWidth(60)
-        self.btn_add_hw_account_nr.setText('\u271a')
-        self.btn_add_hw_account_nr.setFixedSize(22, self.edt_src_bip32_path.sizeHint().height())
         self.btn_src_bip32_path.setText('\u270e')
         self.btn_src_bip32_path.setFixedSize(22, self.edt_src_bip32_path.sizeHint().height())
         self.display_bip32_base_path()
         self.lbl_hw_account_base_path.setStyleSheet('QLabel{font-size:10px}')
         self.tableView.selectionModel().selectionChanged.connect(self.on_tableView_selectionChanged)
-        self.load_utxos()
+        self.listWalletAccounts.selectionModel().selectionChanged.connect(self.on_listWalletAccounts_selectionChanged)
+
+        self.fetch_transactions_thread_id = None
+        self.update_data_view_thread_id = None
+        self.run_thread(self, self.update_data_view_thread, ())
+
+    def closeEvent(self, event):
+        self.finishing = True
+        self.load_data_event.set()
+        self.fetch_txs_event.set()
+        self.save_cache_settings()
 
     def restore_cache_settings(self):
         app_cache.restore_window_size(self)
+
+        # main spliiter size
+        self.splitterMain.setSizes(app_cache.get_value(CACHE_ITEM_MAIN_SPLITTER_SIZES, [100, 600], list))
+
         if self.initial_mn_sel is None:
             mode = app_cache.get_value(CACHE_ITEM_UTXO_SOURCE_MODE, 2, int)
             if mode in (1, 2, 3):
                 self.utxo_src_mode = mode
-
-        # activated bip32 account numbers:
-        nrs = app_cache.get_value(CACHE_ITEM_HW_ACCOUNT_NUMBERS, [0, 1, 2, 3, 4], list)
-        nrs.sort()
-        self.hw_account_numbers.clear()
-        self.hw_account_numbers.extend(nrs)
 
         # base bip32 path:
         path = app_cache.get_value(CACHE_ITEM_HW_ACCOUNT_BASE_PATH.replace('%NETWORK%', self.app_config.dash_network),
@@ -413,10 +470,10 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             self.hw_account_base_bip32_path = dash_utils.get_default_bip32_base_path(self.app_config.dash_network)
 
         # account number:
-        nr = app_cache.get_value(CACHE_ITEM_HW_ACCOUNT_NUMBER, 0, int)
+        nr = app_cache.get_value(CACHE_ITEM_HW_ACCOUNT_ADDR_INDEX, 0x80000000, int)
         if nr < 0:
-            nr = 0
-        self.hw_account_number = nr
+            nr = 0x80000000
+        self.hw_account_address_index = nr
 
         # bip32 path (utxo_src_mode 3)
         path = app_cache.get_value(CACHE_ITEM_HW_SRC_BIP32_PATH.replace('%NETWORK%', self.app_config.dash_network),
@@ -456,12 +513,12 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
     def save_cache_settings(self):
         app_cache.save_window_size(self)
+        app_cache.set_value(CACHE_ITEM_MAIN_SPLITTER_SIZES, self.splitterMain.sizes())
         if self.initial_mn_sel is None:
             app_cache.set_value(CACHE_ITEM_UTXO_SOURCE_MODE, self.utxo_src_mode)
-        app_cache.set_value(CACHE_ITEM_HW_ACCOUNT_NUMBERS, self.hw_account_numbers)
         app_cache.set_value(CACHE_ITEM_HW_ACCOUNT_BASE_PATH.replace('%NETWORK%', self.app_config.dash_network),
                             self.hw_account_base_bip32_path)
-        app_cache.set_value(CACHE_ITEM_HW_ACCOUNT_NUMBER, self.hw_account_number)
+        app_cache.set_value(CACHE_ITEM_HW_ACCOUNT_ADDR_INDEX, self.hw_account_address_index)
         app_cache.set_value(CACHE_ITEM_HW_SRC_BIP32_PATH.replace('%NETWORK%', self.app_config.dash_network),
                             self.hw_src_bip32_path)
 
@@ -531,28 +588,6 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.mn_src_index = index
         self.load_utxos()
 
-    @pyqtSlot(bool)
-    def on_btn_add_hw_account_nr_clicked(self, checked):
-        account_str, ok = QInputDialog.getText(self, 'Account number query', 'Add new account number')
-        if ok:
-            account_nr = int(account_str)
-            if 0 < account_nr < 0xffffffff:
-                account_nr -= 1  # gui accounts are based on 1
-                if account_nr not in self.hw_account_numbers:
-                    self.hw_account_numbers.append(account_nr)
-                    self.cbo_hw_account_nr.addItem(str(account_nr + 1))
-                    self.cbo_hw_account_nr.setCurrentIndex(self.cbo_hw_account_nr.count() - 1)
-                else:
-                    self.cbo_hw_account_nr.setCurrentIndex(self.hw_account_numbers.index(account_nr))
-            else:
-                self.errorMsg('Invalid account number.')
-
-    @pyqtSlot(int)
-    def on_cbo_hw_account_nr_currentIndexChanged(self, index):
-        if 0 <= index < len(self.hw_account_numbers):
-            self.hw_account_number = self.hw_account_numbers[index]
-            self.load_utxos()
-
     @pyqtSlot(str)
     def on_lbl_hw_account_base_path_linkActivated(self, text):
         path, ok = QInputDialog.getText(self, 'Account base path query', 'Enter a new BIP32 base path:',
@@ -588,10 +623,6 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
     def display_bip32_base_path(self):
         self.lbl_hw_account_base_path.setText(f'&nbsp;&nbsp;Base path: {self.hw_account_base_bip32_path} '
                                               f'(<a href="ch">change</a>)')
-
-    def closeEvent(self, event):
-        self.finishing = True
-        self.save_cache_settings()
 
     def set_message(self, message):
         def set_msg(message):
@@ -647,128 +678,278 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         """
         Sends funds to Dash address specified by user.
         """
-
-        amount, utxos = self.get_selected_utxos()
-        if len(utxos):
-            try:
-                if not self.main_ui.connect_hardware_wallet():
-                    return
-            except HardwareWalletCancelException:
-                return
-
-            bip32_to_address = {}  # for saving addresses read from HW by BIP32 path
-            total_satoshis = 0
-            coinbase_locked_exist = False
-
-            # verify if:
-            #  - utxo is the masternode collateral transation
-            #  - the utxo Dash (signing) address matches the hardware wallet address for a given path
-            for utxo_idx, utxo in enumerate(utxos):
-                total_satoshis += utxo['satoshis']
-                logging.info(f'UTXO satosis: {utxo["satoshis"]}')
-                if utxo.is_collateral:
-                    if self.queryDlg(
-                            "Warning: you are going to transfer masternode's collateral (1000 Dash) transaction "
-                            "output. Proceeding will result in broken masternode.\n\n"
-                            "Do you really want to continue?",
-                            buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                            default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
-                        return
-                if utxo['coinbase_locked']:
-                    coinbase_locked_exist = True
-
-                bip32_path = utxo.get('bip32_path', None)
-                if not bip32_path:
-                    self.errorMsg('No BIP32 path for UTXO: %s. Cannot continue.' % utxo['txid'])
-                    return
-
-                addr_hw = bip32_to_address.get(bip32_path, None)
-                if not addr_hw:
-                    addr_hw = get_address(self.main_ui.hw_session, bip32_path)
-                    bip32_to_address[bip32_path] = addr_hw
-                if addr_hw != utxo['address']:
-                    self.errorMsg("<html style=\"font-weight:normal\">Dash address inconsistency between UTXO (%d) and HW path: %s.<br><br>"
-                                 "<b>HW address</b>: %s<br>"
-                                 "<b>UTXO address</b>: %s<br><br>"
-                                 "Cannot continue.</html>" %
-                                  (utxo_idx+1, bip32_path, addr_hw, utxo['address']))
-                    return
-
-            if coinbase_locked_exist:
-                if self.queryDlg(
-                        "Warning: you have selected at least one coinbase transaction without the required number of "
-                        "confirmations (100). Your transaction will probably be rejected by the network.\n\n"
-                        "Do you really want to continue?",
-                        buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                        default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
-                    return
-            try:
-                dest_data = self.wdg_dest_adresses.get_tx_destination_data()
-                if dest_data:
-                    total_satoshis_actual = 0
-                    for dd in dest_data:
-                        total_satoshis_actual += dd[1]
-                        logging.info(f'dest amount: {dd[1]}')
-
-                    fee = self.wdg_dest_adresses.get_tx_fee()
-                    use_is = self.wdg_dest_adresses.get_use_instant_send()
-                    logging.info(f'fee: {fee}')
-                    if total_satoshis != total_satoshis_actual + fee:
-                        logging.warning(f'total_satoshis ({total_satoshis}) != total_satoshis_real '
-                                        f'({total_satoshis_actual}) + fee ({fee})')
-                        logging.warning(f'total_satoshis_real + fee: {total_satoshis_actual + fee}')
-
-                        if abs(total_satoshis - total_satoshis_actual - fee) > 10:
-                            raise Exception('Data validation failure')
-
-                    try:
-                        serialized_tx, amount_to_send = prepare_transfer_tx(
-                            self.main_ui.hw_session, utxos, dest_data, fee, self.rawtransactions)
-                    except HardwareWalletCancelException:
-                        # user cancelled the operations
-                        hw_intf.cancel_hw_operation(self.main_ui.hw_session.hw_client)
-                        return
-                    except Exception:
-                        logging.exception('Exception when preparing the transaction.')
-                        raise
-
-                    tx_hex = serialized_tx.hex()
-                    logging.info('Raw signed transaction: ' + tx_hex)
-                    if len(tx_hex) > 90000:
-                        self.errorMsg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
-                    else:
-                        tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex, use_is)
-                        if tx_dlg.exec_():
-                            amount, sel_utxos = self.get_selected_utxos()
-                            if sel_utxos:
-                                # mark and uncheck all spent utxox
-                                for utxo_idx, utxo in enumerate(sel_utxos):
-                                    utxo['spent_date'] = time.time()
-
-                                self.utxo_table_model.beginResetModel()
-                                self.utxo_table_model.endResetModel()
-            except Exception as e:
-                logging.exception('Unknown error occurred.')
-                self.errorMsg(str(e))
-        else:
-            self.errorMsg('No UTXO to send.')
+        pass
+        # amount, utxos = self.get_selected_utxos()
+        # if len(utxos):
+        #      try:
+        #         if not self.main_ui.connect_hardware_wallet():
+        #             return
+        #     except HardwareWalletCancelException:
+        #         return
+        #
+        #     bip32_to_address = {}  # for saving addresses read from HW by BIP32 path
+        #     total_satoshis = 0
+        #     coinbase_locked_exist = False
+        #
+        #     # verify if:
+        #     #  - utxo is the masternode collateral transation
+        #     #  - the utxo Dash (signing) address matches the hardware wallet address for a given path
+        #     for utxo_idx, utxo in enumerate(utxos):
+        #         total_satoshis += utxo['satoshis']
+        #         logging.info(f'UTXO satosis: {utxo["satoshis"]}')
+        #         if utxo.is_collateral:
+        #             if self.queryDlg(
+        #                     "Warning: you are going to transfer masternode's collateral (1000 Dash) transaction "
+        #                     "output. Proceeding will result in broken masternode.\n\n"
+        #                     "Do you really want to continue?",
+        #                     buttons=QMessageBox.Yes | QMessageBox.Cancel,
+        #                     default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
+        #                 return
+        #         if utxo['coinbase_locked']:
+        #             coinbase_locked_exist = True
+        #
+        #         bip32_path = utxo.get('bip32_path', None)
+        #         if not bip32_path:
+        #             self.errorMsg('No BIP32 path for UTXO: %s. Cannot continue.' % utxo['txid'])
+        #             return
+        #
+        #         addr_hw = bip32_to_address.get(bip32_path, None)
+        #         if not addr_hw:
+        #             addr_hw = get_address(self.main_ui.hw_session, bip32_path)
+        #             bip32_to_address[bip32_path] = addr_hw
+        #         if addr_hw != utxo['address']:
+        #             self.errorMsg("<html style=\"font-weight:normal\">Dash address inconsistency between UTXO (%d) and HW path: %s.<br><br>"
+        #                          "<b>HW address</b>: %s<br>"
+        #                          "<b>UTXO address</b>: %s<br><br>"
+        #                          "Cannot continue.</html>" %
+        #                           (utxo_idx+1, bip32_path, addr_hw, utxo['address']))
+        #             return
+        #
+        #     if coinbase_locked_exist:
+        #         if self.queryDlg(
+        #                 "Warning: you have selected at least one coinbase transaction without the required number of "
+        #                 "confirmations (100). Your transaction will probably be rejected by the network.\n\n"
+        #                 "Do you really want to continue?",
+        #                 buttons=QMessageBox.Yes | QMessageBox.Cancel,
+        #                 default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
+        #             return
+        #     try:
+        #         dest_data = self.wdg_dest_adresses.get_tx_destination_data()
+        #         if dest_data:
+        #             total_satoshis_actual = 0
+        #             for dd in dest_data:
+        #                 total_satoshis_actual += dd[1]
+        #                 logging.info(f'dest amount: {dd[1]}')
+        #
+        #             fee = self.wdg_dest_adresses.get_tx_fee()
+        #             use_is = self.wdg_dest_adresses.get_use_instant_send()
+        #             logging.info(f'fee: {fee}')
+        #             if total_satoshis != total_satoshis_actual + fee:
+        #                 logging.warning(f'total_satoshis ({total_satoshis}) != total_satoshis_real '
+        #                                 f'({total_satoshis_actual}) + fee ({fee})')
+        #                 logging.warning(f'total_satoshis_real + fee: {total_satoshis_actual + fee}')
+        #
+        #                 if abs(total_satoshis - total_satoshis_actual - fee) > 10:
+        #                     raise Exception('Data validation failure')
+        #
+        #             try:
+        #                 serialized_tx, amount_to_send = prepare_transfer_tx(
+        #                     self.main_ui.hw_session, utxos, dest_data, fee, self.rawtransactions)
+        #             except HardwareWalletCancelException:
+        #                 # user cancelled the operations
+        #                 hw_intf.cancel_hw_operation(self.main_ui.hw_session.hw_client)
+        #                 return
+        #             except Exception:
+        #                 logging.exception('Exception when preparing the transaction.')
+        #                 raise
+        #
+        #             tx_hex = serialized_tx.hex()
+        #             logging.info('Raw signed transaction: ' + tx_hex)
+        #             if len(tx_hex) > 90000:
+        #                 self.errorMsg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
+        #             else:
+        #                 tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex, use_is)
+        #                 if tx_dlg.exec_():
+        #                     amount, sel_utxos = self.get_selected_utxos()
+        #                     if sel_utxos:
+        #                         # mark and uncheck all spent utxox
+        #                         for utxo_idx, utxo in enumerate(sel_utxos):
+        #                             utxo['spent_date'] = time.time()
+        #
+        #                         self.utxo_table_model.beginResetModel()
+        #                         self.utxo_table_model.endResetModel()
+        #     except Exception as e:
+        #         logging.exception('Unknown error occurred.')
+        #         self.errorMsg(str(e))
+        # else:
+        #     self.errorMsg('No UTXO to send.')
 
     @pyqtSlot()
     def on_btnClose_clicked(self):
         self.close()
+
+    def on_listWalletAccounts_selectionChanged(self):
+        """Selected BIP44 account changed. """
+        idx = self.listWalletAccounts.currentIndex()
+        if idx and idx.row() < len(self.account_list_model.accounts):
+            self.hw_account_address_index = self.account_list_model.accounts[idx.row()].address_index
+        else:
+            self.hw_account_address_index = None
+
+        self.utxo_table_model.clear_utxos()
+        self.reset_utxos_view()
+        self.load_data_event.set()
 
     def get_utxo_src_cfg_hash(self):
         hash = str({self.utxo_src_mode})
         if self.utxo_src_mode == 1:
             hash = hash + f'{self.mn_src_index}'
         elif self.utxo_src_mode == 2:
-            hash = hash + f':{self.hw_account_base_bip32_path}:{self.hw_account_number}'
+            hash = hash + f':{self.hw_account_base_bip32_path}:{self.hw_account_address_index}'
         elif self.utxo_src_mode == 3:
             hash = hash + ':' + str(self.hw_src_bip32_path)
         return hash
 
-    def __load_utxos(self):
-        pass
+    def reset_accounts_view(self):
+        def reset():
+            self.account_list_model.beginResetModel()
+            self.account_list_model.endResetModel()
+
+            if len(self.account_list_model.accounts) > 0:
+                if self.hw_account_address_index is None:
+                    sel_acc = self.account_list_model.accounts[0]
+                else:
+                    sel_acc = self.account_list_model.account_by_address_index(self.hw_account_address_index)
+                    if not sel_acc:
+                        sel_acc = self.account_list_model.accounts[0]
+
+                self.hw_account_address_index = sel_acc.address_index
+                idx = self.account_list_model.accounts.index(sel_acc)
+                old_state = self.listWalletAccounts.selectionModel().blockSignals(True)
+                try:
+                    self.listWalletAccounts.setCurrentIndex(self.account_list_model.index(idx))
+                finally:
+                    self.listWalletAccounts.selectionModel().blockSignals(old_state)
+            else:
+                self.hw_account_address_index = None
+
+        WndUtils.call_in_main_thread(reset)
+
+    def reset_utxos_view(self):
+        def reset():
+            self.utxo_table_model.beginResetModel()
+            self.utxo_table_model.endResetModel()
+        WndUtils.call_in_main_thread(reset)
+
+    def connect_hw(self):
+        def connect():
+            if self.main_ui.connect_hardware_wallet():
+                self.app_config.initialize_hw_encryption(self.main_ui.hw_session)
+                return True
+            return False
+        return WndUtils.call_in_main_thread(connect)
+
+    def update_data_view_thread(self, ctrl: CtrlObject):
+        try:
+            self.update_data_view_thread_id = threading.current_thread()
+            last_utxos_source_hash = ''
+            last_hd_tree = ''
+            accounts_loaded = False
+            fetch_txs_launched = False
+
+            while not ctrl.finish and not self.finishing:
+                if self.utxo_src_mode != 1:
+                    connected = self.connect_hw()
+                    if not connected:
+                        return
+
+                    if last_hd_tree != self.hw_session.hd_tree_ident or not accounts_loaded:
+                        # switched to another hw or another passphrase
+                        if accounts_loaded:
+                            self.account_list_model.clear_accounts()
+
+                        # load bip44 account list
+                        self.account_list_model.reset_modified()
+                        for a in self.bip44_wallet.list_accounts():
+                            self.account_list_model.add_account(a)
+
+                        if self.account_list_model.modified:
+                            self.account_list_model.sort_accounts()
+                            self.reset_accounts_view()
+
+                        accounts_loaded = True
+                        last_hd_tree = self.hw_session.hd_tree_ident
+
+                cur_utxo_source_hash = self.get_utxo_src_cfg_hash()
+                if last_utxos_source_hash != cur_utxo_source_hash:
+                    # reload the data
+                    list_utxos = None
+                    if self.utxo_src_mode == 2:
+                        if self.hw_account_address_index is not None:
+                            list_utxos = self.bip44_wallet.list_bip32_account_utxos(self.hw_account_address_index)
+
+                    if len(self.utxo_table_model.utxos) > 0:
+                        self.utxo_table_model.clear_utxos()
+
+                    if list_utxos:
+                        for utxo in list_utxos:
+                            self.utxo_table_model.add_utxo(utxo)
+
+                        last_utxos_source_hash = cur_utxo_source_hash
+
+                    if len(self.utxo_table_model.utxos) > 0:
+                        self.reset_utxos_view()
+
+                if not self.fetch_transactions_thread_id and not fetch_txs_launched:
+                    WndUtils.call_in_main_thread(WndUtils.run_thread, self, self.fetch_transactions_thread, ())
+                    fetch_txs_launched = True
+
+                self.load_data_event.wait(2)
+                if self.load_data_event.is_set():
+                    self.load_data_event.clear()
+
+        except Exception as e:
+            logging.exception('Exception occurred')
+            WndUtils.errorMsg(str(e))
+
+        finally:
+            self.update_data_view_thread_id = None
+        logging.info('Finishing update_data_view_thread')
+
+    def fetch_transactions_thread(self, ctrl: CtrlObject):
+        try:
+            self.fetch_transactions_thread_id = threading.current_thread()
+            last_txs_fetch_time = 0
+
+            while not ctrl.finish and not self.finishing:
+                if self.utxo_src_mode != 1:
+                    connected = self.connect_hw()
+                    if not connected:
+                        return
+
+                if last_txs_fetch_time == 0 or (time.time() - last_txs_fetch_time > FETCH_DATA_INTERVAL_SECONDS):
+                    self.bip44_wallet.fetch_all_accounts_txs()
+                    last_txs_fetch_time = int(time.time())
+
+                    # fetching transactions may result in 'new' bip44 accounts with a non-zero 'received' balance
+                    self.account_list_model.reset_modified()
+                    for a in self.bip44_wallet.list_accounts():
+                        self.account_list_model.add_account(a)
+
+                    if self.account_list_model.modified:
+                        self.account_list_model.sort_accounts()
+                        self.reset_accounts_view()
+
+                self.load_data_event.wait(2)
+                if self.load_data_event.is_set():
+                    self.load_data_event.clear()
+
+        except Exception as e:
+            logging.exception('Exception occurred')
+            WndUtils.errorMsg(str(e))
+        finally:
+            self.fetch_transactions_thread_id = None
+        logging.info('Finishing fetch_transactions_thread')
 
     def load_utxos2(self):
         new_utxos = []
@@ -872,7 +1053,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     pass
                 elif self.utxo_src_mode == 2:
 
-                    for utxo in self.bip44_wallet.list_bip32_account_utxos(self.hw_account_number):
+                    for utxo in self.bip44_wallet.list_bip32_account_utxos(self.hw_account_address_index):
                         yield utxo
 
                 elif self.utxo_src_mode == 3:
@@ -888,8 +1069,6 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
             if self.main_ui.connect_hardware_wallet() and \
                 self.app_config.initialize_hw_encryption(self.main_ui.hw_session):
-
-                # self.bip44_wallet.read_account_bip32_txs(self.hw_account_number)
 
                 cnt1 = len(self.utxo_table_model.utxos)
                 for utxo in list_utxos(ctrl):
@@ -955,7 +1134,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     db_cur = self.db_intf.get_cursor()
 
                     try:
-                        bip32_path_n = addr_n[:] + [self.hw_account_number + 0x80000000, 0, 0]
+                        bip32_path_n = addr_n[:] + [self.hw_account_address_index + 0x80000000, 0, 0]
                         cur_addr_buf = []
                         last_level2_nr = addr_scan_ctrl.get('level2')
                         while True:
