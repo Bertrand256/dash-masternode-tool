@@ -3,7 +3,7 @@
 # Author: Bertrand256
 # Created on: 2018-07
 import logging
-from PyQt5.QtCore import pyqtSlot
+from PyQt5.QtCore import pyqtSlot, QSortFilterProxyModel, QAbstractTableModel, QVariant
 from PyQt5.QtWidgets import QTableView, QWidget
 from typing import List, Optional, Any, Dict
 
@@ -28,8 +28,32 @@ class TableModelColumn(AttrsProtected):
         self.set_attr_protection()
 
 
-class TableModelColumns(AttrsProtected):
-    def __init__(self, columns: List[TableModelColumn]):
+class AdvProxyModel(QSortFilterProxyModel):
+    def __init__(self, parent, source_model):
+        super().__init__(parent)
+        self.table_model: AdvTableModel = source_model
+        super().setSourceModel(source_model)
+
+    def filterAcceptsRow(self, source_row, source_parent):
+        return self.table_model.filter_accept_row(source_row)
+
+    def lessThan(self, left, right):
+        is_less = None
+        col_index = left.column()
+        col = self.table_model.col_by_index(col_index)
+        if col:
+            left_row_index = left.row()
+            right_row_index = right.row()
+            is_less = self.table_model.less_than(col_index, left_row_index, right_row_index)
+        if is_less is None:
+            return super().lessThan(left, right)
+        else:
+            return is_less
+
+
+class AdvTableModel(QAbstractTableModel, AttrsProtected):
+    def __init__(self, parent, columns: List[TableModelColumn]):
+        QAbstractTableModel.__init__(self, parent)
         AttrsProtected.__init__(self)
         self.__columns = columns
         self.__col_idx_by_name: Dict[str, int] = {}
@@ -37,9 +61,9 @@ class TableModelColumns(AttrsProtected):
             c.visual_index = idx
             self.__col_idx_by_name[c.name] = idx
         self.table_view: QTableView = None
-        self.set_attr_protection()
+        self.proxy_model = AdvProxyModel(parent, self)
 
-    def insert(self, insert_before_index: int, col: TableModelColumn):
+    def insert_column(self, insert_before_index: int, col: TableModelColumn):
         if insert_before_index >= 0:
             if insert_before_index < len(self.__columns):
                 self.__columns.insert(insert_before_index, col)
@@ -50,7 +74,8 @@ class TableModelColumns(AttrsProtected):
 
     def set_table_view(self, table_view: QTableView, columns_movable: bool, sorting_column: str, sorting_order: int):
         self.table_view = table_view
-        self.table_view.horizontalHeader().sectionMoved.connect(self.on_ViewColumnMoved)
+        self.table_view.horizontalHeader().sectionMoved.connect(self.on_view_column_moved)
+        self.table_view.setModel(self.proxy_model)
         self.apply_to_view()
         if sorting_column:
             idx = self.col_index_by_name(sorting_column)
@@ -126,7 +151,7 @@ class TableModelColumns(AttrsProtected):
             if cur_visual_index != view_visual_index:
                 hdr.swapSections(cur_visual_index, view_visual_index)
 
-    def on_ViewColumnMoved(self, logicalIndex, oldVisualIndex, newVisualIndex):
+    def on_view_column_moved(self, logicalIndex, oldVisualIndex, newVisualIndex):
         hdr = self.table_view.horizontalHeader()
         for logical_index, col in enumerate(self.__columns):
             vis_index = hdr.visualIndex(logical_index)
@@ -148,3 +173,38 @@ class TableModelColumns(AttrsProtected):
         except Exception as e:
             logging.exception('Exception while configuring table view columns')
             WndUtils.errorMsg(str(e))
+
+    def columnCount(self, parent=None, *args, **kwargs):
+        return self.col_count()
+
+    def headerData(self, section, orientation, role=None):
+        if role != 0:
+            return QVariant()
+        if orientation == 0x1:
+            col = self.col_by_index(section)
+            if col:
+                return col.caption
+            return ''
+        else:
+            return "Row"
+
+    def getDefaultColWidths(self):
+        return [c.initial_width for c in self.__columns]
+
+    def less_than(self, col_index, left_row_index, right_row_index):
+        pass
+
+    def filter_accept_row(self, row_index):
+        pass
+
+    def get_selected_rows(self) -> List[int]:
+        sel_row_idxs = []
+        if self.table_view:
+            sel = self.table_view.selectionModel()
+            rows = sel.selectedRows()
+            for row in rows:
+                source_row = self.proxy_model.mapToSource(row)
+                row_idx = source_row.row()
+                if row_idx >= 0:
+                    sel_row_idxs.append(row_idx)
+        return sel_row_idxs

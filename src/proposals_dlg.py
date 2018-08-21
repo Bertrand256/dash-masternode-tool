@@ -38,7 +38,7 @@ from app_config import MasternodeConfig
 from columns_cfg_dlg import ColumnsConfigDlg
 from common import AttrsProtected
 from dashd_intf import DashdIndexException, Masternode
-from table_model_column import TableModelColumns, TableModelColumn
+from table_model_column import AdvTableModel, TableModelColumn
 from ui import ui_proposals
 from wnd_utils import WndUtils, CloseDialogException
 
@@ -132,7 +132,7 @@ class Proposal(AttrsProtected):
         self.visible = True
         self.get_governance_info: Callable = get_governance_info_fun
         self.budget_cycle_hours: int = None
-        self.columns: TableModelColumns = columns
+        self.columns: AdvTableModel = columns
         self.values: Dict[ProposalColumn, Any] = {}  # dictionary of proposal values (key: ProposalColumn)
         self.db_id = None
         self.marker = None
@@ -311,7 +311,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.finishing = False  # True if the dialog is closing (all thread operations will be stopped)
         self.dashd_intf = dashd_intf
         self.db_intf = parent.config.db_intf
-        self.columns = TableModelColumns(columns=[
+        self.columns = AdvTableModel(columns=[
             ProposalColumn('no', 'No', True),
             ProposalColumn('name', 'Name', False),
             ProposalColumn('title', 'Title', True),
@@ -688,9 +688,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         else:
             col = ProposalColumn(mn_ident, mn_label, visible=True, column_for_vote=True)
             if isinstance(insert_before_column, int) and insert_before_column < self.columns.col_count():
-                self.columns.insert(insert_before_column, col)
+                self.columns.insert_column(insert_before_column, col)
             else:
-                self.columns.insert(self.columns.col_count(), col)
+                self.columns.insert_column(self.columns.col_count(), col)
             self.vote_columns_by_mn_ident[mn_ident] = col
 
             if my_masternode is None:

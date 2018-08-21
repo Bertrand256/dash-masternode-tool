@@ -29,7 +29,7 @@ from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
 from hw_common import HardwareWalletCancelException, HwSessionInfo
 from hw_intf import prepare_transfer_tx, get_address
-from table_model_column import TableModelColumns, TableModelColumn
+from table_model_column import AdvTableModel, TableModelColumn
 from thread_fun_dlg import WorkerThread, CtrlObject
 from tx_history_widgets import TransactionsModel, TransactionsProxyModel
 from wnd_utils import WndUtils, ReadOnlyTableCellDelegate
@@ -49,15 +49,9 @@ CACHE_ITEM_MAIN_SPLITTER_SIZES = 'WalletDlg_MainSplitterSizes'
 FETCH_DATA_INTERVAL_SECONDS = 30
 
 
-class UtxoTableModel(QAbstractTableModel):
+class UtxoTableModel(AdvTableModel):
     def __init__(self, parent, parent_wnd, masternode_list: List[MasternodeConfig]):
-        QAbstractTableModel.__init__(self, parent)
-        self.checked = False
-        self.utxos: List[UtxoType] = []
-        self.utxo_by_id: Dict[int, UtxoType] = {}
-        self.parent_wnd = parent_wnd
-        self.view = None
-        self.columns = TableModelColumns(columns=[
+        AdvTableModel.__init__(self, parent, columns=[
             TableModelColumn('satoshis', 'Amount (Dash)', True, 100),
             TableModelColumn('confirmations', 'Confirmations', True, 100),
             TableModelColumn('bip32_path', 'Path', True, 100),
@@ -67,6 +61,9 @@ class UtxoTableModel(QAbstractTableModel):
             TableModelColumn('txid', 'TX ID', True, 220),
             TableModelColumn('output_index', 'TX Idx', True, 40)
         ])
+        self.hide_collateral_utxos = True
+        self.utxos: List[UtxoType] = []
+        self.utxo_by_id: Dict[int, UtxoType] = {}
 
         self.mn_by_collateral_tx: Dict[str, MasternodeConfig] = {}
         self.mn_by_collateral_address: Dict[str, MasternodeConfig] = {}
@@ -76,32 +73,10 @@ class UtxoTableModel(QAbstractTableModel):
             self.mn_by_collateral_tx[ident] = mn
             self.mn_by_collateral_address[mn.collateralAddress] = mn
 
-    def set_table_view(self, view: QTableView):
-        self.columns.set_table_view(view)
-        self.columns.apply_to_view()
-
-    def column_index_by_name(self, name: str) -> Optional[int]:
-        return self.columns.col_index_by_name(name)
-
-    def columnCount(self, parent=None, *args, **kwargs):
-        return self.columns.col_count()
+        self.set_attr_protection()
 
     def rowCount(self, parent=None, *args, **kwargs):
         return len(self.utxos)
-
-    def headerData(self, section, orientation, role=None):
-        if role != 0:
-            return QVariant()
-        if orientation == 0x1:
-            col = self.columns.col_by_index(section)
-            if col:
-                return col.caption
-            return ''
-        else:
-            return "Row"
-
-    def getDefaultColWidths(self):
-        return [c.initial_width for c in self.columns.columns()]
 
     def flags(self, index):
         return Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable
@@ -114,7 +89,7 @@ class UtxoTableModel(QAbstractTableModel):
                 utxo = self.utxos[row_idx]
                 if utxo:
                     if role in (Qt.DisplayRole, Qt.EditRole):
-                        c = self.columns.col_by_index(col_idx)
+                        c = self.col_by_index(col_idx)
                         if c:
                             field_name = c.name
                             if field_name == 'satoshis':
@@ -158,65 +133,47 @@ class UtxoTableModel(QAbstractTableModel):
         self.utxos.clear()
         self.utxo_by_id.clear()
 
-
-class UtxoListProxyModel(QSortFilterProxyModel):
-    """ Proxy for UTXO filtering/sorting. """
-
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.utxo_model: UtxoTableModel = None
-        self.hide_collateral_utxos = True
-
-    def filterAcceptsRow(self, source_row, source_parent):
-        will_show = True
-
-        if 0 <= source_row < len(self.utxo_model.utxos):
-            if self.hide_collateral_utxos:
-                utxo = self.utxo_model.utxos[source_row]
-                if utxo.is_collateral:
-                    will_show = False
-        return will_show
-
-    def setSourceModel(self, source_model):
-        self.utxo_model = source_model
-        super().setSourceModel(source_model)
-
-    def set_hide_collateral_utxos(self, hide):
-        self.hide_collateral_utxos = hide
-        self.invalidateFilter()
-
-    def lessThan(self, left, right):
-        col_index = left.column()
-        col = self.utxo_model.columns.col_by_index(col_index)
+    def less_than(self, col_index, left_row_index, right_row_index):
+        col = self.col_by_index(col_index)
         if col:
             col_name = col.name
             reverse = False
             if col_name == 'time_str':
                 col_name = 'confirmations'
                 reverse = True
-            left_row_index = left.row()
 
-            if 0 <= left_row_index < len(self.utxo_model.utxos):
-                left_utxo = self.utxo_model.utxos[left_row_index]
-                right_row_index = right.row()
+            if 0 <= left_row_index < len(self.utxos) and \
+               0 <= right_row_index < len(self.utxos):
+                left_utxo = self.utxos[left_row_index]
+                right_prop = self.utxos[right_row_index]
+                left_value = left_utxo.__getattribute__(col_name)
+                right_value = right_prop.__getattribute__(col_name)
+                if isinstance(left_value, (int, float)) and isinstance(right_value, (int, float)):
+                    if not reverse:
+                        return left_value < right_value
+                    else:
+                        return right_value < left_value
+                elif isinstance(left_value, str) and isinstance(right_value, str):
+                    left_value = left_value.lower()
+                    right_value = right_value.lower()
+                    if not reverse:
+                        return left_value < right_value
+                    else:
+                        return right_value < left_value
+        return False
 
-                if 0 <= right_row_index < len(self.utxo_model.utxos):
-                    right_prop = self.utxo_model.utxos[right_row_index]
-                    left_value = left_utxo.__getattribute__(col_name)
-                    right_value = right_prop.__getattribute__(col_name)
-                    if isinstance(left_value, (int, float)) and isinstance(right_value, (int, float)):
-                        if not reverse:
-                            return left_value < right_value
-                        else:
-                            return right_value < left_value
-                    elif isinstance(left_value, str) and isinstance(right_value, str):
-                        left_value = left_value.lower()
-                        right_value = right_value.lower()
-                        if not reverse:
-                            return left_value < right_value
-                        else:
-                            return right_value < left_value
-            return super().lessThan(left, right)
+    def filter_accept_row(self, source_row):
+        will_show = True
+        if 0 <= source_row < len(self.utxos):
+            if self.hide_collateral_utxos:
+                utxo = self.utxos[source_row]
+                if utxo.is_collateral:
+                    will_show = False
+        return will_show
+
+    def set_hide_collateral_utxos(self, hide):
+        self.hide_collateral_utxos = hide
+        self.proxy_model.invalidateFilter()
 
 
 class AccountListModel(QAbstractListModel):
@@ -345,16 +302,15 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.setIcon(self.btnUncheckAll, 'uncheck.png')
         self.restore_cache_settings()
 
+        self.utxo_table_model.set_hide_collateral_utxos(True)
         self.utxoTableView.setSortingEnabled(True)
-        self.utxo_proxy = UtxoListProxyModel(self)
-        self.utxo_proxy.set_hide_collateral_utxos(True)
-        self.utxo_proxy.setSourceModel(self.utxo_table_model)
-        self.utxoTableView.setModel(self.utxo_proxy)
         self.utxoTableView.setItemDelegate(ReadOnlyTableCellDelegate(self.utxoTableView))
-        self.utxoTableView.verticalHeader().setDefaultSectionSize(self.utxoTableView.verticalHeader().fontMetrics().height() + 4)
-        self.utxo_table_model.columns.set_table_view(self.utxoTableView, columns_movable=True,
-                                                     sorting_column='confirmations',
-                                                     sorting_order=Qt.AscendingOrder)
+        self.utxoTableView.verticalHeader().setDefaultSectionSize(
+            self.utxoTableView.verticalHeader().fontMetrics().height() + 4)
+        self.utxo_table_model.set_table_view(self.utxoTableView,
+                                             columns_movable=True,
+                                             sorting_column='confirmations',
+                                             sorting_order=Qt.AscendingOrder)
 
         self.listWalletAccounts.setModel(self.account_list_model)
 
@@ -478,7 +434,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         else:
             self.hw_src_bip32_path = dash_utils.get_default_bip32_path(self.app_config.dash_network)
 
-        self.utxo_table_model.columns.restore_col_defs(CACHE_ITEM_UTXO_COLS)
+        self.utxo_table_model.restore_col_defs(CACHE_ITEM_UTXO_COLS)
 
         sel_nasternode = app_cache.get_value(
             CACHE_ITEM_UTXO_SRC_MASTRNODE.replace('%NETWORK%', self.app_config.dash_network), '', str)
@@ -526,7 +482,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     app_cache.set_value(CACHE_ITEM_UTXO_SRC_MASTRNODE.replace('%NETWORK%', self.app_config.dash_network),
                                         '<ALL>')
 
-        self.utxo_table_model.columns.save_col_defs(CACHE_ITEM_UTXO_COLS)
+        self.utxo_table_model.save_col_defs(CACHE_ITEM_UTXO_COLS)
 
         # recipient list
         rcp_list = self.wdg_dest_adresses.get_recipients_list()
@@ -642,7 +598,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
     @pyqtSlot(bool)
     def chbHideCollateralTxToggled(self, checked):
-        self.utxo_proxy.set_hide_collateral_utxos(checked)
+        self.utxo_table_model.set_hide_collateral_utxos(checked)
 
     @pyqtSlot(bool)
     def on_btnUncheckAll_clicked(self):
@@ -665,7 +621,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
     @pyqtSlot(bool)
     def on_btnUtxoViewColumns_clicked(self):
-        self.utxo_table_model.columns.exec_columns_dialog(self)
+        self.utxo_table_model.exec_columns_dialog(self)
 
     @pyqtSlot()
     def on_btnSend_clicked(self):
@@ -1288,19 +1244,16 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
     def on_edtSourceBip32Path_returnPressed(self):
         self.on_btnLoadTransactions_clicked()
 
-    def get_selected_utxos(self) -> Tuple[int, List[Dict]]:
+    def get_selected_utxos(self) -> Tuple[int, List[UtxoType]]:
         """
         :return: Tuple[int <total amount selected>, List[Dict] <list of the selected utxos>]
         """
-        sel = self.utxoTableView.selectionModel()
+        row_indexes = self.utxo_table_model.get_selected_rows()
         utxos = []
-        rows = sel.selectedRows()
         amount = 0
-        for row in rows:
-            source_row = self.utxo_proxy.mapToSource(row)
-            row_idx = source_row.row()
-            if 0 <= row_idx < len(self.utxo_table_model.utxos):
-                utxo = self.utxo_table_model.utxos[row_idx]
+        for row in row_indexes:
+            if 0 <= row < len(self.utxo_table_model.utxos):
+                utxo = self.utxo_table_model.utxos[row]
                 utxos.append(utxo)
                 amount += utxo.satoshis
 
