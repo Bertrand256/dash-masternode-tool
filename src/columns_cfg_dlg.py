@@ -50,7 +50,7 @@ class ColumnsConfigDlg(QDialog, ui_columns_cfg_dlg.Ui_ColumnsConfigDlg, WndUtils
         self.initialized = True
 
     def on_tableRowMoved(self, logicalIndex, oldVisualIndex, newVisualIndex):
-        self.columns.insert(newVisualIndex, self.columns.pop(oldVisualIndex))
+        self.columns.insert_column(newVisualIndex, self.columns.pop(oldVisualIndex))
 
     @pyqtSlot(QtWidgets.QTableWidgetItem)
     def on_tableWidget_itemChanged(self, item):
