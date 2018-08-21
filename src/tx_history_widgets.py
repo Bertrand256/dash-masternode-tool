@@ -17,16 +17,16 @@ from table_model_column import TableModelColumn
 class TransactionsModel(QAbstractTableModel):
     def __init__(self, parent):
         QAbstractTableModel.__init__(self, parent)
-        self.columns = [TableModelColumn('satoshis', 'Amount', True),
-                        TableModelColumn('date', 'Date', True),
-                        TableModelColumn('txid', 'TX ID', False),
-                        TableModelColumn('tx_index', 'TX index', False),
-                        TableModelColumn('height', 'Height', False),
-                        TableModelColumn('block_hash', 'Block hash', False),
-                        TableModelColumn('address', 'Address', True),
-                        TableModelColumn('address_bip32_path', 'BIP32 path', False),
-                        TableModelColumn('coinbase', 'Coinbase TX', False),
-                        TableModelColumn('comment', 'Comment', True)
+        self.columns = [TableModelColumn('satoshis', 'Amount', True, 100),
+                        TableModelColumn('date', 'Date', True, 100),
+                        TableModelColumn('txid', 'TX ID', False, 100),
+                        TableModelColumn('tx_index', 'TX index', False, 100),
+                        TableModelColumn('height', 'Height', False, 100),
+                        TableModelColumn('block_hash', 'Block hash', False, 100),
+                        TableModelColumn('address', 'Address', True, 100),
+                        TableModelColumn('address_bip32_path', 'BIP32 path', False, 100),
+                        TableModelColumn('coinbase', 'Coinbase TX', False, 100),
+                        TableModelColumn('comment', 'Comment', True, 100)
                         ]
         self._col_by_name = {}
         for col in self.columns:
