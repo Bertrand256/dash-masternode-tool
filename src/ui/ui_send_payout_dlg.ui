@@ -463,6 +463,13 @@
                      </widget>
                     </item>
                     <item>
+                     <widget class="QToolButton" name="btnUtxoViewColumns">
+                      <property name="text">
+                       <string>Columns...</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
                      <widget class="QCheckBox" name="chbHideCollateralTx">
                       <property name="styleSheet">
                        <string notr="true"/>
@@ -510,7 +517,7 @@ color: rgb(255, 255, 255);</string>
                    </layout>
                   </item>
                   <item>
-                   <widget class="QTableView" name="tableView">
+                   <widget class="QTableView" name="utxoTableView">
                     <property name="sizeAdjustPolicy">
                      <enum>QAbstractScrollArea::AdjustToContentsOnFirstShow</enum>
                     </property>

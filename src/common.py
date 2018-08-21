@@ -3,6 +3,7 @@
 # Author: Bertrand256
 # Created on: 2017-07
 import collections
+from typing import Any
 
 
 class AttrsProtected(object):
@@ -20,11 +21,14 @@ class AttrsProtected(object):
         """
         self.__allow_attr_definition = False
 
-    def add_attribute(self, attr_name):
+    def remove_attr_protection(self):
+        self.__allow_attr_definition = True
+
+    def add_attribute(self, attr_name: str, initial_value: Any = None):
         old_state = self.__allow_attr_definition
         try:
             self.__allow_attr_definition = True
-            super().__setattr__(attr_name, None)
+            super().__setattr__(attr_name, initial_value)
         finally:
             self.__allow_attr_definition = old_state
 
