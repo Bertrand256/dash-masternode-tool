@@ -29,12 +29,24 @@ from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
 from hw_common import HardwareWalletCancelException, HwSessionInfo
 from hw_intf import prepare_transfer_tx, get_address
+from table_model_column import TableModelColumns, TableModelColumn
 from thread_fun_dlg import WorkerThread, CtrlObject
 from tx_history_widgets import TransactionsModel, TransactionsProxyModel
 from wnd_utils import WndUtils, ReadOnlyTableCellDelegate
 from ui import ui_send_payout_dlg
 from send_funds_widgets import SendFundsDestination
 from transaction_dlg import TransactionDlg
+
+
+CACHE_ITEM_UTXO_SOURCE_MODE = 'WalletDlg_UtxoSourceMode'
+CACHE_ITEM_HW_ACCOUNT_BASE_PATH = 'WalletDlg_UtxoSrc_HwAccountBasePath_%NETWORK%'
+CACHE_ITEM_HW_ACCOUNT_ADDR_INDEX = 'WalletDlg_UtxoSrc_HwAccountAddressIndex'
+CACHE_ITEM_HW_SRC_BIP32_PATH = 'WalletDlg_UtxoSrc_HwBip32Path_%NETWORK%'
+CACHE_ITEM_UTXO_SRC_MASTRNODE = 'WalletDlg_UtxoSrc_Masternode_%NETWORK%'
+CACHE_ITEM_UTXO_COLS = 'WalletDlg_UtxoColumns'
+CACHE_ITEM_LAST_RECIPIENTS = 'WalletDlg_LastRecipients_%NETWORK%'
+CACHE_ITEM_MAIN_SPLITTER_SIZES = 'WalletDlg_MainSplitterSizes'
+FETCH_DATA_INTERVAL_SECONDS = 30
 
 
 class UtxoTableModel(QAbstractTableModel):
@@ -44,17 +56,17 @@ class UtxoTableModel(QAbstractTableModel):
         self.utxos: List[UtxoType] = []
         self.utxo_by_id: Dict[int, UtxoType] = {}
         self.parent_wnd = parent_wnd
-        self.columns = [
-            # field_name, column header, visible, default col width
-            ('satoshis', 'Amount (Dash)', True, 100),
-            ('confirmations', 'Confirmations', True, 100),
-            ('bip32_path', 'Path', True, 100),
-            ('time_str', 'TX Date/Time', True, 140),
-            ('address', 'Address', True, 140),
-            ('masternode', 'Masternode', True, 40),
-            ('txid', 'TX ID', True, 220),
-            ('output_index', 'TX Idx', True, 40)
-        ]
+        self.view = None
+        self.columns = TableModelColumns(columns=[
+            TableModelColumn('satoshis', 'Amount (Dash)', True, 100),
+            TableModelColumn('confirmations', 'Confirmations', True, 100),
+            TableModelColumn('bip32_path', 'Path', True, 100),
+            TableModelColumn('time_str', 'TX Date/Time', True, 140),
+            TableModelColumn('address', 'Address', True, 140),
+            TableModelColumn('masternode', 'Masternode', False, 40),
+            TableModelColumn('txid', 'TX ID', True, 220),
+            TableModelColumn('output_index', 'TX Idx', True, 40)
+        ])
 
         self.mn_by_collateral_tx: Dict[str, MasternodeConfig] = {}
         self.mn_by_collateral_address: Dict[str, MasternodeConfig] = {}
@@ -64,14 +76,15 @@ class UtxoTableModel(QAbstractTableModel):
             self.mn_by_collateral_tx[ident] = mn
             self.mn_by_collateral_address[mn.collateralAddress] = mn
 
+    def set_table_view(self, view: QTableView):
+        self.columns.set_table_view(view)
+        self.columns.apply_to_view()
+
     def column_index_by_name(self, name: str) -> Optional[int]:
-        for idx, col in enumerate(self.columns):
-            if name == col[0]:
-                return idx
-        return None
+        return self.columns.col_index_by_name(name)
 
     def columnCount(self, parent=None, *args, **kwargs):
-        return len(self.columns)
+        return self.columns.col_count()
 
     def rowCount(self, parent=None, *args, **kwargs):
         return len(self.utxos)
@@ -80,41 +93,42 @@ class UtxoTableModel(QAbstractTableModel):
         if role != 0:
             return QVariant()
         if orientation == 0x1:
-            if section < len(self.columns):
-                return self.columns[section][1]
+            col = self.columns.col_by_index(section)
+            if col:
+                return col.caption
             return ''
         else:
             return "Row"
 
     def getDefaultColWidths(self):
-        widths = [col[3] for col in self.columns]
-        return widths
+        return [c.initial_width for c in self.columns.columns()]
 
     def flags(self, index):
         return Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable
 
     def data(self, index, role=None):
         if index.isValid():
-            col = index.column()
-            row = index.row()
-            if row < len(self.utxos):
-                utxo = self.utxos[row]
+            col_idx = index.column()
+            row_idx = index.row()
+            if row_idx < len(self.utxos):
+                utxo = self.utxos[row_idx]
                 if utxo:
                     if role in (Qt.DisplayRole, Qt.EditRole):
-                        field_name = self.columns[col][0]
-                        if field_name == 'satoshis':
-                            return app_utils.to_string(round(utxo.satoshis / 1e8, 8))
-                        elif field_name == 'masternode':
-                            if utxo.masternode:
-                                return utxo.masternode.name
-                        else:
-                            return app_utils.to_string(utxo.__getattribute__(field_name))
-
+                        c = self.columns.col_by_index(col_idx)
+                        if c:
+                            field_name = c.name
+                            if field_name == 'satoshis':
+                                return app_utils.to_string(round(utxo.satoshis / 1e8, 8))
+                            elif field_name == 'masternode':
+                                if utxo.masternode:
+                                    return utxo.masternode.name
+                            else:
+                                return app_utils.to_string(utxo.__getattribute__(field_name))
                     elif role == Qt.ForegroundRole:
                         if utxo.is_collateral:
                             return QColor(Qt.red)
                         elif utxo.coinbase_locked:
-                            if col == 1:
+                            if col_idx == 1:
                                 return QtGui.QColor('red')
                             else:
                                 return QtGui.QColor('gray')
@@ -124,7 +138,7 @@ class UtxoTableModel(QAbstractTableModel):
                             return QtGui.QColor('lightgray')
 
                     elif role == Qt.TextAlignmentRole:
-                        if col in (0, 1):
+                        if col_idx in (0, 1):
                             return Qt.AlignRight
 
         return QVariant()
@@ -173,35 +187,36 @@ class UtxoListProxyModel(QSortFilterProxyModel):
 
     def lessThan(self, left, right):
         col_index = left.column()
-        col = self.utxo_model.columns[col_index]
-        col_name = col[0]
-        reverse = False
-        if col_name == 'time_str':
-            col_name = 'confirmations'
-            reverse = True
-        left_row_index = left.row()
+        col = self.utxo_model.columns.col_by_index(col_index)
+        if col:
+            col_name = col.name
+            reverse = False
+            if col_name == 'time_str':
+                col_name = 'confirmations'
+                reverse = True
+            left_row_index = left.row()
 
-        if 0 <= left_row_index < len(self.utxo_model.utxos):
-            left_utxo = self.utxo_model.utxos[left_row_index]
-            right_row_index = right.row()
+            if 0 <= left_row_index < len(self.utxo_model.utxos):
+                left_utxo = self.utxo_model.utxos[left_row_index]
+                right_row_index = right.row()
 
-            if 0 <= right_row_index < len(self.utxo_model.utxos):
-                right_prop = self.utxo_model.utxos[right_row_index]
-                left_value = left_utxo.__getattribute__(col_name)
-                right_value = right_prop.__getattribute__(col_name)
-                if isinstance(left_value, (int, float)) and isinstance(right_value, (int, float)):
-                    if not reverse:
-                        return left_value < right_value
-                    else:
-                        return right_value < left_value
-                elif isinstance(left_value, str) and isinstance(right_value, str):
-                    left_value = left_value.lower()
-                    right_value = right_value.lower()
-                    if not reverse:
-                        return left_value < right_value
-                    else:
-                        return right_value < left_value
-        return super().lessThan(left, right)
+                if 0 <= right_row_index < len(self.utxo_model.utxos):
+                    right_prop = self.utxo_model.utxos[right_row_index]
+                    left_value = left_utxo.__getattribute__(col_name)
+                    right_value = right_prop.__getattribute__(col_name)
+                    if isinstance(left_value, (int, float)) and isinstance(right_value, (int, float)):
+                        if not reverse:
+                            return left_value < right_value
+                        else:
+                            return right_value < left_value
+                    elif isinstance(left_value, str) and isinstance(right_value, str):
+                        left_value = left_value.lower()
+                        right_value = right_value.lower()
+                        if not reverse:
+                            return left_value < right_value
+                        else:
+                            return right_value < left_value
+            return super().lessThan(left, right)
 
 
 class AccountListModel(QAbstractListModel):
@@ -255,22 +270,6 @@ class AccountListModel(QAbstractListModel):
 
     def sort_accounts(self):
         self.accounts.sort(key=lambda x: x.address_index)
-
-
-UtxoSrcAddr = Tuple[str, str]  # Dash address (in HW) to be scanned for UTXOs (address, bip32 path)
-UtxoSrcAddrList = List[UtxoSrcAddr]
-
-
-CACHE_ITEM_UTXO_SOURCE_MODE = 'WalletDlg_UtxoSourceMode'
-CACHE_ITEM_HW_ACCOUNT_BASE_PATH = 'WalletDlg_UtxoSrc_HwAccountBasePath_%NETWORK%'
-CACHE_ITEM_HW_ACCOUNT_ADDR_INDEX = 'WalletDlg_UtxoSrc_HwAccountAddressIndex'
-CACHE_ITEM_HW_SRC_BIP32_PATH = 'WalletDlg_UtxoSrc_HwBip32Path_%NETWORK%'
-CACHE_ITEM_UTXO_SRC_MASTRNODE = 'WalletDlg_UtxoSrc_Masternode_%NETWORK%'
-CACHE_ITEM_COL_WIDTHS = 'WalletDlg_ColWidths'
-CACHE_ITEM_LAST_RECIPIENTS = 'WalletDlg_LastRecipients_%NETWORK%'
-CACHE_ITEM_MAIN_SPLITTER_SIZES = 'WalletDlg_MainSplitterSizes'
-
-FETCH_DATA_INTERVAL_SECONDS = 30
 
 
 class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
@@ -344,24 +343,20 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.chbHideCollateralTx.setChecked(True)
         self.setIcon(self.btnCheckAll, 'check.png')
         self.setIcon(self.btnUncheckAll, 'uncheck.png')
-
-        self.tableView.setSortingEnabled(True)
-        self.utxo_proxy = UtxoListProxyModel(self)
-        self.utxo_proxy.set_hide_collateral_utxos(True)
-        self.tableView.sortByColumn(self.utxo_table_model.column_index_by_name('confirmations'), Qt.AscendingOrder)
         self.restore_cache_settings()
 
+        self.utxoTableView.setSortingEnabled(True)
+        self.utxo_proxy = UtxoListProxyModel(self)
+        self.utxo_proxy.set_hide_collateral_utxos(True)
         self.utxo_proxy.setSourceModel(self.utxo_table_model)
-        self.tableView.setModel(self.utxo_proxy)
-        self.tableView.setItemDelegate(ReadOnlyTableCellDelegate(self.tableView))
-        self.tableView.verticalHeader().setDefaultSectionSize(self.tableView.verticalHeader().fontMetrics().height() + 4)
-
+        self.utxoTableView.setModel(self.utxo_proxy)
+        self.utxoTableView.setItemDelegate(ReadOnlyTableCellDelegate(self.utxoTableView))
+        self.utxoTableView.verticalHeader().setDefaultSectionSize(self.utxoTableView.verticalHeader().fontMetrics().height() + 4)
+        self.utxo_table_model.columns.set_table_view(self.utxoTableView, columns_movable=True,
+                                                     sorting_column='confirmations',
+                                                     sorting_order=Qt.AscendingOrder)
 
         self.listWalletAccounts.setModel(self.account_list_model)
-
-        # set utxo table default column widths
-        for col, w in enumerate(self.grid_column_widths):
-            self.tableView.setColumnWidth(col, w)
 
         self.setup_transactions_table_view()
 
@@ -437,7 +432,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.btn_src_bip32_path.setFixedSize(22, self.edt_src_bip32_path.sizeHint().height())
         self.display_bip32_base_path()
         self.lbl_hw_account_base_path.setStyleSheet('QLabel{font-size:10px}')
-        self.tableView.selectionModel().selectionChanged.connect(self.on_tableView_selectionChanged)
+        self.utxoTableView.selectionModel().selectionChanged.connect(self.on_utxoTableView_selectionChanged)
         self.listWalletAccounts.selectionModel().selectionChanged.connect(self.on_listWalletAccounts_selectionChanged)
 
         self.fetch_transactions_thread_id = None
@@ -483,8 +478,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         else:
             self.hw_src_bip32_path = dash_utils.get_default_bip32_path(self.app_config.dash_network)
 
-        self.grid_column_widths = app_cache.get_value(CACHE_ITEM_COL_WIDTHS, self.utxo_table_model.getDefaultColWidths(),
-                                                      list)
+        self.utxo_table_model.columns.restore_col_defs(CACHE_ITEM_UTXO_COLS)
 
         sel_nasternode = app_cache.get_value(
             CACHE_ITEM_UTXO_SRC_MASTRNODE.replace('%NETWORK%', self.app_config.dash_network), '', str)
@@ -532,11 +526,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     app_cache.set_value(CACHE_ITEM_UTXO_SRC_MASTRNODE.replace('%NETWORK%', self.app_config.dash_network),
                                         '<ALL>')
 
-        # save column widths
-        widths = []
-        for col in range(self.utxo_table_model.columnCount()):
-            widths.append(self.tableView.columnWidth(col))
-        app_cache.set_value(CACHE_ITEM_COL_WIDTHS, widths)
+        self.utxo_table_model.columns.save_col_defs(CACHE_ITEM_UTXO_COLS)
 
         # recipient list
         rcp_list = self.wdg_dest_adresses.get_recipients_list()
@@ -656,11 +646,11 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
     @pyqtSlot(bool)
     def on_btnUncheckAll_clicked(self):
-        self.tableView.clearSelection()
+        self.utxoTableView.clearSelection()
 
     @pyqtSlot(bool)
     def on_btnCheckAll_clicked(self):
-        sel = self.tableView.selectionModel()
+        sel = self.utxoTableView.selectionModel()
         # block_old = sel.blockSignals(True)
         sel_modified = False
         s = QItemSelection()
@@ -672,6 +662,10 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     s.select(index, index)
         if sel_modified:
             sel.select(s, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
+
+    @pyqtSlot(bool)
+    def on_btnUtxoViewColumns_clicked(self):
+        self.utxo_table_model.columns.exec_columns_dialog(self)
 
     @pyqtSlot()
     def on_btnSend_clicked(self):
@@ -1298,7 +1292,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         """
         :return: Tuple[int <total amount selected>, List[Dict] <list of the selected utxos>]
         """
-        sel = self.tableView.selectionModel()
+        sel = self.utxoTableView.selectionModel()
         utxos = []
         rows = sel.selectedRows()
         amount = 0
@@ -1317,5 +1311,5 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         total_amount = round(total_amount / 1e8, 8)
         self.wdg_dest_adresses.set_input_amount(total_amount, len(utxos))
 
-    def on_tableView_selectionChanged(self, selected, deselected):
+    def on_utxoTableView_selectionChanged(self, selected, deselected):
         self.update_recipient_area_utxos()

@@ -7,7 +7,7 @@ import datetime
 import json
 import logging
 import sys
-from typing import List, Tuple, Optional, Callable
+from typing import List, Tuple, Optional, Callable, Dict, Any
 from urllib.error import URLError
 import random
 import re
@@ -38,6 +38,7 @@ from app_config import MasternodeConfig
 from columns_cfg_dlg import ColumnsConfigDlg
 from common import AttrsProtected
 from dashd_intf import DashdIndexException, Masternode
+from table_model_column import TableModelColumns, TableModelColumn
 from ui import ui_proposals
 from wnd_utils import WndUtils, CloseDialogException
 
@@ -77,7 +78,7 @@ CACHE_ITEM_ONLY_ONLY_NEW_PROPOSALS = 'ProposalsDlg_OnlyNewProposals'
 CACHE_ITEM_ONLY_ONLY_NOT_VOTED_PROPOSALS = 'ProposalsDlg_OnlyNotVotedProposals'
 
 
-class ProposalColumn(AttrsProtected):
+class ProposalColumn(TableModelColumn):
     def __init__(self, name, caption, visible, column_for_vote=False):
         """
         Constructor.
@@ -88,16 +89,11 @@ class ProposalColumn(AttrsProtected):
         :param visible: True, if column is visible
         :param column_for_vote: True for (dynamic) columns related to mn voting.
         """
-        AttrsProtected.__init__(self)
-        self.name = name
-        self.caption = caption
-        self.visible = visible
+        TableModelColumn.__init__(self, name, caption, visible)
+        self.remove_attr_protection()
         self.column_for_vote = column_for_vote
-        self.my_masternode = None  # True, if column for masternode vote relates to user's masternode; such columns
-        #  can not be removed
+        self.my_masternode = None  # True, if column for masternode vote relates to user's masternode
         self.initil_order = None  # order by voting-in-progress first, then by payment_start descending
-        self.initial_width = None
-        self.display_order_no = None
         self.set_attr_protection()
 
 
@@ -136,8 +132,8 @@ class Proposal(AttrsProtected):
         self.visible = True
         self.get_governance_info: Callable = get_governance_info_fun
         self.budget_cycle_hours: int = None
-        self.columns = columns
-        self.values = {}  # dictionary of proposal values (key: ProposalColumn)
+        self.columns: TableModelColumns = columns
+        self.values: Dict[ProposalColumn, Any] = {}  # dictionary of proposal values (key: ProposalColumn)
         self.db_id = None
         self.marker = None
         self.modified = False
@@ -166,7 +162,7 @@ class Proposal(AttrsProtected):
         Sets value for a specified Proposal column.
         :returns True, if new value is different that old value
         """
-        for col in self.columns:
+        for col in self.columns.columns():
             if col.name == name:
                 old_value = self.values.get(col)
                 if old_value != value:
@@ -187,14 +183,14 @@ class Proposal(AttrsProtected):
             elif column == 'active':
                 return self.voting_in_progress
             else:
-                for col in self.columns:
+                for col in self.columns.columns():
                     if col.name == column:
                         return self.values.get(col)
             raise AttributeError('Invalid proposal column name: ' + column)
         elif isinstance(column, int):
             # column is a column index
-            if column >= 0 and column < len(self.columns):
-                return self.values.get(self.columns[column])
+            if column >= 0 and column < self.columns.col_count():
+                return self.values.get(self.columns.col_by_index(column))
             raise AttributeError('Invalid proposal column index: ' + str(column))
         raise AttributeError("Invalid 'column' attribute type.")
 
@@ -315,7 +311,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.finishing = False  # True if the dialog is closing (all thread operations will be stopped)
         self.dashd_intf = dashd_intf
         self.db_intf = parent.config.db_intf
-        self.columns = [
+        self.columns = TableModelColumns(columns=[
             ProposalColumn('no', 'No', True),
             ProposalColumn('name', 'Name', False),
             ProposalColumn('title', 'Title', True),
@@ -345,7 +341,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             ProposalColumn('fCachedEndorsed', 'fCachedEndorsed', False),
             ProposalColumn('ObjectType', 'ObjectType', False),
             ProposalColumn('IsValidReason', 'IsValidReason', False)
-        ]
+        ])
         self.vote_columns_by_mn_ident = {}
         self.proposals = []
         self.proposals_by_hash = {}  # dict of Proposal object indexed by proposal hash
@@ -426,17 +422,15 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.votesSplitter.setStretchFactor(1, 1)
 
             self.propsView.setSortingEnabled(True)
-            self.propsView.horizontalHeader().setSectionsMovable(True)
-            self.propsView.horizontalHeader().sectionMoved.connect(self.on_propsViewColumnMoved)
             self.propsView.focusInEvent = self.focusInEvent
             self.propsView.focusOutEvent = self.focusOutEvent
 
             # create model serving data to the view
             self.propsModel = ProposalsModel(self, self.columns, self.proposals)
             self.proxyModel = ProposalFilterProxyModel(self, self.proposals, self.columns)
-            self.proxyModel.add_filter_column(self.column_index_by_name('title'))
-            self.proxyModel.add_filter_column(self.column_index_by_name('name'))
-            self.proxyModel.add_filter_column(self.column_index_by_name('owner'))
+            self.proxyModel.add_filter_column(self.columns.col_index_by_name('title'))
+            self.proxyModel.add_filter_column(self.columns.col_index_by_name('name'))
+            self.proxyModel.add_filter_column(self.columns.col_index_by_name('owner'))
             self.proxyModel.setSourceModel(self.propsModel)
             self.propsView.setModel(self.proxyModel)
             self.propsView.selectionModel().selectionChanged.connect(self.on_propsView_selectionChanged)
@@ -467,6 +461,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.btnProposalsRefresh.setEnabled(False)
             self.btnVotesRefresh.setEnabled(False)
             self.restore_cache_settings()
+
+            self.columns.set_table_view(self.propsView, columns_movable=True, sorting_column='no',
+                                        sorting_order=Qt.AscendingOrder)
 
             def after_data_load():
                 self.setup_user_voting_controls()
@@ -500,72 +497,13 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         app_cache.restore_splitter_sizes(self, self.detailsSplitter)
         app_cache.restore_splitter_sizes(self, self.votesSplitter)
 
-        # self.detailsSplitter.setSizes(app_cache.get_value(CACHE_ITEM_PROPOSALS_SPLITTER, [100, 100], list))
-        # self.votesSplitter.setSizes(app_cache.get_value(CACHE_ITEM_VOTES_SPLITTER, [100, 100], list))
-
-        """ Read configuration of grid columns such as: display order, visibility. Also read configuration
-         of dynamic columns: when user decides to display voting results of a masternode, which is not 
-         in his configuration (because own mns are shown by defailt).
-         Format: list of dicts:
-         1. for static columns
-            {
-               name:  Column name (str), 
-               visible: (bool)
-            },
-         2. for dynamic (masternode voting) columns:
-            {
-                name: Masternode ident (str),
-                visible: (bool),
-                column_for_vote: True if the column relates to masternode voting (bool),
-                caption: Column's caption (str)
-            }
-        """
-        cfg_cols = app_cache.get_value(CACHE_ITEM_PROPOSALS_COLUMNS, [], list)
-        if isinstance(cfg_cols, list):
-            for col_saved_index, c in enumerate(cfg_cols):
-                name = c.get('name')
-                visible = c.get('visible', True)
-                column_for_vote = c.get('column_for_vote')
-                caption = c.get('caption')
-                initial_width = c.get('width')
-                if not isinstance(initial_width, int):
-                    initial_width = None
-
-                if isinstance(name, str) and isinstance(visible, bool) and isinstance(column_for_vote, bool):
-                    found = False
-                    for col in self.columns:
-                        if col.name == name:
-                            col.visible = visible
-                            col.initial_width = initial_width
-                            col.display_order_no = col_saved_index
-                            found = True
-                            break
-                    # user defined dynamic columns will be implemented in the future:
-                    # if not found and column_for_vote and caption:
-                    #     # add voting column defined by the user
-                    #     self.add_voting_column(name, caption, my_masternode=False,
-                    #                            insert_before_column=self.column_index_by_name('payment_start'))
-
         # define "dynamic" columns showing the user voting results
         for idx, mn in enumerate(self.masternodes_cfg):
             mn_ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
             self.add_voting_column(mn_ident, 'Vote (' + mn.name + ')', my_masternode=True,
-                                   insert_before_column=self.column_index_by_name('absolute_yes_count'))
+                                   insert_before_column=self.columns.col_index_by_name('absolute_yes_count'))
 
-        # set the visual order of columns with none
-        for idx, col in enumerate(self.columns):
-            if col.display_order_no is None:
-                col.display_order_no = idx
-        self.columns.sort(key=lambda x: x.display_order_no if x.display_order_no is not None else 100)
-
-        # set initial column widths
-        hdr = self.propsView.horizontalHeader()
-        for col_idx, col in enumerate(self.columns):
-            if col.initial_width:
-                self.propsView.setColumnWidth(col_idx, col.initial_width)
-            if not col.visible:
-                # hide columns with hidden attribute
-                hdr.hideSection(col_idx)
+        self.columns.restore_col_defs(CACHE_ITEM_PROPOSALS_COLUMNS)
 
         # restore votes grid columns' widths
         cfg_cols = app_cache.get_value(CACHE_ITEM_VOTES_COLUMNS, [], list)
@@ -603,27 +541,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             app_cache.save_window_size(self)
             app_cache.save_splitter_sizes(self, self.detailsSplitter)
             app_cache.save_splitter_sizes(self, self.votesSplitter)
-            # app_cache.set_value(CACHE_ITEM_PROPOSALS_SPLITTER, self.detailsSplitter.sizes())
-            # app_cache.set_value(CACHE_ITEM_VOTES_SPLITTER, self.votesSplitter.sizes())
-
-            cfg = []
-            hdr = self.propsView.horizontalHeader()
-
-            for col_idx, col in enumerate(sorted(self.columns, key=lambda x: x.display_order_no)):
-                logical_index = hdr.logicalIndex(col_idx)
-                c = {
-                    'name': col.name,
-                    'visible': col.visible,
-                    'column_for_vote': col.column_for_vote,
-                    'caption': col.caption,
-                    'width': self.propsView.columnWidth(logical_index)
-                }
-                cfg.append(c)
-            app_cache.set_value(CACHE_ITEM_PROPOSALS_COLUMNS, cfg)
+            self.columns.save_col_defs(CACHE_ITEM_PROPOSALS_COLUMNS)
 
             # save voting-results tab configuration
             # columns' withds
-            cfg.clear()
+            cfg = []
             for col_idx in range(0, self.votesModel.columnCount()):
                 width = self.votesView.columnWidth(col_idx)
                 c = {'width': width}
@@ -759,28 +681,28 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         Adds a dynamic column that displays a vote of the masternode with the specified identifier.
         :return:
         """
-        # first check if this masternode is already added to voting columns
-        for col in self.columns:
-            if col.column_for_vote and col.name == mn_ident:
-                return  # column for this masternode is already added
-
-        col = ProposalColumn(mn_ident, mn_label, visible=True, column_for_vote=True)
-        if isinstance(insert_before_column, int) and insert_before_column < len(self.columns):
-            self.columns.insert(insert_before_column, col)
+        # first check if this masternode is already added to the voting columns
+        col = self.columns.col_by_name(mn_ident)
+        if col:
+            col.column_for_vote = True
         else:
-            self.columns.append(col)
-        self.vote_columns_by_mn_ident[mn_ident] = col
+            col = ProposalColumn(mn_ident, mn_label, visible=True, column_for_vote=True)
+            if isinstance(insert_before_column, int) and insert_before_column < self.columns.col_count():
+                self.columns.insert(insert_before_column, col)
+            else:
+                self.columns.insert(self.columns.col_count(), col)
+            self.vote_columns_by_mn_ident[mn_ident] = col
 
-        if my_masternode is None:
-            # check if the specified masternode is in the user configuration; if so, mark the column
-            # that it can't be removed
-            for mn in enumerate(self.masternodes_cfg):
-                mn_ident_cfg = mn.collateralTx + '-' + str(mn.collateralTxIndex)
-                if mn_ident_cfg == mn_ident:
-                    col.my_masternode = True
-                    break
-        else:
-            col.my_masternode = my_masternode
+            if my_masternode is None:
+                # check if the specified masternode exists in the user configuration; if so, mark the column
+                # that it can't be removed
+                for mn in enumerate(self.masternodes_cfg):
+                    mn_ident_cfg = mn.collateralTx + '-' + str(mn.collateralTxIndex)
+                    if mn_ident_cfg == mn_ident:
+                        col.my_masternode = True
+                        break
+            else:
+                col.my_masternode = my_masternode
 
     def display_message(self, message):
         def disp(msg):
@@ -905,17 +827,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 WndUtils.call_in_main_thread(disp, message)
             else:
                 disp(message)
-
-    def column_index_by_name(self, name):
-        """
-        Returns index of a column with a given name.
-        :param name: name of a column
-        :return: index of a column
-        """
-        for idx, pc in enumerate(self.columns):
-            if pc.name == name:
-                return idx
-        raise Exception('Invalid column name: ' + name)
 
     def read_proposals_from_network(self):
         """ Reads proposals from the Dash network. """
@@ -1366,7 +1277,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                          str(time.time() - tm_begin))
 
                             def disp():
-                                self.propsView.sortByColumn(self.column_index_by_name('no'),
+                                self.propsView.sortByColumn(self.columns.col_index_by_name('no'),
                                                             Qt.AscendingOrder)
                                 self.display_proposals_data()
 
@@ -1384,7 +1295,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             self.db_intf.release_cursor()
 
                     # read voting data from DB (only for "voting" columns)
-                    self.read_voting_from_db(self.columns)
+                    self.read_voting_from_db()
                     WndUtils.call_in_main_thread(self.refresh_filter)  # vote data can have impact on filter
                     WndUtils.call_in_main_thread(self.display_budget_summary)
 
@@ -1552,7 +1463,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.display_message('')
         return modified_ext_attributes
 
-    def read_voting_from_db(self, columns):
+    def read_voting_from_db(self):
         """ Read voting results for specified voting columns
         :param columns list of voting columns for which data will be loaded from db; it is used when user adds
           a new column - wee want read data only for this column
@@ -1563,7 +1474,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         try:
             cur = self.db_intf.get_cursor()
 
-            for col in columns:
+            for col in self.columns.columns():
                 if col.column_for_vote:
                     mn_ident = col.name
                     mn = self.masternodes_by_ident.get(mn_ident)
@@ -1736,11 +1647,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                             # check if voting masternode has its column in the main grid;
                             # if so, pass the voting result to a corresponding proposal field
-                            for col_idx, col in enumerate(self.columns):
-                                if col.column_for_vote and col.name == mn_ident:
-                                    if prop.get_value(col.name) != voting_result:
-                                        prop.set_value(col.name, voting_result)
-                                    break
+                            col = self.columns.col_by_name(mn_ident)
+                            if col.column_for_vote:
+                                if prop.get_value(col.name) != voting_result:
+                                    prop.set_value(col.name, voting_result)
 
                             # check if currently selected proposal got new votes; if so, update details panel
                             if prop == self.current_proposal:
@@ -1843,7 +1753,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             # if there is no saved column widths, resize widths to its contents
             widths_initialized = False
-            for col in self.columns:
+            for col in self.columns.columns():
                 if col.initial_width:
                     widths_initialized = True
                     break
@@ -1853,8 +1763,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                 # 'title' can be a quite long string so after auto-sizing columns we'd like to correct the
                 # column's width to some reasonable value
-                col_idx = self.column_index_by_name('title')
-                col = self.columns[col_idx]
+                col_idx = self.columns.col_index_by_name('title')
+                col = self.columns.col_by_index(col_idx)
                 if col.visible and self.propsView.columnWidth(col_idx) > 430:
                     self.propsView.setColumnWidth(col_idx, 430)
 
@@ -1914,7 +1824,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         """
         def correct_hyperlink(prop, style):
             def correct(col_name, display_value):
-                col_idx = self.column_index_by_name(col_name)
+                col_idx = self.columns.col_index_by_name(col_name)
                 src_index = self.propsModel.index(row_index, col_idx)
                 index = self.proxyModel.mapFromSource(src_index)
                 if index:
@@ -2872,10 +2782,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         if file_name:
             try:
                 with codecs.open(file_name, 'w', 'utf-8') as f_ptr:
-                    elems = [col.caption for col in self.columns]
+                    elems = [col.caption for col in self.columns.columns()]
                     self.write_csv_row(f_ptr, elems)
                     for prop in sorted(self.proposals, key = lambda p: p.initial_order_no):
-                        elems = [prop.get_value(col.name) for col in self.columns]
+                        elems = [prop.get_value(col.name) for col in self.columns.columns()]
                         self.write_csv_row(f_ptr, elems)
                 self.infoMsg('Proposals data successfully saved.')
             except Exception as e:
@@ -2906,53 +2816,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
     @pyqtSlot()
     def on_btnProposalsColumns_clicked(self):
-        try:
-            cols = []
-
-            cols_before = sorted(self.columns, key=lambda x: x.display_order_no \
-                                 if x.display_order_no is not None else 100)
-            for col in cols_before:
-                cols.append([col.caption, col.visible, col])
-
-            ui = ColumnsConfigDlg(self, columns=cols)
-            ret = ui.exec_()
-            if ret > 0:
-                head = self.propsView.horizontalHeader()
-                col_index = 0
-                order_changed = False
-                for _, visible, col in cols:
-                    old_index = cols_before.index(col)
-                    if old_index != col_index:
-                        head.swapSections(old_index, col_index)
-                        # head.moveSection(old_index, col_index)
-                        cols_before[old_index], cols_before[col_index] = cols_before[col_index], cols_before[old_index]
-                        order_changed = True
-
-                    logical_index = self.columns.index(col)
-                    is_visible_old = not head.isSectionHidden(logical_index)
-                    if is_visible_old != visible:
-                        if not is_visible_old:
-                            head.showSection(logical_index)
-                        else:
-                            head.hideSection(logical_index)
-                        col.visible = visible
-
-                    col_index += 1
-
-                if order_changed:
-                    for col_idx, col in enumerate(cols_before):
-                        col.display_order_no = col_idx
-        except Exception as e:
-            logging.exception('Exception while configuring proposals\' columns')
-            self.errorMsg(str(e))
-
-    @pyqtSlot(int, int, int)
-    def on_propsViewColumnMoved(self, logicalIndex, oldVisualIndex, bewVisualIndex):
-        """ Update columns display order after column moving with mouse. """
-        hdr = self.propsView.horizontalHeader()
-        for col_idx, col in enumerate(self.columns):
-            vis_index = hdr.visualIndex(col_idx)
-            col.display_order_no = vis_index
+        self.columns.exec_columns_dialog(self)
 
     @pyqtSlot(str)
     def on_edtProposalFilter_textEdited(self, text):
@@ -3014,51 +2878,52 @@ class ProposalFilterProxyModel(QSortFilterProxyModel):
           behind widget.
         """
         col_index = left.column()
-        col = self.columns[col_index]
-        left_row_index = left.row()
+        col = self.columns.col_by_index(col_index)
+        if col:
+            left_row_index = left.row()
 
-        if 0 <= left_row_index < len(self.proposals):
-            left_prop = self.proposals[left_row_index]
-            right_row_index = right.row()
+            if 0 <= left_row_index < len(self.proposals):
+                left_prop = self.proposals[left_row_index]
+                right_row_index = right.row()
 
-            if 0 <= right_row_index < len(self.proposals):
-                right_prop = self.proposals[right_row_index]
-                left_value = left_prop.get_value(col.name)
-                right_value = right_prop.get_value(col.name)
+                if 0 <= right_row_index < len(self.proposals):
+                    right_prop = self.proposals[right_row_index]
+                    left_value = left_prop.get_value(col.name)
+                    right_value = right_prop.get_value(col.name)
 
-                if col.name in ('name', 'url', 'title'):
-                    # compare hyperlink columns
-                    if not left_value:
-                        left_value = ""
-                    if not right_value:
-                        right_value = ""
-                    left_value = left_value.lower()
-                    right_value = right_value.lower()
-                    return left_value < right_value
+                    if col.name in ('name', 'url', 'title'):
+                        # compare hyperlink columns
+                        if not left_value:
+                            left_value = ""
+                        if not right_value:
+                            right_value = ""
+                        left_value = left_value.lower()
+                        right_value = right_value.lower()
+                        return left_value < right_value
 
-                elif col.name == 'voting_status_caption':
+                    elif col.name == 'voting_status_caption':
 
-                    left_count = left_prop.get_value('absolute_yes_count')
-                    right_count = right_prop.get_value('absolute_yes_count')
-                    return left_count < right_count
+                        left_count = left_prop.get_value('absolute_yes_count')
+                        right_count = right_prop.get_value('absolute_yes_count')
+                        return left_count < right_count
 
-                elif col.name == 'no':
-                    left_voting_in_progress = left_prop.voting_in_progress
-                    right_voting_in_progress = right_prop.voting_in_progress
+                    elif col.name == 'no':
+                        left_voting_in_progress = left_prop.voting_in_progress
+                        right_voting_in_progress = right_prop.voting_in_progress
 
-                    if left_voting_in_progress == right_voting_in_progress:
-                        # statuses 1, 2: voting in progress
-                        # for even statuses, order by creation time (newest first)
-                        diff = right_prop.get_value('creation_time') < left_prop.get_value('creation_time')
-                    else:
-                        diff = left_prop.voting_status < right_prop.voting_status
-                    return diff
+                        if left_voting_in_progress == right_voting_in_progress:
+                            # statuses 1, 2: voting in progress
+                            # for even statuses, order by creation time (newest first)
+                            diff = right_prop.get_value('creation_time') < left_prop.get_value('creation_time')
+                        else:
+                            diff = left_prop.voting_status < right_prop.voting_status
+                        return diff
 
-                elif col.name in ('payment_start', 'payment_end', 'creation_time'):
-                    diff = right_value < left_value
-                    return diff
+                    elif col.name in ('payment_start', 'payment_end', 'creation_time'):
+                        diff = right_value < left_value
+                        return diff
 
-        return super().lessThan(left, right)
+            return super().lessThan(left, right)
 
     def filterAcceptsRow(self, source_row, source_parent):
         will_show = True
@@ -3097,7 +2962,7 @@ class ProposalsModel(QAbstractTableModel):
         self.proposals = proposals
 
     def columnCount(self, parent=None, *args, **kwargs):
-        return len(self.columns)
+        return self.columns.col_count()
 
     def rowCount(self, parent=None, *args, **kwargs):
         return len(self.proposals)
@@ -3106,8 +2971,9 @@ class ProposalsModel(QAbstractTableModel):
         if role != 0:
             return QVariant()
         if orientation == 0x1:
-            if section < len(self.columns):
-                return self.columns[section].caption
+            col = self.columns.col_by_index(section)
+            if col:
+                return col.caption
             return ''
         else:
             return '  '
@@ -3130,9 +2996,9 @@ class ProposalsModel(QAbstractTableModel):
         if index.isValid():
             col_idx = index.column()
             row_idx = index.row()
-            if row_idx < len(self.proposals) and col_idx < len(self.columns):
+            if row_idx < len(self.proposals) and col_idx < self.columns.col_count():
                 prop = self.proposals[row_idx]
-                col = self.columns[col_idx]
+                col = self.columns.col_by_index(col_idx)
                 if prop:
                     if role == Qt.DisplayRole:
                         if col.name in ('payment_start', 'payment_end', 'creation_time'):
@@ -3147,7 +3013,7 @@ class ProposalsModel(QAbstractTableModel):
                         elif col.name in ('active'):
                             return 'Yes' if prop.get_value(col.name) is True else 'No'
                         elif col.name in ('title', 'url', 'name'):
-                            col_idx = self.parent.column_index_by_name(col.name)
+                            col_idx = self.parent.columns.col_index_by_name(col.name)
                             src_index = self.index(row_idx, col_idx)
                             index = self.parent.proxyModel.mapFromSource(src_index)
                             if index:
