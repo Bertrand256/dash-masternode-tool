@@ -16,14 +16,13 @@ import threading
 import time
 import codecs
 from functools import partial
-
 import bitcoin
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtChart import QChart, QChartView, QLineSeries, QDateTimeAxis, QValueAxis, QBarSet, QBarSeries, \
     QBarCategoryAxis
 from PyQt5.QtCore import Qt, pyqtSlot, QVariant, QAbstractTableModel, QSortFilterProxyModel, \
-    QDateTime, QLocale, QItemSelection, QItemSelectionModel
-from PyQt5.QtGui import QColor, QPainter, QPen, QBrush
+    QDateTime, QLocale, QItemSelection, QItemSelectionModel, QUrl
+from PyQt5.QtGui import QColor, QPainter, QPen, QBrush, QDesktopServices
 from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QMessageBox, QTableView, QAbstractItemView, QItemDelegate, \
     QStyledItemDelegate
 from math import floor
@@ -126,13 +125,13 @@ class VotingMasternode(AttrsProtected):
 
 
 class Proposal(AttrsProtected):
-    def __init__(self, columns, vote_columns_by_mn_ident, next_superblock_time,
+    def __init__(self, data_model, vote_columns_by_mn_ident, next_superblock_time,
                  user_masternodes: List[VotingMasternode], get_governance_info_fun: Callable):
         super().__init__()
         self.visible = True
         self.get_governance_info: Callable = get_governance_info_fun
         self.budget_cycle_hours: int = None
-        self.columns: AdvTableModel = columns
+        self.data_model: AdvTableModel = data_model
         self.values: Dict[ProposalColumn, Any] = {}  # dictionary of proposal values (key: ProposalColumn)
         self.db_id = None
         self.marker = None
@@ -154,7 +153,6 @@ class Proposal(AttrsProtected):
 
         self.url_col_widget = None
         self.initial_order_no = 0  # initial order
-
         self.set_attr_protection()
 
     def set_value(self, name, value):
@@ -162,7 +160,7 @@ class Proposal(AttrsProtected):
         Sets value for a specified Proposal column.
         :returns True, if new value is different that old value
         """
-        for col in self.columns.columns():
+        for col in self.data_model.columns():
             if col.name == name:
                 old_value = self.values.get(col)
                 if old_value != value:
@@ -183,14 +181,14 @@ class Proposal(AttrsProtected):
             elif column == 'active':
                 return self.voting_in_progress
             else:
-                for col in self.columns.columns():
+                for col in self.data_model.columns():
                     if col.name == column:
                         return self.values.get(col)
             raise AttributeError('Invalid proposal column name: ' + column)
         elif isinstance(column, int):
             # column is a column index
-            if column >= 0 and column < self.columns.col_count():
-                return self.values.get(self.columns.col_by_index(column))
+            if column >= 0 and column < self.data_model.col_count():
+                return self.values.get(self.data_model.col_by_index(column))
             raise AttributeError('Invalid proposal column index: ' + str(column))
         raise AttributeError("Invalid 'column' attribute type.")
 
@@ -311,37 +309,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.finishing = False  # True if the dialog is closing (all thread operations will be stopped)
         self.dashd_intf = dashd_intf
         self.db_intf = parent.config.db_intf
-        self.columns = AdvTableModel(columns=[
-            ProposalColumn('no', 'No', True),
-            ProposalColumn('name', 'Name', False),
-            ProposalColumn('title', 'Title', True),
-            ProposalColumn('owner', 'Owner', True),
-            ProposalColumn('voting_status_caption', 'Voting Status', True),
-            ProposalColumn('active', 'Active', True),
-            ProposalColumn('payment_amount', 'Amount', True),
-            ProposalColumn('cycles', 'Cycles', True),
-            ProposalColumn('payment_amount_total', 'Total Amount', True),  # payment_amount * cycles
-            ProposalColumn('current_cycle', 'Current Cycle', True),
-            ProposalColumn('absolute_yes_count', 'Absolute Yes Count', True),
-            ProposalColumn('yes_count', "Yes Count", True),
-            ProposalColumn('no_count', 'No Count', True),
-            ProposalColumn('abstain_count', 'Abstain Count', True),
-            ProposalColumn('payment_start', 'Payment Start', True),
-            ProposalColumn('payment_end', 'Payment End', True),
-            ProposalColumn('payment_address', 'Payment Address', False),
-            ProposalColumn('creation_time', 'Creation Time', True),
-            ProposalColumn('url', 'URL', False),
-            ProposalColumn('type', 'Type', False),
-            ProposalColumn('hash', 'Hash', False),
-            ProposalColumn('collateral_hash', 'Collateral Hash', False),
-            ProposalColumn('fBlockchainValidity', 'fBlockchainValidity', False),
-            ProposalColumn('fCachedValid', 'fCachedValid', False),
-            ProposalColumn('fCachedDelete', 'fCachedDelete', False),
-            ProposalColumn('fCachedFunding', 'fCachedFunding', False),
-            ProposalColumn('fCachedEndorsed', 'fCachedEndorsed', False),
-            ProposalColumn('ObjectType', 'ObjectType', False),
-            ProposalColumn('IsValidReason', 'IsValidReason', False)
-        ])
         self.vote_columns_by_mn_ident = {}
         self.proposals = []
         self.proposals_by_hash = {}  # dict of Proposal object indexed by proposal hash
@@ -382,7 +349,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.proposals_last_read_time = 0
         self.current_proposal = None
         self.propsModel = None
-        self.proxyModel = None
         self.votesModel = None
         self.votesProxyModel = None
         self.votes_loaded = False
@@ -421,22 +387,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.votesSplitter.setStretchFactor(0, 0)
             self.votesSplitter.setStretchFactor(1, 1)
 
-            self.propsView.setSortingEnabled(True)
-            self.propsView.focusInEvent = self.focusInEvent
-            self.propsView.focusOutEvent = self.focusOutEvent
-
-            # create model serving data to the view
-            self.propsModel = ProposalsModel(self, self.columns, self.proposals)
-            self.proxyModel = ProposalFilterProxyModel(self, self.proposals, self.columns)
-            self.proxyModel.add_filter_column(self.columns.col_index_by_name('title'))
-            self.proxyModel.add_filter_column(self.columns.col_index_by_name('name'))
-            self.proxyModel.add_filter_column(self.columns.col_index_by_name('owner'))
-            self.proxyModel.setSourceModel(self.propsModel)
-            self.propsView.setModel(self.proxyModel)
-            self.propsView.selectionModel().selectionChanged.connect(self.on_propsView_selectionChanged)
-
             self.propsView.verticalHeader().setDefaultSectionSize(
                 self.propsView.verticalHeader().fontMetrics().height() + 6)
+
+            # create model serving data to the view
+            self.propsModel = ProposalsModel(self, self.proposals)
+            self.propsModel.add_filter_column(self.propsModel.col_index_by_name('title'))
+            self.propsModel.add_filter_column(self.propsModel.col_index_by_name('name'))
+            self.propsModel.add_filter_column(self.propsModel.col_index_by_name('owner'))
 
             self.votesView.verticalHeader().setDefaultSectionSize(
                 self.votesView.verticalHeader().fontMetrics().height() + 6)
@@ -462,8 +420,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.btnVotesRefresh.setEnabled(False)
             self.restore_cache_settings()
 
-            self.columns.set_table_view(self.propsView, columns_movable=True, sorting_column='no',
-                                        sorting_order=Qt.AscendingOrder)
+            self.propsModel.set_table_view(self.propsView)
+            self.propsView.selectionModel().selectionChanged.connect(self.on_propsView_selectionChanged)
 
             def after_data_load():
                 self.setup_user_voting_controls()
@@ -501,9 +459,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         for idx, mn in enumerate(self.masternodes_cfg):
             mn_ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
             self.add_voting_column(mn_ident, 'Vote (' + mn.name + ')', my_masternode=True,
-                                   insert_before_column=self.columns.col_index_by_name('absolute_yes_count'))
+                                   insert_before_column=self.propsModel.col_index_by_name('absolute_yes_count'))
 
-        self.columns.restore_col_defs(CACHE_ITEM_PROPOSALS_COLUMNS)
+        self.propsModel.restore_col_defs(CACHE_ITEM_PROPOSALS_COLUMNS)
 
         # restore votes grid columns' widths
         cfg_cols = app_cache.get_value(CACHE_ITEM_VOTES_COLUMNS, [], list)
@@ -528,9 +486,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.chb_not_voted.setChecked(app_cache.get_value(CACHE_ITEM_ONLY_ONLY_NOT_VOTED_PROPOSALS, False, bool))
         self.tabsDetails.setCurrentIndex(app_cache.get_value(CACHE_ITEM_DETAILS_INDEX, self.tabsDetails.currentIndex(), int))
         self.votesProxyModel.set_only_my_votes(self.chbOnlyMyVotes.isChecked())
-        self.proxyModel.set_filter_only_active(self.chb_only_active.isChecked())
-        self.proxyModel.set_filter_only_new(self.chb_only_new.isChecked())
-        self.proxyModel.set_filter_only_not_voted(self.chb_not_voted.isChecked())
+        self.propsModel.set_filter_only_active(self.chb_only_active.isChecked())
+        self.propsModel.set_filter_only_new(self.chb_only_new.isChecked())
+        self.propsModel.set_filter_only_not_voted(self.chb_not_voted.isChecked())
 
     def save_cache_settings(self):
         """
@@ -541,7 +499,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             app_cache.save_window_size(self)
             app_cache.save_splitter_sizes(self, self.detailsSplitter)
             app_cache.save_splitter_sizes(self, self.votesSplitter)
-            self.columns.save_col_defs(CACHE_ITEM_PROPOSALS_COLUMNS)
+            self.propsModel.save_col_defs(CACHE_ITEM_PROPOSALS_COLUMNS)
 
             # save voting-results tab configuration
             # columns' withds
@@ -674,7 +632,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def update_proposals_order_no(self):
         """ Executed always when number of proposals changed. """
         for index, prop in enumerate(self.proposals):
-            prop.initial_order_no = self.proxyModel.mapFromSource(self.propsModel.index(index, 0)).row()
+            prop.initial_order_no = self.propsModel.mapFromSource(self.propsModel.index(index, 0)).row()
 
     def add_voting_column(self, mn_ident, mn_label, my_masternode=None, insert_before_column=None):
         """
@@ -682,15 +640,15 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         :return:
         """
         # first check if this masternode is already added to the voting columns
-        col = self.columns.col_by_name(mn_ident)
+        col = self.propsModel.col_by_name(mn_ident)
         if col:
             col.column_for_vote = True
         else:
             col = ProposalColumn(mn_ident, mn_label, visible=True, column_for_vote=True)
-            if isinstance(insert_before_column, int) and insert_before_column < self.columns.col_count():
-                self.columns.insert_column(insert_before_column, col)
+            if isinstance(insert_before_column, int) and insert_before_column < self.propsModel.col_count():
+                self.propsModel.insert_column(insert_before_column, col)
             else:
-                self.columns.insert_column(self.columns.col_count(), col)
+                self.propsModel.insert_column(self.propsModel.col_count(), col)
             self.vote_columns_by_mn_ident[mn_ident] = col
 
             if my_masternode is None:
@@ -885,7 +843,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     prop = self.proposals_by_hash.get(hash)
                     if not prop:
                         is_new = True
-                        prop = Proposal(self.columns, self.vote_columns_by_mn_ident, self.next_superblock_time,
+                        prop = Proposal(self.propsModel, self.vote_columns_by_mn_ident, self.next_superblock_time,
                                         self.users_masternodes, self.get_governance_info)
                     else:
                         is_new = False
@@ -1123,7 +1081,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                       "Some features may not work correctly because of this. Details: " + str(e))
 
     def refresh_filter(self):
-        self.proxyModel.invalidateFilter()
+        self.propsModel.invalidateFilter()
 
     def read_data_thread(self, ctrl):
         """ Reads data from the database.
@@ -1224,7 +1182,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                     logging.warning('Deleted duplicated proposal from DB. ID: %s, HASH: %s' %
                                                     (str(fix_row[0]), row[12]))
 
-                                prop = Proposal(self.columns, self.vote_columns_by_mn_ident, self.next_superblock_time,
+                                prop = Proposal(self.propsModel, self.vote_columns_by_mn_ident, self.next_superblock_time,
                                     self.users_masternodes, self.get_governance_info)
                                 prop.set_value('name', row[0])
                                 prop.set_value('payment_start', datetime.datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S'))
@@ -1277,7 +1235,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                          str(time.time() - tm_begin))
 
                             def disp():
-                                self.propsView.sortByColumn(self.columns.col_index_by_name('no'),
+                                self.propsView.sortByColumn(self.propsModel.col_index_by_name('no'),
                                                             Qt.AscendingOrder)
                                 self.display_proposals_data()
 
@@ -1474,7 +1432,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         try:
             cur = self.db_intf.get_cursor()
 
-            for col in self.columns.columns():
+            for col in self.propsModel.columns():
                 if col.column_for_vote:
                     mn_ident = col.name
                     mn = self.masternodes_by_ident.get(mn_ident)
@@ -1647,8 +1605,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                             # check if voting masternode has its column in the main grid;
                             # if so, pass the voting result to a corresponding proposal field
-                            col = self.columns.col_by_name(mn_ident)
-                            if col.column_for_vote:
+                            col = self.propsModel.col_by_name(mn_ident)
+                            if col and col.column_for_vote:
                                 if prop.get_value(col.name) != voting_result:
                                     prop.set_value(col.name, voting_result)
 
@@ -1721,7 +1679,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             cur_index = self.propsView.currentIndex()
             current_row = -1
             if cur_index:
-                source_row = self.proxyModel.mapToSource(cur_index)
+                source_row = self.propsModel.mapToSource(cur_index)
                 if source_row:
                     current_row = source_row.row()
 
@@ -1731,7 +1689,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             # restore the focused row
             if current_row >= 0:
                 idx = self.propsModel.index(current_row, 0)
-                idx = self.proxyModel.mapFromSource(idx)
+                idx = self.propsModel.mapFromSource(idx)
                 self.propsView.setCurrentIndex(idx)
 
             # restore the selection
@@ -1742,7 +1700,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 try:
                     row_nr = self.proposals.index(p)
                     source_row_idx = self.propsModel.index(row_nr, 0)
-                    dest_index = self.proxyModel.mapFromSource(source_row_idx)
+                    dest_index = self.propsModel.mapFromSource(source_row_idx)
                     if dest_index:
                         sel.select(dest_index, dest_index)
                         sel_modified = True
@@ -1753,7 +1711,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             # if there is no saved column widths, resize widths to its contents
             widths_initialized = False
-            for col in self.columns.columns():
+            for col in self.propsModel.columns():
                 if col.initial_width:
                     widths_initialized = True
                     break
@@ -1763,8 +1721,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                 # 'title' can be a quite long string so after auto-sizing columns we'd like to correct the
                 # column's width to some reasonable value
-                col_idx = self.columns.col_index_by_name('title')
-                col = self.columns.col_by_index(col_idx)
+                col_idx = self.propsModel.col_index_by_name('title')
+                col = self.propsModel.col_by_index(col_idx)
                 if col.visible and self.propsView.columnWidth(col_idx) > 430:
                     self.propsView.setColumnWidth(col_idx, 430)
 
@@ -1815,70 +1773,19 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def on_buttonBox_rejected(self):
         self.reject()
 
-    def correct_proposal_hyperlink_color(self, row_index, selected):
-        """ When:
-              a) proposal is active and
-                a1) props grid is focused, font color of hyperlinks is white
-                a2) props grid is not focused, color of hyperlinks is default
-              b) proposal is inactive (not selected), font color of hyperlinks is default
-        """
-        def correct_hyperlink(prop, style):
-            def correct(col_name, display_value):
-                col_idx = self.columns.col_index_by_name(col_name)
-                src_index = self.propsModel.index(row_index, col_idx)
-                index = self.proxyModel.mapFromSource(src_index)
-                if index:
-                    lbl = self.propsView.indexWidget(index)
-                    if lbl:
-                        if style:
-                            st_str = 'style=' + style
-                        else:
-                            st_str = ''
-                        lbl.setText(f'<a href="{url}" {st_str}>{display_value}</a>')
-
-            if prop:
-                url = prop.get_value('url')
-                title = prop.get_value('title')
-                if url:
-                    correct('name', prop.get_value('name'))
-                    correct('title', title)
-                    correct('url', url)
-
-        if 0 <= row_index < len(self.proposals):
-            proposal = self.proposals[row_index]
-            if selected and self.propsView.hasFocus():
-                correct_hyperlink(proposal, "color:white")
-            else:
-                correct_hyperlink(proposal, "")
-
-    def focusInEvent(self, event):
-        QTableView.focusInEvent(self.propsView, event)
-        for row_idx in self.propsView.selectionModel().selectedRows():
-            source_row = self.proxyModel.mapToSource(row_idx)
-            if source_row:
-                self.correct_proposal_hyperlink_color(source_row.row(), True)
-
-    def focusOutEvent(self, event):
-        QTableView.focusOutEvent(self.propsView, event)
-        for row_idx in self.propsView.selectionModel().selectedRows():
-            source_row = self.proxyModel.mapToSource(row_idx)
-            if source_row:
-                self.correct_proposal_hyperlink_color(source_row.row(), False)
-
     def on_propsView_selectionChanged(self, selected, deselected):
         rows = []
         for row_idx in selected.indexes():
-            source_row = self.proxyModel.mapToSource(row_idx)
+            source_row = self.propsModel.mapToSource(row_idx)
             if source_row:
                 if source_row.row() not in rows:
                     rows.append(source_row.row())
-                    self.correct_proposal_hyperlink_color(source_row.row(), True)
 
         source_row_idx = None
         if len(self.propsView.selectionModel().selectedRows()) == 1:
             cur_row = self.propsView.currentIndex()
             if cur_row:
-                source_row = self.proxyModel.mapToSource(cur_row)
+                source_row = self.propsModel.mapToSource(cur_row)
                 if source_row:
                     source_row_idx = source_row.row()
 
@@ -1898,16 +1805,15 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
         rows.clear()
         for row_idx in deselected.indexes():
-            source_row = self.proxyModel.mapToSource(row_idx)
+            source_row = self.propsModel.mapToSource(row_idx)
             if source_row:
                 if source_row.row() not in rows:
                     rows.append(source_row.row())
-                    self.correct_proposal_hyperlink_color(source_row.row(), False)
 
     def get_selected_proposals(self, active_voting_only: bool = False):
         props = []
         for row_idx in self.propsView.selectionModel().selectedRows():
-            source_row = self.proxyModel.mapToSource(row_idx)
+            source_row = self.propsModel.mapToSource(row_idx)
             if source_row:
                 prop = self.proposals[source_row.row()]
                 if prop not in props and (not active_voting_only or prop.voting_in_progress):
@@ -2782,10 +2688,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         if file_name:
             try:
                 with codecs.open(file_name, 'w', 'utf-8') as f_ptr:
-                    elems = [col.caption for col in self.columns.columns()]
+                    elems = [col.caption for col in self.propsModel.columns()]
                     self.write_csv_row(f_ptr, elems)
                     for prop in sorted(self.proposals, key = lambda p: p.initial_order_no):
-                        elems = [prop.get_value(col.name) for col in self.columns.columns()]
+                        elems = [prop.get_value(col.name) for col in self.propsModel.columns()]
                         self.write_csv_row(f_ptr, elems)
                 self.infoMsg('Proposals data successfully saved.')
             except Exception as e:
@@ -2816,44 +2722,175 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
     @pyqtSlot()
     def on_btnProposalsColumns_clicked(self):
-        self.columns.exec_columns_dialog(self)
+        self.propsModel.exec_columns_dialog(self)
 
     @pyqtSlot(str)
     def on_edtProposalFilter_textEdited(self, text):
-        self.proxyModel.set_filter_text(text)
-        self.proxyModel.invalidateFilter()
+        self.propsModel.set_filter_text(text)
+        self.propsModel.invalidateFilter()
 
     @pyqtSlot(bool)
     def on_chb_only_active_toggled(self, checked):
-        self.proxyModel.set_filter_only_active(checked)
-        self.proxyModel.invalidateFilter()
+        self.propsModel.set_filter_only_active(checked)
+        self.propsModel.invalidateFilter()
         self.update_proposals_order_no()
 
     @pyqtSlot(bool)
     def on_chb_only_new_toggled(self, checked):
-        self.proxyModel.set_filter_only_new(checked)
-        self.proxyModel.invalidateFilter()
+        self.propsModel.set_filter_only_new(checked)
+        self.propsModel.invalidateFilter()
         self.update_proposals_order_no()
 
     @pyqtSlot(bool)
     def on_chb_not_voted_toggled(self, checked):
-        self.proxyModel.set_filter_only_not_voted(checked)
-        self.proxyModel.invalidateFilter()
+        self.propsModel.set_filter_only_not_voted(checked)
+        self.propsModel.invalidateFilter()
         self.update_proposals_order_no()
 
 
-class ProposalFilterProxyModel(QSortFilterProxyModel):
-    """ Proxy for proposals sorting. """
-
-    def __init__(self, parent, proposals, columns):
-        super().__init__(parent)
-        self.columns = columns
+class ProposalsModel(AdvTableModel):
+    def __init__(self, parent, proposals):
+        AdvTableModel.__init__(self, parent, columns=[
+            ProposalColumn('no', 'No', True),
+            ProposalColumn('name', 'Name', False),
+            ProposalColumn('title', 'Title', True),
+            ProposalColumn('owner', 'Owner', True),
+            ProposalColumn('voting_status_caption', 'Voting Status', True),
+            ProposalColumn('active', 'Active', True),
+            ProposalColumn('payment_amount', 'Amount', True),
+            ProposalColumn('cycles', 'Cycles', True),
+            ProposalColumn('payment_amount_total', 'Total Amount', True),  # payment_amount * cycles
+            ProposalColumn('current_cycle', 'Current Cycle', True),
+            ProposalColumn('absolute_yes_count', 'Absolute Yes Count', True),
+            ProposalColumn('yes_count', "Yes Count", True),
+            ProposalColumn('no_count', 'No Count', True),
+            ProposalColumn('abstain_count', 'Abstain Count', True),
+            ProposalColumn('payment_start', 'Payment Start', True),
+            ProposalColumn('payment_end', 'Payment End', True),
+            ProposalColumn('payment_address', 'Payment Address', False),
+            ProposalColumn('creation_time', 'Creation Time', True),
+            ProposalColumn('url', 'URL', False),
+            ProposalColumn('type', 'Type', False),
+            ProposalColumn('hash', 'Hash', False),
+            ProposalColumn('collateral_hash', 'Collateral Hash', False),
+            ProposalColumn('fBlockchainValidity', 'fBlockchainValidity', False),
+            ProposalColumn('fCachedValid', 'fCachedValid', False),
+            ProposalColumn('fCachedDelete', 'fCachedDelete', False),
+            ProposalColumn('fCachedFunding', 'fCachedFunding', False),
+            ProposalColumn('fCachedEndorsed', 'fCachedEndorsed', False),
+            ProposalColumn('ObjectType', 'ObjectType', False),
+            ProposalColumn('IsValidReason', 'IsValidReason', False)
+        ])
+        self.columns_movable = True
+        self.sorting_column_name = 'no'
+        self.sorting_order = Qt.AscendingOrder
+        self.budget_cycle_days = 28.8
+        self.parent = parent
         self.proposals = proposals
         self.filter_text = ''
         self.filter_columns = []
         self.filter_only_active = True
         self.filter_only_new = False
         self.filter_only_not_voted = False
+        self.set_attr_protection()
+
+    def set_table_view(self, table_view: QTableView):
+        super().set_table_view(table_view)
+        link_delagate = wnd_utils.HyperlinkItemDelegate(table_view)
+        link_delagate.linkActivated.connect(self.hyperlink_activated)
+        table_view.setItemDelegateForColumn(self.col_index_by_name('url'), link_delagate)
+        table_view.setItemDelegateForColumn(self.col_index_by_name('name'), link_delagate)
+        table_view.setItemDelegateForColumn(self.col_index_by_name('title'), link_delagate)
+
+    def rowCount(self, parent=None, *args, **kwargs):
+        return len(self.proposals)
+
+    def setData(self, row, col, role=None):
+        index = self.index(row, col)
+        index = self.proxy_model.mapFromSource(index)
+        self.dataChanged.emit(index, index)
+        return True
+
+    def set_budget_cycle_days(self, days):
+        self.budget_cycle_days = days
+
+    def flags(self, index):
+        ret = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+        return ret
+
+    def data(self, index, role=None):
+        if index.isValid():
+            col_idx = index.column()
+            row_idx = index.row()
+            if row_idx < len(self.proposals) and col_idx < self.col_count():
+                prop = self.proposals[row_idx]
+                col = self.col_by_index(col_idx)
+                if prop:
+                    if role == Qt.DisplayRole:
+                        if col.name in ('payment_start', 'payment_end', 'creation_time'):
+                            value = prop.get_value(col.name)
+                            if value is not None:
+                                if self.budget_cycle_days < 1:
+                                    return app_utils.to_string(value)
+                                else:
+                                    return app_utils.to_string(value.date())
+                            else:
+                                return ''
+                        elif col.name in ('active'):
+                            return 'Yes' if prop.get_value(col.name) is True else 'No'
+                        elif col.name in ('title', 'url', 'name'):
+                            value = prop.get_value(col.name)
+                            url = prop.get_value('url')
+                            url = f'<a href="{url}">{value}</a>'
+                            return url
+                        elif col.name == 'no':
+                            return str(prop.initial_order_no + 1)
+                        else:
+                            value = prop.get_value(col.name)
+                            if isinstance(value, datetime.datetime):
+                                return str(value)
+                            return value
+
+                    elif role == Qt.ForegroundRole:
+                        if col.name == 'voting_status_caption':
+                            if prop.voting_status == 1:
+                                return QtGui.QColor('white')
+                            elif prop.voting_status == 2:
+                                return QtGui.QColor('white')
+                            elif prop.voting_status == 3:
+                                return QCOLOR_YES
+                            elif prop.voting_status == 4:
+                                return QCOLOR_NO
+                        elif col.column_for_vote:
+                            value = prop.get_value(col.name)
+                            if value == 'YES':
+                                return QCOLOR_YES
+                            elif value == 'ABSTAIN':
+                                return QCOLOR_ABSTAIN
+                            elif value == 'NO':
+                                return QCOLOR_NO
+
+                    elif role == Qt.BackgroundRole:
+                        if col.name == 'voting_status_caption':
+                            if prop.voting_status == 1:
+                                return QCOLOR_YES
+                            elif prop.voting_status == 2:
+                                return QCOLOR_ABSTAIN
+
+                    elif role == Qt.TextAlignmentRole:
+                        if col.name in ('payment_amount', 'payment_amount_total', 'absolute_yes_count', 'yes_count',
+                                        'no_count', 'abstain_count', 'cycles', 'current_cycle'):
+                            return Qt.AlignRight
+
+                    elif role == Qt.FontRole:
+                        if col.column_for_vote:
+                            font = QtGui.QFont()
+                            font.setBold(True)
+                            return font
+        return QVariant()
+
+    def hyperlink_activated(self, link):
+        QDesktopServices.openUrl(QUrl(link))
 
     def set_filter_text(self, text):
         self.filter_text = text
@@ -2871,20 +2908,12 @@ class ProposalFilterProxyModel(QSortFilterProxyModel):
         if idx >= 0 and idx not in self.filter_columns:
             self.filter_columns.append(idx)
 
-    def lessThan(self, left, right):
-        """ Custom comparison method: for comparing data from columns which have custom widget controls
-          associated with it, such as hyperlink columns (name, url). Such "widget" columns
-          can't be compared with the use of default method, because data to be compared is hidden
-          behind widget.
-        """
-        col_index = left.column()
-        col = self.columns.col_by_index(col_index)
+    def lessThan(self, col_index, left_row_index, right_row_index):
+        col = self.col_by_index(col_index)
         if col:
-            left_row_index = left.row()
 
             if 0 <= left_row_index < len(self.proposals):
                 left_prop = self.proposals[left_row_index]
-                right_row_index = right.row()
 
                 if 0 <= right_row_index < len(self.proposals):
                     right_prop = self.proposals[right_row_index]
@@ -2923,13 +2952,11 @@ class ProposalFilterProxyModel(QSortFilterProxyModel):
                         diff = right_value < left_value
                         return diff
 
-            return super().lessThan(left, right)
-
-    def filterAcceptsRow(self, source_row, source_parent):
+    def filterAcceptsRow(self, row_index):
         will_show = True
         try:
-            if source_row >= 0 and source_row < len(self.proposals):
-                prop: Proposal = self.proposals[source_row]
+            if row_index >= 0 and row_index < len(self.proposals):
+                prop: Proposal = self.proposals[row_index]
                 if self.filter_text:
                     filter_text_lower = self.filter_text.lower()
                     will_show = False
@@ -2951,125 +2978,6 @@ class ProposalFilterProxyModel(QSortFilterProxyModel):
         except Exception:
             logging.exception('Exception wile filtering votes')
         return will_show
-
-
-class ProposalsModel(QAbstractTableModel):
-    def __init__(self, parent, columns, proposals, ):
-        QAbstractTableModel.__init__(self, parent)
-        self.budget_cycle_days = 28.8
-        self.parent = parent
-        self.columns = columns
-        self.proposals = proposals
-
-    def columnCount(self, parent=None, *args, **kwargs):
-        return self.columns.col_count()
-
-    def rowCount(self, parent=None, *args, **kwargs):
-        return len(self.proposals)
-
-    def headerData(self, section, orientation, role=None):
-        if role != 0:
-            return QVariant()
-        if orientation == 0x1:
-            col = self.columns.col_by_index(section)
-            if col:
-                return col.caption
-            return ''
-        else:
-            return '  '
-
-    def setData(self, row, col, role=None):
-        index = self.index(row, col)
-        index = self.parent.proxyModel.mapFromSource(index)
-
-        self.dataChanged.emit(index, index)
-        return True
-
-    def set_budget_cycle_days(self, days):
-        self.budget_cycle_days = days
-
-    def flags(self, index):
-        ret = Qt.ItemIsEnabled | Qt.ItemIsSelectable
-        return ret
-
-    def data(self, index, role=None):
-        if index.isValid():
-            col_idx = index.column()
-            row_idx = index.row()
-            if row_idx < len(self.proposals) and col_idx < self.columns.col_count():
-                prop = self.proposals[row_idx]
-                col = self.columns.col_by_index(col_idx)
-                if prop:
-                    if role == Qt.DisplayRole:
-                        if col.name in ('payment_start', 'payment_end', 'creation_time'):
-                            value = prop.get_value(col.name)
-                            if value is not None:
-                                if self.budget_cycle_days < 1:
-                                    return app_utils.to_string(value)
-                                else:
-                                    return app_utils.to_string(value.date())
-                            else:
-                                return ''
-                        elif col.name in ('active'):
-                            return 'Yes' if prop.get_value(col.name) is True else 'No'
-                        elif col.name in ('title', 'url', 'name'):
-                            col_idx = self.parent.columns.col_index_by_name(col.name)
-                            src_index = self.index(row_idx, col_idx)
-                            index = self.parent.proxyModel.mapFromSource(src_index)
-                            if index:
-                                if not self.parent.propsView.indexWidget(index):
-                                    value = prop.get_value(col.name)
-                                    lbl = QtWidgets.QLabel(self.parent.propsView)
-                                    url = prop.get_value('url')
-                                    lbl.setText('<a href="%s">%s</a>' % (url, value))
-                                    lbl.setOpenExternalLinks(True)
-                                    self.parent.propsView.setIndexWidget(index, lbl)
-                        else:
-                            value = prop.get_value(col.name)
-                            if isinstance(value, datetime.datetime):
-                                return str(value)
-                            return value
-                        if col.name == 'no':
-                            return str(prop.initial_order_no + 1)
-
-                    elif role == Qt.ForegroundRole:
-                        if col.name == 'voting_status_caption':
-                            if prop.voting_status == 1:
-                                return QtGui.QColor('white')
-                            elif prop.voting_status == 2:
-                                return QtGui.QColor('white')
-                            elif prop.voting_status == 3:
-                                return QCOLOR_YES
-                            elif prop.voting_status == 4:
-                                return QCOLOR_NO
-                        elif col.column_for_vote:
-                            value = prop.get_value(col.name)
-                            if value == 'YES':
-                                return QCOLOR_YES
-                            elif value == 'ABSTAIN':
-                                return QCOLOR_ABSTAIN
-                            elif value == 'NO':
-                                return QCOLOR_NO
-
-                    elif role == Qt.BackgroundRole:
-                        if col.name == 'voting_status_caption':
-                            if prop.voting_status == 1:
-                                return QCOLOR_YES
-                            elif prop.voting_status == 2:
-                                return QCOLOR_ABSTAIN
-
-                    elif role == Qt.TextAlignmentRole:
-                        if col.name in ('payment_amount', 'payment_amount_total', 'absolute_yes_count', 'yes_count',
-                                        'no_count', 'abstain_count', 'cycles', 'current_cycle'):
-                            return Qt.AlignRight
-
-                    elif role == Qt.FontRole:
-                        if col.column_for_vote:
-                            font = QtGui.QFont()
-                            font.setBold(True)
-                            return font
-
-        return QVariant()
 
 
 class VotesFilterProxyModel(QSortFilterProxyModel):

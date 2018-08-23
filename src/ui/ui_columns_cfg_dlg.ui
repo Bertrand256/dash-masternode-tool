@@ -58,6 +58,16 @@
      <item>
       <layout class="QVBoxLayout" name="verticalLayout_2">
        <item>
+        <widget class="QToolButton" name="btnMoveBegin">
+         <property name="toolTip">
+          <string>Move To Top</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QToolButton" name="btnMoveUp">
          <property name="toolTip">
           <string>Move Up</string>
@@ -71,6 +81,16 @@
         <widget class="QToolButton" name="btnMoveDown">
          <property name="toolTip">
           <string>Move Down</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QToolButton" name="btnMoveEnd">
+         <property name="toolTip">
+          <string>Move To Bottom</string>
          </property>
          <property name="text">
           <string/>

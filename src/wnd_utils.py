@@ -13,9 +13,12 @@ import app_utils
 import thread_utils
 import time
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer
-from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap
-from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit
+from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEvent, QPointF, QSize, QModelIndex, QRect, \
+    QRectF
+from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap, QTextDocument, QCursor, \
+    QAbstractTextDocumentLayout, QFontMetrics
+from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit, \
+    QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView
 import math
 import message_dlg
 from thread_fun_dlg import ThreadFunDlg, WorkerThread, CtrlObject
@@ -457,4 +460,68 @@ class ReadOnlyTableCellDelegate(QItemDelegate):
         e = QLineEdit(parent)
         e.setReadOnly(True)
         return e
+
+
+HTML_LINK_HORZ_MARGIN = 3
+
+
+class HyperlinkItemDelegate(QStyledItemDelegate):
+    linkActivated = QtCore.pyqtSignal(str)
+
+    def __init__(self, parentView: QTableView):
+        QStyledItemDelegate.__init__(self, parentView)
+
+        parentView.setMouseTracking(True)
+        self.doc_hovered_item = QTextDocument(self)
+        self.doc_hovered_item.setDocumentMargin(0)
+        self.doc_not_hovered = QTextDocument(self)
+        self.doc_not_hovered.setDocumentMargin(0)
+        self.last_hovered_pos = QPoint(0, 0)
+
+    def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
+
+        self.initStyleOption(option, index)
+        mouse_over = option.state & QStyle.State_MouseOver
+
+        if option.state & QStyle.State_Selected:
+            color = "color: white"
+        else:
+            color = ''
+
+        if mouse_over:
+            doc = self.doc_hovered_item
+            self.last_hovered_pos = option.rect.topLeft()
+            doc.setDefaultStyleSheet(f"a {{{color}}}")
+        else:
+            doc = self.doc_not_hovered
+            self.parent().unsetCursor()
+            doc.setDefaultStyleSheet(f"a {{text-decoration: none;{color}}}")
+
+        doc.setDefaultFont(option.font)
+        doc.setHtml(option.text)
+
+        painter.save()
+        painter.translate(option.rect.topLeft() + QPoint(HTML_LINK_HORZ_MARGIN, 0))
+        ctx = QAbstractTextDocumentLayout.PaintContext()
+        ctx.palette = option.palette
+        clip = QRect(0, 0, option.rect.width() - HTML_LINK_HORZ_MARGIN * 2, option.rect.height())
+        painter.setClipRect(clip)
+        doc.documentLayout().draw(painter, ctx)
+        painter.restore()
+
+    def editorEvent(self, event, model, option, index):
+        if event.type() not in [QEvent.MouseMove, QEvent.MouseButtonRelease] \
+            or not (option.state & QStyle.State_Enabled):
+            return False
+
+        pos = QPointF(event.pos() - option.rect.topLeft())
+        anchor = self.doc_hovered_item.documentLayout().anchorAt(pos)
+        if not anchor:
+            self.parent().unsetCursor()
+        else:
+            self.parent().setCursor(Qt.PointingHandCursor)
+            if event.type() == QEvent.MouseButtonRelease:
+                self.linkActivated.emit(anchor)
+                return True
+        return False
 
