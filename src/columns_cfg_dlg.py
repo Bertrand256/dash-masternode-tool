@@ -7,24 +7,28 @@ from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import QSize, pyqtSlot
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QDialog, QLayout, QStyle
+from typing import List
+
 from ui import ui_columns_cfg_dlg
 from wnd_utils import WndUtils
 
 
 class ColumnsConfigDlg(QDialog, ui_columns_cfg_dlg.Ui_ColumnsConfigDlg, WndUtils):
-    def __init__(self, parent, columns):
+    def __init__(self, parent, columns: List):
         QDialog.__init__(self, parent)
         ui_columns_cfg_dlg.Ui_ColumnsConfigDlg.__init__(self)
         WndUtils.__init__(self, None)
-        self.columns = columns
+        self.columns: List = columns
         self.initialized = False
         self.setupUi()
 
     def setupUi(self):
         ui_columns_cfg_dlg.Ui_ColumnsConfigDlg.setupUi(self, self)
         self.setWindowTitle("Columns")
-        self.setIcon(self.btnMoveUp, QStyle.SP_ArrowUp)
-        self.setIcon(self.btnMoveDown, QStyle.SP_ArrowDown)
+        self.setIcon(self.btnMoveBegin, "arrow-top.png")
+        self.setIcon(self.btnMoveEnd, "arrow-bottom.png")
+        self.setIcon(self.btnMoveUp, "arrow-up.png")
+        self.setIcon(self.btnMoveDown, "arrow-down.png")
         self.tableWidget.verticalHeader().setSectionsMovable(True)
 
         self.tableWidget.verticalHeader().setDefaultSectionSize(
@@ -50,7 +54,7 @@ class ColumnsConfigDlg(QDialog, ui_columns_cfg_dlg.Ui_ColumnsConfigDlg, WndUtils
         self.initialized = True
 
     def on_tableRowMoved(self, logicalIndex, oldVisualIndex, newVisualIndex):
-        self.columns.insert_column(newVisualIndex, self.columns.pop(oldVisualIndex))
+        self.columns.insert(newVisualIndex, self.columns.pop(oldVisualIndex))
 
     @pyqtSlot(QtWidgets.QTableWidgetItem)
     def on_tableWidget_itemChanged(self, item):
@@ -58,6 +62,7 @@ class ColumnsConfigDlg(QDialog, ui_columns_cfg_dlg.Ui_ColumnsConfigDlg, WndUtils
             return
         row = self.tableWidget.row(item)
         if row >= 0:
+            row = self.tableWidget.visualRow(row)
             self.columns[row][1] = item.checkState() == QtCore.Qt.Checked
 
     @pyqtSlot()
@@ -65,19 +70,31 @@ class ColumnsConfigDlg(QDialog, ui_columns_cfg_dlg.Ui_ColumnsConfigDlg, WndUtils
         self.update_buttons_state()
 
     def update_buttons_state(self):
-        up_enabled = True
-        down_enabled = True
-        selected = False
-        for item in self.tableWidget.selectedItems():
+        up_enabled = False
+        down_enabled = False
+
+        items = sorted(self.tableWidget.selectedItems(), key=lambda x: self.tableWidget.visualRow(x.row()))
+        last_row = -1
+        first_selected_row = -1
+        last_selected_row = len(items)
+        was_gap = False
+        for item in items:
             row = self.tableWidget.visualRow(item.row())
-            selected = True
-            if row == 0:
-                up_enabled = False
-            if row == len(self.columns):
-                down_enabled = False
-        if not selected:
-            up_enabled = False
-            down_enabled = False
+            if last_row >= 0 and last_row < row - 1:
+                was_gap = True
+            if first_selected_row < 0:
+                first_selected_row = row
+            last_selected_row = row
+            last_row = row
+
+        if first_selected_row > 0 or was_gap:
+            up_enabled = True
+
+        if last_selected_row < len(self.columns) - 1 or was_gap:
+            down_enabled = True
+
+        self.btnMoveBegin.setEnabled(up_enabled)
+        self.btnMoveEnd.setEnabled(down_enabled)
         self.btnMoveUp.setEnabled(up_enabled)
         self.btnMoveDown.setEnabled(down_enabled)
 
@@ -85,12 +102,36 @@ class ColumnsConfigDlg(QDialog, ui_columns_cfg_dlg.Ui_ColumnsConfigDlg, WndUtils
     def on_btnMoveUp_clicked(self):
         # sort selected item to move lower-indexed items first
         items = sorted(self.tableWidget.selectedItems(), key=lambda x: self.tableWidget.visualRow(x.row()))
+
+        last_row_index = -1
+        moved = False
         for item in items:
             row = self.tableWidget.visualRow(item.row())
             if row > 0:
-                self.tableWidget.verticalHeader().moveSection(row, row-1)
-        if len(items):
+                if last_row_index + 1 < row:
+                    self.tableWidget.verticalHeader().moveSection(row, row-1)
+                    last_row_index = row - 1
+                    moved = True
+                else:
+                    last_row_index = row
+            else:
+                last_row_index = row
+        if moved:
             self.update_buttons_state()
+            self.tableWidget.scrollToItem(items[0])
+
+    @pyqtSlot()
+    def on_btnMoveBegin_clicked(self):
+        items = sorted(self.tableWidget.selectedItems(), key=lambda x: self.tableWidget.visualRow(x.row()))
+        moved = False
+        for new_row_idx, item in enumerate(items):
+            cur_row_idx = self.tableWidget.visualRow(item.row())
+            if cur_row_idx != new_row_idx:
+                self.tableWidget.verticalHeader().moveSection(cur_row_idx, new_row_idx)
+                moved = True
+        if moved:
+            self.update_buttons_state()
+            self.tableWidget.scrollToItem(items[0])
 
     @pyqtSlot()
     def on_btnMoveDown_clicked(self):
@@ -98,9 +139,35 @@ class ColumnsConfigDlg(QDialog, ui_columns_cfg_dlg.Ui_ColumnsConfigDlg, WndUtils
         items = sorted(self.tableWidget.selectedItems(), key=lambda x: self.tableWidget.visualRow(x.row()),
                        reverse=True)
 
+        last_row_index = None
+        moved = False
         for item in items:
             row = self.tableWidget.visualRow(item.row())
             if row < len(self.columns) - 1:
-                self.tableWidget.verticalHeader().moveSection(row, row+1)
-        if len(items):
+                if last_row_index is None or row + 1 < last_row_index:
+                    self.tableWidget.verticalHeader().moveSection(row, row+1)
+                    last_row_index = row + 1
+                    moved = True
+                else:
+                    last_row_index = row
+            else:
+                last_row_index = row
+        if moved:
             self.update_buttons_state()
+            self.tableWidget.scrollToItem(items[0])
+
+    @pyqtSlot()
+    def on_btnMoveEnd_clicked(self):
+        items = sorted(self.tableWidget.selectedItems(), key=lambda x: self.tableWidget.visualRow(x.row()),
+                       reverse=True)
+        moved = False
+        for idx, item in enumerate(items):
+            cur_row_idx = self.tableWidget.visualRow(item.row())
+            new_row_idx = len(self.columns) - idx - 1
+            if cur_row_idx != new_row_idx:
+                self.tableWidget.verticalHeader().moveSection(cur_row_idx, new_row_idx)
+                moved = True
+        if moved:
+            self.update_buttons_state()
+            self.tableWidget.scrollToItem(items[0])
+

@@ -61,6 +61,9 @@ class UtxoTableModel(AdvTableModel):
             TableModelColumn('txid', 'TX ID', True, 220),
             TableModelColumn('output_index', 'TX Idx', True, 40)
         ])
+        self.columns_movable = True
+        self.sorting_column_name = 'confirmations'
+        self.sorting_order = Qt.AscendingOrder
         self.hide_collateral_utxos = True
         self.utxos: List[UtxoType] = []
         self.utxo_by_id: Dict[int, UtxoType] = {}
@@ -133,7 +136,7 @@ class UtxoTableModel(AdvTableModel):
         self.utxos.clear()
         self.utxo_by_id.clear()
 
-    def less_than(self, col_index, left_row_index, right_row_index):
+    def lessThan(self, col_index, left_row_index, right_row_index):
         col = self.col_by_index(col_index)
         if col:
             col_name = col.name
@@ -162,7 +165,7 @@ class UtxoTableModel(AdvTableModel):
                         return right_value < left_value
         return False
 
-    def filter_accept_row(self, source_row):
+    def filterAcceptsRow(self, source_row):
         will_show = True
         if 0 <= source_row < len(self.utxos):
             if self.hide_collateral_utxos:
@@ -307,15 +310,10 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.utxoTableView.setItemDelegate(ReadOnlyTableCellDelegate(self.utxoTableView))
         self.utxoTableView.verticalHeader().setDefaultSectionSize(
             self.utxoTableView.verticalHeader().fontMetrics().height() + 4)
-        self.utxo_table_model.set_table_view(self.utxoTableView,
-                                             columns_movable=True,
-                                             sorting_column='confirmations',
-                                             sorting_order=Qt.AscendingOrder)
+        self.utxo_table_model.set_table_view(self.utxoTableView)
 
         self.listWalletAccounts.setModel(self.account_list_model)
-
         self.setup_transactions_table_view()
-
         self.chbHideCollateralTx.toggled.connect(self.chbHideCollateralTxToggled)
 
         self.cbo_src_masternodes.blockSignals(True)

@@ -2,8 +2,8 @@ python-bitcoinrpc>=1.0
 bitcoin>=1.1.42
 trezor==0.10.2
 keepkey
-PyQt5==5.11.2
-PyQtChart==5.11.2
+PyQt5==5.9.2
+PyQtChart==5.9.2
 pyinstaller
 paramiko>=2.2.1
 requests>=2.18.4
