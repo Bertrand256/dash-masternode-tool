@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_send_payout_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.11.2
+# Created by: PyQt5 UI code generator 5.9.2
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -147,12 +147,14 @@ class Ui_SendPayoutDlg(object):
         self.verticalLayout_8 = QtWidgets.QVBoxLayout(self.page)
         self.verticalLayout_8.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout_8.setObjectName("verticalLayout_8")
-        self.listWalletAccounts = QtWidgets.QListView(self.page)
+        self.listWalletAccounts = QtWidgets.QTreeView(self.page)
         self.listWalletAccounts.setObjectName("listWalletAccounts")
         self.verticalLayout_8.addWidget(self.listWalletAccounts)
         self.stackedWidget.addWidget(self.page)
         self.page_2 = QtWidgets.QWidget()
         self.page_2.setObjectName("page_2")
+        self.verticalLayout_10 = QtWidgets.QVBoxLayout(self.page_2)
+        self.verticalLayout_10.setObjectName("verticalLayout_10")
         self.stackedWidget.addWidget(self.page_2)
         self.verticalLayout_7.addWidget(self.stackedWidget)
         self.widget_3 = QtWidgets.QWidget(self.splitterMain)
@@ -288,6 +290,7 @@ class Ui_SendPayoutDlg(object):
 
         self.retranslateUi(SendPayoutDlg)
         self.sw_address_source.setCurrentIndex(0)
+        self.stackedWidget.setCurrentIndex(0)
         self.tabWidget.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(SendPayoutDlg)
 

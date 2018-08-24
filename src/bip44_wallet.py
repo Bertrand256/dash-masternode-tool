@@ -27,7 +27,6 @@ MAX_ADDRESSES_TO_SCAN = 1000
 MAX_BIP44_ACCOUNTS = 200
 
 
-AddressType = Dict[str, Any]  # based on the database 'address' table; Dict[str <field name> , Any <field value>]
 Bip44AccountBaseAddress = namedtuple('Bip44AccountBaseAddress', ['id', 'xpub', 'bip32_path'])
 
 
@@ -48,6 +47,24 @@ class UtxoType(AttrsProtected):
         self.set_attr_protection()
 
 
+class AddressType(AttrsProtected):
+    def __init__(self):
+        super(AddressType, self).__init__()
+        self.id = None
+        self.xpub_hash = None
+        self.parent_id = None
+        self.address_index = None
+        self.address = None
+        self.path = None
+        self.tree_id = None
+        self.balance = None
+        self.received = None
+        self.is_change = None
+        self.last_scan_block_height = None
+        self.bip44_account = None
+        self.set_attr_protection()
+
+
 class Bip44AccountType(AttrsProtected):
     def __init__(self, id: int, xpub_hash: str, address_index: int, bip32_path: str, balance: int, received: int,
                  name: str):
@@ -59,6 +76,7 @@ class Bip44AccountType(AttrsProtected):
         self.balance: Optional[int] = balance
         self.received: Optional[int] = received
         self.name: Optional[str] = name
+        self.addresses: List[AddressType] = []
         self.set_attr_protection()
 
     def get_hardened_index(self):
@@ -95,6 +113,16 @@ class Bip44AccountType(AttrsProtected):
             self.name = self.name
             return True
         return False
+
+    def add_address(self, address: AddressType):
+        address.bip44_account = self
+        self.addresses.append(address)
+
+    def address_by_index(self, index):
+        if index >= 0 and index < len(self.addresses):
+            return self.addresses[index]
+        else:
+            return None
 
 
 class Bip44Wallet(object):
@@ -169,15 +197,30 @@ class Bip44Wallet(object):
                                       'where id=?', (row[0],))
                     row = db_cursor.fetchone()
 
-            addr = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
+            addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
+            return self._get_address_from_dict(addr_info)
         finally:
             if db_cursor.connection.total_changes > 0:
                 self.db_intf.commit()
             self.db_intf.release_cursor()
+
+    def _get_address_from_dict(self, address_dict):
+        addr = AddressType()
+        addr.id = address_dict.get('id')
+        addr.xpub_hash = address_dict.get('xpub_hash')
+        addr.parent_id = address_dict.get('parent_id')
+        addr.address_index = address_dict.get('address_index')
+        addr.address = address_dict.get('address')
+        addr.path = address_dict.get('path')
+        addr.tree_id = address_dict.get('tree_id')
+        addr.balance = address_dict.get('balance')
+        addr.received = address_dict.get('received')
+        addr.is_change = address_dict.get('is_change')
+        addr.last_scan_block_height = address_dict.get('last_scan_block_height')
         return addr
 
     def _get_child_address(self, parent_address_id: int, child_addr_index: int, parent_key) \
-            -> Dict[str, Any]:
+            -> AddressType:
         """
         :return: Tuple[int <id db>, str <address>, int <balance in duffs>]
         """
@@ -203,7 +246,7 @@ class Bip44Wallet(object):
                         addr_info['parent_id'] = parent_address_id
                         addr_info['address_index'] = child_addr_index
 
-                    return addr_info
+                    return self._get_address_from_dict(addr_info)
                 else:
                     db_cursor.execute('insert into address(parent_id, address_index, address) values(?,?,?)',
                                       (parent_address_id, child_addr_index, address))
@@ -216,10 +259,10 @@ class Bip44Wallet(object):
                         'last_scan_block_height': 0
                     }
 
-                    return addr_info
+                    return self._get_address_from_dict(addr_info)
             else:
                 addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
-            return addr_info
+            return self._get_address_from_dict(addr_info)
         except Exception:
             raise
         finally:
@@ -237,7 +280,7 @@ class Bip44Wallet(object):
         account_bip32_path = bip32_path_n_to_string(path_n)
         account_xpub = hw_intf.get_xpub(self.hw_session, account_bip32_path)
         addr = self._get_xpub_db_addr(account_xpub, account_bip32_path, False, None)
-        addr_id = addr.get('id', None)
+        addr_id = addr.id
         return Bip44AccountBaseAddress(addr_id, account_xpub, account_bip32_path)
 
     def list_account_addresses(self, base_bip32_path: str, change: int, addr_start_index: int, addr_count: int) -> \
@@ -255,7 +298,7 @@ class Bip44Wallet(object):
         change_xpub = change_key.ExtendedKey(False, True)
 
         parent_addr = self._get_xpub_db_addr(account_xpub, account_bip32_path, False, None)
-        parent_addr_id = parent_addr.get('id', None)
+        parent_addr_id = parent_addr.id
 
         bip32_path = bip32_path_n_to_string(bip32_path_string_to_n(account_bip32_path) + [change])
 
@@ -268,7 +311,7 @@ class Bip44Wallet(object):
 
         tm_begin = time.time()
         try:
-            xpub_db_id = self._get_xpub_db_addr(xpub, bip32_path, is_change_address, parent_addr_id).get('id')
+            xpub_db_id = self._get_xpub_db_addr(xpub, bip32_path, is_change_address, parent_addr_id).id
 
             key = BIP32Key.fromExtendedKey(xpub)
             count = 0
@@ -323,7 +366,7 @@ class Bip44Wallet(object):
         tm_begin = time.time()
 
         parent_addr = self._get_xpub_db_addr(account_xpub, None, False, None)
-        parent_addr_id = parent_addr.get('id', None)
+        parent_addr_id = parent_addr.id
 
         account_key = BIP32Key.fromExtendedKey(account_xpub)
         key = account_key.ChildKey(change)
@@ -354,7 +397,7 @@ class Bip44Wallet(object):
                 db_cursor = self.db_intf.get_cursor()
                 try:
                     for addr_info in reversed(addresses):
-                        addr_id = addr_info['id']
+                        addr_id = addr_info.id
 
                         # check if there was no transactions for the address
                         if not addr_bal_updated.get(addr_id):
@@ -392,7 +435,7 @@ class Bip44Wallet(object):
                                       'from tx_input o where o.address_id=address.id) where address.id=?', (addr_id,))
 
                 # update balance of the xpub address to which belong the addresses with modified balance
-                xpub_address_id = self._get_xpub_db_addr(xpub, bip32_path, is_change_address, parent_addr_id).get('id')
+                xpub_address_id = self._get_xpub_db_addr(xpub, bip32_path, is_change_address, parent_addr_id).id
 
                 db_cursor.execute('update address set balance=(select sum(balance) from address a1 '
                                   'where a1.parent_id=address.id), received=(select sum(received) from '
@@ -417,9 +460,9 @@ class Bip44Wallet(object):
         last_block_height = max_block_height
 
         for addr_info in addr_info_list:
-            addrinfo_by_address[addr_info.get('address')] = addr_info
-            addresses.append(addr_info.get('address'))
-            bh = addr_info['last_scan_block_height']
+            addrinfo_by_address[addr_info.address] = addr_info
+            addresses.append(addr_info.address)
+            bh = addr_info.last_scan_block_height
             if bh is None:
                 bh = 0
             if bh < last_block_height:
@@ -434,13 +477,13 @@ class Bip44Wallet(object):
             try:
                 for tx_entry in txids:
                     address = tx_entry.get('address')
-                    addr_db_id = addrinfo_by_address[address].get('id')
+                    addr_db_id = addrinfo_by_address[address].id
                     self._process_tx_entry(tx_entry, addr_db_id, address, db_cursor, addr_bal_updated)
 
                 # update the last scan block height info for each of the addresses
                 for addr_info in addr_info_list:
                     db_cursor.execute('update address set last_scan_block_height=? where id=?',
-                                      (max_block_height, addr_info['id']))
+                                      (max_block_height, addr_info.id))
 
             finally:
                 if db_cursor.connection.total_changes > 0:
@@ -508,7 +551,6 @@ class Bip44Wallet(object):
                         self.txs_added[tx_id] = tx_id
                         addr_bal_updated[addr_db_id] = True
 
-                    # todo: check this and continue here
                     if out_db_id in self.utxos_added:
                         del self.utxos_added[out_db_id]
                     else:
@@ -564,14 +606,11 @@ class Bip44Wallet(object):
             tx_id = row[0]
         return tx_id, tx_json
 
-    def list_bip32_account_utxos(self, account_index: int) -> Generator[UtxoType, None, None]:
+    def list_utxos_for_account(self, account_id: int) -> Generator[UtxoType, None, None]:
         """
-        :param account_index: for hardened account the value should be >= 0x80000000
+        :param account_id: database id of the account's record
         """
-        if account_index < 0:
-            raise Exception('Invalid account number')
 
-        base_addr = self.get_account_base_address(account_index)
         cur_block_height = self.dashd_intf.getblockcount()
 
         db_cursor = self.db_intf.get_cursor()
@@ -581,7 +620,37 @@ class Bip44Wallet(object):
                               "tx.tx_hash, o.address, o.output_index, o.satoshis from tx_output o join address a "
                               "on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca "
                               "on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null "
-                              "or spent_input_index is null) and aca.id=?", (base_addr.id,))
+                              "or spent_input_index is null) and aca.id=?", (account_id,))
+
+            for id, path, addr_index, block_height, coinbase, block_timestamp, tx_hash, address, output_index,\
+                satoshis in db_cursor.fetchall():
+
+                utxo = UtxoType()
+                utxo.id = id
+                utxo.txid = self._unwrap_txid(tx_hash)
+                utxo.address = address
+                utxo.output_index = output_index
+                utxo.satoshis = satoshis
+                utxo.confirmations = cur_block_height - block_height
+                utxo.bip32_path = path + '/' + str(addr_index) if path else ''
+                utxo.time_str = app_utils.to_string(datetime.datetime.fromtimestamp(block_timestamp))
+                utxo.coinbase_locked = True if coinbase and utxo.confirmations < 100 else False
+                yield utxo
+
+        finally:
+            self.db_intf.release_cursor()
+
+    def list_utxos_for_address(self, address_id: int) -> Generator[UtxoType, None, None]:
+        cur_block_height = self.dashd_intf.getblockcount()
+
+        db_cursor = self.db_intf.get_cursor()
+        try:
+            db_cursor.execute("select o.id, cha.path, a.address_index, tx.block_height, tx.coinbase, "
+                              "tx.block_timestamp,"
+                              "tx.tx_hash, o.address, o.output_index, o.satoshis from tx_output o join address a "
+                              "on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca "
+                              "on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null "
+                              "or spent_input_index is null) and a.id=?", (address_id,))
 
             for id, path, addr_index, block_height, coinbase, block_timestamp, tx_hash, address, output_index,\
                 satoshis in db_cursor.fetchall():
@@ -602,6 +671,7 @@ class Bip44Wallet(object):
             self.db_intf.release_cursor()
 
     def list_accounts(self) -> Generator[Bip44AccountType, None, None]:
+        tm_begin = time.time()
         db_cursor = self.db_intf.get_cursor()
         try:
             tree_id = self.get_tree_id(db_cursor)
@@ -610,9 +680,22 @@ class Bip44Wallet(object):
                               "parent_id is null and tree_id=? order by address_index", (tree_id,))
 
             for id, xpub_hash, address_index, bip32_path, balance, received in db_cursor.fetchall():
-                yield Bip44AccountType(id, xpub_hash, address_index, bip32_path, balance, received, '')
+                acc = Bip44AccountType(id, xpub_hash, address_index, bip32_path, balance, received, '')
+
+                db_cursor.execute('select a.id, a.address_index, a.address, ac.path parent_path, a.balance, '
+                                  'a.received, ac.is_change from address a join address ac on a.parent_id=ac.id '
+                                  'where ac.parent_id=? order by ac.address_index, a.address_index', (acc.id,))
+                for add_row in db_cursor.fetchall():
+                    addr_info = dict([(col[0], add_row[idx]) for idx, col in enumerate(db_cursor.description)])
+                    add = self._get_address_from_dict(addr_info)
+                    if add.path:
+                        add.path = add.path + '/' + str(add.address_index)
+                    acc.add_address(add)
+                yield acc
         finally:
             self.db_intf.release_cursor()
+        diff = time.time() - tm_begin
+        logging.info(f'Accounts read time: {diff}s')
 
     def list_bip32_address_utxos(self):
         pass
