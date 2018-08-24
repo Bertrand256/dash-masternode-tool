@@ -14,7 +14,7 @@ from typing import Tuple, List, Optional, Dict
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSlot, QStringListModel, QItemSelectionModel, \
     QItemSelection, QSortFilterProxyModel, QAbstractItemModel, QModelIndex, QObject, QAbstractListModel
-from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox, QSplitter, QVBoxLayout, QPushButton, \
     QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout
 from cryptography.fernet import Fernet
@@ -24,7 +24,7 @@ import dash_utils
 import hw_intf
 from app_config import MasternodeConfig
 from app_defs import HWType
-from bip44_wallet import Bip44Wallet, UtxoType, Bip44AccountType
+from bip44_wallet import Bip44Wallet, UtxoType, Bip44AccountType, AddressType
 from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
 from hw_common import HardwareWalletCancelException, HwSessionInfo
@@ -40,7 +40,7 @@ from transaction_dlg import TransactionDlg
 
 CACHE_ITEM_UTXO_SOURCE_MODE = 'WalletDlg_UtxoSourceMode'
 CACHE_ITEM_HW_ACCOUNT_BASE_PATH = 'WalletDlg_UtxoSrc_HwAccountBasePath_%NETWORK%'
-CACHE_ITEM_HW_ACCOUNT_ADDR_INDEX = 'WalletDlg_UtxoSrc_HwAccountAddressIndex'
+CACHE_ITEM_HW_SEL_ACCOUNT_ADDR_ID = 'WalletDlg_UtxoSrc_HwAccountId'
 CACHE_ITEM_HW_SRC_BIP32_PATH = 'WalletDlg_UtxoSrc_HwBip32Path_%NETWORK%'
 CACHE_ITEM_UTXO_SRC_MASTRNODE = 'WalletDlg_UtxoSrc_Masternode_%NETWORK%'
 CACHE_ITEM_UTXO_COLS = 'WalletDlg_UtxoColumns'
@@ -179,26 +179,98 @@ class UtxoTableModel(AdvTableModel):
         self.proxy_model.invalidateFilter()
 
 
-class AccountListModel(QAbstractListModel):
+class AccountListModel(QAbstractItemModel):
     def __init__(self, parent):
         QAbstractItemModel.__init__(self, parent)
         self.accounts: List[Bip44AccountType] = []
         self.modified = False
 
+    def headerData(self, section, orientation, role=None):
+        if role != 0:
+            return QVariant()
+        if orientation == 0x1:
+            if section == 0:
+                return ''
+            elif section == 1:
+                return 'Balance'
+            elif section == 2:
+                return 'Received'
+        return ''
+
+    def parent(self, index=None):
+        if not index or not index.isValid():
+            return QModelIndex()
+        node = index.internalPointer()
+        if isinstance(node, Bip44AccountType):
+            return QModelIndex()
+        else:
+            acc_idx = self.accounts.index(node.bip44_account)
+            return self.createIndex(acc_idx, 0, node.bip44_account)
+
+    def index(self, row, column, parent=None, *args, **kwargs):
+        if not parent or not parent.isValid():
+            return self.createIndex(row, column, self.accounts[row])
+        parentNode = parent.internalPointer()
+        if isinstance(parentNode, Bip44AccountType):
+            addr = parentNode.address_by_index(row)
+            if addr:
+                return self.createIndex(row, column, addr)
+        return QModelIndex()
+
     def columnCount(self, parent=None, *args, **kwargs):
-        return 1
+        return 3
 
     def rowCount(self, parent=None, *args, **kwargs):
-        return len(self.accounts)
+        if not parent or not parent.isValid():
+            return len(self.accounts)
+        node = parent.internalPointer()
+        if isinstance(node, Bip44AccountType):
+            return len(node.addresses)
+        else:
+            return 0
 
     def data(self, index, role=None):
         if index.isValid():
-            row = index.row()
-            if row < len(self.accounts):
-                account = self.accounts[row]
-                if account:
-                    if role in (Qt.DisplayRole, Qt.EditRole):
-                        return account.get_account_name()
+            data = index.internalPointer()
+            col = index.column()
+            if data:
+                if role in (Qt.DisplayRole, Qt.EditRole):
+                    if col == 0:
+                        if isinstance(data, Bip44AccountType):
+                            return data.get_account_name()
+                        else:
+                            return f'/{data.address_index}: {data.address}'
+                    elif col == 1:
+                        b = data.balance
+                        if b:
+                            b = b/1e8
+                        return b
+                    elif col == 2:
+                        b = data.received
+                        if b:
+                            b = b/1e8
+                        return b
+
+                elif role == Qt.ForegroundRole:
+                    if isinstance(data, Bip44AccountType):
+                        return data.get_account_name()
+                    elif isinstance(data, AddressType):
+                        if data.received == 0:
+                            return QColor(Qt.lightGray)
+                        elif data.balance == 0:
+                            return QColor(Qt.gray)
+
+                elif role == Qt.FontRole:
+                    if isinstance(data, Bip44AccountType):
+                        return data.get_account_name()
+                    elif isinstance(data, AddressType):
+                        font = QFont()
+                        # if data.balance > 0:
+                        #     font.setBold(True)
+                        font.setPointSize(font.pointSize() - 2)
+                        return font
+
+
         return QVariant()
 
     def reset_modified(self):
@@ -210,10 +282,10 @@ class AccountListModel(QAbstractListModel):
                 return a
         return None
 
-    def account_by_address_index(self, address_index: int) -> Optional[Bip44AccountType]:
-        for a in self.accounts:
-            if a.address_index == address_index:
-                return a
+    def account_index_by_id(self, id: int) -> Optional[Bip44AccountType]:
+        for idx, a in enumerate(self.accounts):
+            if a.id == id:
+                return idx
         return None
 
     def add_account(self, account: Bip44AccountType):
@@ -271,7 +343,8 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
         # for self.utxo_src_mode == 2
         self.hw_account_base_bip32_path = ''
-        self.hw_account_address_index = None  # bip44 account address index; for account #1 (1-based) the values is 0x80000000
+        self.hw_selected_account_id = None  # bip44 account address id
+        self.hw_selected_address_id = None  # if the account's address was selected (the index in the Bip44AccountType.addresses list)
 
         # for self.utxo_src_mode == 3
         self.hw_src_bip32_path = None
@@ -313,6 +386,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.utxo_table_model.set_table_view(self.utxoTableView)
 
         self.listWalletAccounts.setModel(self.account_list_model)
+
         self.setup_transactions_table_view()
         self.chbHideCollateralTx.toggled.connect(self.chbHideCollateralTxToggled)
 
@@ -418,11 +492,8 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         else:
             self.hw_account_base_bip32_path = dash_utils.get_default_bip32_base_path(self.app_config.dash_network)
 
-        # account number:
-        nr = app_cache.get_value(CACHE_ITEM_HW_ACCOUNT_ADDR_INDEX, 0x80000000, int)
-        if nr < 0:
-            nr = 0x80000000
-        self.hw_account_address_index = nr
+        # selected account id:
+        self.hw_selected_account_id = app_cache.get_value(CACHE_ITEM_HW_SEL_ACCOUNT_ADDR_ID, 0x80000000, int)
 
         # bip32 path (utxo_src_mode 3)
         path = app_cache.get_value(CACHE_ITEM_HW_SRC_BIP32_PATH.replace('%NETWORK%', self.app_config.dash_network),
@@ -466,7 +537,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             app_cache.set_value(CACHE_ITEM_UTXO_SOURCE_MODE, self.utxo_src_mode)
         app_cache.set_value(CACHE_ITEM_HW_ACCOUNT_BASE_PATH.replace('%NETWORK%', self.app_config.dash_network),
                             self.hw_account_base_bip32_path)
-        app_cache.set_value(CACHE_ITEM_HW_ACCOUNT_ADDR_INDEX, self.hw_account_address_index)
+        app_cache.set_value(CACHE_ITEM_HW_SEL_ACCOUNT_ADDR_ID, self.hw_selected_account_id)
         app_cache.set_value(CACHE_ITEM_HW_SRC_BIP32_PATH.replace('%NETWORK%', self.app_config.dash_network),
                             self.hw_src_bip32_path)
 
@@ -525,12 +596,12 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             self.utxo_src_mode = 1
         else:
             raise Exception('Invalid index.')
-        self.load_utxos()
+        # self.load_utxos()
 
     @pyqtSlot(int)
     def on_cbo_src_masternodes_currentIndexChanged(self, index):
         self.mn_src_index = index
-        self.load_utxos()
+        # self.load_utxos()
 
     @pyqtSlot(str)
     def on_lbl_hw_account_base_path_linkActivated(self, text):
@@ -542,7 +613,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                 if self.hw_account_base_bip32_path != path:
                     self.hw_account_base_bip32_path = path
                     self.display_bip32_base_path()
-                    self.load_utxos()
+                    # self.load_utxos()
             except Exception:
                 self.errorMsg('Invalid BIP32 path')
 
@@ -557,7 +628,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     self.hw_src_bip32_path = path
                     self.hw_src_address = ''  # will be retrieved in self.load_utxos
                     self.edt_src_bip32_path.setText(self.hw_src_bip32_path)
-                    self.load_utxos()
+                    # self.load_utxos()
             except Exception as e:
                 self.errorMsg('Invalid BIP32 path')
 
@@ -737,23 +808,35 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.close()
 
     def on_listWalletAccounts_selectionChanged(self):
-        """Selected BIP44 account changed. """
+        """Selected BIP44 account or address changed. """
         idx = self.listWalletAccounts.currentIndex()
-        if idx and idx.row() < len(self.account_list_model.accounts):
-            self.hw_account_address_index = self.account_list_model.accounts[idx.row()].address_index
-        else:
-            self.hw_account_address_index = None
+        if idx and idx.isValid():
+            old_sel = self.get_utxo_src_cfg_hash()
+            data = idx.internalPointer()  # data can by of Bip44AccountType or AddressType
+            if isinstance(data, Bip44AccountType):
+                self.hw_selected_address_id = None
+                if idx and idx.row() < len(self.account_list_model.accounts):
+                    self.hw_selected_account_id = self.account_list_model.accounts[idx.row()].id
+                else:
+                    self.hw_selected_account_id = None
+            elif isinstance(data, AddressType):
+                self.hw_selected_account_id = data.bip44_account.id
+                self.hw_selected_address_id = data.id
+            else:
+                return
 
-        self.utxo_table_model.clear_utxos()
-        self.reset_utxos_view()
-        self.load_data_event.set()
+            if old_sel != self.get_utxo_src_cfg_hash():
+                self.utxo_table_model.clear_utxos()
+                self.reset_utxos_view()
+                self.load_data_event.set()
 
     def get_utxo_src_cfg_hash(self):
         hash = str({self.utxo_src_mode})
         if self.utxo_src_mode == 1:
             hash = hash + f'{self.mn_src_index}'
         elif self.utxo_src_mode == 2:
-            hash = hash + f':{self.hw_account_base_bip32_path}:{self.hw_account_address_index}'
+            hash = hash + f':{self.hw_account_base_bip32_path}:{self.hw_selected_account_id}:' \
+                          f'{self.hw_selected_address_id}'
         elif self.utxo_src_mode == 3:
             hash = hash + ':' + str(self.hw_src_bip32_path)
         return hash
@@ -764,22 +847,23 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             self.account_list_model.endResetModel()
 
             if len(self.account_list_model.accounts) > 0:
-                if self.hw_account_address_index is None:
+                if self.hw_selected_account_id is None:
                     sel_acc = self.account_list_model.accounts[0]
                 else:
-                    sel_acc = self.account_list_model.account_by_address_index(self.hw_account_address_index)
+                    sel_acc = self.account_list_model.account_by_id(self.hw_selected_account_id)
                     if not sel_acc:
                         sel_acc = self.account_list_model.accounts[0]
 
-                self.hw_account_address_index = sel_acc.address_index
-                idx = self.account_list_model.accounts.index(sel_acc)
-                old_state = self.listWalletAccounts.selectionModel().blockSignals(True)
-                try:
-                    self.listWalletAccounts.setCurrentIndex(self.account_list_model.index(idx))
-                finally:
-                    self.listWalletAccounts.selectionModel().blockSignals(old_state)
+                self.hw_selected_account_id = sel_acc.id
+                idx = self.account_list_model.account_index_by_id(self.hw_selected_account_id)
+                if idx is not None:
+                    old_state = self.listWalletAccounts.selectionModel().blockSignals(True)
+                    try:
+                        self.listWalletAccounts.setCurrentIndex(self.account_list_model.index(idx, 0))
+                    finally:
+                        self.listWalletAccounts.selectionModel().blockSignals(old_state)
             else:
-                self.hw_account_address_index = None
+                self.hw_selected_account_id = None
 
         WndUtils.call_in_main_thread(reset)
 
@@ -833,20 +917,28 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     # reload the data
                     list_utxos = None
                     if self.utxo_src_mode == 2:
-                        if self.hw_account_address_index is not None:
-                            list_utxos = self.bip44_wallet.list_bip32_account_utxos(self.hw_account_address_index)
+                        if self.hw_selected_account_id is not None:
+                            if self.hw_selected_address_id is None:
+                                # list utxos of the whole bip44 account
+                                list_utxos = self.bip44_wallet.list_utxos_for_account(self.hw_selected_account_id)
+                            else:
+                                # list utxos of the specific address
+                                list_utxos = self.bip44_wallet.list_utxos_for_address(self.hw_selected_address_id)
 
                     if len(self.utxo_table_model.utxos) > 0:
                         self.utxo_table_model.clear_utxos()
 
                     if list_utxos:
+                        self.set_message('Fetching data...')
                         for utxo in list_utxos:
                             self.utxo_table_model.add_utxo(utxo)
+                        self.set_message('Preparing data for display...')
 
                         last_utxos_source_hash = cur_utxo_source_hash
 
                     if len(self.utxo_table_model.utxos) > 0:
                         self.reset_utxos_view()
+                    self.set_message('')
 
                 if not self.fetch_transactions_thread_id and not fetch_txs_launched:
                     WndUtils.call_in_main_thread(WndUtils.run_thread, self, self.fetch_transactions_thread, ())
@@ -899,345 +991,10 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             self.fetch_transactions_thread_id = None
         logging.info('Finishing fetch_transactions_thread')
 
-    def load_utxos2(self):
-        new_utxos = []
-        existing_utxos = []
-        def apply_utxos(new_utxos: List[dict], existing_utxos: List[dict]):
-            # check if the utxos source configuration changed while executing thread
-            # if so, reexecute thread
-            if self.finishing:
-                return
-            self.set_message('')
-
-            if self.utxo_src_mode == 1:
-                if self.mn_src_index is not None and self.mn_src_index < len(self.masternode_addresses) and \
-                        self.mn_src_index >= 0:
-                    msg = f'<b>Balance:</b> {self.sel_addresses_balance} Dash&nbsp;&nbsp;&nbsp;<b>Received:</b> {self.sel_addresses_received} Dash&nbsp;&nbsp;&nbsp;<b>Address:</b> {self.masternode_addresses[self.mn_src_index][0]}'
-                    self.set_message_2(msg)
-                else:
-                    msg = f'<b>Balance:</b> {self.sel_addresses_balance} Dash&nbsp;&nbsp;&nbsp;<b>Received:</b> {self.sel_addresses_received} Dash'
-                    self.set_message_2(msg)
-            elif self.utxo_src_mode == 2:
-                msg = f'<b>Balance:</b> {self.sel_addresses_balance} Dash&nbsp;&nbsp;&nbsp;<b>Received:</b> {self.sel_addresses_received} Dash'
-                self.set_message_2(msg)
-            elif self.utxo_src_mode in (1, 3):
-                msg = f'<b>Balance:</b> {self.sel_addresses_balance} Dash&nbsp;&nbsp;&nbsp;<b>Received:</b> {self.sel_addresses_received} Dash&nbsp;&nbsp;&nbsp;<b>Address:</b> {self.hw_src_address}'
-                self.set_message_2(msg)
-
-            cur_utxos_src_hash = self.get_utxo_src_cfg_hash()
-            if cur_utxos_src_hash == self.last_utxos_source_hash:
-                try:
-                    # remove all utxos that no longer exist in the netwotk
-                    change_addresses: UtxoSrcAddrList = []
-                    change_addresses_dict = {}
-
-                    # for idx in reversed(range(len(self.utxos))):
-                    #     u = self.utxos[idx]
-                    #     if u not in existing_utxos:
-                    #         # del self.utxos_dict[self.utxos[idx]['key']]
-                    #         # del self.utxos[idx]
-                    #         pass
-                    #     else:
-                    #         if not change_addresses_dict.get(u['address']):
-                    #             change_addresses.append((u['address'], u['bip32_path']))
-                    #             change_addresses_dict[u['address']] = 1
-
-                    # add all new utxos
-                    # for u in new_utxos:
-                    #     # self.utxos.append(u)
-                    #     # self.utxos_dict[u['key']] = u
-                    #     if not change_addresses_dict.get(u['address']):
-                    #         change_addresses.append((u['address'], u['bip32_path']))
-                    #         change_addresses_dict[u['address']] = 1
-
-                    # self.utxos.sort(key=itemgetter('height'), reverse=True)
-                    # self.utxo_table_model.setUtxos(self.utxos, self.masternodes)
-                    # self.wdg_dest_adresses.set_change_addresses(change_addresses)
-                finally:
-                    self.load_utxos_thread_ref = None
-            else:
-                self.last_utxos_source_hash = self.get_utxo_src_cfg_hash()
-
-                new_utxos.clear()
-                existing_utxos.clear()
-                self.load_utxos_thread_ref = self.run_thread(
-                    self, self.load_utxos_thread, (new_utxos, existing_utxos),
-                    on_thread_finish=partial(apply_utxos, new_utxos, existing_utxos))
-
-        try:
-            if self.utxo_src_mode == 1 or \
-                    (self.main_ui.connect_hardware_wallet() and
-                     self.app_config.initialize_hw_encryption(self.main_ui.hw_session)):
-
-                if self.last_utxos_source_hash != self.get_utxo_src_cfg_hash():
-                    # clear current utxo data in grid
-                    # self.utxos.clear()
-                    # self.utxos_dict.clear()
-                    # self.utxo_table_model.setUtxos(self.utxos, self.masternodes)
-                    self.update_recipient_area_utxos()
-
-                if not self.load_utxos_thread_ref:
-                    # remember what input addresses configuration was when starting
-                    self.last_utxos_source_hash = self.get_utxo_src_cfg_hash()
-
-                    self.load_utxos_thread_ref = self.run_thread(
-                        self, self.load_utxos_thread, (new_utxos, existing_utxos),
-                        on_thread_finish=partial(apply_utxos, new_utxos, existing_utxos))
-                else:
-                    if self.last_utxos_source_hash != self.get_utxo_src_cfg_hash():
-                        # source utxos configuration changed: stop the thread and execute again
-                        self.load_utxos_thread_ref.stop()
-        except HardwareWalletCancelException:
-            pass
-
-    def load_utxos(self, ctrl: CtrlObject = None):
-
-        # if not self.finishing and not ctrl.finish:
-        #     self.set_message(f'Reading unspent transaction outputs...')
-
-        def list_utxos(thread_ctrl: CtrlObject):
-            try:
-                if self.utxo_src_mode == 1:
-                    pass
-                elif self.utxo_src_mode == 2:
-
-                    for utxo in self.bip44_wallet.list_bip32_account_utxos(self.hw_account_address_index):
-                        yield utxo
-
-                elif self.utxo_src_mode == 3:
-                    pass
-
-            except Exception as e:
-                logging.exception('Exception occurred')
-                raise
-
-        if not self.dashd_intf.open():
-            self.errorMsg('Dash daemon not connected')
-        else:
-
-            if self.main_ui.connect_hardware_wallet() and \
-                self.app_config.initialize_hw_encryption(self.main_ui.hw_session):
-
-                cnt1 = len(self.utxo_table_model.utxos)
-                for utxo in list_utxos(ctrl):
-                    self.utxo_table_model.add_utxo(utxo)
-                cnt2 = len(self.utxo_table_model.utxos)
-
-                row_count = cnt2 - cnt1
-                if row_count:
-                    # self.utxo_table_model.insertRows(cnt1, cnt2-cnt1)
-                    self.utxo_table_model.beginResetModel()
-                    self.utxo_table_model.endResetModel()
-
-    def load_utxos_thread_old(self, ctrl: CtrlObject, new_utxos_out, existing_utxos_out):
-        """
-        Thread gets UTXOs from the network and returns the new items (not existing in the self.utxo list)
-        :param ctrl:
-        :param new_utxos_out: Here will be returned all the new UTXOs.
-        :param existing_utxos_out: In this list will be returned all UTXOs which existed in the self.utxo list before
-        """
-        ADDRESS_CHUNK = 10
-        if not self.finishing and not ctrl.finish:
-            self.set_message(f'Reading unspent transaction outputs...')
-
-        def get_addresses_to_scan(self, thread_ctrl: CtrlObject, addr_scan_ctrl: dict):
-            """
-            :param self:
-            :param addr_scan_ctrl: (only for self.utxo_src_mode == 2) penultimate element of bip32 path to scan, used
-                to switch sanning between normal and change addresses
-            :return: yield List[Tuple[str (address), str (bip32 path)]]
-            """
-            try:
-                if self.utxo_src_mode == 1:
-
-                    if self.mn_src_index is not None:
-                        if self.mn_src_index == len(self.masternode_addresses):
-                            # show addresses of all masternodes
-                            # prepare a unique list of mn addresses
-                            tmp_addresses = []
-                            addr_path_pairs = []
-                            for x in self.masternode_addresses:
-                                if x[0] not in tmp_addresses:
-                                    tmp_addresses.append(x[0])
-                                    addr_path_pairs.append((x[0], x[1]))
-
-                            for chunk_nr in range(int(math.ceil(len(addr_path_pairs) / ADDRESS_CHUNK))):
-                                if self.finishing or thread_ctrl.finish:
-                                    return
-                                yield [x for x in addr_path_pairs[
-                                                  chunk_nr * ADDRESS_CHUNK : (chunk_nr + 1) * ADDRESS_CHUNK] if x[0] and x[1]]
-                        elif self.mn_src_index < len(self.masternode_addresses) and self.mn_src_index >= 0:
-                            if self.finishing or thread_ctrl.finish:
-                                return
-                            if self.masternode_addresses[self.mn_src_index][0] and \
-                                self.masternode_addresses[self.mn_src_index][1]:
-                                yield [self.masternode_addresses[self.mn_src_index]]
-
-                elif self.utxo_src_mode == 2:
-                    # hw wallet account: scan all addresses and change addresses for a specific account
-                    # stop when a defined number of subsequent address has balance 0
-
-                    addr_count = 0
-                    addr_n = dash_utils.bip32_path_string_to_n(self.hw_account_base_bip32_path)
-                    db_cur = self.db_intf.get_cursor()
-
-                    try:
-                        bip32_path_n = addr_n[:] + [self.hw_account_address_index + 0x80000000, 0, 0]
-                        cur_addr_buf = []
-                        last_level2_nr = addr_scan_ctrl.get('level2')
-                        while True:
-                            restart_iteration = False
-                            for nr in range(1000):
-                                if self.finishing or thread_ctrl.finish:
-                                    return
-                                if last_level2_nr != addr_scan_ctrl.get('level2'):
-                                    last_level2_nr = addr_scan_ctrl.get('level2')
-                                    restart_iteration = True
-                                    break
-                                bip32_path_n[-2] = addr_scan_ctrl.get('level2')
-                                bip32_path_n[-1] = nr
-
-                                cur_addr = hw_intf.get_address_ext(self.main_ui.hw_session, bip32_path_n, db_cur,
-                                                                   self.app_config.hw_encrypt_string,
-                                                                   self.app_config.hw_decrypt_string)
-
-                                bip32_path = dash_utils.bip32_path_n_to_string(bip32_path_n)
-                                cur_addr_buf.append((cur_addr, bip32_path))
-                                addr_count += 1
-                                if len(cur_addr_buf) >= ADDRESS_CHUNK:
-                                    yield cur_addr_buf
-                                    cur_addr_buf.clear()
-                            if restart_iteration:
-                                continue
-                            if cur_addr_buf:
-                                yield cur_addr_buf
-                            break
-                    finally:
-                        if db_cur.connection.total_changes > 0:
-                            self.db_intf.commit()
-                        self.db_intf.release_cursor()
-
-                elif self.utxo_src_mode == 3:
-
-                    db_cur = self.db_intf.get_cursor()
-                    try:
-                        # address from a specific bip32 path
-                        bip32_path_n = dash_utils.bip32_path_string_to_n(self.hw_src_bip32_path)
-                        cur_addr = hw_intf.get_address_ext(self.main_ui.hw_session, bip32_path_n, db_cur,
-                                                           self.app_config.hw_encrypt_string,
-                                                           self.app_config.hw_decrypt_string)
-                        self.hw_src_address = cur_addr
-                        yield [(cur_addr, self.hw_src_bip32_path)]
-
-                    finally:
-                        if db_cur.connection.total_changes > 0:
-                            self.db_intf.commit()
-                        self.db_intf.release_cursor()
-
-            except Exception as e:
-                logging.exception('Exception occurred')
-                raise
-
-        if not self.dashd_intf.open():
-            self.errorMsg('Dash daemon not connected')
-        else:
-            tm_begin = time.time()
-            try:
-                cur_block_height = self.dashd_intf.getblockcount()
-                self.sel_addresses_balance = 0
-                self.sel_addresses_received = 0
-                addr_count = 0
-                utxos_count = 0
-                addr_scan_ctrl = {'level2': 0}  # the one before last elemnt of bip32 paths to scan (0: normal address,
-                                                # 1: change address
-
-                for addr_path_chunk in get_addresses_to_scan(self, ctrl, addr_scan_ctrl):
-                    try:
-                        if self.finishing or ctrl.finish:
-                            break
-
-                        addr_chunk = []
-                        addr_to_bip32 = {}
-                        logging.debug(f'Got BIP32path-address pair chunk: {len(addr_path_chunk)}')
-                        for a, p in addr_path_chunk:
-                            addr_chunk.append(a)
-                            addr_to_bip32[a] = p
-                            logging.debug(f'Adding BIP32path-address pair for UTXO load: {p} - {a}')
-
-                        balance = self.dashd_intf.getaddressbalance(addr_chunk)
-                        if balance.get('received') == 0:
-                            if addr_scan_ctrl['level2'] == 0:
-                                addr_scan_ctrl['level2'] = 1  # switch to change addresses
-                                continue
-                            else:
-                                break
-                        else:
-                            self.sel_addresses_received += balance.get('received')
-
-                        if balance.get('balance') > 0:
-                            self.sel_addresses_balance += balance.get('balance')
-                            # get utxos for addresses
-                            uxs = self.dashd_intf.getaddressutxos(addr_chunk)
-                            utxos_count += len(uxs)
-
-                            addr_count += len(addr_path_chunk)
-                            for idx, utxo in enumerate(uxs):
-                                if self.finishing or ctrl.finish:
-                                    return
-
-                                utxo_key = utxo['txid'] + '-' + str(utxo['outputIndex'])
-                                # cached_utxo = self.utxos_dict.get(utxo_key)
-                                if not cached_utxo:
-                                    blockhash = self.dashd_intf.getblockhash(utxo.get('height'))
-                                    bh = self.dashd_intf.getblockheader(blockhash)
-                                    utxo['key'] = utxo_key
-                                    utxo['time_str'] = app_utils.to_string(datetime.datetime.fromtimestamp(bh['time']))
-                                    utxo['confirmations'] = cur_block_height - utxo.get('height') + 1
-                                    utxo['coinbase_locked'] = False
-                                    utxo['bip32_path'] = addr_to_bip32.get(utxo['address'])
-                                    if not utxo['bip32_path']:
-                                        logging.warning(f'BIP32 path not found for address: {utxo["address"]}')
-
-                                    try:
-                                        # verify whether it's a coinbase transaction and if so,if it has
-                                        # enough confirmations to spend
-                                        rawtx = self.dashd_intf.getrawtransaction(utxo.get('txid'), 1)
-                                        if rawtx:
-                                            self.rawtransactions[utxo.get('txid')] = rawtx['hex']
-                                            vin = rawtx.get('vin')
-                                            if len(vin) == 1 and vin[0].get('coinbase') and utxo['confirmations'] < 100:
-                                                utxo['coinbase_locked'] = True
-                                    except Exception:
-                                        logging.exception('Error while verifying transaction coinbase')
-
-                                    new_utxos_out.append(utxo)
-                                else:
-                                    cached_utxo['confirmations'] = cur_block_height - utxo.get('height') + 1
-                                    if cached_utxo['coinbase_locked']:
-                                        cached_utxo['coinbase_locked'] = (cached_utxo['confirmations'] < 100)
-                                    existing_utxos_out.append(cached_utxo)
-
-                            if not self.finishing and not ctrl.finish:
-                                self.set_message(f'Reading unspent transaction outputs... '
-                                                 f'Address count: {addr_count}, UTXOs count: {utxos_count}')
-                    except Exception as e:
-                        logging.exception('Exception occurred')
-                        raise
-
-                self.sel_addresses_balance = round(self.sel_addresses_balance / 1e8, 8)
-                self.sel_addresses_received = round(self.sel_addresses_received / 1e8, 8)
-
-                tm_diff = time.time() - tm_begin
-                logging.info(f'load_utxos_thread exec time: {tm_diff} s')
-            except DashdIndexException as e:
-                self.errorMsg(str(e))
-
-            except Exception as e:
-                self.errorMsg('Error occurred while calling getaddressutxos method: ' + str(e))
-
     @pyqtSlot()
     def on_btnLoadTransactions_clicked(self):
-        self.load_utxos()
+        # self.load_utxos()
+        pass
 
     def on_edtSourceBip32Path_returnPressed(self):
         self.on_btnLoadTransactions_clicked()
