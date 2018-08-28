@@ -317,7 +317,10 @@ def bip32_path_string_to_n(path_str):
     if path_str.startswith('m/'):
         path_str = path_str[2:]
     path_str = path_str.strip('/')
-    elems = [int(elem[:-1]) + 0x80000000 if elem.endswith("'") else int(elem) for elem in path_str.split('/')]
+    if path_str:
+        elems = [int(elem[:-1]) + 0x80000000 if elem.endswith("'") else int(elem) for elem in path_str.split('/')]
+    else:
+        elems = []
     return elems
 
 
