@@ -16,12 +16,13 @@ from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSlot, QStringLis
     QItemSelection, QSortFilterProxyModel, QAbstractItemModel, QModelIndex, QObject, QAbstractListModel
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox, QSplitter, QVBoxLayout, QPushButton, \
-    QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout
+    QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout, QAction
 from cryptography.fernet import Fernet
 import app_cache
 import app_utils
 import dash_utils
 import hw_intf
+import thread_utils
 from app_config import MasternodeConfig
 from app_defs import HWType
 from bip44_wallet import Bip44Wallet, UtxoType, Bip44AccountType, AddressType
@@ -185,6 +186,9 @@ class AccountListModel(QAbstractItemModel):
         self.accounts: List[Bip44AccountType] = []
         self.modified = False
 
+    def flags(self, index):
+        return Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable
+
     def headerData(self, section, orientation, role=None):
         if role != 0:
             return QVariant()
@@ -273,6 +277,17 @@ class AccountListModel(QAbstractItemModel):
 
         return QVariant()
 
+    def removeRows(self, row, count, parent=None, *args, **kwargs):
+        if parent is None or not parent.isValid():
+            if row >=0 and row < len(self.accounts):
+                self.beginRemoveRows(parent, row, row + count)
+                for row_offs in range(count):
+                    del self.accounts[row - row_offs]
+                self.endRemoveRows()
+            return True
+        else:
+            return False
+
     def reset_modified(self):
         self.modified = False
 
@@ -282,7 +297,7 @@ class AccountListModel(QAbstractItemModel):
                 return a
         return None
 
-    def account_index_by_id(self, id: int) -> Optional[Bip44AccountType]:
+    def account_index_by_id(self, id: int) -> Optional[int]:
         for idx, a in enumerate(self.accounts):
             if a.id == id:
                 return idx
@@ -329,7 +344,12 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.db_intf: DBCache = main_ui.config.db_intf
         self.utxo_table_model = UtxoTableModel(None, self, self.masternodes)
         self.finishing = False  # true if closing window
-        self.load_utxos_thread_ref: Optional[WorkerThread] = None
+        self.fetch_transactions_thread_ref: Optional[WorkerThread] = None
+        self.fetch_transactions_thread_id = None
+        self.fetch_transactions_lock = thread_utils.EnhRLock()
+        self.allow_fetch_transactions = True
+        self.update_data_view_thread_ref: Optional[WorkerThread] = None
+        self.update_data_view_thread_id = None
         self.last_utxos_source_hash = ''
         self.initial_mn_sel = initial_mn_sel
 
@@ -462,15 +482,27 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         self.lbl_hw_account_base_path.setStyleSheet('QLabel{font-size:10px}')
         self.utxoTableView.selectionModel().selectionChanged.connect(self.on_utxoTableView_selectionChanged)
         self.listWalletAccounts.selectionModel().selectionChanged.connect(self.on_listWalletAccounts_selectionChanged)
+        self.listWalletAccounts.setItemDelegateForColumn(0, ReadOnlyTableCellDelegate(self.listWalletAccounts))
 
-        self.fetch_transactions_thread_id = None
-        self.update_data_view_thread_id = None
-        self.run_thread(self, self.update_data_view_thread, ())
+        # context menu actions:
+        self.act_show_address_on_hw = QAction('Show address on hardware wallet', self)
+        self.act_show_address_on_hw.triggered.connect(self.on_show_address_on_hw_triggered)
+        self.listWalletAccounts.addAction(self.act_show_address_on_hw)
+        self.act_delete_account_data = QAction('Delete account data from cache', self)
+        self.act_delete_account_data.triggered.connect(self.on_delete_account_triggered)
+        self.listWalletAccounts.addAction(self.act_delete_account_data)
+
+        self.update_context_actions()
+        self.update_data_view_thread_ref = self.run_thread(self, self.update_data_view_thread, ())
 
     def closeEvent(self, event):
         self.finishing = True
         self.load_data_event.set()
         self.fetch_txs_event.set()
+        if self.fetch_transactions_thread_ref:
+            self.fetch_transactions_thread_ref.wait(5000)
+        if self.update_data_view_thread_ref:
+            self.update_data_view_thread_ref.wait(5000)
         self.save_cache_settings()
 
     def restore_cache_settings(self):
@@ -810,8 +842,8 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
     def on_listWalletAccounts_selectionChanged(self):
         """Selected BIP44 account or address changed. """
         idx = self.listWalletAccounts.currentIndex()
+        old_sel = self.get_utxo_src_cfg_hash()
         if idx and idx.isValid():
-            old_sel = self.get_utxo_src_cfg_hash()
             data = idx.internalPointer()  # data can by of Bip44AccountType or AddressType
             if isinstance(data, Bip44AccountType):
                 self.hw_selected_address_id = None
@@ -825,10 +857,57 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             else:
                 return
 
-            if old_sel != self.get_utxo_src_cfg_hash():
-                self.utxo_table_model.clear_utxos()
-                self.reset_utxos_view()
-                self.load_data_event.set()
+        if old_sel != self.get_utxo_src_cfg_hash():
+            self.utxo_table_model.clear_utxos()
+            self.reset_utxos_view()
+            self.load_data_event.set()
+            self.update_context_actions()
+
+    def update_context_actions(self):
+        visible = False
+        if self.hw_selected_address_id is not None:
+            if self.hw_session.hw_type in (HWType.trezor, HWType.keepkey):
+                visible = True
+        self.act_show_address_on_hw.setVisible(visible)
+        if self.hw_selected_account_id is not None:
+            self.act_delete_account_data.setVisible(True)
+        else:
+            self.act_delete_account_data.setVisible(False)
+
+    def on_show_address_on_hw_triggered(self):
+        if self.hw_selected_address_id is not None:
+            a = self.account_list_model.account_by_id(self.hw_selected_account_id)
+            if a:
+                addr = a.address_by_id(self.hw_selected_address_id)
+                if addr:
+                    _a = hw_intf.get_address(self.hw_session, addr.path, True,
+                                             f'Displaying address <b>{addr.address}</b>.<br>Click the confirmation button on'
+                                             f' your device.')
+                    if _a != addr.address:
+                        raise Exception('Address inconsistency between db cache and device')
+
+    def on_delete_account_triggered(self):
+        if self.hw_selected_account_id is not None:
+            idx = self.listWalletAccounts.currentIndex()
+            if idx and idx.isValid():
+                if idx.row() > 0:
+                    new_row = idx.row() - 1
+                elif self.account_list_model.rowCount(parent=None) > 1:
+                    new_row = idx.row()
+                else:
+                    new_row = None
+                if new_row is not None:
+                    _idx = self.account_list_model.index(new_row, 0)
+                    # self.listWalletAccounts.setCurrentIndex(_idx)
+
+                saved_state = self.allow_fetch_transactions
+                try:
+                    self.allow_fetch_transactions = False
+                    self.fetch_transactions_lock.acquire()
+                    self.account_list_model.removeRow(idx.row())
+                finally:
+                    self.allow_fetch_transactions = saved_state
+                    self.fetch_transactions_lock.release()
 
     def get_utxo_src_cfg_hash(self):
         hash = str({self.utxo_src_mode})
@@ -857,11 +936,12 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                 self.hw_selected_account_id = sel_acc.id
                 idx = self.account_list_model.account_index_by_id(self.hw_selected_account_id)
                 if idx is not None:
-                    old_state = self.listWalletAccounts.selectionModel().blockSignals(True)
+                    # old_state = self.listWalletAccounts.selectionModel().blockSignals(True)
                     try:
                         self.listWalletAccounts.setCurrentIndex(self.account_list_model.index(idx, 0))
                     finally:
-                        self.listWalletAccounts.selectionModel().blockSignals(old_state)
+                        # self.listWalletAccounts.selectionModel().blockSignals(old_state)
+                        pass
             else:
                 self.hw_selected_account_id = None
 
@@ -873,13 +953,23 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             self.utxo_table_model.endResetModel()
         WndUtils.call_in_main_thread(reset)
 
+    def hw_connected(self):
+        if self.hw_session.hw_type is not None and self.hw_session.hw_client is not None:
+            return True
+        else:
+            return False
+
     def connect_hw(self):
         def connect():
             if self.main_ui.connect_hardware_wallet():
                 self.app_config.initialize_hw_encryption(self.main_ui.hw_session)
+                self.update_context_actions()
                 return True
             return False
-        return WndUtils.call_in_main_thread(connect)
+        if not self.hw_connected():
+            return WndUtils.call_in_main_thread(connect)
+        else:
+            return True
 
     def update_data_view_thread(self, ctrl: CtrlObject):
         try:
@@ -941,7 +1031,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     self.set_message('')
 
                 if not self.fetch_transactions_thread_id and not fetch_txs_launched:
-                    WndUtils.call_in_main_thread(WndUtils.run_thread, self, self.fetch_transactions_thread, ())
+                    self.fetch_transactions_thread_ref = WndUtils.call_in_main_thread(WndUtils.run_thread, self, self.fetch_transactions_thread, ())
                     fetch_txs_launched = True
 
                 self.load_data_event.wait(2)
@@ -957,6 +1047,12 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         logging.info('Finishing update_data_view_thread')
 
     def fetch_transactions_thread(self, ctrl: CtrlObject):
+        def break_fetch_process():
+            if not self.allow_fetch_transactions or self.finishing or ctrl.finish:
+                return True
+            else:
+                return False
+
         try:
             self.fetch_transactions_thread_id = threading.current_thread()
             last_txs_fetch_time = 0
@@ -968,17 +1064,26 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                         return
 
                 if last_txs_fetch_time == 0 or (time.time() - last_txs_fetch_time > FETCH_DATA_INTERVAL_SECONDS):
-                    self.bip44_wallet.fetch_all_accounts_txs()
-                    last_txs_fetch_time = int(time.time())
+                    if self.utxo_src_mode != 1:
+                        self.set_message('Fetching transactions...')
 
-                    # fetching transactions may result in 'new' bip44 accounts with a non-zero 'received' balance
-                    self.account_list_model.reset_modified()
-                    for a in self.bip44_wallet.list_accounts():
-                        self.account_list_model.add_account(a)
+                        self.fetch_transactions_lock.acquire()
+                        try:
+                            self.bip44_wallet.fetch_all_accounts_txs(break_fetch_process)
+                        finally:
+                            self.fetch_transactions_lock.release()
 
-                    if self.account_list_model.modified:
-                        self.account_list_model.sort_accounts()
-                        self.reset_accounts_view()
+                        last_txs_fetch_time = int(time.time())
+
+                        # fetching transactions may result in 'new' bip44 accounts with a non-zero 'received' balance
+                        self.account_list_model.reset_modified()
+                        for a in self.bip44_wallet.list_accounts():
+                            self.account_list_model.add_account(a)
+
+                        if self.account_list_model.modified:
+                            self.account_list_model.sort_accounts()
+                            self.reset_accounts_view()
+                        self.set_message('')
 
                 self.load_data_event.wait(2)
                 if self.load_data_event.is_set():

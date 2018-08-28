@@ -339,7 +339,11 @@
                <number>0</number>
               </property>
               <item>
-               <widget class="QTreeView" name="listWalletAccounts"/>
+               <widget class="QTreeView" name="listWalletAccounts">
+                <property name="contextMenuPolicy">
+                 <enum>Qt::ActionsContextMenu</enum>
+                </property>
+               </widget>
               </item>
              </layout>
             </widget>

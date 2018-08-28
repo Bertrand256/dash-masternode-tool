@@ -10,7 +10,7 @@ import datetime
 import logging
 from bip32utils import BIP32Key, Base58
 from collections import namedtuple
-from typing import List, Dict, Tuple, Optional, Any, Generator, NamedTuple
+from typing import List, Dict, Tuple, Optional, Any, Generator, NamedTuple, Callable
 
 import app_utils
 import hw_intf
@@ -53,9 +53,9 @@ class AddressType(AttrsProtected):
         self.id = None
         self.xpub_hash = None
         self.parent_id = None
-        self.address_index = None
+        self.address_index: Optional[int] = None
         self.address = None
-        self.path = None
+        self.path: str = None
         self.tree_id = None
         self.balance = None
         self.received = None
@@ -116,6 +116,13 @@ class Bip44AccountType(AttrsProtected):
 
     def add_address(self, address: AddressType):
         address.bip44_account = self
+        if not address.path:
+            if self.bip32_path and address.address_index is not None:
+                if address.is_change:
+                    change = 1
+                else:
+                    change = 0
+                address.path = f"{self.bip32_path}/{change}/{address.address_index}"
         self.addresses.append(address)
 
     def address_by_index(self, index):
@@ -124,6 +131,11 @@ class Bip44AccountType(AttrsProtected):
         else:
             return None
 
+    def address_by_id(self, id):
+        for a in self.addresses:
+            if a.id == id:
+                return a
+        return None
 
 class Bip44Wallet(object):
     def __init__(self, hw_session: HwSessionInfo, db_intf: DBCache, dashd_intf: DashdInterface, dash_network: str):
@@ -276,6 +288,9 @@ class Bip44Wallet(object):
         :return:
         """
         b32_path = self.hw_session.base_bip32_path
+        if not b32_path:
+            logging.error('hw_session.base_bip32_path not set. Probable cause: not initialized HW session.')
+            raise Exception('HW session not initialized. Look into the log file for details.')
         path_n = bip32_path_string_to_n(b32_path) + [account_index]
         account_bip32_path = bip32_path_n_to_string(path_n)
         account_xpub = hw_intf.get_xpub(self.hw_session, account_bip32_path)
@@ -323,10 +338,13 @@ class Bip44Wallet(object):
             diff = time.time() - tm_begin
             logging.info(f'list_account_addresses exec time: {diff}s, keys count: {count}')
 
-    def fetch_all_accounts_txs(self):
+    def fetch_all_accounts_txs(self, check_break_process_fun: Callable):
         for idx in range(MAX_BIP44_ACCOUNTS):
+            if check_break_process_fun and check_break_process_fun():
+                break
+
             account_address_index = 0x80000000 + idx
-            self.read_account_txs(account_address_index)
+            self.read_account_txs(account_address_index, check_break_process_fun)
 
             db_cursor = self.db_intf.get_cursor()
             try:
@@ -338,7 +356,7 @@ class Bip44Wallet(object):
             finally:
                 self.db_intf.release_cursor()
 
-    def read_account_txs(self, account_index: int):
+    def read_account_txs(self, account_index: int, check_break_process_fun: Callable):
         logging.info(f'read_account_bip32_txs account index: {account_index}')
         tm_begin = time.time()
 
@@ -349,14 +367,17 @@ class Bip44Wallet(object):
         account_key = BIP32Key.fromExtendedKey(base_addr.xpub)
 
         for change in (0, 1):
+            if check_break_process_fun and check_break_process_fun():
+                break
+
             key = account_key.ChildKey(change)
             xpub = key.ExtendedKey(False, True)
             bip32_path = bip32_path_n_to_string(bip32_path_string_to_n(base_addr.bip32_path) + [change])
-            self.read_xpub_txs(xpub, bip32_path, True if change == 1 else False, base_addr.id)
+            self.read_xpub_txs(xpub, bip32_path, True if change == 1 else False, base_addr.id, check_break_process_fun)
 
         logging.info(f'read_account_bip32_txs exec time: {time.time() - tm_begin}s')
 
-    def read_account_xpub_txs(self, account_xpub: str, change: int):
+    def read_account_xpub_txs(self, account_xpub: str, change: int, check_break_process_fun: Callable):
         """
         Dedicated for scanning external xpub accounts (not managed by the current hardware wallet) to find the
         first not used ("fresh") addres to be used as a transaction destination.
@@ -371,12 +392,12 @@ class Bip44Wallet(object):
         account_key = BIP32Key.fromExtendedKey(account_xpub)
         key = account_key.ChildKey(change)
         xpub = key.ExtendedKey(False, True)
-        self.read_xpub_txs(xpub, None, True if change == 1 else False, parent_addr_id)
+        self.read_xpub_txs(xpub, None, True if change == 1 else False, parent_addr_id, check_break_process_fun)
 
         logging.info(f'read_account_xpub_txs exec time: {time.time() - tm_begin}s')
 
     def read_xpub_txs(self, xpub: str, bip32_path: Optional[str] = None, is_change_address: bool = False,
-                      parent_addr_id: Optional[int] = None):
+                      parent_addr_id: Optional[int] = None, check_break_process_fun: Callable = None):
         # addresses whose balances have been changed during this processing
         addr_bal_updated: Dict[int, bool] = {}
 
@@ -390,7 +411,13 @@ class Bip44Wallet(object):
 
             if len(addresses) >= TX_QUERY_ADDR_CHUNK_SIZE:
 
+                if check_break_process_fun and check_break_process_fun():
+                    break
+
                 self._process_addresses_txs(addresses, cur_block_height, addr_bal_updated)
+
+                if check_break_process_fun and check_break_process_fun():
+                    break
 
                 # count the number of addresses with no associated transactions starting from the end
                 _empty_addresses = 0
@@ -701,4 +728,7 @@ class Bip44Wallet(object):
         pass
 
     def list_bip32_account_txs(self):
+        pass
+
+    def remove_account(self, id: int):
         pass
