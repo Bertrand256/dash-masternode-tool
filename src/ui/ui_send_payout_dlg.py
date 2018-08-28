@@ -148,6 +148,7 @@ class Ui_SendPayoutDlg(object):
         self.verticalLayout_8.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout_8.setObjectName("verticalLayout_8")
         self.listWalletAccounts = QtWidgets.QTreeView(self.page)
+        self.listWalletAccounts.setContextMenuPolicy(QtCore.Qt.ActionsContextMenu)
         self.listWalletAccounts.setObjectName("listWalletAccounts")
         self.verticalLayout_8.addWidget(self.listWalletAccounts)
         self.stackedWidget.addWidget(self.page)

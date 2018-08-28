@@ -335,36 +335,51 @@ def ping(hw_session: HwSessionInfo, message, button_protection, pin_protection, 
 
 
 @control_hw_call
-def get_address(hw_session: HwSessionInfo, bip32_path):
-    client = hw_session.hw_client
-    if client:
-        if isinstance(bip32_path, str):
-            bip32_path.strip()
-            if bip32_path.lower().find('m/') >= 0:
-                # removing m/ prefix because of keepkey library
-                bip32_path = bip32_path[2:]
+def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool = False, message_to_display: str = None):
 
-        if hw_session.app_config.hw_type in (HWType.trezor, HWType.keepkey):
+    def _get_address(ctrl, hw_session: HwSessionInfo, bip32_path: str, show_display: bool = False,
+                     message_to_display: str = None):
+        if ctrl:
+            ctrl.dlg_config_fun(dlg_title="Please confirm", show_progress_bar=False)
+            if message_to_display:
+                ctrl.display_msg_fun(message_to_display)
+            else:
+                ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet to exit...</b>')
+
+        client = hw_session.hw_client
+        if client:
             if isinstance(bip32_path, str):
-                # trezor/keepkey require bip32 path argument as an array of integers
-                bip32_path = client.expand_path(bip32_path)
+                bip32_path.strip()
+                if bip32_path.lower().find('m/') >= 0:
+                    # removing m/ prefix because of keepkey library
+                    bip32_path = bip32_path[2:]
 
-            return client.get_address(hw_session.app_config.hw_coin_name, bip32_path, False)
+            if hw_session.app_config.hw_type in (HWType.trezor, HWType.keepkey):
+                if isinstance(bip32_path, str):
+                    # trezor/keepkey require bip32 path argument as an array of integers
+                    bip32_path = client.expand_path(bip32_path)
 
-        elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
-            import hw_intf_ledgernano as ledger
+                return client.get_address(hw_session.app_config.hw_coin_name, bip32_path, show_display)
 
-            if isinstance(bip32_path, list):
-                # ledger requires bip32 path argument as a string
-                bip32_path = bip32_path_n_to_string(bip32_path)
+            elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
+                import hw_intf_ledgernano as ledger
 
-            adr_pubkey = ledger.get_address_and_pubkey(client, bip32_path)
-            return adr_pubkey.get('address')
+                if isinstance(bip32_path, list):
+                    # ledger requires bip32 path argument as a string
+                    bip32_path = bip32_path_n_to_string(bip32_path)
+
+                adr_pubkey = ledger.get_address_and_pubkey(client, bip32_path)
+                return adr_pubkey.get('address')
+            else:
+                raise Exception('Unknown hwardware wallet type: ' + hw_session.app_config.hw_type)
         else:
-            raise Exception('Unknown hwardware wallet type: ' + hw_session.app_config.hw_type)
-    else:
-        raise Exception('HW client not open.')
+            raise Exception('HW client not open.')
 
+    if show_display:
+        return WndUtils.run_thread_dialog(_get_address, (hw_session, bip32_path, show_display, message_to_display),
+                                          True)
+    else:
+        return _get_address(None, hw_session, bip32_path, show_display, message_to_display)
 
 @control_hw_call
 def get_address_and_pubkey(hw_session: HwSessionInfo, bip32_path):
