@@ -192,7 +192,7 @@ class AppConfig(object):
         log_exists = os.path.exists(self.log_file)
         handler = RotatingFileHandler(filename=self.log_file, mode='a', backupCount=30)
         logger = logging.getLogger()
-        formatter = logging.Formatter(fmt='%(asctime)s %(levelname)s |%(threadName)s |%(filename)s |%(funcName)s '
+        formatter = logging.Formatter(fmt='%(asctime)s %(levelname)s |%(name)s |%(threadName)s |%(filename)s |%(funcName)s '
                                           '|%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
         handler.setFormatter(formatter)
         logger.addHandler(handler)

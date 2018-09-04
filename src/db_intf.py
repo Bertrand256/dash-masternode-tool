@@ -9,6 +9,9 @@ from typing import List
 import thread_utils
 
 
+log = logging.getLogger('dmt.db_intf')
+
+
 class DBCache(object):
     """Purpose: coordinating access to a database cache (sqlite) from multiple threads.
 
@@ -36,7 +39,7 @@ class DBCache(object):
         self.db_cache_file_name = db_cache_file_name
 
         if not self.db_active:
-            logging.debug('Trying to acquire db cache session')
+            log.debug('Trying to acquire db cache session')
             self.lock.acquire()
             try:
                 if self.db_conn is None:
@@ -49,7 +52,7 @@ class DBCache(object):
                 self.depth = 0
 
             except Exception as e:
-                logging.exception('SQLite initialization error')
+                log.exception('SQLite initialization error')
 
             finally:
                 self.lock.release()
@@ -58,17 +61,17 @@ class DBCache(object):
 
     def close(self):
         if self.depth > 0:
-            logging.error('Database not closed yet. Depth: ' + str(self.depth))
+            log.error('Database not closed yet. Depth: ' + str(self.depth))
         self.db_active = False
 
     def get_cursor(self):
         if self.db_active:
-            logging.debug('Trying to acquire db cache session')
+            log.debug('Trying to acquire db cache session')
             self.lock.acquire()
             self.depth += 1
             if self.db_conn is None:
                 self.db_conn = sqlite3.connect(self.db_cache_file_name)
-            logging.debug('Acquired db cache session (%d)' % self.depth)
+            log.debug('Acquired db cache session (%d)' % self.depth)
             return self.db_conn.cursor()
         else:
             raise Exception('Database cache not active.')
@@ -84,11 +87,11 @@ class DBCache(object):
                     self.db_conn.close()
                     self.db_conn = None
                 self.lock.release()
-                logging.debug('Released db cache session (%d)' % self.depth)
+                log.debug('Released db cache session (%d)' % self.depth)
             finally:
                 self.lock.release()
         else:
-            logging.warning('Cannot release database session if db_active is False.')
+            log.warning('Cannot release database session if db_active is False.')
 
     def commit(self):
         if self.db_active:
@@ -100,7 +103,7 @@ class DBCache(object):
             finally:
                 self.lock.release()
         else:
-            logging.warning('Cannot commit if db_active is False.')
+            log.warning('Cannot commit if db_active is False.')
 
     def rollback(self):
         if self.db_active:
@@ -112,7 +115,7 @@ class DBCache(object):
             finally:
                 self.lock.release()
         else:
-            logging.warning('Cannot commit if db_active is False.')
+            log.warning('Cannot commit if db_active is False.')
 
     def create_structures(self):
         try:
@@ -229,7 +232,7 @@ class DBCache(object):
 
 
         except Exception:
-            logging.exception('Exception while initializing database.')
+            log.exception('Exception while initializing database.')
             raise
 
     def table_columns_exist(self, table_name, column_names: List[str]):
