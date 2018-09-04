@@ -66,7 +66,7 @@ class AppCache(object):
             if modified:
                 self.__data[symbol] = copy.deepcopy(value)
                 self.data_changed()
-        else:
+        elif value is not None:
             raise ValueError('Invalid type of value for cache item ' + symbol)
 
     def get_value(self, symbol, default_value, type):
