@@ -4,7 +4,7 @@
 # Created on: 2018-07
 import logging
 from PyQt5.QtCore import Qt, pyqtSlot, QSortFilterProxyModel, QAbstractTableModel, QVariant
-from PyQt5.QtWidgets import QTableView, QWidget
+from PyQt5.QtWidgets import QTableView, QWidget, QAbstractItemView
 from typing import List, Optional, Any, Dict
 from columns_cfg_dlg import ColumnsConfigDlg
 from common import AttrsProtected
@@ -28,106 +28,104 @@ class TableModelColumn(AttrsProtected):
 
 
 class AdvProxyModel(QSortFilterProxyModel):
-    def __init__(self, parent, source_model):
-        super().__init__(parent)
-        self.table_model: AdvTableModel = source_model
-        super().setSourceModel(source_model)
+    def __init__(self, parent):
+        QSortFilterProxyModel.__init__(self, parent)
+        self.source_model: AdvTableModel = None
+
+    def setSourceModel(self, source_model):
+        try:
+            self.source_model = source_model
+            QSortFilterProxyModel.setSourceModel(self, self.source_model)
+        except Exception as e:
+            logging.exception('exception occurred')
 
     def filterAcceptsRow(self, source_row, source_parent):
-        return self.table_model.filterAcceptsRow(source_row)
+        return self.source_model.filterAcceptsRow(source_row)
 
     def lessThan(self, left, right):
         is_less = None
         col_index = left.column()
-        col = self.table_model.col_by_index(col_index)
+        col = self.source_model.col_by_index(col_index)
         if col:
             left_row_index = left.row()
             right_row_index = right.row()
-            is_less = self.table_model.lessThan(col_index, left_row_index, right_row_index)
+            is_less = self.source_model.lessThan(col_index, left_row_index, right_row_index)
         if is_less is None:
             return super().lessThan(left, right)
         else:
             return is_less
 
 
-class AdvTableModel(QAbstractTableModel, AttrsProtected):
-    def __init__(self, parent, columns: List[TableModelColumn]):
-        QAbstractTableModel.__init__(self, parent)
-        AttrsProtected.__init__(self)
-        self.__columns = columns
-        self.__col_idx_by_name: Dict[str, int] = {}
+class ModelColumns(object):
+    def __init__(self, parent, columns: List[TableModelColumn], columns_movable):
+        object.__init__(self)
+        self.parent_widget = parent
+        self._columns = columns
+        self._col_idx_by_name: Dict[str, int] = {}
         self._rebuild_column_index()
-        self.table_view: QTableView = None
-        self.proxy_model = AdvProxyModel(parent, self)
-        self.columns_movable = True
+        self.view: QAbstractItemView = None
+        self.columns_movable = columns_movable
         self.sorting_column_name = ''
         self.sorting_order = Qt.AscendingOrder
+        self.proxy_model: AdvProxyModel = None
+
+    def enable_filter_proxy_model(self, source_model):
+        if not self.proxy_model:
+            self.proxy_model = AdvProxyModel(self.parent_widget)
+            self.proxy_model.setSourceModel(source_model)
+        else:
+            raise Exception('Proxy model already set')
 
     def _rebuild_column_index(self):
-        self.__col_idx_by_name.clear()
-        for idx, c in enumerate(self.__columns):
+        self._col_idx_by_name.clear()
+        for idx, c in enumerate(self._columns):
             c.visual_index = idx
-            self.__col_idx_by_name[c.name] = idx
+            self._col_idx_by_name[c.name] = idx
 
     def insert_column(self, insert_before_index: int, col: TableModelColumn):
         if insert_before_index >= 0:
-            if insert_before_index < len(self.__columns):
-                self.__columns.insert(insert_before_index, col)
+            if insert_before_index < len(self._columns):
+                self._columns.insert(insert_before_index, col)
             else:
-                self.__columns.append(col)
+                self._columns.append(col)
             self._rebuild_column_index()
         else:
             raise IndexError('Invalid column index value')
 
-    def set_table_view(self, table_view: QTableView):
-        self.table_view = table_view
-        self.table_view.horizontalHeader().sectionMoved.connect(self.on_view_column_moved)
-        self.table_view.setModel(self.proxy_model)
-        self.apply_to_view()
-        if self.sorting_column_name:
-            idx = self.col_index_by_name(self.sorting_column_name)
-            if idx is not None:
-                self.table_view.sortByColumn(idx,self.sorting_order)
-        if self.columns_movable:
-            self.table_view.horizontalHeader().setSectionsMovable(True)
-        for idx, col in enumerate(self.__columns):
-            if col.initial_width:
-                table_view.horizontalHeader().resizeSection(idx, col.initial_width)
-
     def col_count(self):
-        return len(self.__columns)
+        return len(self._columns)
 
     def col_by_name(self, name: str):
-        idx = self.__col_idx_by_name.get(name)
+        idx = self._col_idx_by_name.get(name)
         if idx is not None and idx >= 0:
-            return self.__columns[idx]
+            return self._columns[idx]
         else:
             return None
 
     def col_index_by_name(self, name: str):
-        return self.__col_idx_by_name.get(name)
+        return self._col_idx_by_name.get(name)
 
     def col_by_index(self, index: int):
-        return self.__columns[index]
+        return self._columns[index]
 
     def columns(self):
-        for c in self.__columns:
+        for c in self._columns:
             yield c
 
     def add_col_attribute(self, name: str, initial_value: Any = None):
-        for c in self.__columns:
+        for c in self._columns:
             c.add_attribute(name, initial_value)
 
     def save_col_defs(self, setting_name: str):
         cols = []
-        if self.table_view:
-            hdr = self.table_view.horizontalHeader()
+        if self.view:
+            hdr = self.view.horizontalHeader()
         else:
             hdr = None
 
-        for c in sorted(self.__columns, key=lambda x: x.visual_index):
+        for c in sorted(self._columns, key=lambda x: x.visual_index):
             if hdr:
-                width = hdr.sectionSize(self.__columns.index(c))
+                width = hdr.sectionSize(self._columns.index(c))
             else:
                 width = c.initial_width
 
@@ -148,28 +146,19 @@ class AdvTableModel(QAbstractTableModel, AttrsProtected):
                     c.visible = _c.get('visible', True)
                     c.initial_width = _c.get('width', c.initial_width)
                     idx += 1
-            self.__columns.sort(key=lambda x: x.visual_index)
+            self._columns.sort(key=lambda x: x.visual_index)
             self._rebuild_column_index()
 
-    def apply_to_view(self):
-        hdr = self.table_view.horizontalHeader()
-        for cur_visual_index, c in enumerate(sorted(self.__columns, key=lambda x: x.visual_index)):
-            logical_index = self.__columns.index(c)
-            hdr.setSectionHidden(logical_index, not c.visible)
-            view_visual_index = hdr.visualIndex(logical_index)
-            if cur_visual_index != view_visual_index:
-                hdr.swapSections(cur_visual_index, view_visual_index)
-
     def on_view_column_moved(self, logicalIndex, oldVisualIndex, newVisualIndex):
-        hdr = self.table_view.horizontalHeader()
-        for logical_index, col in enumerate(self.__columns):
+        hdr = self.view.horizontalHeader()
+        for logical_index, col in enumerate(self._columns):
             vis_index = hdr.visualIndex(logical_index)
             col.visual_index = vis_index
 
     def exec_columns_dialog(self, parent_window: QWidget):
         try:
             cols = []
-            for col in sorted(self.__columns, key=lambda x: x.visual_index):
+            for col in sorted(self._columns, key=lambda x: x.visual_index):
                 cols.append([col.caption, col.visible, col])
 
             ui = ColumnsConfigDlg(parent_window, columns=cols)
@@ -198,25 +187,40 @@ class AdvTableModel(QAbstractTableModel, AttrsProtected):
             return ''
 
     def getDefaultColWidths(self):
-        return [c.initial_width for c in self.__columns]
+        return [c.initial_width for c in self._columns]
+
+    def set_view(self, view: QAbstractItemView):
+        self.view = view
+        self.view.horizontalHeader().sectionMoved.connect(self.on_view_column_moved)
+        if self.proxy_model:
+            self.view.setModel(self.proxy_model)
+        else:
+            self.view.setModel(self)
+        self.apply_to_view()
+        if self.sorting_column_name:
+            idx = self.col_index_by_name(self.sorting_column_name)
+            if idx is not None:
+                self.view.sortByColumn(idx, self.sorting_order)
+        if self.columns_movable:
+            self.view.horizontalHeader().setSectionsMovable(True)
+        for idx, col in enumerate(self._columns):
+            if col.initial_width:
+                view.horizontalHeader().resizeSection(idx, col.initial_width)
+
+    def apply_to_view(self):
+        hdr = self.view.horizontalHeader()
+        for cur_visual_index, c in enumerate(sorted(self._columns, key=lambda x: x.visual_index)):
+            logical_index = self._columns.index(c)
+            hdr.setSectionHidden(logical_index, not c.visible)
+            view_visual_index = hdr.visualIndex(logical_index)
+            if cur_visual_index != view_visual_index:
+                hdr.swapSections(cur_visual_index, view_visual_index)
 
     def lessThan(self, col_index, left_row_index, right_row_index):
         pass
 
     def filterAcceptsRow(self, row_index):
         pass
-
-    def get_selected_rows(self) -> List[int]:
-        sel_row_idxs = []
-        if self.table_view:
-            sel = self.table_view.selectionModel()
-            rows = sel.selectedRows()
-            for row in rows:
-                source_row = self.proxy_model.mapToSource(row)
-                row_idx = source_row.row()
-                if row_idx >= 0:
-                    sel_row_idxs.append(row_idx)
-        return sel_row_idxs
 
     def invalidateFilter(self):
         if self.proxy_model:
@@ -226,10 +230,33 @@ class AdvTableModel(QAbstractTableModel, AttrsProtected):
         if self.proxy_model:
             return self.proxy_model.mapToSource(index)
         else:
-            return None
+            return index
 
     def mapFromSource(self, index):
         if self.proxy_model:
             return self.proxy_model.mapFromSource(index)
         else:
-            return None
+            return index
+
+
+class AdvTableModel(ModelColumns, QAbstractTableModel, AttrsProtected):
+    def __init__(self, parent, columns: List[TableModelColumn], columns_movable, filtering_sorting):
+        AttrsProtected.__init__(self)
+        ModelColumns.__init__(self, parent, columns, columns_movable)
+        QAbstractTableModel.__init__(self, parent)
+
+        if filtering_sorting:
+            self.enable_filter_proxy_model(self)
+
+    def get_selected_rows(self) -> List[int]:
+        sel_row_idxs = []
+        if self.view:
+            sel = self.view.selectionModel()
+            rows = sel.selectedRows()
+            for row in rows:
+                source_row = self.proxy_model.mapToSource(row)
+                row_idx = source_row.row()
+                if row_idx >= 0:
+                    sel_row_idxs.append(row_idx)
+        return sel_row_idxs
+

@@ -420,7 +420,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.btnVotesRefresh.setEnabled(False)
             self.restore_cache_settings()
 
-            self.propsModel.set_table_view(self.propsView)
+            self.propsModel.set_view(self.propsView)
             self.propsView.selectionModel().selectionChanged.connect(self.on_propsView_selectionChanged)
 
             def after_data_load():
@@ -2780,7 +2780,7 @@ class ProposalsModel(AdvTableModel):
             ProposalColumn('fCachedEndorsed', 'fCachedEndorsed', False),
             ProposalColumn('ObjectType', 'ObjectType', False),
             ProposalColumn('IsValidReason', 'IsValidReason', False)
-        ])
+        ], columns_movable=True, filtering_sorting=True)
         self.columns_movable = True
         self.sorting_column_name = 'no'
         self.sorting_order = Qt.AscendingOrder
@@ -2794,8 +2794,8 @@ class ProposalsModel(AdvTableModel):
         self.filter_only_not_voted = False
         self.set_attr_protection()
 
-    def set_table_view(self, table_view: QTableView):
-        super().set_table_view(table_view)
+    def set_view(self, table_view: QTableView):
+        super().set_view(table_view)
         link_delagate = wnd_utils.HyperlinkItemDelegate(table_view)
         link_delagate.linkActivated.connect(self.hyperlink_activated)
         table_view.setItemDelegateForColumn(self.col_index_by_name('url'), link_delagate)
