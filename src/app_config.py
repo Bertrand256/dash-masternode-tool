@@ -25,7 +25,7 @@ from PyQt5.QtWidgets import QMessageBox
 from cryptography.fernet import Fernet
 
 import hw_intf
-from app_defs import APP_NAME_SHORT, APP_NAME_LONG, HWType, APP_DATA_DIR_NAME
+from app_defs import APP_NAME_SHORT, APP_NAME_LONG, HWType, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT
 from app_utils import encrypt, decrypt
 import app_cache
 import default_config
@@ -38,13 +38,14 @@ from wnd_utils import WndUtils
 
 
 CURRENT_CFG_FILE_VERSION = 3
+CACHE_ITEM_LOGGERS_LOGLEVEL = 'LoggersLogLevel'
+CACHE_ITEM_LOG_FORMAT = 'LogFormat'
 
 
 class AppConfig(object):
     def __init__(self):
         self.initialized = False
         self.app_path = ''  # will be passed in the init method
-        self.log_level_str = 'WARNING'
         self.app_version = ''
         QLocale.setDefault(app_utils.get_default_locale())
         self.date_format = app_utils.get_default_locale().dateFormat(QLocale.ShortFormat)
@@ -103,7 +104,6 @@ class AppConfig(object):
         self.app_last_version = ''
         self.data_dir = ''
         self.encrypt_config_file = False
-
         self.config_file_encrypted = False
 
         # runtime information, set after connecting to hardware wallet device; for Dash mainnet the value is
@@ -115,6 +115,7 @@ class AppConfig(object):
         self.hw_generated_key = b"\xab\x0fs}\x8b\t\xb4\xc3\xb8\x05\xba\xd1\x96\x9bq`I\xed(8w\xbf\x95\xf0-\x1a\x14\xcb\x1c\x1d+\xcd"
         self.hw_encryption_key = None
         self.fernet = None
+        self.log_handler = None
 
     def init(self, app_path):
         """ Initialize configuration after openning the application. """
@@ -188,18 +189,17 @@ class AppConfig(object):
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
 
-        self.log_level_str = 'INFO'
         log_exists = os.path.exists(self.log_file)
-        handler = RotatingFileHandler(filename=self.log_file, mode='a', backupCount=30)
+        self.log_handler = RotatingFileHandler(filename=self.log_file, mode='a', backupCount=30)
         logger = logging.getLogger()
-        formatter = logging.Formatter(fmt='%(asctime)s %(levelname)s |%(name)s |%(threadName)s |%(filename)s |%(funcName)s '
-                                          '|%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        logger.setLevel(self.log_level_str)
+        formatter = logging.Formatter(fmt=DEFAULT_LOG_FORMAT, datefmt='%Y-%m-%d %H:%M:%S')
+        self.log_handler.setFormatter(formatter)
         if log_exists:
-            handler.doRollover()
-        logging.info('App started')
+            self.log_handler.doRollover()
+        logger.addHandler(self.log_handler)
+        self.set_log_level('INFO')
+        logging.info(f'Application started (v {self.app_version})')
+        self.restore_loggers_config()
 
         # directory for configuration backups:
         self.cfg_backup_dir = os.path.join(app_user_dir, 'backup')
@@ -212,6 +212,7 @@ class AppConfig(object):
         self.initialized = True
 
     def close(self):
+        self.save_loggers_config()
         app_cache.finish()
         self.db_intf.close()
 
@@ -234,9 +235,10 @@ class AppConfig(object):
         self.add_random_offset_to_vote_time = src_config.add_random_offset_to_vote_time
         self.csv_delimiter = src_config.csv_delimiter
         if self.initialized:
-            # self.set_log_level reconfigures the logger configuration so call this function
             # if this object is the main AppConfig object (it's initialized)
-            self.set_log_level(src_config.log_level_str)
+            if self.log_level_str != src_config.log_level_str:
+                self.set_log_level(src_config.log_level_str)
+                self.reset_loggers()
         else:
             # ... otherwise just copy attribute without reconfiguring logger
             self.log_level_str = src_config.log_level_str
@@ -640,17 +642,61 @@ class AppConfig(object):
             v = default
         return v
 
-    def set_log_level(self, new_log_level_str):
+    def set_log_level(self, new_log_level_str: str):
         """
         Method called when log level has been changed by the user. New log
-        :param new_log_level: new log level (symbol as INFO,WARNING,etc) to be set. 
+        :param new_log_level: new log level (symbol as INFO,WARNING,etc) to be set.
         """
         if self.log_level_str != new_log_level_str:
+            ll_sav = self.log_level_str
             lg = logging.getLogger()
             if lg:
                 lg.setLevel(new_log_level_str)
-                logging.info('Changed log level to: %s' % new_log_level_str)
+                if ll_sav:
+                    logging.info('Changed log level to: %s' % new_log_level_str)
             self.log_level_str = new_log_level_str
+
+    def reset_loggers(self):
+        """Resets loggers to the default log level """
+        for lname in logging.Logger.manager.loggerDict:
+            l = logging.Logger.manager.loggerDict[lname]
+            if isinstance(l, logging.Logger):
+                l.setLevel(0)
+
+    def save_loggers_config(self):
+        lcfg = {}
+        for lname in logging.Logger.manager.loggerDict:
+            l = logging.Logger.manager.loggerDict[lname]
+            if isinstance(l, logging.Logger):
+                lcfg[lname] = l.level
+        app_cache.set_value(CACHE_ITEM_LOGGERS_LOGLEVEL, lcfg)
+
+        if self.log_handler and self.log_handler.formatter:
+            fmt = self.log_handler.formatter._fmt
+            app_cache.set_value(CACHE_ITEM_LOG_FORMAT, fmt)
+
+
+    def restore_loggers_config(self):
+        lcfg = app_cache.get_value(CACHE_ITEM_LOGGERS_LOGLEVEL, {}, dict)
+        if lcfg:
+            for lname in lcfg:
+                level = lcfg[lname]
+                l = logging.getLogger(lname)
+                if isinstance(l, logging.Logger):
+                    l.setLevel(level)
+        else:
+            # setting-up log level of external (non-dmt) loggers to avoid cluttering the log file
+            logging.getLogger('BitcoinRPC').setLevel('WARNING')
+            logging.getLogger('urllib3.connectionpool').setLevel('WARNING')
+            logging.getLogger('trezorlib.transport').setLevel('WARNING')
+            logging.getLogger('trezorlib.transport.bridge').setLevel('WARNING')
+            logging.getLogger('trezorlib.client').setLevel('WARNING')
+            logging.getLogger('trezorlib.protocol_v1').setLevel('WARNING')
+
+        fmt = app_cache.get_value(CACHE_ITEM_LOG_FORMAT, DEFAULT_LOG_FORMAT, str)
+        if fmt and self.log_handler:
+            formatter = logging.Formatter(fmt=fmt, datefmt='%Y-%m-%d %H:%M:%S')
+            self.log_handler.setFormatter(formatter)
 
     def is_config_complete(self):
         for cfg in self.dash_net_configs:

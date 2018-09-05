@@ -25,6 +25,8 @@ from PyQt5.QtGui import QFont, QIcon, QDesktopServices
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle, QInputDialog, QApplication
 from PyQt5.QtWidgets import QMessageBox
+
+from cmd_console_dlg import CmdConsoleDlg
 from common import CancelException
 from config_dlg import ConfigDlg
 from find_coll_tx_dlg import FindCollateralTxDlg
@@ -92,6 +94,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if os.path.exists(file_name):
                     self.recent_config_files.append(file_name)
 
+        self.cmd_console_dlg = None
         self.setupUi()
         ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -375,6 +378,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def on_action_check_for_updates_triggered(self, checked, force_check=True):
         if self.config.check_for_updates:
             self.run_thread(self, self.check_for_updates_thread, (force_check,))
+
+    @pyqtSlot(bool)
+    def on_action_command_console_triggered(self, checked):
+        if not self.cmd_console_dlg:
+            self.cmd_console_dlg = CmdConsoleDlg(self, self.app_config)
+        self.cmd_console_dlg.exec_()
 
     def load_remote_params(self):
         try:

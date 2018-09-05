@@ -61,7 +61,7 @@ class AppCache(object):
         self.last_data_change_time = time.time()
 
     def set_value(self, symbol, value):
-        if isinstance(value, (int, float, str, list, tuple)):
+        if isinstance(value, (int, float, str, list, tuple, dict)):
             modified = self.__data.get(symbol, None) != value
             if modified:
                 self.__data[symbol] = copy.deepcopy(value)

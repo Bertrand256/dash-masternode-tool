@@ -14,7 +14,7 @@ from typing import List, Dict, Tuple, Optional, Any, Generator, NamedTuple, Call
 
 import app_utils
 import hw_intf
-from common import namedtuple_defaults, AttrsProtected
+from common import AttrsProtected
 from dash_utils import bip32_path_string_to_n, pubkey_to_address, bip32_path_n_to_string
 from dashd_intf import DashdInterface
 from hw_common import HwSessionInfo
@@ -344,9 +344,11 @@ class Bip44Wallet(object):
                 addr_info = self._get_child_address(xpub_db_id, idx, key)
                 count += 1
                 yield addr_info
+        except Exception as e:
+            log.exception('Exception occurred while listing xpub addresses')
         finally:
             diff = time.time() - tm_begin
-            log.info(f'list_account_addresses exec time: {diff}s, keys count: {count}')
+            log.debug(f'list_account_addresses exec time: {diff}s, keys count: {count}')
 
     def get_block_height(self):
         if self.cur_block_height is None or \
@@ -356,6 +358,7 @@ class Bip44Wallet(object):
         return self.cur_block_height
 
     def fetch_all_accounts_txs(self, check_break_process_fun: Callable):
+        log.debug('Starting fetching transactions for all accounts.')
         for idx in range(MAX_BIP44_ACCOUNTS):
             if check_break_process_fun and check_break_process_fun():
                 break
@@ -372,9 +375,10 @@ class Bip44Wallet(object):
                     break
             finally:
                 self.db_intf.release_cursor()
+        log.debug('Finished fetching transactions for all accounts.')
 
     def read_account_txs(self, account_index: int, check_break_process_fun: Callable):
-        log.info(f'read_account_bip32_txs account index: {account_index}')
+        log.debug(f'read_account_bip32_txs account index: {account_index}')
         tm_begin = time.time()
 
         if account_index < 0:
@@ -392,7 +396,7 @@ class Bip44Wallet(object):
             bip32_path = bip32_path_n_to_string(bip32_path_string_to_n(base_addr.bip32_path) + [change])
             self.read_xpub_txs(xpub, bip32_path, True if change == 1 else False, base_addr.id, check_break_process_fun)
 
-        log.info(f'read_account_bip32_txs exec time: {time.time() - tm_begin}s')
+        log.debug(f'read_account_bip32_txs exec time: {time.time() - tm_begin}s')
 
     def read_account_xpub_txs(self, account_xpub: str, change: int, check_break_process_fun: Callable):
         """
@@ -411,7 +415,7 @@ class Bip44Wallet(object):
         xpub = key.ExtendedKey(False, True)
         self.read_xpub_txs(xpub, None, True if change == 1 else False, parent_addr_id, check_break_process_fun)
 
-        log.info(f'read_account_xpub_txs exec time: {time.time() - tm_begin}s')
+        log.debug(f'read_account_xpub_txs exec time: {time.time() - tm_begin}s')
 
     def read_xpub_txs(self, xpub: str, bip32_path: Optional[str] = None, is_change_address: bool = False,
                       parent_addr_id: Optional[int] = None, check_break_process_fun: Callable = None):
@@ -513,7 +517,7 @@ class Bip44Wallet(object):
                 last_block_height = bh
 
         if last_block_height < max_block_height:
-            log.info(f'getaddresstxids for {addresses}, start: {last_block_height + 1}, end: {max_block_height}')
+            log.debug(f'getaddresstxids for {addresses}, start: {last_block_height + 1}, end: {max_block_height}')
             txids = self.dashd_intf.getaddresstxids({'addresses': addresses,
                                                      'start': last_block_height + 1,
                                                      'end': max_block_height})
@@ -741,7 +745,7 @@ class Bip44Wallet(object):
         finally:
             self.db_intf.release_cursor()
         diff = time.time() - tm_begin
-        log.info(f'Accounts read time: {diff}s')
+        log.debug(f'Accounts read time: {diff}s')
 
     def list_bip32_address_utxos(self):
         pass
