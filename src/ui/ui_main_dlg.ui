@@ -855,6 +855,7 @@
     <addaction name="separator"/>
     <addaction name="action_check_for_updates"/>
     <addaction name="action_open_log_file"/>
+    <addaction name="action_command_console"/>
    </widget>
    <widget class="QMenu" name="menuFile">
     <property name="title">
@@ -1044,6 +1045,11 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+Alt+U</string>
+   </property>
+  </action>
+  <action name="action_command_console">
+   <property name="text">
+    <string>Command Console</string>
    </property>
   </action>
  </widget>
