@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2018-03
-
+import collections
+import logging
+from typing import List
 
 APP_NAME_SHORT = 'DashMasternodeTool'
 APP_NAME_LONG = 'Dash Masternode Tool'
@@ -11,7 +13,8 @@ PROJECT_URL = 'https://github.com/Bertrand256/dash-masternode-tool'
 FEE_DUFF_PER_BYTE = 1
 MIN_TX_FEE = 1000
 SCREENSHOT_MODE = False
-
+DEFAULT_LOG_FORMAT = '%(asctime)s %(levelname)s|%(name)s|%(threadName)s|%(filename)s|%(funcName)s|%(message)s'
+KnownLoggerType = collections.namedtuple('KnownLoggerType', 'name external')
 
 class HWType:
     trezor = 'TREZOR'
@@ -38,3 +41,27 @@ def get_note_url(note_symbol):
     """
     return PROJECT_URL + f'/blob/master/doc/notes.md#note-{note_symbol.lower()}'
 
+
+__KNOWN_LOGGERS = [
+    KnownLoggerType(name='dmt.bip44_wallet', external=False),
+    KnownLoggerType(name='dmt.dashd_intf', external=False),
+    KnownLoggerType(name='dmt.db_intf', external=False),
+    KnownLoggerType(name='BitcoinRPC', external=True),
+    KnownLoggerType(name='urllib3.connectionpool', external=True),
+    KnownLoggerType(name='trezorlib.transport', external=True),
+    KnownLoggerType(name='trezorlib.transport.bridge', external=True),
+    KnownLoggerType(name='trezorlib.client', external=True),
+    KnownLoggerType(name='trezorlib.protocol_v1', external=True),
+]
+
+
+def get_known_loggers() -> List[KnownLoggerType]:
+    ll = []
+    # add existing loggers which are not known: some new libraries (or new versions) can intruduce new
+    # loggers
+    for lname in logging.Logger.manager.loggerDict:
+        l = logging.Logger.manager.loggerDict[lname]
+        if isinstance(l, logging.Logger):
+            if not any(lname in name for name in __KNOWN_LOGGERS):
+                __KNOWN_LOGGERS.append(KnownLoggerType(name=lname, external=True))
+    return __KNOWN_LOGGERS[:]
