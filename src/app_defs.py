@@ -43,6 +43,7 @@ def get_note_url(note_symbol):
 
 
 __KNOWN_LOGGERS = [
+    KnownLoggerType(name='dmt.wallet_dlg', external=False),
     KnownLoggerType(name='dmt.bip44_wallet', external=False),
     KnownLoggerType(name='dmt.dashd_intf', external=False),
     KnownLoggerType(name='dmt.db_intf', external=False),

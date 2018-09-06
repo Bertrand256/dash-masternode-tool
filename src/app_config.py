@@ -25,7 +25,7 @@ from PyQt5.QtWidgets import QMessageBox
 from cryptography.fernet import Fernet
 
 import hw_intf
-from app_defs import APP_NAME_SHORT, APP_NAME_LONG, HWType, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT
+from app_defs import APP_NAME_SHORT, APP_NAME_LONG, HWType, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT, get_known_loggers
 from app_utils import encrypt, decrypt
 import app_cache
 import default_config
@@ -686,12 +686,11 @@ class AppConfig(object):
                     l.setLevel(level)
         else:
             # setting-up log level of external (non-dmt) loggers to avoid cluttering the log file
-            logging.getLogger('BitcoinRPC').setLevel('WARNING')
-            logging.getLogger('urllib3.connectionpool').setLevel('WARNING')
-            logging.getLogger('trezorlib.transport').setLevel('WARNING')
-            logging.getLogger('trezorlib.transport.bridge').setLevel('WARNING')
-            logging.getLogger('trezorlib.client').setLevel('WARNING')
-            logging.getLogger('trezorlib.protocol_v1').setLevel('WARNING')
+            for lname in get_known_loggers():
+                if lname.external:
+                    l = logging.getLogger(lname.name)
+                    if isinstance(l, logging.Logger):
+                        l.setLevel('WARNING')
 
         fmt = app_cache.get_value(CACHE_ITEM_LOG_FORMAT, DEFAULT_LOG_FORMAT, str)
         if fmt and self.log_handler:

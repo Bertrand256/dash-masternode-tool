@@ -23,6 +23,9 @@
        <kerning>false</kerning>
       </font>
      </property>
+     <property name="lineWrapMode">
+      <enum>QTextEdit::NoWrap</enum>
+     </property>
      <property name="placeholderText">
       <string>Type 'help' to display commands description</string>
      </property>
