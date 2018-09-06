@@ -405,8 +405,8 @@ class Ui_MainWindow(object):
         self.menuTools.addAction(self.action_import_masternode_conf)
         self.menuTools.addSeparator()
         self.menuTools.addAction(self.action_check_for_updates)
-        self.menuTools.addAction(self.action_open_log_file)
         self.menuTools.addAction(self.action_command_console)
+        self.menuTools.addAction(self.action_open_log_file)
         self.menuFile.addAction(self.action_load_config_file)
         self.menuFile.addAction(self.action_open_recent_files.menuAction())
         self.menuFile.addAction(self.action_save_config_file)
@@ -522,6 +522,7 @@ class Ui_MainWindow(object):
         self.action_hw_initialization_recovery.setText(_translate("MainWindow", "Hardware Wallet Initialization/Recovery..."))
         self.action_check_for_updates.setText(_translate("MainWindow", "Check For Updates"))
         self.action_open_log_file.setText(_translate("MainWindow", "Open Log File"))
+        self.action_open_log_file.setShortcut(_translate("MainWindow", "Meta+Alt+L"))
         self.action_about_app.setText(_translate("MainWindow", "About DashMasternodeTool..."))
         self.action_import_masternode_conf.setText(_translate("MainWindow", "Import masternodes from the masternode.conf file..."))
         self.action_about_qt.setText(_translate("MainWindow", "About Qt..."))
@@ -532,6 +533,7 @@ class Ui_MainWindow(object):
         self.action_gen_mn_priv_key_uncompressed.setToolTip(_translate("MainWindow", "Generate masternode private key (uncompressed)"))
         self.action_gen_mn_priv_key_uncompressed.setShortcut(_translate("MainWindow", "Ctrl+Alt+U"))
         self.action_command_console.setText(_translate("MainWindow", "Command Console"))
+        self.action_command_console.setShortcut(_translate("MainWindow", "Meta+Alt+C"))
 
 
 if __name__ == "__main__":

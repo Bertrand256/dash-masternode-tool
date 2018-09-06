@@ -854,8 +854,8 @@
     <addaction name="action_import_masternode_conf"/>
     <addaction name="separator"/>
     <addaction name="action_check_for_updates"/>
-    <addaction name="action_open_log_file"/>
     <addaction name="action_command_console"/>
+    <addaction name="action_open_log_file"/>
    </widget>
    <widget class="QMenu" name="menuFile">
     <property name="title">
@@ -1003,6 +1003,9 @@
    <property name="text">
     <string>Open Log File</string>
    </property>
+   <property name="shortcut">
+    <string>Meta+Alt+L</string>
+   </property>
   </action>
   <action name="action_about_app">
    <property name="text">
@@ -1050,6 +1053,9 @@
   <action name="action_command_console">
    <property name="text">
     <string>Command Console</string>
+   </property>
+   <property name="shortcut">
+    <string>Meta+Alt+C</string>
    </property>
   </action>
  </widget>

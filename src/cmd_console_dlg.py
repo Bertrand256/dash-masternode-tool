@@ -92,6 +92,7 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
         else:
             newl = '<br>'
         self.message(newl + '&gt; <b>' + command + '</b><br>', 'green')
+        ok = False
 
         match = re.search(r"\s*([A-Za-z0-9]+)\s*(.*)", command)
         if not match or len(match.groups()) < 2:
@@ -106,43 +107,60 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
         if cmd == 'help':
             if not args:
                 self.print_help()
+                ok = True
             else:
                 self.error('Invalid command arguments: ' + args)
-                return
+
         elif cmd == 'display':
+
             if re.match(r"^modules$", args, re.IGNORECASE):
                 self.print_loggers()
+                ok = True
             elif re.match(r"^logformat$", args, re.IGNORECASE):
                 self.print_logformat()
+                ok = True
             else:
                 self.error('Invalid command arguments: ' + args)
-                return
 
-        elif cmd == 'setloglevel':
-            self.set_log_level(args)
+        elif cmd == 'set':
 
-        elif cmd == 'setlogformat':
-            self.set_log_format(args)
+            match = re.match(r"^loglevel\s+(.+)", args, re.IGNORECASE)
+            if match:
+                if len(match.groups()) == 1:
+                    self.set_log_level(match.group(1))
+                    ok = True
+                else:
+                    self.error('Invalid command arguments: ' + args)
+
+            match = re.match(r"^logformat\s+(.+)", args, re.IGNORECASE)
+            if match:
+                if len(match.groups()) == 1:
+                    self.set_log_format(match.group(1))
+                    ok = True
+                else:
+                    self.error('Invalid command arguments: ' + args)
+
+            if not ok:
+                self.error('Invalid command arguments: ' + args)
 
         else:
             self.error('Invalid command: ' + cmd)
-            return
 
-        if not self.last_commands or self.last_commands[-1] != command:
+        if ok and (not self.last_commands or self.last_commands[-1] != command):
             self.last_commands.append(command)
             self.last_command_index = len(self.last_commands)
 
     def print_help(self):
         help = f"""Command list
         
-        <b>setloglevel ["module-name":"log-level",...]</b>
+        <b>set loglevel ["module-name":"log-level",...]</b>
           Sets up the log level for a specific module.
           Arguments:
             "module-name": "all" or a name of a module; to display list of all modules, enter `display modules` command
             "log-level": debug|info|warning|error|critical
-          Example: setloglevel all:info,dmt.bip44_wallet:debug  
+          Example: set loglevel all:info,dmt.bip44_wallet:debug  
             
-        <b>setlogformat "format-string"</b>
+        <b>set logformat "format-string"</b>
           Sets the format of log messages.
           Arguments:
             "format-string": string with at least one of the following format elements:
@@ -167,7 +185,7 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
           Displays current log format.
 
         <b>display modules</b>
-          Displays a list of all logger modules. 
+          Displays all logger modules. 
         """
         lines = help.split('\n')
         if len(lines) > 1:
