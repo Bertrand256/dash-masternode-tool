@@ -65,6 +65,31 @@ class AddressType(AttrsProtected):
         self.bip44_account = None
         self.set_attr_protection()
 
+    def update_from(self, src_addr: 'AddressType') -> bool:
+        """
+        Update fields used in UI which can change after fetching transactions.
+        :param src_addr: The source address.
+        :return: True if any of the fields had different value before and was updated.
+        """
+        if self != src_addr:
+            if self.balance != src_addr.balance or \
+               self.received != src_addr.received:
+                self.balance = src_addr.balance
+                self.received = src_addr.received
+                return True
+        return False
+
+    def update_from_args(self, balance, received) -> bool:
+        """
+        Update fields used in UI which can change after fetching transactions.
+        :param src_addr: The source address.
+        :return: True if any of the fields had different value before and was updated.
+        """
+        if self.balance != balance or self.received != received:
+            self.balance = balance
+            self.received = received
+            return True
+        return False
 
 class Bip44AccountType(AttrsProtected):
     def __init__(self, id: int, xpub_hash: str, address_index: int, bip32_path: str, balance: int, received: int,
@@ -96,26 +121,39 @@ class Bip44AccountType(AttrsProtected):
             else:
                 return f'Account *' + str(self.address_index)
 
-    def update_from(self, a: 'Bip44AccountType') -> bool:
+    def update_from(self, src_account: 'Bip44AccountType') -> bool:
         """
-        :param a:
-        :return: True if any of the attributes have been updated
+        Updates the account atttributes which can be changed by fetching new transactions process.
+        :param src_account:
+        :return: True if any of the attributes have been updated.
         """
-        if a.id != self.id or a.xpub_hash != self.xpub_hash or a.address_index != self.address_index or \
-            a.bip32_path != self.bip32_path or a.balance != self.balance or a.received != self.received or \
-            a.name != self.name:
-
-            self.id = a.id
-            self.xpub_hash = a.xpub_hash
-            self.address_index = a.address_index
-            self.bip32_path = a.bip32_path
-            self.balance = a.balance
-            self.received = a.received
-            self.name = a.name
+        if src_account.balance != self.balance or src_account.received != self.received or \
+            src_account.name != self.name:
+            self.balance = src_account.balance
+            self.received = src_account.received
+            self.name = src_account.name
             return True
         return False
 
-    def add_address(self, address: AddressType):
+    def update_from_args(self, balance: int, received: int, name: str) -> bool:
+        """
+        Updates the account atttributes which can be changed by fetching new transactions process.
+        :param src_account:
+        :return: True if any of the attributes have been updated.
+        """
+        if balance != self.balance or received != self.received or name != self.name:
+            self.balance = balance
+            self.received = received
+            self.name = name
+            return True
+        return False
+
+    def add_address(self, address: AddressType) -> bool:
+        """
+        :param address:
+        :return: True if this is a new address (not existed in self.addresses) or
+          its attributes has been updated diring this call.
+        """
         address.bip44_account = self
         if not address.path:
             if self.bip32_path and address.address_index is not None:
@@ -124,7 +162,14 @@ class Bip44AccountType(AttrsProtected):
                 else:
                     change = 0
                 address.path = f"{self.bip32_path}/{change}/{address.address_index}"
-        self.addresses.append(address)
+
+        #todo: insert address at a correct place
+        addr = self.address_by_id(address.id)
+        if not addr:
+            self.addresses.append(address)
+            return True
+        else:
+            return addr.update_from(address)
 
     def address_by_index(self, index):
         if index >= 0 and index < len(self.addresses):
@@ -144,6 +189,19 @@ class Bip44AccountType(AttrsProtected):
                 return idx
         return None
 
+    def remove_address_by_id(self, id: int):
+        index = self.address_index_by_id(id)
+        if index is not None:
+            del self.addresses[index]
+            return True
+        return False
+
+    def remove_address_by_index(self, index: int):
+        if 0 <= index < len(self.addresses):
+            del self.addresses[index]
+            return True
+        return False
+
 
 class Bip44Wallet(object):
     def __init__(self, hw_session: HwSessionInfo, db_intf: DBCache, dashd_intf: DashdInterface, dash_network: str):
@@ -158,10 +216,20 @@ class Bip44Wallet(object):
         self.cur_block_height = None
         self.last_get_block_height_ts = 0
 
+        # list of accounts retrieved while calling self.list_accounts
+        self.accounts_by_id: Dict[int, Bip44AccountType] = {}
+
+        # accounts added/modified after the last call of reset_accounts_diffs and
+        # also accounts, whose addresses was modified/added:
+        self.accounts_modified:List[Bip44AccountType] = []
+
     def reset_tx_diffs(self):
         self.txs_added.clear()
         self.utxos_added.clear()
         self.utxos_removed.clear()
+
+    def reset_accounts_diffs(self):
+        self.accounts_modified.clear()
 
     def get_tree_id(self, db_cursor):
         db_cursor.execute('select id from ADDRESS_HD_TREE where ident=?', (self.hw_session.hd_tree_ident,))
@@ -730,17 +798,34 @@ class Bip44Wallet(object):
                               (tree_id,))
 
             for id, xpub_hash, address_index, bip32_path, balance, received in db_cursor.fetchall():
-                acc = Bip44AccountType(id, xpub_hash, address_index, bip32_path, balance, received, '')
+                acc = self.accounts_by_id.get(id)
+                if not acc:
+                    acc = Bip44AccountType(id, xpub_hash, address_index, bip32_path, balance, received, '')
+                    self.accounts_by_id[id] = acc
+                    modified = True
+                else:
+                    modified = acc.update_from_args(balance=balance, received=received, name='')
+
+                if modified:
+                    self.accounts_modified.append(acc)
 
                 db_cursor.execute('select a.id, a.address_index, a.address, ac.path parent_path, a.balance, '
                                   'a.received, ac.is_change from address a join address ac on a.parent_id=ac.id '
                                   'where ac.parent_id=? order by ac.address_index, a.address_index', (acc.id,))
                 for add_row in db_cursor.fetchall():
-                    addr_info = dict([(col[0], add_row[idx]) for idx, col in enumerate(db_cursor.description)])
-                    add = self._get_address_from_dict(addr_info)
-                    if add.path:
-                        add.path = add.path + '/' + str(add.address_index)
-                    acc.add_address(add)
+                    addr = acc.address_by_id(add_row[0])
+                    if not addr:
+                        addr_info = dict([(col[0], add_row[idx]) for idx, col in enumerate(db_cursor.description)])
+                        addr = self._get_address_from_dict(addr_info)
+                        if addr.path:
+                            addr.path = addr.path + '/' + str(addr.address_index)
+                        acc.add_address(addr)
+                        if acc not in self.accounts_modified:
+                            self.accounts_modified.append(acc)
+                    else:
+                        modified = addr.update_from_args(balance=add_row[4], received=add_row[5])
+                        if modified and acc not in self.accounts_modified:
+                            self.accounts_modified.append(acc)
                 yield acc
         finally:
             self.db_intf.release_cursor()
@@ -773,7 +858,9 @@ class Bip44Wallet(object):
             db_cursor.execute("delete from address where parent_id=?", (id,))
 
             db_cursor.execute("delete from address where id=?", (id,))
-
+            acc = self.accounts_by_id.get(id)
+            if acc:
+                del self.accounts_by_id[id]
         finally:
             self.db_intf.commit()
             self.db_intf.release_cursor()

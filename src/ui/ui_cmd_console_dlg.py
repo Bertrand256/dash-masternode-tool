@@ -20,6 +20,7 @@ class Ui_CmdConsoleDlg(object):
         font.setPointSize(12)
         font.setKerning(False)
         self.edtCmdLog.setFont(font)
+        self.edtCmdLog.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
         self.edtCmdLog.setObjectName("edtCmdLog")
         self.verticalLayout.addWidget(self.edtCmdLog)
         self.label = QtWidgets.QLabel(CmdConsoleDlg)
