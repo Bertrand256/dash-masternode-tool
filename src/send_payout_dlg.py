@@ -16,7 +16,7 @@ from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSlot, QStringLis
     QItemSelection, QSortFilterProxyModel, QAbstractItemModel, QModelIndex, QObject, QAbstractListModel, QPoint
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox, QSplitter, QVBoxLayout, QPushButton, \
-    QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout, QAction, QAbstractItemView
+    QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout, QAction, QAbstractItemView, QStatusBar
 from cryptography.fernet import Fernet
 import app_cache
 import app_utils
@@ -653,12 +653,10 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             self.utxo_src_mode = 1
         else:
             raise Exception('Invalid index.')
-        # self.load_utxos()
 
     @pyqtSlot(int)
     def on_cbo_src_masternodes_currentIndexChanged(self, index):
         self.mn_src_index = index
-        # self.load_utxos()
 
     @pyqtSlot(str)
     def on_lbl_hw_account_base_path_linkActivated(self, text):
@@ -670,7 +668,6 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                 if self.hw_account_base_bip32_path != path:
                     self.hw_account_base_bip32_path = path
                     self.display_bip32_base_path()
-                    # self.load_utxos()
             except Exception:
                 self.errorMsg('Invalid BIP32 path')
 
@@ -685,7 +682,6 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     self.hw_src_bip32_path = path
                     self.hw_src_address = ''  # will be retrieved in self.load_utxos
                     self.edt_src_bip32_path.setText(self.hw_src_bip32_path)
-                    # self.load_utxos()
             except Exception as e:
                 self.errorMsg('Invalid BIP32 path')
 
@@ -738,7 +734,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         s = QItemSelection()
         for row_idx, utxo in enumerate(self.utxo_table_model.utxos):
             index = self.utxo_table_model.index(row_idx, 0)
-            if not utxo['coinbase_locked'] and not utxo.get('spent_date'):
+            if not utxo.coinbase_locked:
                 if not sel.isSelected(index):
                     sel_modified = True
                     s.select(index, index)
@@ -864,8 +860,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
     def on_btnClose_clicked(self):
         self.close()
 
-    def on_listWalletAccounts_selectionChanged(self):
-        """Selected BIP44 account or address changed. """
+    def reflect_ui_account_selection(self):
         idx = self.listWalletAccounts.currentIndex()
         old_sel = self.get_utxo_src_cfg_hash()
         if idx and idx.isValid():
@@ -887,6 +882,10 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             self.reset_utxos_view()
             self.load_data_event.set()
             self.update_context_actions()
+
+    def on_listWalletAccounts_selectionChanged(self):
+        """Selected BIP44 account or address changed. """
+        self.reflect_ui_account_selection()
 
     def update_context_actions(self):
         visible = False
@@ -929,25 +928,18 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                                     default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
                     return
 
-                if index.row() > 0:
-                    new_row_to_select = index.row() - 1
-                elif self.account_list_model.rowCount(parent=None) > 1:
-                    new_row_to_select = index.row()
-                else:
-                    new_row_to_select = None
-                if new_row_to_select is not None:
-                    _idx = self.account_list_model.index(new_row_to_select, 0)
-                    # self.listWalletAccounts.setCurrentIndex(_idx)
-
-                saved_state = self.allow_fetch_transactions
+                fx_state = self.allow_fetch_transactions
+                signals_state = self.listWalletAccounts.blockSignals(True)
                 try:
                     self.allow_fetch_transactions = False
                     self.fetch_transactions_lock.acquire()
                     self.account_list_model.removeRow(index.row())
-                    # self.bip44_wallet.remove_account(acc.id)
+                    self.bip44_wallet.remove_account(acc.id)
                 finally:
-                    self.allow_fetch_transactions = saved_state
+                    self.allow_fetch_transactions = fx_state
                     self.fetch_transactions_lock.release()
+                    self.listWalletAccounts.blockSignals(signals_state)
+                    self.reflect_ui_account_selection()
 
     def on_delete_address_triggered(self):
         if self.hw_selected_address_id is not None:
@@ -967,15 +959,18 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                                         default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
                         return
 
-                    saved_state = self.allow_fetch_transactions
+                    ftx_state = self.allow_fetch_transactions
+                    signals_state = self.listWalletAccounts.blockSignals(True)
                     try:
                         self.allow_fetch_transactions = False
                         self.fetch_transactions_lock.acquire()
                         self.account_list_model.removeRow(index.row(), parent=acc_index)
-                        # self.bip44_wallet.remove_account(acc.id)
+                        self.bip44_wallet.remove_address(addr.id)
                     finally:
-                        self.allow_fetch_transactions = saved_state
+                        self.allow_fetch_transactions = ftx_state
                         self.fetch_transactions_lock.release()
+                        self.listWalletAccounts.blockSignals(signals_state)
+                        self.reflect_ui_account_selection()
 
     def get_utxo_src_cfg_hash(self):
         hash = str({self.utxo_src_mode})
@@ -1146,17 +1141,17 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                         self.utxo_table_model.clear_utxos()
 
                     if list_utxos:
-                        self.set_message('Fetching data...')
+                        self.set_message_2('Loading data for display...')
                         log.debug('Fetching utxos from the database')
                         for utxo in list_utxos:
                             self.utxo_table_model.add_utxo(utxo)
                         log.debug('Fetching of utxos finished')
-                        self.set_message('Preparing data for display...')
+                        self.set_message_2('Displaying data...')
 
                     if len(self.utxo_table_model.utxos) > 0:
                         log.debug(f'Displaying utxos. Count: {len(self.utxo_table_model.utxos)}.')
                         self.reset_utxos_view()
-                    self.set_message('')
+                    self.set_message_2('')
 
                 if not self.fetch_transactions_thread_id and not fetch_txs_launched:
                     log.debug('Starting thread fetch_transactions_thread')
