@@ -69,6 +69,7 @@ class UtxoTableModel(AdvTableModel):
         self.hide_collateral_utxos = True
         self.utxos: List[UtxoType] = []
         self.utxo_by_id: Dict[int, UtxoType] = {}
+        self.block_height = None
 
         self.mn_by_collateral_tx: Dict[str, MasternodeConfig] = {}
         self.mn_by_collateral_address: Dict[str, MasternodeConfig] = {}
@@ -180,6 +181,14 @@ class UtxoTableModel(AdvTableModel):
         self.hide_collateral_utxos = hide
         self.proxy_model.invalidateFilter()
 
+    def set_block_height(self, block_height: int):
+        if block_height != self.block_height:
+            log.debug('Block height updated to %s', block_height)
+            self.block_height = block_height
+            # if self.utxos:
+            #     tl_index = self.index(0, self.col_index_by_name('confirmations'))
+            #     br_index = self.index(len(self.utxos) - 1, self.col_index_by_name('confirmations'))
+            #     self.view.dataChanged(tl_index, br_index, [Qt.DisplayRole, Qt.ForegroundRole, Qt.BackgroundColorRole])
 
 class AccountListModel(QAbstractItemModel):
     def __init__(self, parent):
@@ -1143,6 +1152,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     if list_utxos:
                         self.set_message_2('Loading data for display...')
                         log.debug('Fetching utxos from the database')
+                        self.utxo_table_model.set_block_height(self.bip44_wallet.get_block_height())
                         for utxo in list_utxos:
                             self.utxo_table_model.add_utxo(utxo)
                         log.debug('Fetching of utxos finished')
@@ -1216,6 +1226,9 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                         if ctrl.finish or self.finishing:
                             break
                         else:
+                            # todo: if txes modified
+                            self.utxo_table_model.set_block_height(self.bip44_wallet.get_block_height())
+
                             if accounts_modified:
                                 self.account_list_model.sort_accounts()
                                 self.reset_accounts_view()

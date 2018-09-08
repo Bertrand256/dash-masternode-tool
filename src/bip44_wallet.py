@@ -40,13 +40,25 @@ class UtxoType(AttrsProtected):
         self.txid = None
         self.output_index = None
         self.satoshis = None
-        self.confirmations = None
+        self.block_height = None
         self.bip32_path = None
         self.time_str = None
         self.is_collateral = False
-        self.coinbase_locked = False
+        self.coinbase = False
         self.masternode = None
+        self.get_cur_block_height_fun: Callable[[], int] = None
         self.set_attr_protection()
+
+    @property
+    def confirmations(self):
+        if self.get_cur_block_height_fun:
+            return self.get_cur_block_height_fun() - self.block_height + 1
+        else:
+            return None
+
+    @property
+    def coinbase_locked(self):
+        return True if self.coinbase and self.confirmations < 100 else False
 
 
 class AddressType(AttrsProtected):
@@ -278,6 +290,16 @@ class Bip44Wallet(object):
             db_id = row[0]
         return db_id
 
+    def get_block_height(self):
+        if self.cur_block_height is None or \
+           (time.time() - self.last_get_block_height_ts >= GET_BLOCKHEIGHT_MIN_SECONDS):
+            self.cur_block_height = self.dashd_intf.getblockcount()
+            self.last_get_block_height_ts = time.time()
+        return self.cur_block_height
+
+    def get_block_height_nofetch(self):
+        return self.cur_block_height
+
     def _get_xpub_db_addr(self, xpub: str, bip32_path: Optional[str], is_change: bool, parent_id: Optional[int]) \
             -> AddressType:
         """
@@ -454,13 +476,6 @@ class Bip44Wallet(object):
         finally:
             diff = time.time() - tm_begin
             log.debug(f'list_account_addresses exec time: {diff}s, keys count: {count}')
-
-    def get_block_height(self):
-        if self.cur_block_height is None or \
-           (time.time() - self.last_get_block_height_ts >= GET_BLOCKHEIGHT_MIN_SECONDS):
-            self.cur_block_height = self.dashd_intf.getblockcount()
-            self.last_get_block_height_ts = time.time()
-        return self.cur_block_height
 
     def fetch_all_accounts_txs(self, check_break_process_fun: Callable):
         log.debug('Starting fetching transactions for all accounts.')
@@ -811,10 +826,11 @@ class Bip44Wallet(object):
                 utxo.address = address
                 utxo.output_index = output_index
                 utxo.satoshis = satoshis
-                utxo.confirmations = cur_block_height - block_height
+                utxo.block_height = block_height
                 utxo.bip32_path = path + '/' + str(addr_index) if path else ''
                 utxo.time_str = app_utils.to_string(datetime.datetime.fromtimestamp(block_timestamp))
-                utxo.coinbase_locked = True if coinbase and utxo.confirmations < 100 else False
+                utxo.coinbase = coinbase
+                utxo.get_cur_block_height_fun = self.get_block_height_nofetch
                 yield utxo
 
         finally:
@@ -841,10 +857,11 @@ class Bip44Wallet(object):
                 utxo.address = address
                 utxo.output_index = output_index
                 utxo.satoshis = satoshis
-                utxo.confirmations = cur_block_height - block_height
+                utxo.block_height = block_height
                 utxo.bip32_path = path + '/' + str(addr_index) if path else ''
                 utxo.time_str = app_utils.to_string(datetime.datetime.fromtimestamp(block_timestamp))
-                utxo.coinbase_locked = True if coinbase and utxo.confirmations < 100 else False
+                utxo.coinbase = coinbase
+                utxo.get_cur_block_height_fun = self.get_block_height_nofetch
                 yield utxo
 
         finally:
