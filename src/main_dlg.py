@@ -382,7 +382,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot(bool)
     def on_action_command_console_triggered(self, checked):
         if not self.cmd_console_dlg:
-            self.cmd_console_dlg = CmdConsoleDlg(self, self.app_config)
+            self.cmd_console_dlg = CmdConsoleDlg(None, self.app_config)
         self.cmd_console_dlg.exec_()
 
     def load_remote_params(self):
