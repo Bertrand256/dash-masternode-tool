@@ -16,6 +16,8 @@ import dash_utils
 from hw_common import HardwareWalletCancelException, ask_for_pass_callback, ask_for_pin_callback, ask_for_word_callback, \
     select_hw_device, HwSessionInfo
 import logging
+
+from wallet_common import UtxoType
 from wnd_utils import WndUtils
 
 
@@ -262,7 +264,8 @@ class MyTxApiInsight(TxApiInsight):
         return t
 
 
-def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[dict], dest_addresses: List[Tuple[str, int, str]], tx_fee):
+def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType],
+                        dest_addresses: List[Tuple[str, int, str]], tx_fee):
     """
     Creates a signed transaction.
     :param hw_session:
@@ -285,20 +288,20 @@ def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[dict], d
     outputs = []
     inputs_amount = 0
     for utxo_index, utxo in enumerate(utxos_to_spend):
-        if not utxo.get('bip32_path', None):
-            raise Exception('No BIP32 path for UTXO ' + utxo['txid'])
-        address_n = client.expand_path(utxo['bip32_path'])
-        it = trezor_proto.TxInputType(address_n=address_n, prev_hash=binascii.unhexlify(utxo['txid']),
-                                     prev_index=int(utxo['outputIndex']))
+        if not utxo.bip32_path:
+            raise Exception('No BIP32 path for UTXO ' + utxo.txid)
+        address_n = client.expand_path(utxo.bip32_path)
+        it = trezor_proto.TxInputType(address_n=address_n, prev_hash=binascii.unhexlify(utxo.txid),
+                                     prev_index=int(utxo.output_index))
         logging.debug('BIP32 path: %s, address_n: %s, utxo_index: %s, prev_hash: %s, prev_index %s' %
-                      (utxo['bip32_path'],
+                      (utxo.bip32_path,
                        str(address_n),
                        str(utxo_index),
-                       utxo['txid'],
-                       str(utxo['outputIndex'])
+                       utxo.txid,
+                       str(utxo.output_index)
                       ))
         inputs.append(it)
-        inputs_amount += utxo['satoshis']
+        inputs_amount += utxo.satoshis
 
     outputs_amount = 0
     for addr, amount, bip32_path in dest_addresses:

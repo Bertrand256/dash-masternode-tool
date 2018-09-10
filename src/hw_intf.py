@@ -11,6 +11,7 @@ from dash_utils import bip32_path_n_to_string
 from hw_common import HardwareWalletPinException, HwSessionInfo, get_hw_type
 import logging
 from app_defs import HWType
+from wallet_common import UtxoType
 from wnd_utils import WndUtils
 
 
@@ -229,7 +230,8 @@ def get_hw_firmware_version(hw_session: HwSessionInfo):
 
 
 @control_hw_call
-def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend, dest_addresses: List[Tuple[str, int, str]], tx_fee,
+def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType],
+                        dest_addresses: List[Tuple[str, int, str]], tx_fee,
                         rawtransactions):
     """
     Creates a signed transaction.

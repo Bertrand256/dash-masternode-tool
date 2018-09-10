@@ -267,3 +267,4 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
     def on_buttonBox_accepted(self):
         self.save_cache_settings()
         self.accept()
+        # self.hide()
