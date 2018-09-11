@@ -37,6 +37,32 @@ class UtxoType(AttrsProtected):
         return True if self.coinbase and self.confirmations < 100 else False
 
 
+class TxOutputType(AttrsProtected):
+    def __init__(self):
+        super(TxOutputType, self).__init__()
+        self.__address: str = ''
+        self.satoshis: int = None
+        self.__bip32_path: str = None  # required only for change output
+        self.is_change = False
+        self.set_attr_protection()
+
+    @property
+    def address(self):
+        return self.__address
+
+    @address.setter
+    def address(self, address: str):
+        self.__address = address.strip()
+
+    @property
+    def bip32_path(self):
+        return self.__bip32_path
+
+    @bip32_path.setter
+    def bip32_path(self, bip32_path: str):
+        self.__bip32_path = bip32_path.strip()
+
+
 class AddressType(AttrsProtected):
     def __init__(self):
         super(AddressType, self).__init__()

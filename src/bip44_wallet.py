@@ -19,8 +19,7 @@ from dash_utils import bip32_path_string_to_n, pubkey_to_address, bip32_path_n_t
 from dashd_intf import DashdInterface
 from hw_common import HwSessionInfo
 from db_intf import DBCache
-from wallet_common import Bip44AccountType, AddressType, UtxoType
-
+from wallet_common import Bip44AccountType, AddressType, UtxoType, TxOutputType
 
 TX_QUERY_ADDR_CHUNK_SIZE = 10
 ADDRESS_SCAN_GAP_LIMIT = 20
@@ -153,8 +152,7 @@ class Bip44Wallet(object):
         addr.last_scan_block_height = address_dict.get('last_scan_block_height')
         return addr
 
-    def _get_child_address(self, parent_address_id: int, child_addr_index: int, parent_key) \
-            -> AddressType:
+    def _get_child_address(self, parent_address_id: int, child_addr_index: int, parent_key) -> AddressType:
         """
         :return: Tuple[int <id db>, str <address>, int <balance in duffs>]
         """
@@ -421,9 +419,13 @@ class Bip44Wallet(object):
             if bh < last_block_height:
                 last_block_height = bh
 
+            #todo: test
+            if last_block_height > 3:
+                last_block_height -= 3
+
         if last_block_height < max_block_height:
-            log.debug(f'getaddresstxids for {addresses}, start: {last_block_height + 1}, end: {max_block_height}')
-            txids = self.dashd_intf.getaddresstxids({'addresses': addresses,
+            log.debug(f'getaddressdeltas for {addresses}, start: {last_block_height + 1}, end: {max_block_height}')
+            txids = self.dashd_intf.getaddressdeltas({'addresses': addresses,
                                                      'start': last_block_height + 1,
                                                      'end': max_block_height})
 
@@ -715,6 +717,19 @@ class Bip44Wallet(object):
 
     def list_bip32_account_txs(self):
         pass
+
+    def register_spending_transaction(self, inputs: List[UtxoType], outputs: List[TxOutputType], txid: str):
+        """
+        Register outgoing transaction in the database cache. It will be used util it appears on the blockchain.
+        :param inputs:
+        :param outputs:
+        """
+        db_cursor = self.db_intf.get_cursor()
+        try:
+            pass
+        finally:
+            self.db_intf.commit()
+            self.db_intf.release_cursor()
 
     def remove_account(self, id: int):
         log.debug(f'Deleting account from db. Account address db id: {id}')

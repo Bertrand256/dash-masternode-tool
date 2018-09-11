@@ -16,8 +16,7 @@ import dash_utils
 from hw_common import HardwareWalletCancelException, ask_for_pass_callback, ask_for_pin_callback, ask_for_word_callback, \
     select_hw_device, HwSessionInfo
 import logging
-
-from wallet_common import UtxoType
+import wallet_common
 from wnd_utils import WndUtils
 
 
@@ -264,14 +263,13 @@ class MyTxApiInsight(TxApiInsight):
         return t
 
 
-def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType],
-                        dest_addresses: List[Tuple[str, int, str]], tx_fee):
+def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoType],
+                        tx_outputs: List[wallet_common.TxOutputType], tx_fee):
     """
     Creates a signed transaction.
     :param hw_session:
     :param utxos_to_spend: list of utxos to send
-    :param dest_addresses: destination addresses. Fields: 0: dest Dash address. 1: the output value in satoshis,
-        2: the bip32 path of the address if the output is the change address or None otherwise
+    :param tx_outputs: list of transaction outputs
     :param tx_fee: transaction fee
     :return: tuple (serialized tx, total transaction amount in satoshis)
     """
@@ -304,26 +302,25 @@ def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType
         inputs_amount += utxo.satoshis
 
     outputs_amount = 0
-    for addr, amount, bip32_path in dest_addresses:
-        outputs_amount += amount
-        addr = addr.strip()
-        if addr[0] in dash_utils.get_chain_params(dash_network).B58_PREFIXES_SCRIPT_ADDRESS:
+    for out in tx_outputs:
+        outputs_amount += out.satoshis
+        if out.address[0] in dash_utils.get_chain_params(dash_network).B58_PREFIXES_SCRIPT_ADDRESS:
             stype = trezor_proto.OutputScriptType.PAYTOSCRIPTHASH
             logging.debug('Transaction type: PAYTOSCRIPTHASH' + str(stype))
-        elif addr[0] in dash_utils.get_chain_params(dash_network).B58_PREFIXES_PUBKEY_ADDRESS:
+        elif out.address[0] in dash_utils.get_chain_params(dash_network).B58_PREFIXES_PUBKEY_ADDRESS:
             stype = trezor_proto.OutputScriptType.PAYTOADDRESS
             logging.debug('Transaction type: PAYTOADDRESS ' + str(stype))
         else:
             raise Exception('Invalid prefix of the destination address.')
-        if bip32_path:
-            address_n = client.expand_path(bip32_path)
+        if out.bip32_path:
+            address_n = client.expand_path(out.bip32_path)
         else:
             address_n = None
 
         ot = trezor_proto.TxOutputType(
-            address=addr if address_n is None else None,
+            address=out.address if address_n is None else None,
             address_n=address_n,
-            amount=amount,
+            amount=out.satoshis,
             script_type=stype
         )
         outputs.append(ot)

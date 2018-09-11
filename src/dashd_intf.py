@@ -17,8 +17,9 @@ from PyQt5.QtCore import QThread
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from paramiko import AuthenticationException, PasswordRequiredException, SSHException
 from paramiko.ssh_exception import NoValidConnectionsError
-from typing import List
+from typing import List, Dict
 import app_cache
+import app_defs
 import app_utils
 from app_config import AppConfig
 from random import randint
@@ -523,7 +524,12 @@ class DashdInterface(WndUtils):
         self.on_connection_successful_callback = on_connection_successful_callback
         self.on_connection_disconnected_callback = on_connection_disconnected_callback
         self.last_error_message = None
-        self.http_lock = threading.Lock()
+
+        # test transaction entries to be returned by the calls of the self.getaddressdeltas method
+        self.test_txs_endpoints_by_address: Dict[str, List[Dict]] = {}
+        self.test_txs_by_txid: Dict[str, Dict] = {}
+
+        self.http_lock = threading.RLock()
 
     def initialize(self, config: AppConfig, connection=None, for_testing_connections_only=False):
         self.config = config
@@ -1071,6 +1077,11 @@ class DashdInterface(WndUtils):
     @control_rpc_call
     def getrawtransaction(self, txid, verbose):
         if self.open():
+            if app_defs.DEBUG_MODE:
+                tx = self.test_txs_by_txid.get(txid)
+                if tx:
+                    return tx
+
             return json_cache_wrapper(self.proxy.getrawtransaction, self, 'tx-' + str(verbose) + '-' + txid)(txid, verbose)
         else:
             raise Exception('Not connected')
@@ -1103,10 +1114,58 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
+    def simulate_send_transaction(self, tx):
+        def get_test_tx_entry(address: str) -> List[Dict]:
+            txe = self.test_txs_endpoints_by_address.get(address)
+            if not txe:
+                txe = []
+                self.test_txs_endpoints_by_address[address] = txe
+            return txe
+
+        dts = self.decoderawtransaction(tx)
+        if dts:
+            txid = dts.get('txid')
+            block_height = self.getblockcount()
+
+            for idx, vin in enumerate(dts['vin']):
+                _tx = self.getrawtransaction(vin['txid'], 1)
+                if _tx:
+                    o = _tx['vout'][vin['vout']]
+                    for a in o['scriptPubKey']['addresses']:
+                        tx_in = {
+                            'txid': txid,
+                            'index': idx,
+                            'height': block_height,
+                            'satoshis': -o['valueSat'],
+                            'address': a
+                        }
+                        get_test_tx_entry(a).append(tx_in)
+
+            for idx, vin in enumerate(dts['vout']):
+                for a in vin['scriptPubKey']['addresses']:
+                    tx_out = {
+                        'txid': txid,
+                        'index': idx,
+                        'height': block_height,
+                        'satoshis': vin['valueSat'],
+                        'address': a
+                    }
+                    get_test_tx_entry(a).append(tx_out)
+
+            _tx = dict(dts)
+            _tx['hex'] = tx
+            _tx['height'] = block_height
+            self.test_txs_by_txid[txid] = _tx
+
+            return dts['txid']
+
     @control_rpc_call
     def sendrawtransaction(self, tx, use_instant_send):
         if self.open():
-            return self.proxy.sendrawtransaction(tx, False, use_instant_send)
+            if app_defs.DEBUG_MODE:  #todo: testing
+                return self.simulate_send_transaction(tx)
+            else:
+                return self.proxy.sendrawtransaction(tx, False, use_instant_send)
         else:
             raise Exception('Not connected')
 
@@ -1156,14 +1215,22 @@ class DashdInterface(WndUtils):
     @control_rpc_call
     def getaddressdeltas(self, *args):
         if self.open():
-            return self.proxy.getaddressdeltas(*args)
+            deltas_list = self.proxy.getaddressdeltas(*args)
+            if app_defs.DEBUG_MODE and len(args) > 0 and isinstance(args[0], dict):
+                addrs = args[0].get('addresses')
+                if addrs:
+                    for a in addrs:
+                        tep = self.test_txs_endpoints_by_address.get(a)
+                        if tep:
+                            deltas_list.extend(tep)
+            return deltas_list
         else:
             raise Exception('Not connected')
 
     @control_rpc_call
     def getaddresstxids(self, *args):
         if self.open():
-            return self.proxy.getaddressdeltas(*args)
+            return self.proxy.getaddresstxids(*args)
         else:
             raise Exception('Not connected')
 
