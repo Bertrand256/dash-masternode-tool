@@ -19,6 +19,7 @@ import dash_utils
 from app_defs import FEE_DUFF_PER_BYTE, MIN_TX_FEE
 from encrypted_files import write_file_encrypted, read_file_encrypted
 from hw_common import HwSessionInfo
+from wallet_common import TxOutputType
 from wnd_utils import WndUtils
 
 
@@ -1085,29 +1086,26 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         """
         self.read_from_file(file_name)
 
-    def get_tx_destination_data(self) -> List[Tuple[str, int, str]]:
-        """
-        :return: Tuple structure:
-            [0]: dest address
-            [1]: value in satoshis/duffs
-            [2]: bip32 path of the address if the item is a change address, otherwise None
-        """
+    def get_tx_destination_data(self) -> List[TxOutputType]:
         if self.validate_output_data():
             if self.change_amount < 0.0:
                 raise Exception('Not enough funds!!!')
 
             dest_data = []
             for addr in self.recipients:
-                dest_addr = addr.get_address()
-                value = round(addr.get_value_amount() * 1e8)
-                dest_data.append((dest_addr, value, None))
+                out = TxOutputType()
+                out.address = addr.get_address()
+                out.satoshis = round(addr.get_value_amount() * 1e8)
+                dest_data.append(out)
 
             if self.change_amount > 0.0:
                 change_address_idx = self.cbo_change_address.currentIndex()
                 if change_address_idx >= 0 and change_address_idx < len(self.change_addresses):
-                    dest_data.append((self.change_addresses[change_address_idx][0],
-                                      round(self.change_amount * 1e8),
-                                      self.change_addresses[change_address_idx][1]))
+                    out = TxOutputType()
+                    out.address = self.change_addresses[change_address_idx][0]
+                    out.satoshis = round(self.change_amount * 1e8)
+                    out.bip32_path = self.change_addresses[change_address_idx][1]
+                    dest_data.append(out)
                 else:
                     raise Exception('Invalid address for the change.')
             return dest_data

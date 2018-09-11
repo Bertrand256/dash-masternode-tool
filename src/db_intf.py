@@ -205,17 +205,18 @@ class DBCache(object):
                         "is_change INTEGER, last_scan_block_height INTEGER DEFAULT 0 NOT NULL)")
 
             cur.execute("CREATE INDEX IF NOT EXISTS idx_address_1 ON address(xpub_hash)")
-
             cur.execute("CREATE INDEX IF NOT EXISTS idx_address_2 ON address(parent_id, address_index)")
-
             cur.execute("CREATE INDEX IF NOT EXISTS idx_address_3 ON address(address)")
-
             cur.execute("CREATE INDEX IF NOT EXISTS idx_address_4 ON address(tree_id)")
 
+            # if tx.block_height == 0, the transaction has not yet been confirmed (it may be the transaction that
+            # has just been sent from dmt wallet or the transaction which appeared in the mempool); in this case
+            # tx.block_timestamp indicates the moment when the transaction was added to the cache (it will be purged
+            # if will not appear on the blockchain after a defined amount of time)
             cur.execute("CREATE TABLE IF NOT EXISTS tx(id INTEGER PRIMARY KEY, tx_hash TEXT, block_height INTEGER,"
                         "block_timestamp INTEGER, coinbase INTEGER)")
-
             cur.execute("CREATE INDEX IF NOT EXISTS tx_1 ON tx(tx_hash)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_1 ON tx(block_height)")
 
             cur.execute("CREATE TABLE IF NOT EXISTS tx_output(id INTEGER PRIMARY KEY, address_id INEGER, "
                         "address TEXT NOT NULL, tx_id INTEGER NOT NULL, output_index INTEGER NOT NULL, "
@@ -224,12 +225,14 @@ class DBCache(object):
             cur.execute("CREATE INDEX IF NOT EXISTS tx_output_1 ON tx_output(tx_id, output_index)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_output_2 ON tx_output(address_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_output_3 ON tx_output(address)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_output_4 ON tx_output(spent_tx_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_output_5 ON tx_output(spent_input_index)")
 
             cur.execute("CREATE TABLE IF NOT EXISTS tx_input(id INTEGER PRIMARY KEY, address_id INEGER NOT NULL, "
                         "tx_id INTEGER NOT NULL, input_index INTEGER NOT NULL, satoshis INTEGER NOT NULL)")
 
             cur.execute("CREATE INDEX IF NOT EXISTS tx_input_1 ON tx_input(tx_id, input_index)")
-
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_input_2 ON tx_input(address_id)")
 
         except Exception:
             log.exception('Exception while initializing database.')

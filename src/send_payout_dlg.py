@@ -148,18 +148,20 @@ class UtxoTableModel(AdvTableModel):
 
     def update_utxos(self, utxos_to_add: List[UtxoType], utxos_to_delete: List[Tuple[int, int]]):
         if utxos_to_delete:
-            rows_to_remove = []
+            row_indexes_to_remove = []
             for utxo_id in utxos_to_delete:
                 utxo = self.utxo_by_id.get(utxo_id)
                 if utxo:
                     utxo_index = self.utxos.index(utxo)
-                    if utxo_index not in rows_to_remove:
-                        bisect.insort_right(rows_to_remove, utxo_index)
+                    if utxo_index not in row_indexes_to_remove:
+                        row_indexes_to_remove.append(utxo_index)
                     del self.utxo_by_id[utxo_id]
+            row_indexes_to_remove.sort(reverse=True)
 
-            for group in reversed(consecutive_groups(rows_to_remove)):
-                self.beginRemoveRows(QModelIndex(), group[0], group[-1])
-                del self.utxos[group[0] : group[-1]+1]
+            for group in consecutive_groups(row_indexes_to_remove, ordering=lambda x: -x):
+                l = list(group)
+                self.beginRemoveRows(QModelIndex(), l[-1], l[0]) # items are sorted in reverso order
+                del self.utxos[l[-1]: l[0]+1]
                 self.endRemoveRows()
 
         if utxos_to_add:
@@ -866,8 +868,8 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                 if dest_data:
                     total_satoshis_actual = 0
                     for dd in dest_data:
-                        total_satoshis_actual += dd[1]
-                        log.info(f'dest amount: {dd[1]}')
+                        total_satoshis_actual += dd.satoshis
+                        log.info(f'dest amount: {dd.satoshis}')
 
                     fee = self.wdg_dest_adresses.get_tx_fee()
                     use_is = self.wdg_dest_adresses.get_use_instant_send()
