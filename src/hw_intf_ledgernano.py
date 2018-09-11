@@ -1,12 +1,10 @@
 from bitcoin import compress, bin_hash160
 from btchip.btchip import *
 from btchip.btchipComm import getDongle
-import logging
 from btchip.btchipUtils import compress_public_key
 from typing import List
-
 from hw_common import HardwareWalletCancelException, clean_bip32_path, HwSessionInfo
-from wallet_common import UtxoType
+import wallet_common
 from wnd_utils import WndUtils
 from dash_utils import *
 from PyQt5.QtWidgets import QMessageBox
@@ -247,7 +245,8 @@ def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, seco
 
 
 @process_ledger_exceptions
-def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType], dest_addresses, tx_fee, rawtransactions):
+def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoType],
+                        tx_outputs: List[wallet_common.TxOutputType], tx_fee, rawtransactions):
     client = hw_session.hw_client
 
     # Each of the UTXOs will become an input in the new transaction. For each of those inputs, create
@@ -324,10 +323,10 @@ def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType
 
     new_transaction = bitcoinTransaction()  # new transaction object to be used for serialization at the last stage
     new_transaction.version = bytearray([0x01, 0x00, 0x00, 0x00])
-    for _addr, _amout, _path in dest_addresses:
+    for out in tx_outputs:
         output = bitcoinOutput()
-        output.script = compose_tx_locking_script(_addr, hw_session.app_config.dash_network)
-        output.amount = int.to_bytes(_amout, 8, byteorder='little')
+        output.script = compose_tx_locking_script(out.address, hw_session.app_config.dash_network)
+        output.amount = int.to_bytes(out.satoshis, 8, byteorder='little')
         new_transaction.outputs.append(output)
 
     # join all outputs - will be used by Ledger for sigining transaction

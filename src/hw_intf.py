@@ -11,7 +11,7 @@ from dash_utils import bip32_path_n_to_string
 from hw_common import HardwareWalletPinException, HwSessionInfo, get_hw_type
 import logging
 from app_defs import HWType
-from wallet_common import UtxoType
+from wallet_common import UtxoType, TxOutputType
 from wnd_utils import WndUtils
 
 
@@ -231,13 +231,13 @@ def get_hw_firmware_version(hw_session: HwSessionInfo):
 
 @control_hw_call
 def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType],
-                        dest_addresses: List[Tuple[str, int, str]], tx_fee,
+                        tx_outputs: List[TxOutputType], tx_fee,
                         rawtransactions):
     """
     Creates a signed transaction.
     :param main_ui: Main window for configuration data
     :param utxos_to_spend: list of utxos to send
-    :param dest_addresses: destination addresses. Fields: 0: dest Dash address. 1: the output value in satoshis,
+    :param tx_outputs: destination addresses. Fields: 0: dest Dash address. 1: the output value in satoshis,
         2: the bip32 path of the address if the output is the change address or None otherwise
     :param tx_fee: transaction fee
     :param rawtransactions: dict mapping txid to rawtransaction
@@ -251,17 +251,17 @@ def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType
         if hw_session.app_config.hw_type == HWType.trezor:
             import hw_intf_trezor as trezor
 
-            return trezor.prepare_transfer_tx(hw_session, utxos_to_spend, dest_addresses, tx_fee)
+            return trezor.prepare_transfer_tx(hw_session, utxos_to_spend, tx_outputs, tx_fee)
 
         elif hw_session.app_config.hw_type == HWType.keepkey:
             import hw_intf_keepkey as keepkey
 
-            return keepkey.prepare_transfer_tx(hw_session, utxos_to_spend, dest_addresses, tx_fee)
+            return keepkey.prepare_transfer_tx(hw_session, utxos_to_spend, tx_outputs, tx_fee)
 
         elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
             import hw_intf_ledgernano as ledger
 
-            return ledger.prepare_transfer_tx(hw_session, utxos_to_spend, dest_addresses, tx_fee, rawtransactions)
+            return ledger.prepare_transfer_tx(hw_session, utxos_to_spend, tx_outputs, tx_fee, rawtransactions)
 
         else:
             logging.error('Invalid HW type: ' + str(hw_session.app_config.hw_type))
