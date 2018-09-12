@@ -54,15 +54,25 @@ class Bip44Wallet(object):
         # transactions added/modified since the last reset_tx_diffs call
         self.txs_added: Dict[int, int] = {}  # {'tx_id': 'address_id'}
         self.txs_modified: Dict[int, int] = {}  # {'tx_id': 'address_id'}
+        self.txs_removed: Dict[int, int] = {}  # {'tx_id': 'tx_id'}
 
         # utxos added/removed since the last reset_tx_diffs call
         self.utxos_added: Dict[int, int] = {}  # {'tx_output.id': 'address_id'}
         self.utxos_removed: Dict[int, int] = {}  # {'tx_output.id': 'address_id'}
 
+        # addresses whose balance has been modified since the last call of reset_tx_diffs
+        self.addr_bal_updated: Dict[int, int] = {}  # {'address_id': 'address_id' }
+
+        self.purge_unconf_txs_called = False
+        self.external_call_level = 0
+
     def reset_tx_diffs(self):
         self.txs_added.clear()
+        self.txs_modified.clear()
+        self.txs_removed.clear()
         self.utxos_added.clear()
         self.utxos_removed.clear()
+        self.addr_bal_updated.clear()
 
     def reset_accounts_diffs(self):
         self.accounts_modified.clear()
@@ -270,46 +280,64 @@ class Bip44Wallet(object):
             diff = time.time() - tm_begin
             log.debug(f'list_account_addresses exec time: {diff}s, keys count: {count}')
 
+    def increase_ext_call_level(self):
+        if self.external_call_level == 0:
+            self.purge_unconf_txs_called = False
+        self.external_call_level += 1
+
+    def decrease_ext_call_level(self):
+        if self.external_call_level > 0:
+            self.external_call_level -= 1
+
     def fetch_all_accounts_txs(self, check_break_process_fun: Callable):
         log.debug('Starting fetching transactions for all accounts.')
-        for idx in range(MAX_BIP44_ACCOUNTS):
-            if check_break_process_fun and check_break_process_fun():
-                break
 
-            account_address_index = 0x80000000 + idx
-            self.fetch_account_txs(account_address_index, check_break_process_fun)
-
-            db_cursor = self.db_intf.get_cursor()
-            try:
-                base_addr = self.get_account_base_address(account_address_index)
-                db_cursor.execute("select id, received from address where id=?", (base_addr.id,))
-                id, received = db_cursor.fetchone()
-                if not id or not received:
+        self.increase_ext_call_level()
+        try:
+            for idx in range(MAX_BIP44_ACCOUNTS):
+                if check_break_process_fun and check_break_process_fun():
                     break
-            finally:
-                self.db_intf.release_cursor()
+
+                account_address_index = 0x80000000 + idx
+                self.fetch_account_txs(account_address_index, check_break_process_fun)
+
+                db_cursor = self.db_intf.get_cursor()
+                try:
+                    base_addr = self.get_account_base_address(account_address_index)
+                    db_cursor.execute("select id, received from address where id=?", (base_addr.id,))
+                    id, received = db_cursor.fetchone()
+                    if not id or not received:
+                        break
+                finally:
+                    self.db_intf.release_cursor()
+        finally:
+            self.decrease_ext_call_level()
         log.debug('Finished fetching transactions for all accounts.')
 
     def fetch_account_txs(self, account_index: int, check_break_process_fun: Callable):
-        log.debug(f'read_account_bip32_txs account index: {account_index}')
+        log.debug(f'fetch_account_txs account index: {account_index}')
         tm_begin = time.time()
 
-        if account_index < 0:
-            raise Exception('Invalid account number')
+        self.increase_ext_call_level()
+        try:
+            if account_index < 0:
+                raise Exception('Invalid account number')
 
-        base_addr = self.get_account_base_address(account_index)
-        account_key = BIP32Key.fromExtendedKey(base_addr.xpub)
+            base_addr = self.get_account_base_address(account_index)
+            account_key = BIP32Key.fromExtendedKey(base_addr.xpub)
 
-        for change in (0, 1):
-            if check_break_process_fun and check_break_process_fun():
-                break
+            for change in (0, 1):
+                if check_break_process_fun and check_break_process_fun():
+                    break
 
-            key = account_key.ChildKey(change)
-            xpub = key.ExtendedKey(False, True)
-            bip32_path = bip32_path_n_to_string(bip32_path_string_to_n(base_addr.bip32_path) + [change])
-            self.fetch_xpub_txs(xpub, bip32_path, True if change == 1 else False, base_addr.id, check_break_process_fun)
+                key = account_key.ChildKey(change)
+                xpub = key.ExtendedKey(False, True)
+                bip32_path = bip32_path_n_to_string(bip32_path_string_to_n(base_addr.bip32_path) + [change])
+                self._fetch_xpub_txs(xpub, bip32_path, True if change == 1 else False, base_addr.id, check_break_process_fun)
+        finally:
+            self.decrease_ext_call_level()
 
-        log.debug(f'read_account_bip32_txs exec time: {time.time() - tm_begin}s')
+        log.debug(f'fetch_account_txs exec time: {time.time() - tm_begin}s')
 
     def fetch_account_xpub_txs(self, account_xpub: str, change: int, check_break_process_fun: Callable):
         """
@@ -318,24 +346,35 @@ class Bip44Wallet(object):
         :param account_xpub: xpub of the account
         :param change: 0 or 1 (usually 0, since there is no reason to scan the change addresses)
         """
+
         tm_begin = time.time()
+        self.increase_ext_call_level()
+        try:
+            parent_addr = self._get_xpub_db_addr(account_xpub, None, False, None)
+            parent_addr_id = parent_addr.id
 
-        parent_addr = self._get_xpub_db_addr(account_xpub, None, False, None)
-        parent_addr_id = parent_addr.id
+            account_key = BIP32Key.fromExtendedKey(account_xpub)
+            key = account_key.ChildKey(change)
+            xpub = key.ExtendedKey(False, True)
+            self._fetch_xpub_txs(xpub, None, True if change == 1 else False, parent_addr_id, check_break_process_fun)
 
-        account_key = BIP32Key.fromExtendedKey(account_xpub)
-        key = account_key.ChildKey(change)
-        xpub = key.ExtendedKey(False, True)
-        self.fetch_xpub_txs(xpub, None, True if change == 1 else False, parent_addr_id, check_break_process_fun)
+        finally:
+            self.decrease_ext_call_level()
 
-        log.debug(f'read_account_xpub_txs exec time: {time.time() - tm_begin}s')
+        log.debug(f'fetch_account_xpub_txs exec time: {time.time() - tm_begin}s')
 
-    def fetch_xpub_txs(self, xpub: str, bip32_path: Optional[str] = None, is_change_address: bool = False,
-                       parent_addr_id: Optional[int] = None, check_break_process_fun: Callable = None):
-        # addresses whose balances have been changed during this processing
-        addr_bal_updated: Dict[int, bool] = {}
+    def _fetch_xpub_txs(self, xpub: str, bip32_path: Optional[str] = None, is_change_address: bool = False,
+                        parent_addr_id: Optional[int] = None, check_break_process_fun: Callable = None):
 
         cur_block_height = self.get_block_height()
+
+        if not self.purge_unconf_txs_called:
+            try:
+                db_cursor = self.db_intf.get_cursor()
+                self._purge_unconfirmed_transactions(db_cursor)
+                self.purge_unconf_txs_called = True
+            finally:
+                self.db_intf.release_cursor()
 
         empty_addresses = 0
         addresses = []
@@ -348,7 +387,7 @@ class Bip44Wallet(object):
                 if check_break_process_fun and check_break_process_fun():
                     break
 
-                self._process_addresses_txs(addresses, cur_block_height, addr_bal_updated)
+                self._process_addresses_txs(addresses, cur_block_height)
 
                 if check_break_process_fun and check_break_process_fun():
                     break
@@ -361,7 +400,7 @@ class Bip44Wallet(object):
                         addr_id = addr_info.id
 
                         # check if there was no transactions for the address
-                        if not addr_bal_updated.get(addr_id):
+                        if not self.addr_bal_updated.get(addr_id):
                             db_cursor.execute('select 1 from tx_output where address_id=?', (addr_id,))
                             if db_cursor.fetchone():
                                 break
@@ -382,39 +421,11 @@ class Bip44Wallet(object):
                     break
 
         if len(addresses):
-            self._process_addresses_txs(addresses, cur_block_height, addr_bal_updated)
+            self._process_addresses_txs(addresses, cur_block_height)
 
-        # update addresses' 'balance' and 'received'
-        if addr_bal_updated:
-            db_cursor = self.db_intf.get_cursor()
-            try:
-                for addr_id in addr_bal_updated:
-                    db_cursor.execute('update address set received=(select ifnull(sum(satoshis),0) '
-                                      'from tx_output o where o.address_id=address.id) where address.id=?', (addr_id,))
+        self._update_modified_addresses_balance()
 
-                    db_cursor.execute('update address set balance=received + (select ifnull(sum(satoshis),0) '
-                                      'from tx_input o where o.address_id=address.id) where address.id=?', (addr_id,))
-
-                # update balance of the xpub address to which belong the addresses with modified balance
-                xpub_address_id = self._get_xpub_db_addr(xpub, bip32_path, is_change_address, parent_addr_id).id
-
-                db_cursor.execute('update address set balance=(select sum(balance) from address a1 '
-                                  'where a1.parent_id=address.id), received=(select sum(received) from '
-                                  'address a1 where a1.parent_id=address.id) where id=?', (xpub_address_id,))
-
-                # ... and finally the same for the top level account xpub entry
-                if parent_addr_id:
-                    db_cursor.execute('update address set balance=(select sum(balance) from address a1 '
-                                      'where a1.parent_id=address.id), received=(select sum(received) from '
-                                      'address a1 where a1.parent_id=address.id) where id=?', (parent_addr_id,))
-
-            finally:
-                if db_cursor.connection.total_changes > 0:
-                    self.db_intf.commit()
-                self.db_intf.release_cursor()
-
-    def _process_addresses_txs(self, addr_info_list: List[AddressType], max_block_height: int,
-                               addr_bal_updated: Dict[int, bool]):
+    def _process_addresses_txs(self, addr_info_list: List[AddressType], max_block_height: int):
 
         addrinfo_by_address = {}
         addresses = []
@@ -444,7 +455,7 @@ class Bip44Wallet(object):
                 for tx_entry in txids:
                     address = tx_entry.get('address')
                     addr_db_id = addrinfo_by_address[address].id
-                    self._process_tx_entry(tx_entry, addr_db_id, address, db_cursor, addr_bal_updated)
+                    self._process_tx_entry(tx_entry, addr_db_id, address, db_cursor)
 
                 # update the last scan block height info for each of the addresses
                 for addr_info in addr_info_list:
@@ -456,8 +467,7 @@ class Bip44Wallet(object):
                     self.db_intf.commit()
                 self.db_intf.release_cursor()
 
-    def _process_tx_entry(self, tx_entry: Dict, addr_db_id: int, address: str, db_cursor,
-                          addr_bal_updated: Dict[int, bool]):
+    def _process_tx_entry(self, tx_entry: Dict, addr_db_id: int, address: str, db_cursor):
 
         txid = tx_entry.get('txid')
         tx_index = tx_entry.get('index')
@@ -465,14 +475,13 @@ class Bip44Wallet(object):
 
         if satoshis > 0:
             # incoming transaction entry
-            self._process_tx_output_entry(db_cursor, txid, tx_index, None, addr_db_id, address, satoshis,
-                                          addr_bal_updated)
+            self._process_tx_output_entry(db_cursor, txid, tx_index, None, addr_db_id, address, satoshis)
         else:
             # outgoing transaction entry
-            self._process_tx_input_entry(db_cursor, txid, tx_index, None, addr_db_id, satoshis, addr_bal_updated)
+            self._process_tx_input_entry(db_cursor, txid, tx_index, None, addr_db_id, satoshis)
 
     def _process_tx_output_entry(self, db_cursor, txid: str, tx_index: int, tx_json: Optional[Dict], addr_db_id: int,
-                                address: str, satoshis: int, addr_bal_updated: Dict[int, bool]):
+                                address: str, satoshis: int):
 
         tx_db_id, tx_json, tx_is_new = self._get_tx_db_id(txid, db_cursor, tx_json)
         if tx_is_new:
@@ -504,10 +513,10 @@ class Bip44Wallet(object):
                 self.txs_modified[tx_db_id] = addr_db_id
             if not row or not row[2]:
                 self.utxos_added[utxo_id] = addr_db_id
-            addr_bal_updated[addr_db_id] = True
+            self.addr_bal_updated[addr_db_id] = True
 
     def _process_tx_input_entry(self, db_cursor, txid: str, tx_index: int, tx_json: Optional[Dict], addr_db_id: int,
-                                satoshis: int, addr_bal_updated: Dict[int, bool]):
+                                satoshis: int):
 
         tx_db_id, tx_json, tx_is_new = self._get_tx_db_id(txid, db_cursor, tx_json)
         if tx_is_new:
@@ -527,7 +536,7 @@ class Bip44Wallet(object):
             if not tx_db_id in self.txs_added:
                 self.txs_modified[tx_db_id] = addr_db_id
 
-            addr_bal_updated[addr_db_id] = True
+            self.addr_bal_updated[addr_db_id] = True
             log.debug('Adding a new tx_input entry (tx_id: %s, input_index: %s, address_id: %s)',
                       tx_db_id, tx_index, addr_db_id)
 
@@ -556,7 +565,7 @@ class Bip44Wallet(object):
                         del self.utxos_added[utxo_id]  # the registered utxo has just been spent
                     else:
                         self.utxos_removed[utxo_id] = addr_db_id
-                    addr_bal_updated[addr_db_id] = True
+                    self.addr_bal_updated[addr_db_id] = True
 
                     log.debug('Updating spent-related fields of an tx_output entry (tx_id: %s, spent_tx_id: %s, '
                               'spent_input_index: %s)', utxo_id, tx_db_id, tx_index)
@@ -598,7 +607,7 @@ class Bip44Wallet(object):
             is_coinbase = 1 if (len(tx_vin) == 1 and tx_vin[0].get('coinbase')) else 0
 
             db_cursor.execute('insert into tx(tx_hash, block_height, block_timestamp, coinbase) values(?,?,?,?)',
-                              (tx_hash, tx_json.get('height'), block_timestamp, is_coinbase))
+                              (tx_hash, block_height, block_timestamp, is_coinbase))
             tx_id = db_cursor.lastrowid
 
             for index, vout in enumerate(tx_json.get('vout', [])):
@@ -628,8 +637,110 @@ class Bip44Wallet(object):
                     self.db_intf.commit()
         return tx_id, tx_json, new
 
-    def _purge_unconfirmed_transactions(self):
-        pass  # todo: continue here
+    def _purge_unconfirmed_transactions(self, db_cursor):
+        db_cursor2 = None
+        try:
+            limit_ts = int(time.time()) - UNCONFIRMED_TX_PURGE_SECONDS
+            db_cursor.execute('select id from tx where block_height=0 and block_timestamp<?', (limit_ts,))
+            for tx_row in db_cursor.fetchall():
+                if not db_cursor2:
+                    db_cursor2 = self.db_intf.get_cursor()
+                self.purge_transaction(tx_row[0], db_cursor2)
+        finally:
+            if db_cursor2:
+                self.db_intf.release_cursor()  # we are releasing cursor2
+            self.db_intf.commit()
+
+    def purge_transaction(self, tx_id: int, db_cursor=None):
+        log.debug('Purging timed-out unconfirmed transaction (td_id: %s).', tx_id)
+        if not db_cursor:
+            db_cursor = self.db_intf.get_cursor()
+            release_cursor = True
+        else:
+            release_cursor = False
+
+        try:
+            # following addressses will have balance changed after purging the transaction
+            db_cursor.execute('select address_id from tx_output where address_id is not null and '
+                              '(tx_id=? or spent_tx_id=?) union '
+                              'select address_id from tx_input where address_id is not null and tx_id=?',
+                              (tx_id, tx_id, tx_id))
+
+            for row in db_cursor.fetchall():
+                self.addr_bal_updated[row[0]] = True
+
+            # list all transaction outputs that was prevoiusly spent - due to the transaction deletion
+            # they are no longer spent, so we add them to the "new" utxos list
+            db_cursor.execute('select id, address_id from tx_output where spent_tx_id=?', (tx_id,))
+            for row in db_cursor.fetchall():
+                self.utxos_added[row[0]] = row[1]
+            db_cursor.execute('update tx_output set spent_tx_id=null, spent_input_index=null where spent_tx_id=?',
+                              (tx_id,))
+
+            db_cursor.execute('select id, address_id from tx_output where tx_id=?', (tx_id,))
+            for row in db_cursor.fetchall():
+                self.utxos_removed[row[0]] = row[1]
+
+            db_cursor.execute('delete from tx_output where tx_id=?', (tx_id,))
+            db_cursor.execute('delete from tx_input where tx_id=?', (tx_id,))
+            db_cursor.execute('delete from tx where id=?', (tx_id,))
+            self.txs_removed[tx_id] = tx_id
+
+            self._update_modified_addresses_balance(db_cursor)
+        finally:
+            if db_cursor.rowcount:
+                self.db_intf.commit()
+            if release_cursor:
+                self.db_intf.release_cursor()
+
+    def _update_modified_addresses_balance(self, db_cursor=None):
+        # Update the addresses' 'balance' and 'received' fields, limiting modifications to those
+        # existing in self.addr_bal_updated dict
+
+        if self.addr_bal_updated:
+            if not db_cursor:
+                db_cursor = self.db_intf.get_cursor()
+                release_cursor = True
+            else:
+                release_cursor = False
+
+            try:
+                account_addresses: List[int, int] = {}
+                change_addresses: List[int, int] = {}
+
+                for addr_id in self.addr_bal_updated:
+                    db_cursor.execute('select aa.id, ca.id from address a join address ca on ca.id=a.parent_id '
+                                      'join address aa on aa.id=ca.parent_id where a.id=?', (addr_id,))
+                    for account_id, change_id in db_cursor.fetchall():
+                        if account_id:
+                            account_addresses[account_id] = account_id
+                        if change_id:
+                            change_addresses[change_id] = change_id
+
+                    db_cursor.execute('update address set received=(select ifnull(sum(satoshis),0) '
+                                      'from tx_output o where o.address_id=address.id) where address.id=?', (addr_id,))
+
+                    db_cursor.execute('update address set balance=received + (select ifnull(sum(satoshis),0) '
+                                      'from tx_input o where o.address_id=address.id) where address.id=?', (addr_id,))
+
+                # update the 'change' level of the bip44 address hierarchy
+                for addr_id in change_addresses:
+                    db_cursor.execute('update address set balance=(select sum(balance) from address a1 '
+                                      'where a1.parent_id=address.id), received=(select sum(received) from '
+                                      'address a1 where a1.parent_id=address.id) where id=?', (addr_id,))
+
+                # ... and finally the 'account' level
+                for addr_id in account_addresses:
+                    db_cursor.execute('update address set balance=(select sum(balance) from address a1 '
+                                      'where a1.parent_id=address.id), received=(select sum(received) from '
+                                      'address a1 where a1.parent_id=address.id) where id=?', (addr_id,))
+
+            finally:
+                if db_cursor.connection.total_changes > 0:
+                    self.db_intf.commit()
+                if release_cursor:
+                    self.db_intf.release_cursor()
+                self.addr_bal_updated.clear()
 
     def _wrap_txid(self, txid: str):
         # base64 format takes less space in the db than hex string
@@ -783,18 +894,17 @@ class Bip44Wallet(object):
         db_cursor = self.db_intf.get_cursor()
         try:
             txid = tx_json.get('txid')
-            addr_bal_updated = {}
 
             for idx, txi in enumerate(inputs):
-                self._process_tx_input_entry(db_cursor, txid, idx, tx_json, txi.address_id, txi.satoshis,
-                                             addr_bal_updated)
+                self._process_tx_input_entry(db_cursor, txid, idx, tx_json, txi.address_id, txi.satoshis)
 
             for idx, txo in enumerate(outputs):
                 address_id = self.get_address_id(txo.address, db_cursor)
                 if address_id:
                     # we aren't interested in caching tx outputs which aren't directed to our wallet's addresses
-                    self._process_tx_output_entry(db_cursor, txid, idx, tx_json, address_id, txo.address, txo.satoshis,
-                                                  addr_bal_updated)
+                    self._process_tx_output_entry(db_cursor, txid, idx, tx_json, address_id, txo.address, txo.satoshis)
+
+            self._update_modified_addresses_balance(db_cursor)
         finally:
             self.db_intf.commit()
             self.db_intf.release_cursor()
