@@ -175,7 +175,6 @@ class UtxoTableModel(AdvTableModel):
             row_idx = len(self.utxos)
             self.beginInsertRows(QModelIndex(), row_idx, row_idx + len(utxos_to_add) - 1)
             try:
-                self.utxos.extend(utxos_to_add)
                 for utxo in utxos_to_add:
                     self.add_utxo(utxo)
             finally:
