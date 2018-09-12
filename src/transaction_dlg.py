@@ -5,7 +5,7 @@
 import sys
 
 import re
-from typing import Optional
+from typing import Optional, Callable, Dict
 import simplejson
 import logging
 
@@ -32,8 +32,9 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                  dashd_intf: DashdInterface,
                  raw_transaction: str,
                  use_instant_send: bool,
+                 after_send_tx_callback: Callable[[Dict], None],
                  decoded_transaction: Optional[dict] = None,
-                 dependent_transactions: Optional[dict] = None
+                 dependent_transactions: Optional[dict] = None,
                  ):
         QDialog.__init__(self, parent=parent)
         Ui_TransactionDlg.__init__(self)
@@ -48,6 +49,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
         self.tx_size = None  # as above
         self.decoded_transaction: Optional[dict] = decoded_transaction
         self.dependent_transactions = dependent_transactions  # key: txid, value: transaction dict
+        self.after_send_tx_callback: Callable[[Dict], None] = after_send_tx_callback
         self.setupUi()
 
     def setupUi(self):
@@ -80,6 +82,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
             if not self.decoded_transaction:
                 try:
                     self.decoded_transaction = self.dashd_intf.decoderawtransaction(self.raw_transaction)
+                    self.decoded_transaction['hex'] = self.raw_transaction
                 except JSONRPCException as e:
                     if re.match('.*400 Bad Request', str(e)) and len(self.raw_transaction):
                         raise Exception('Error while decoding raw transaction: ' + str(e) + '.' +
@@ -217,14 +220,17 @@ td.lbl{{text-align: right;vertical-align: top}} p.lbl{{margin: 0 5px 0 0; font-w
     @pyqtSlot(bool)
     def on_btn_broadcast_clicked(self):
         try:
-            txid = self.dashd_intf.sendrawtransaction(self.raw_transaction, self.use_instant_send)
-            if txid != self.tx_id:
-                logging.warning('TXID returned by sendrawtransaction differs from the original txid')
-                self.tx_id = txid
+            # txid = self.dashd_intf.sendrawtransaction(self.raw_transaction, self.use_instant_send)
+            # if txid != self.tx_id:
+            #     logging.warning('TXID returned by sendrawtransaction differs from the original txid')
+            #     self.tx_id = txid
+            txid = self.decoded_transaction.get('txid') # todo: testing
             logging.info('Transaction sent, txid: ' + txid)
             self.transaction_sent = True
             self.btn_broadcast.setEnabled(False)
             self.prepare_tx_view()
+            if self.after_send_tx_callback:
+                self.after_send_tx_callback(self.decoded_transaction)
         except Exception as e:
             logging.exception(f'Exception occurred while broadcasting transaction. '
                               f'Transaction size: {self.tx_size} bytes.')

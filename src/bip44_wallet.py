@@ -21,11 +21,14 @@ from hw_common import HwSessionInfo
 from db_intf import DBCache
 from wallet_common import Bip44AccountType, AddressType, UtxoType, TxOutputType
 
+
 TX_QUERY_ADDR_CHUNK_SIZE = 10
 ADDRESS_SCAN_GAP_LIMIT = 20
 MAX_ADDRESSES_TO_SCAN = 1000
 MAX_BIP44_ACCOUNTS = 200
 GET_BLOCKHEIGHT_MIN_SECONDS = 30
+UNCONFIRMED_TX_PURGE_SECONDS = 60
+
 
 Bip44AccountBaseAddress = namedtuple('Bip44AccountBaseAddress', ['id', 'xpub', 'bip32_path'])
 log = logging.getLogger('dmt.bip44_wallet')
@@ -83,6 +86,13 @@ class Bip44Wallet(object):
 
     def get_block_height_nofetch(self):
         return self.cur_block_height
+
+    def get_address_id(self, address: int, db_cursor):
+        db_cursor.execute('select id from address where address=?', (address,))
+        row = db_cursor.fetchone()
+        if row:
+            return row[0]
+        return None
 
     def _get_xpub_db_addr(self, xpub: str, bip32_path: Optional[str], is_change: bool, parent_id: Optional[int]) \
             -> AddressType:
@@ -449,130 +459,146 @@ class Bip44Wallet(object):
     def _process_tx_entry(self, tx_entry: Dict, addr_db_id: int, address: str, db_cursor,
                           addr_bal_updated: Dict[int, bool]):
 
-        tx_id, tx_json, tx_is_new = self._get_tx_db_id(tx_entry.get('txid'), db_cursor)
+        txid = tx_entry.get('txid')
         tx_index = tx_entry.get('index')
         satoshis = tx_entry.get('satoshis')
-        if tx_is_new:
-            self.txs_added[tx_id] = addr_db_id
 
         if satoshis > 0:
             # incoming transaction entry
-            db_cursor.execute('select id, address_id, spent_tx_id, spent_input_index '
-                              'from tx_output where tx_id=? and output_index=?', (tx_id, tx_index))
-            row = db_cursor.fetchone()
-            changed = False
-            if not row:
-                db_cursor.execute('insert into tx_output(address_id, address, tx_id, output_index, satoshis) '
-                                  'values(?,?,?,?,?)', (addr_db_id, address, tx_id, tx_index, satoshis))
-
-                changed = True
-                utxo_id = db_cursor.lastrowid
-                log.debug('Adding a new tx_output entry (address: %s, address id: %s, tx_id: %s)',
-                          address, addr_db_id, tx_id)
-            else:
-                utxo_id = row[0]
-                if addr_db_id != row[1]:
-                    db_cursor.execute('update tx_output set address_id=?, address=? where id=?', (addr_db_id, address,
-                                                                                                  utxo_id))
-
-                    changed = True
-                    log.debug('Updating address_id of a tx_output entry (address_id: %s, tx_id: %s)', addr_db_id,
-                              tx_id)
-            if changed:
-                if not tx_id in self.txs_added:
-                    self.txs_modified[tx_id] = addr_db_id
-                if not row or not row[2]:
-                    self.utxos_added[utxo_id] = addr_db_id
-                addr_bal_updated[addr_db_id] = True
-
+            self._process_tx_output_entry(db_cursor, txid, tx_index, None, addr_db_id, address, satoshis,
+                                          addr_bal_updated)
         else:
             # outgoing transaction entry
-            db_cursor.execute('select id from tx_input where tx_id=? and input_index=?', (tx_id, tx_index))
+            self._process_tx_input_entry(db_cursor, txid, tx_index, None, addr_db_id, satoshis, addr_bal_updated)
+
+    def _process_tx_output_entry(self, db_cursor, txid: str, tx_index: int, tx_json: Optional[Dict], addr_db_id: int,
+                                address: str, satoshis: int, addr_bal_updated: Dict[int, bool]):
+
+        tx_db_id, tx_json, tx_is_new = self._get_tx_db_id(txid, db_cursor, tx_json)
+        if tx_is_new:
+            self.txs_added[tx_db_id] = addr_db_id
+
+        db_cursor.execute('select id, address_id, spent_tx_id, spent_input_index '
+                          'from tx_output where tx_id=? and output_index=?', (tx_db_id, tx_index))
+        row = db_cursor.fetchone()
+        changed = False
+        if not row:
+            db_cursor.execute('insert into tx_output(address_id, address, tx_id, output_index, satoshis) '
+                              'values(?,?,?,?,?)', (addr_db_id, address, tx_db_id, tx_index, satoshis))
+
+            changed = True
+            utxo_id = db_cursor.lastrowid
+            log.debug('Adding a new tx_output entry (address: %s, address id: %s, tx_id: %s)',
+                      address, addr_db_id, tx_db_id)
+        else:
+            utxo_id = row[0]
+            if addr_db_id != row[1]:
+                db_cursor.execute('update tx_output set address_id=?, address=? where id=?', (addr_db_id, address,
+                                                                                              utxo_id))
+
+                changed = True
+                log.debug('Updating address_id of a tx_output entry (address_id: %s, tx_id: %s)', addr_db_id,
+                          tx_db_id)
+        if changed:
+            if not tx_db_id in self.txs_added:
+                self.txs_modified[tx_db_id] = addr_db_id
+            if not row or not row[2]:
+                self.utxos_added[utxo_id] = addr_db_id
+            addr_bal_updated[addr_db_id] = True
+
+    def _process_tx_input_entry(self, db_cursor, txid: str, tx_index: int, tx_json: Optional[Dict], addr_db_id: int,
+                                satoshis: int, addr_bal_updated: Dict[int, bool]):
+
+        tx_db_id, tx_json, tx_is_new = self._get_tx_db_id(txid, db_cursor, tx_json)
+        if tx_is_new:
+            self.txs_added[tx_db_id] = addr_db_id
+
+        db_cursor.execute('select id from tx_input where tx_id=? and input_index=?', (tx_db_id, tx_index))
+        row = db_cursor.fetchone()
+
+        # for this outgoing tx entry find a related incoming one and mark it as spent
+        if not tx_json:
+            tx_json = self.dashd_intf.getrawtransaction(txid, 1)
+
+        if not row:
+            db_cursor.execute('insert into tx_input(tx_id, input_index, address_id, satoshis) values(?,?,?,?)',
+                              (tx_db_id, tx_index, addr_db_id, satoshis))
+
+            if not tx_db_id in self.txs_added:
+                self.txs_modified[tx_db_id] = addr_db_id
+
+            addr_bal_updated[addr_db_id] = True
+            log.debug('Adding a new tx_input entry (tx_id: %s, input_index: %s, address_id: %s)',
+                      tx_db_id, tx_index, addr_db_id)
+
+        tx_vin = tx_json.get('vin')
+        if tx_index < len(tx_vin):
+            related_tx_vin = tx_vin[tx_index]
+            related_txid = related_tx_vin.get('txid')
+            related_tx_index = related_tx_vin.get('vout')
+            related_tx_db_id, _, tx_is_new = self._get_tx_db_id(related_txid, db_cursor)
+
+            # the related transaction should already be in the database cache
+            db_cursor.execute('select id, spent_tx_id, spent_input_index, address_id from tx_output where tx_id=? '
+                              'and output_index=?', (related_tx_db_id, related_tx_index))
             row = db_cursor.fetchone()
+            if row:
+                utxo_id = row[0]
+                addr_db_id = row[3]
+                if row[1] != tx_db_id or row[2] != tx_index:
+                    db_cursor.execute('update tx_output set spent_tx_id=?, spent_input_index=? where id=?',
+                                      (tx_db_id, tx_index, utxo_id))
 
-            # for this outgoing tx entry find a related incoming one and mark it as spent
-            if not tx_json:
-                tx_json = self.dashd_intf.getrawtransaction(tx_entry.get('txid'), 1)
+                    if tx_is_new:
+                        self.txs_added[related_tx_db_id] = addr_db_id
 
-            if not row:
-                db_cursor.execute('insert into tx_input(tx_id, input_index, address_id, satoshis) values(?,?,?,?)',
-                                  (tx_id, tx_index, addr_db_id, satoshis))
+                    if utxo_id in self.utxos_added:
+                        del self.utxos_added[utxo_id]  # the registered utxo has just been spent
+                    else:
+                        self.utxos_removed[utxo_id] = addr_db_id
+                    addr_bal_updated[addr_db_id] = True
 
-                if not tx_id in self.txs_added:
-                    self.txs_modified[tx_id] = addr_db_id
-
-                addr_bal_updated[addr_db_id] = True
-                log.debug('Adding a new tx_input entry (tx_id: %s, input_index: %s, address_id: %s)',
-                          tx_id, tx_index, addr_db_id)
-
-            tx_vin = tx_json.get('vin')
-            if tx_index < len(tx_vin):
-                related_tx_vin = tx_vin[tx_index]
-                related_txid = related_tx_vin.get('txid')
-                related_tx_index = related_tx_vin.get('vout')
-                related_tx_db_id, _, tx_is_new = self._get_tx_db_id(related_txid, db_cursor)
-
-                # the related transaction should already be in the database cache
-                db_cursor.execute('select id, spent_tx_id, spent_input_index, address_id from tx_output where tx_id=? '
-                                  'and output_index=?', (related_tx_db_id, related_tx_index))
-                row = db_cursor.fetchone()
-                if row:
-                    utxo_id = row[0]
-                    addr_db_id = row[3]
-                    if row[1] != tx_id or row[2] != tx_index:
-                        db_cursor.execute('update tx_output set spent_tx_id=?, spent_input_index=? where id=?',
-                                          (tx_id, tx_index, utxo_id))
-
-                        if tx_is_new:
-                            self.txs_added[related_tx_db_id] = addr_db_id
-
-                        if utxo_id in self.utxos_added:
-                            del self.utxos_added[utxo_id]  # the registered utxo has just been spent
-                        else:
-                            self.utxos_removed[utxo_id] = addr_db_id
-                        addr_bal_updated[addr_db_id] = True
-
-                        log.debug('Updating spent-related fields of an tx_output entry (tx_id: %s, spent_tx_id: %s, '
-                                  'spent_input_index: %s)', utxo_id, tx_id, tx_index)
-                else:
-                    log.warning(f'Could not find the related transaction for this tx entry. Txid: {related_txid}, '
-                                    f'index: {tx_index}')
+                    log.debug('Updating spent-related fields of an tx_output entry (tx_id: %s, spent_tx_id: %s, '
+                              'spent_input_index: %s)', utxo_id, tx_db_id, tx_index)
             else:
-                log.warning('Could not find vin of the related transaction for this transaction entry. '
-                                f'Txid: {tx_id}, index: {tx_index}.')
+                log.warning(f'Could not find the related transaction for this tx entry. Txid: {related_txid}, '
+                            f'index: {tx_index}')
+        else:
+            log.warning('Could not find vin of the related transaction for this transaction entry. '
+                        f'Txid: {tx_db_id}, index: {tx_index}.')
 
-    def _wrap_txid(self, txid: str):
-        # base64 format takes less space in the db than hex string
-        # return base64.b64encode(bytes.fromhex(txid))
-        return txid # todo: store txid instead of tx hash to simplify testing
-
-    def _unwrap_txid(self, txid_wrapped: str):
-        # return base64.b64decode(txid_wrapped).hex()
-        return txid_wrapped  # todo: for testling only
-
-    def _get_tx_db_id(self, txid: str, db_cursor) -> Tuple[int, Optional[Dict], bool]:
+    def _get_tx_db_id(self, txid: str, db_cursor, tx_json: Dict = None) -> Tuple[int, Optional[Dict], bool]:
         """
         :param tx_entry:
         :param db_cursor:
         :return: Tuple[int <transaction db id>, Optional[Dict <transaction details json>], bool <True if
                  it's a new transaction>]
         """
-        tx_json = None
         tx_hash = self._wrap_txid(txid)
         new = False
 
-        db_cursor.execute('select id from tx where tx_hash=?', (tx_hash,))
+        db_cursor.execute('select id, block_height from tx where tx_hash=?', (tx_hash,))
         row = db_cursor.fetchone()
         if not row:
             new = True
-            tx_json = self.dashd_intf.getrawtransaction(txid, 1)
-            block_hash = self.dashd_intf.getblockhash(tx_json.get('height'))
-            block_header = self.dashd_intf.getblockheader(block_hash)
+            if not tx_json:
+                tx_json = self.dashd_intf.getrawtransaction(txid, 1)
+
+            block_height = tx_json.get('height', 0)
+            if block_height:
+                block_hash = self.dashd_intf.getblockhash(block_height)
+                block_header = self.dashd_intf.getblockheader(block_hash)
+                block_timestamp = block_header.get('time')
+            else:
+                # if block_height equals 0, it's non confirmed transaction and block_timestamp stores
+                # the time when tx has been added to the cache
+                block_timestamp = int(time.time())
+
             tx_vin = tx_json.get('vin', [])
             is_coinbase = 1 if (len(tx_vin) == 1 and tx_vin[0].get('coinbase')) else 0
 
             db_cursor.execute('insert into tx(tx_hash, block_height, block_timestamp, coinbase) values(?,?,?,?)',
-                              (tx_hash, tx_json.get('height'), block_header.get('time'), is_coinbase))
+                              (tx_hash, tx_json.get('height'), block_timestamp, is_coinbase))
             tx_id = db_cursor.lastrowid
 
             for index, vout in enumerate(tx_json.get('vout', [])):
@@ -583,10 +609,36 @@ class Bip44Wallet(object):
                     if addrs and value:
                         db_cursor.execute('insert into tx_output(address,tx_id,output_index,satoshis) values(?,?,?,?)',
                                           (addrs, tx_id, index, value))
-
         else:
             tx_id = row[0]
+            height = row[1]
+
+            if not height:
+                # it is unconfirmed transactions; check whether it has been confirmed since the last call
+                if not tx_json:
+                    tx_json = self.dashd_intf.getrawtransaction(txid, 1)
+
+                block_height = tx_json.get('height', 0)
+                if block_height:
+                    block_hash = self.dashd_intf.getblockhash(block_height)
+                    block_header = self.dashd_intf.getblockheader(block_hash)
+                    block_timestamp = block_header.get('time')
+                    db_cursor.execute('update tx set block_height=?, block_timestamp=? where id=?',
+                                      (block_height, block_timestamp, tx_id))
+                    self.db_intf.commit()
         return tx_id, tx_json, new
+
+    def _purge_unconfirmed_transactions(self):
+        pass  # todo: continue here
+
+    def _wrap_txid(self, txid: str):
+        # base64 format takes less space in the db than hex string
+        # return base64.b64encode(bytes.fromhex(txid))
+        return txid # todo: store txid instead of tx hash to simplify testing
+
+    def _unwrap_txid(self, txid_wrapped: str):
+        # return base64.b64decode(txid_wrapped).hex()
+        return txid_wrapped  # todo: for testling only
 
     def list_utxos_for_account(self, account_id: int, only_new = False) -> Generator[UtxoType, None, None]:
         """
@@ -597,7 +649,8 @@ class Bip44Wallet(object):
         try:
             sql_text = "select o.id, cha.path, a.address_index, tx.block_height, tx.coinbase, " \
                        "tx.block_timestamp," \
-                       "tx.tx_hash, o.address, o.output_index, o.satoshis from tx_output o join address a " \
+                       "tx.tx_hash, o.address, o.output_index, o.satoshis, o.address_id from tx_output o " \
+                       "join address a " \
                        "on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca " \
                        "on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null " \
                        "or spent_input_index is null) and aca.id=?"
@@ -617,12 +670,13 @@ class Bip44Wallet(object):
                     db_cursor.execute(sql_text, (account_id, utxo_id))
 
                 for id, path, addr_index, block_height, coinbase, block_timestamp, tx_hash, address, output_index,\
-                    satoshis in db_cursor.fetchall():
+                    satoshis, address_id in db_cursor.fetchall():
 
                     utxo = UtxoType()
                     utxo.id = id
                     utxo.txid = self._unwrap_txid(tx_hash)
                     utxo.address = address
+                    utxo.address_id = address_id
                     utxo.output_index = output_index
                     utxo.satoshis = satoshis
                     utxo.block_height = block_height
@@ -642,18 +696,20 @@ class Bip44Wallet(object):
         try:
             db_cursor.execute("select o.id, cha.path, a.address_index, tx.block_height, tx.coinbase, "
                               "tx.block_timestamp,"
-                              "tx.tx_hash, o.address, o.output_index, o.satoshis from tx_output o join address a "
+                              "tx.tx_hash, o.address, o.output_index, o.satoshis, o.address_id from tx_output o "
+                              "join address a "
                               "on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca "
                               "on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null "
                               "or spent_input_index is null) and a.id=?", (address_id,))
 
             for id, path, addr_index, block_height, coinbase, block_timestamp, tx_hash, address, output_index,\
-                satoshis in db_cursor.fetchall():
+                satoshis, address_id in db_cursor.fetchall():
 
                 utxo = UtxoType()
                 utxo.id = id
                 utxo.txid = self._unwrap_txid(tx_hash)
                 utxo.address = address
+                utxo.address_id = address_id
                 utxo.output_index = output_index
                 utxo.satoshis = satoshis
                 utxo.block_height = block_height
@@ -718,7 +774,7 @@ class Bip44Wallet(object):
     def list_bip32_account_txs(self):
         pass
 
-    def register_spending_transaction(self, inputs: List[UtxoType], outputs: List[TxOutputType], txid: str):
+    def register_spending_transaction(self, inputs: List[UtxoType], outputs: List[TxOutputType], tx_json: Dict):
         """
         Register outgoing transaction in the database cache. It will be used util it appears on the blockchain.
         :param inputs:
@@ -726,7 +782,19 @@ class Bip44Wallet(object):
         """
         db_cursor = self.db_intf.get_cursor()
         try:
-            pass
+            txid = tx_json.get('txid')
+            addr_bal_updated = {}
+
+            for idx, txi in enumerate(inputs):
+                self._process_tx_input_entry(db_cursor, txid, idx, tx_json, txi.address_id, txi.satoshis,
+                                             addr_bal_updated)
+
+            for idx, txo in enumerate(outputs):
+                address_id = self.get_address_id(txo.address, db_cursor)
+                if address_id:
+                    # we aren't interested in caching tx outputs which aren't directed to our wallet's addresses
+                    self._process_tx_output_entry(db_cursor, txid, idx, tx_json, address_id, txo.address, txo.satoshis,
+                                                  addr_bal_updated)
         finally:
             self.db_intf.commit()
             self.db_intf.release_cursor()

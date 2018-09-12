@@ -11,7 +11,8 @@ class UtxoType(AttrsProtected):
     def __init__(self):
         super(UtxoType, self).__init__()
         self.id = None
-        self.address = None
+        self.address: str = None
+        self.address_id: int = None
         self.txid = None
         self.output_index = None
         self.satoshis = None
@@ -28,6 +29,8 @@ class UtxoType(AttrsProtected):
     @property
     def confirmations(self):
         if self.get_cur_block_height_fun:
+            if not self.block_height:
+                return 0
             return self.get_cur_block_height_fun() - self.block_height + 1
         else:
             return None
