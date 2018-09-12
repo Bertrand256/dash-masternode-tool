@@ -14,7 +14,7 @@ import math
 import traceback
 from functools import partial
 from more_itertools import consecutive_groups
-from typing import Tuple, List, Optional, Dict, Generator
+from typing import Tuple, List, Optional, Dict, Generator, Callable
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSlot, QStringListModel, QItemSelectionModel, \
     QItemSelection, QSortFilterProxyModel, QAbstractItemModel, QModelIndex, QObject, QAbstractListModel, QPoint
@@ -30,7 +30,7 @@ import thread_utils
 from app_config import MasternodeConfig
 from app_defs import HWType, DEBUG_MODE
 from bip44_wallet import Bip44Wallet
-from wallet_common import UtxoType, Bip44AccountType, AddressType
+from wallet_common import UtxoType, Bip44AccountType, AddressType, TxOutputType
 from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
 from hw_common import HardwareWalletCancelException, HwSessionInfo
@@ -102,14 +102,19 @@ class UtxoTableModel(AdvTableModel):
                 utxo = self.utxos[row_idx]
                 if utxo:
                     if role in (Qt.DisplayRole, Qt.EditRole):
-                        c = self.col_by_index(col_idx)
-                        if c:
-                            field_name = c.name
+                        col = self.col_by_index(col_idx)
+                        if col:
+                            field_name = col.name
                             if field_name == 'satoshis':
                                 return app_utils.to_string(round(utxo.satoshis / 1e8, 8))
                             elif field_name == 'masternode':
                                 if utxo.masternode:
                                     return utxo.masternode.name
+                            elif field_name == 'confirmations':
+                                if utxo.confirmations == 0:
+                                    return 'Unconfirmed'
+                                else:
+                                    return app_utils.to_string(utxo.__getattribute__(field_name))
                             else:
                                 return app_utils.to_string(utxo.__getattribute__(field_name))
                     elif role == Qt.ForegroundRole:
@@ -126,8 +131,10 @@ class UtxoTableModel(AdvTableModel):
                             return QtGui.QColor('lightgray')
 
                     elif role == Qt.TextAlignmentRole:
-                        if col_idx in (0, 1):
-                            return Qt.AlignRight
+                        col = self.col_by_index(col_idx)
+                        if col:
+                            if col.name in ('satoshis', 'confirmations', 'output_index'):
+                                return Qt.AlignRight
 
         return QVariant()
 
@@ -808,8 +815,8 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         """
         Sends funds to Dash address specified by user.
         """
-        amount, utxos = self.get_selected_utxos()
-        if len(utxos):
+        amount, tx_inputs = self.get_selected_utxos()
+        if len(tx_inputs):
             try:
                 connected = self.connect_hw()
                 if not connected:
@@ -824,7 +831,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
             # verify if:
             #  - utxo is the masternode collateral transation
             #  - the utxo Dash (signing) address matches the hardware wallet address for a given path
-            for utxo_idx, utxo in enumerate(utxos):
+            for utxo_idx, utxo in enumerate(tx_inputs):
                 total_satoshis += utxo.satoshis
                 log.info(f'UTXO satosis: {utxo.satoshis}')
                 if utxo.is_collateral:
@@ -864,10 +871,10 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                         default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
                     return
             try:
-                dest_data = self.wdg_dest_adresses.get_tx_destination_data()
-                if dest_data:
+                tx_outputs = self.wdg_dest_adresses.get_tx_destination_data()
+                if tx_outputs:
                     total_satoshis_actual = 0
-                    for dd in dest_data:
+                    for dd in tx_outputs:
                         total_satoshis_actual += dd.satoshis
                         log.info(f'dest amount: {dd.satoshis}')
 
@@ -884,7 +891,7 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
                     try:
                         serialized_tx, amount_to_send = prepare_transfer_tx(
-                            self.main_ui.hw_session, utxos, dest_data, fee, self.rawtransactions)
+                            self.main_ui.hw_session, tx_inputs, tx_outputs, fee, self.rawtransactions)
                     except HardwareWalletCancelException:
                         # user cancelled the operations
                         hw_intf.cancel_hw_operation(self.main_ui.hw_session.hw_client)
@@ -898,14 +905,24 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
                     if len(tx_hex) > 90000:
                         self.errorMsg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
                     else:
-                        tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex, use_is)
-                        if tx_dlg.exec_():
-                            pass  # todo: update list of utxos and transactions
+                        after_send_tx_fun = partial(self.process_after_sending_transaction, tx_inputs, tx_outputs)
+                        tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex, use_is,
+                                                after_send_tx_fun)
+                        tx_dlg.exec_()
             except Exception as e:
                 log.exception('Unknown error occurred.')
                 self.errorMsg(str(e))
         else:
             self.errorMsg('No UTXO to send.')
+
+    def process_after_sending_transaction(self, inputs: List[UtxoType], outputs: List[TxOutputType], tx_json: Dict):
+        def break_call():
+            # It won't be called since the upper method is called from within the main thread, but we need this
+            # to make it compatible with the argument list of self.call_fun_monitor_txs
+            return self.finishing
+
+        fun_to_call = partial(self.bip44_wallet.register_spending_transaction, inputs, outputs, tx_json)
+        self.call_fun_monitor_txs(fun_to_call, break_call)
 
     @pyqtSlot()
     def on_btnClose_clicked(self):
@@ -1247,50 +1264,13 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
 
                 if self.last_txs_fetch_time == 0 or (time.time() - self.last_txs_fetch_time > FETCH_DATA_INTERVAL_SECONDS):
                     if self.utxo_src_mode != 1:
+
                         self.set_message('Fetching transactions...')
 
-                        accounts_modified = False
-                        self.fetch_transactions_lock.acquire()
-                        self.accounts_lock.acquire()
-                        try:
-                            self.bip44_wallet.reset_tx_diffs()
-                            self.bip44_wallet.fetch_all_accounts_txs(break_fetch_process)
+                        fun_to_call = partial(self.bip44_wallet.fetch_all_accounts_txs, break_fetch_process)
+                        self.call_fun_monitor_txs(fun_to_call, break_fetch_process)
 
-                            # fetching transactions may result in 'new' bip44 accounts with a non-zero 'received' balance
-                            self.bip44_wallet.reset_accounts_diffs()
-                            for a in self.bip44_wallet.list_accounts():
-                                pass
-
-                            for a in self.bip44_wallet.accounts_modified:
-                                self.account_list_model.add_account(a)
-                                accounts_modified = True
-                        finally:
-                            self.accounts_lock.release()
-                            self.fetch_transactions_lock.release()
-                            self.last_txs_fetch_time = int(time.time())
-
-                        if ctrl.finish or self.finishing:
-                            break
-                        else:
-                            if accounts_modified:
-                                self.account_list_model.sort_accounts()
-                                self.reset_accounts_view()
-
-                            list_utxos = self.get_utxo_generator(True)
-                            if list_utxos:
-                                self.utxo_table_model.set_block_height(self.bip44_wallet.get_block_height())
-                                log.debug('Fetching new/removed utxos from the database')
-
-                                new_utxos = []
-                                for utxo in list_utxos:
-                                    new_utxos.append(utxo)
-
-                                removed_utxos = [x for x in self.bip44_wallet.utxos_removed]
-                                if new_utxos or removed_utxos:
-                                    WndUtils.call_in_main_thread(self.utxo_table_model.update_utxos, new_utxos, removed_utxos)
-
-                                log.debug('Fetching of utxos finished')
-
+                        if not ctrl.finish and not self.finishing:
                             self.set_message('')
 
                 self.fetch_txs_event.wait(FETCH_DATA_INTERVAL_SECONDS)
@@ -1303,6 +1283,49 @@ class WalletDlg(QDialog, ui_send_payout_dlg.Ui_SendPayoutDlg, WndUtils):
         finally:
             self.fetch_transactions_thread_id = None
         log.debug('Finishing fetch_transactions_thread')
+
+    def call_fun_monitor_txs(self, function_to_call: Callable, check_break_execution_callback: Callable):
+        """
+        Call a (wallet) function which can result in adding/removing UTXOs and/or adding/removing
+        transactions - those changes will be reflected in GUI after the call completes.
+        :return:
+        """
+        accounts_modified = False
+        self.fetch_transactions_lock.acquire()
+        self.accounts_lock.acquire()
+        try:
+            self.bip44_wallet.reset_tx_diffs()
+            function_to_call()
+
+            # fetching transactions may result in 'new' bip44 accounts with a non-zero 'received' balance
+            self.bip44_wallet.reset_accounts_diffs()
+            for a in self.bip44_wallet.list_accounts():
+                pass
+
+            for a in self.bip44_wallet.accounts_modified:
+                self.account_list_model.add_account(a)
+                accounts_modified = True
+        finally:
+            self.accounts_lock.release()
+            self.fetch_transactions_lock.release()
+            self.last_txs_fetch_time = int(time.time())
+
+        if not check_break_execution_callback():
+            if accounts_modified:
+                self.account_list_model.sort_accounts()
+                self.reset_accounts_view()
+
+            list_utxos = self.get_utxo_generator(True)
+            if list_utxos:
+                self.utxo_table_model.set_block_height(self.bip44_wallet.get_block_height())
+
+                new_utxos = []
+                for utxo in list_utxos:
+                    new_utxos.append(utxo)
+
+                removed_utxos = [x for x in self.bip44_wallet.utxos_removed]
+                if new_utxos or removed_utxos:
+                    WndUtils.call_in_main_thread(self.utxo_table_model.update_utxos, new_utxos, removed_utxos)
 
     @pyqtSlot()
     def on_btnLoadTransactions_clicked(self):
