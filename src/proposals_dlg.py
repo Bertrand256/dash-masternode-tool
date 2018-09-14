@@ -34,10 +34,9 @@ import base58
 import wnd_utils as wnd_utils
 import dash_utils
 from app_config import MasternodeConfig
-from columns_cfg_dlg import ColumnsConfigDlg
 from common import AttrsProtected
 from dashd_intf import DashdIndexException, Masternode
-from table_model_column import AdvTableModel, TableModelColumn
+from ext_item_model import ExtSortFilterTableModel, TableModelColumn
 from ui import ui_proposals
 from wnd_utils import WndUtils, CloseDialogException
 
@@ -131,7 +130,7 @@ class Proposal(AttrsProtected):
         self.visible = True
         self.get_governance_info: Callable = get_governance_info_fun
         self.budget_cycle_hours: int = None
-        self.data_model: AdvTableModel = data_model
+        self.data_model: ExtSortFilterTableModel = data_model
         self.values: Dict[ProposalColumn, Any] = {}  # dictionary of proposal values (key: ProposalColumn)
         self.db_id = None
         self.marker = None
@@ -2748,9 +2747,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.update_proposals_order_no()
 
 
-class ProposalsModel(AdvTableModel):
+class ProposalsModel(ExtSortFilterTableModel):
     def __init__(self, parent, proposals):
-        AdvTableModel.__init__(self, parent, columns=[
+        ExtSortFilterTableModel.__init__(self, parent, columns=[
             ProposalColumn('no', 'No', True),
             ProposalColumn('name', 'Name', False),
             ProposalColumn('title', 'Title', True),

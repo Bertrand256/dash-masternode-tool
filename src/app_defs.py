@@ -48,6 +48,7 @@ __KNOWN_LOGGERS = [
     KnownLoggerType(name='dmt.bip44_wallet', external=False),
     KnownLoggerType(name='dmt.dashd_intf', external=False),
     KnownLoggerType(name='dmt.db_intf', external=False),
+    KnownLoggerType(name='dmt.ext_item_model', external=False),
     KnownLoggerType(name='BitcoinRPC', external=True),
     KnownLoggerType(name='urllib3.connectionpool', external=True),
     KnownLoggerType(name='trezorlib.transport', external=True),
