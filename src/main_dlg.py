@@ -35,7 +35,7 @@ import app_cache
 import dash_utils
 import hw_pass_dlg
 import hw_pin_dlg
-import send_payout_dlg
+import wallet_dlg
 import app_utils
 from initialize_hw_dlg import HwInitializeDlg
 from proposals_dlg import ProposalsDlg
@@ -1832,7 +1832,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if not self.dashd_intf.open():
             self.errorMsg('Dash daemon not connected')
         else:
-            ui = send_payout_dlg.WalletDlg(self, initial_mn_sel=initial_mn)
+            ui = wallet_dlg.WalletDlg(self, initial_mn_sel=initial_mn)
             ui.exec_()
 
     @pyqtSlot(bool)

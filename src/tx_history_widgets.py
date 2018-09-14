@@ -11,7 +11,7 @@ from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox, QSplitter, QVBoxLayout, QPushButton, \
     QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout
 import app_utils
-from table_model_column import TableModelColumn
+from ext_item_model import TableModelColumn
 
 
 class TransactionsModel(QAbstractTableModel):
