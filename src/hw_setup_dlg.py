@@ -83,12 +83,12 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
                     if self.queryDlg('Do you really want to disable PIN protection of your %s?' % self.main_ui.getHwName(),
                                      buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
                                      icon=QMessageBox.Warning) == QMessageBox.Yes:
-                        hw_intf.change_pin(self.main_ui, remove=True)
+                        hw_intf.change_pin(self.main_ui.hw_session, remove=True)
                         self.read_hw_features()
                         self.updateControlsState()
                 elif self.pin_protection is False:
                     # enable PIN
-                    hw_intf.change_pin(self.main_ui, remove=False)
+                    hw_intf.change_pin(self.main_ui.hw_session, remove=False)
                     self.read_hw_features()
                     self.updateControlsState()
 
@@ -99,7 +99,7 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
     def on_btnChangePin_clicked(self):
         try:
             if self.hw_client and self.pin_protection is True:
-                hw_intf.change_pin(self.main_ui, remove=False)
+                hw_intf.change_pin(self.main_ui.hw_session, remove=False)
                 self.read_hw_features()
                 self.updateControlsState()
 

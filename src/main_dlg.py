@@ -789,6 +789,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 except HardwareWalletCancelException:
                     raise
                 except Exception as e:
+                    logging.exception('Exception while connecting hardware wallet')
                     try:
                         self.disconnect_hardware_wallet()
                     except Exception:
