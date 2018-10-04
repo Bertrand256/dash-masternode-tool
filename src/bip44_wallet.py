@@ -867,69 +867,76 @@ class Bip44Wallet(object):
 
             if only_new:
                 # limit returned utxos only to those existing in the self.utxos_added list
-                utxo_ids = [utxo_id for utxo_id in self.utxos_added]
-                sql_text += ' and o.id=?'
-            else:
-                # return all utxos for the required account
-                utxo_ids = [None]
+                db_cursor.execute("CREATE TEMPORARY TABLE IF NOT EXISTS temp_ids(id INTEGER PRIMARY KEY)")
+                db_cursor.executemany('insert into temp_ids(id) values(?)',
+                                      [(utxo_id,) for utxo_id in self.utxos_added])
+                sql_text += ' and o.id in (select id from temp_ids)'
+            sql_text += " order by tx.block_height desc"
 
-            for utxo_id in utxo_ids:
-                if utxo_id is None:
-                    db_cursor.execute(sql_text, (account_id,))
-                else:
-                    db_cursor.execute(sql_text, (account_id, utxo_id))
+            t = time.time()
+            db_cursor.execute(sql_text, (account_id,))
+            log.debug('SQL exec time: %s', time.time() - t)
 
-                for id, path, addr_index, block_height, coinbase, block_timestamp, tx_hash, address, output_index,\
-                    satoshis, address_id in db_cursor.fetchall():
+            for id, path, addr_index, block_height, coinbase, block_timestamp, tx_hash, address, output_index,\
+                satoshis, address_id in db_cursor.fetchall():
 
-                    utxo = UtxoType()
-                    utxo.id = id
-                    utxo.txid = self._unwrap_txid(tx_hash)
-                    utxo.address = address
-                    utxo.address_id = address_id
-                    utxo.output_index = output_index
-                    utxo.satoshis = satoshis
-                    utxo.block_height = block_height
-                    utxo.bip32_path = path + '/' + str(addr_index) if path else ''
-                    utxo.time_stamp = block_timestamp
-                    utxo.time_str = app_utils.to_string(datetime.datetime.fromtimestamp(block_timestamp))
-                    utxo.coinbase = coinbase
-                    utxo.get_cur_block_height_fun = self.get_block_height_nofetch
-                    yield utxo
+                utxo = UtxoType()
+                utxo.id = id
+                utxo.txid = self._unwrap_txid(tx_hash)
+                utxo.address = address
+                utxo.address_id = address_id
+                utxo.output_index = output_index
+                utxo.satoshis = satoshis
+                utxo.block_height = block_height
+                utxo.bip32_path = path + '/' + str(addr_index) if path else ''
+                utxo.time_stamp = block_timestamp
+                utxo.time_str = app_utils.to_string(datetime.datetime.fromtimestamp(block_timestamp))
+                utxo.coinbase = coinbase
+                utxo.get_cur_block_height_fun = self.get_block_height_nofetch
+                yield utxo
         finally:
             self.db_intf.release_cursor()
         diff = time.time() - tm_begin
         log.debug('list_utxos_for_account exec time: %ss', diff)
 
-    def list_utxos_for_addresses(self, address_ids: List[int]) -> Generator[UtxoType, None, None]:
+    def list_utxos_for_addresses(self, address_ids: List[int], only_new = False) -> Generator[UtxoType, None, None]:
         db_cursor = self.db_intf.get_cursor()
         try:
-            for address_id in address_ids:
-                db_cursor.execute("select o.id, cha.path, a.address_index, tx.block_height, tx.coinbase, "
-                                  "tx.block_timestamp,"
-                                  "tx.tx_hash, o.address, o.output_index, o.satoshis, o.address_id from tx_output o "
-                                  "join address a "
-                                  "on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca "
-                                  "on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null "
-                                  "or spent_input_index is null) and a.id=?", (address_id,))
+            in_part = ','.join(['?'] * len(address_ids))
+            sql_text = "select o.id, cha.path, a.address_index, tx.block_height, tx.coinbase," \
+                       " tx.block_timestamp, tx.tx_hash, o.address, o.output_index, o.satoshis," \
+                       " o.address_id from tx_output o join address a" \
+                       " on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca" \
+                       " on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null" \
+                       " or spent_input_index is null) and a.id in (" + in_part + ')'
 
-                for id, path, addr_index, block_height, coinbase, block_timestamp, tx_hash, address, output_index,\
-                    satoshis, address_id in db_cursor.fetchall():
+            if only_new:
+                # limit returned utxos only to those existing in the self.utxos_added list
+                db_cursor.execute("CREATE TEMPORARY TABLE IF NOT EXISTS temp_ids(id INTEGER PRIMARY KEY)")
+                db_cursor.executemany('insert into temp_ids(id) values(?)',
+                                      [(utxo_id,) for utxo_id in self.utxos_added])
+                sql_text += ' and o.id in (select id from temp_ids)'
+            sql_text += " order by tx.block_height desc"
 
-                    utxo = UtxoType()
-                    utxo.id = id
-                    utxo.txid = self._unwrap_txid(tx_hash)
-                    utxo.address = address
-                    utxo.address_id = address_id
-                    utxo.output_index = output_index
-                    utxo.satoshis = satoshis
-                    utxo.block_height = block_height
-                    utxo.bip32_path = path + '/' + str(addr_index) if path else ''
-                    utxo.time_stamp = block_timestamp
-                    utxo.time_str = app_utils.to_string(datetime.datetime.fromtimestamp(block_timestamp))
-                    utxo.coinbase = coinbase
-                    utxo.get_cur_block_height_fun = self.get_block_height_nofetch
-                    yield utxo
+            db_cursor.execute(sql_text, address_ids)
+
+            for id, path, addr_index, block_height, coinbase, block_timestamp, tx_hash, address, output_index,\
+                satoshis, address_id in db_cursor.fetchall():
+
+                utxo = UtxoType()
+                utxo.id = id
+                utxo.txid = self._unwrap_txid(tx_hash)
+                utxo.address = address
+                utxo.address_id = address_id
+                utxo.output_index = output_index
+                utxo.satoshis = satoshis
+                utxo.block_height = block_height
+                utxo.bip32_path = path + '/' + str(addr_index) if path else ''
+                utxo.time_stamp = block_timestamp
+                utxo.time_str = app_utils.to_string(datetime.datetime.fromtimestamp(block_timestamp))
+                utxo.coinbase = coinbase
+                utxo.get_cur_block_height_fun = self.get_block_height_nofetch
+                yield utxo
 
         finally:
             self.db_intf.release_cursor()

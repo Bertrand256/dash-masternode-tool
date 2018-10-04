@@ -5,21 +5,22 @@
 import logging
 import math
 import re
+from PyQt5.QtGui import QPen, QBrush, QTextDocument, QFont, QFontMetrics
 from functools import partial
 from typing import List, Callable, Optional, Tuple
 import sys
 import os
 from PyQt5 import QtCore, QtWidgets
-from PyQt5.QtCore import QSize, QEventLoop, QObject, QTimer, QVariant, pyqtSlot
+from PyQt5.QtCore import QSize, QEventLoop, QObject, QTimer, QVariant, pyqtSlot, QModelIndex,Qt
 from PyQt5.QtWidgets import QPushButton, QToolButton, QWidgetItem, QSpacerItem, QLayout, QHBoxLayout, QLineEdit, \
-    QLabel, QComboBox, QMenu, QMessageBox, QVBoxLayout, QCheckBox
+    QLabel, QComboBox, QMenu, QMessageBox, QVBoxLayout, QCheckBox, QItemDelegate, QStyleOptionViewItem, QStyle
 import app_cache
 import app_utils
 import dash_utils
 from app_defs import FEE_DUFF_PER_BYTE, MIN_TX_FEE
 from encrypted_files import write_file_encrypted, read_file_encrypted
 from hw_common import HwSessionInfo
-from wallet_common import TxOutputType
+from wallet_common import TxOutputType, Bip44AccountType, AddressType
 from wnd_utils import WndUtils
 
 
@@ -1131,3 +1132,183 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
 
     def get_use_instant_send(self):
         return self.use_instant_send
+
+
+class WalletMnItemDelegate(QItemDelegate):
+    """
+    """
+    CellVerticalMargin = 2
+    CellHorizontalMargin = 2
+    CellLinesMargin = 2
+
+    def __init__(self, parent):
+        QItemDelegate.__init__(self, parent)
+
+    def createEditor(self, parent, option, index):
+        e = QLineEdit(parent)
+        e.setReadOnly(True)
+        return e
+
+    def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
+        if index.isValid():
+            mn = index.data()
+            painter.save()
+
+            painter.setPen(QPen(Qt.NoPen))
+            if option.state & QStyle.State_Selected:
+                painter.setBrush(QBrush(option.palette.highlight()))
+                primary_color = Qt.white
+                secondary_color = Qt.cyan
+            else:
+                painter.setBrush(QBrush(Qt.white))
+                primary_color = Qt.black
+                secondary_color = Qt.darkGray
+            painter.drawRect(option.rect)
+
+            option.font.setBold(True)
+            painter.setPen(QPen(primary_color))
+            painter.setFont(option.font)
+            r = option.rect
+            fm = option.fontMetrics
+            r.setLeft(r.left() + WalletMnItemDelegate.CellHorizontalMargin)
+            r.setTop(r.top() + WalletMnItemDelegate.CellVerticalMargin)
+
+            # draw the masternode description
+            painter.drawText(r, Qt.AlignLeft, mn.masternode.name)
+
+            # draw the mn address balance:
+            option.font.setBold(False)
+            option.font.setPointSize(option.font.pointSize() - 2)
+            painter.setPen(QPen(secondary_color))
+            painter.setFont(option.font)
+
+            r.setTop(r.top() + fm.height() + WalletMnItemDelegate.CellLinesMargin)
+            if mn.address.balance is not None:
+                balance_str = 'Balance: ' + app_utils.to_string(mn.address.balance / 1e8) + ' Dash'
+            else:
+                balance_str = 'Balance: unknown'
+            painter.drawText(r, Qt.AlignLeft, balance_str)
+
+            painter.restore()
+
+    def sizeHint(self, option, index):
+        sh = QItemDelegate.sizeHint(self, option, index)
+        fm = option.fontMetrics
+        h = WalletMnItemDelegate.CellHorizontalMargin * 2 + WalletMnItemDelegate.CellLinesMargin
+        h += (fm.height() * 2) - 2
+        sh.setHeight(h)
+        return sh
+
+
+class WalletAccountItemDelegate(QItemDelegate):
+    """
+    """
+    CellVerticalMargin = 2
+    CellHorizontalMargin = 2
+    CellLinesMargin = 2
+
+    def __init__(self, parent):
+        QItemDelegate.__init__(self, parent)
+        self.doc = QTextDocument()
+
+    def createEditor(self, parent, option, index):
+        e = QLineEdit(parent)
+        e.setReadOnly(True)
+        return e
+
+    def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
+        if index.isValid():
+            data = index.data()
+            painter.save()
+
+            painter.setPen(QPen(Qt.NoPen))
+            if option.state & QStyle.State_Selected:
+                painter.setBrush(QBrush(option.palette.highlight()))
+                if option.state & QStyle.State_HasFocus:
+                    primary_color = Qt.white
+                    secondary_color = Qt.cyan
+                else:
+                    primary_color = Qt.black
+                    secondary_color = Qt.darkCyan
+            else:
+                painter.setBrush(QBrush(Qt.white))
+                primary_color = Qt.black
+                secondary_color = Qt.darkGray
+            painter.drawRect(option.rect)
+
+            r = option.rect
+            fm = option.fontMetrics
+            r.setLeft(r.left() + WalletMnItemDelegate.CellHorizontalMargin)
+            r.setTop(r.top() + WalletMnItemDelegate.CellVerticalMargin)
+
+            if isinstance(data, Bip44AccountType):
+                option.font.setBold(True)
+                painter.setPen(QPen(primary_color))
+                painter.setFont(option.font)
+                painter.drawText(r, Qt.AlignLeft, data.get_account_name())
+
+                option.font.setBold(False)
+                option.font.setPointSize(option.font.pointSize() - 2)
+                painter.setPen(QPen(secondary_color))
+                painter.setFont(option.font)
+
+                r.setTop(r.top() + fm.height() + WalletMnItemDelegate.CellLinesMargin)
+                if data.balance is not None:
+                    balance_str = 'Balance: ' + app_utils.to_string(data.balance / 1e8) + ' Dash'
+                else:
+                    balance_str = 'Balance: unknown'
+                painter.drawText(r, Qt.AlignLeft, balance_str)
+
+            elif isinstance(data, AddressType):
+                option.font.setPointSize(option.font.pointSize() - 2)
+
+                if option.state & QStyle.State_Selected:
+                    if option.state & QStyle.State_HasFocus:
+                        color = Qt.white
+                    else:
+                        color = Qt.black
+                else:
+                    # if balance is zero use bold font
+                    if data.balance == 0:
+                        color = Qt.gray
+                    else:
+                        color = Qt.black
+
+                painter.setPen(QPen(color))
+                painter.setFont(option.font)
+                fm = QFontMetrics(option.font)
+
+                idx_str = f'/{data.address_index}: '
+                painter.drawText(r, Qt.AlignLeft, idx_str)
+
+                r.setLeft(r.left() + fm.width('/000 '))
+                painter.drawText(r, Qt.AlignLeft, data.address)
+
+
+            # # draw the masternode description
+            #
+            # # draw the mn address balance:
+            # option.font.setBold(False)
+            # option.font.setPointSize(option.font.pointSize() - 2)
+            # painter.setPen(QPen(secondary_color))
+            # painter.setFont(option.font)
+            #
+            # r.setTop(r.top() + fm.height() + WalletMnItemDelegate.CellLinesMargin)
+            # if mn.address.balance is not None:
+            #     balance_str = 'Balance: ' + app_utils.to_string(mn.address.balance / 1e8) + ' Dash'
+            # else:
+            #     balance_str = 'Balance: unknown'
+            # painter.drawText(r, Qt.AlignLeft, balance_str)
+
+            painter.restore()
+
+    def sizeHint(self, option, index):
+        sh = QItemDelegate.sizeHint(self, option, index)
+        if index.isValid():
+            data = index.data()
+            if isinstance(data, Bip44AccountType):
+                fm = option.fontMetrics
+                h = WalletMnItemDelegate.CellHorizontalMargin * 2 + WalletMnItemDelegate.CellLinesMargin
+                h += (fm.height() * 2) - 2
+                sh.setHeight(h)
+        return sh
