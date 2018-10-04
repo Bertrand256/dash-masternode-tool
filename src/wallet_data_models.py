@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2018-09
-
+import hashlib
 import logging
 from PyQt5.QtCore import Qt, QVariant, QModelIndex, QAbstractItemModel
 from PyQt5.QtGui import QColor, QFont
@@ -58,8 +58,21 @@ class MnAddressTableModel(ExtSortFilterTableModel):
                     if col:
                         field_name = col.name
                         if field_name == 'description':
-                            return self.mn_items[row_idx].masternode.name
+                            return self.mn_items[row_idx]
         return QVariant()
+
+    def get_mn_by_addr_hash(self, addr_hash) -> Optional[MnAddressItem]:
+        for idx, mni in enumerate(self.mn_items):
+            if mni.address.address:
+                h = hashlib.sha256(bytes(mni.address.address, 'utf-8')).hexdigest()
+                if h == addr_hash:
+                    return mni
+        return None
+
+    def get_mn_index(self, mn_item: MnAddressItem) -> Optional[int]:
+        if mn_item in self.mn_items:
+            return self.mn_items.index(mn_item)
+        return None
 
 
 class UtxoTableModel(ExtSortFilterTableModel):
@@ -76,8 +89,8 @@ class UtxoTableModel(ExtSortFilterTableModel):
         ], True, True)
         if DEBUG_MODE:
             self.insert_column(len(self._columns), TableModelColumn('id', 'DB id', True, 40))
-        self.sorting_column_name = 'confirmations'
-        self.sorting_order = Qt.AscendingOrder
+        # self.sorting_column_name = 'confirmations'
+        # self.sorting_order = Qt.AscendingOrder
         self.hide_collateral_utxos = True
         self.utxos: List[UtxoType] = []
         self.utxo_by_id: Dict[int, UtxoType] = {}
@@ -143,9 +156,12 @@ class UtxoTableModel(ExtSortFilterTableModel):
 
         return QVariant()
 
-    def add_utxo(self, utxo: UtxoType):
+    def add_utxo(self, utxo: UtxoType, insert_pos = None):
         if not utxo.id in self.utxo_by_id:
-            self.utxos.append(utxo)
+            if insert_pos is None:
+                self.utxos.append(utxo)
+            else:
+                self.utxos.insert(insert_pos, utxo)
             self.utxo_by_id[utxo.id] = utxo
             ident = utxo.txid + '-' + str(utxo.output_index)
             if ident in self.mn_by_collateral_tx:
@@ -177,11 +193,14 @@ class UtxoTableModel(ExtSortFilterTableModel):
                 self.endRemoveRows()
 
         if utxos_to_add:
-            row_idx = len(self.utxos)
+            # in the model, the rows are sorted by the number of confirmations in the descending order, so put
+            # the new ones in the right place
+            utxos_to_add.sort(key=lambda x: x.block_height, reverse=True)
+            row_idx = 0
             self.beginInsertRows(QModelIndex(), row_idx, row_idx + len(utxos_to_add) - 1)
             try:
-                for utxo in utxos_to_add:
-                    self.add_utxo(utxo)
+                for index, utxo in enumerate(utxos_to_add):
+                    self.add_utxo(utxo, index)
             finally:
                 self.endInsertRows()
 
@@ -289,7 +308,7 @@ class AccountListModel(QAbstractItemModel):
             raise
 
     def columnCount(self, parent=None, *args, **kwargs):
-        return 3
+        return 1
 
     def rowCount(self, parent=None, *args, **kwargs):
         if not parent or not parent.isValid():
@@ -307,10 +326,11 @@ class AccountListModel(QAbstractItemModel):
             if data:
                 if role in (Qt.DisplayRole, Qt.EditRole):
                     if col == 0:
-                        if isinstance(data, Bip44AccountType):
-                            return data.get_account_name()
-                        else:
-                            return f'/{data.address_index}: {data.address}'
+                        # if isinstance(data, Bip44AccountType):
+                        #     return data.get_account_name()
+                        # else:
+                        #     return f'/{data.address_index}: {data.address}'
+                        return data
                     elif col == 1:
                         b = data.balance
                         if b:
@@ -322,24 +342,24 @@ class AccountListModel(QAbstractItemModel):
                             b = b/1e8
                         return b
 
-                elif role == Qt.ForegroundRole:
-                    if isinstance(data, Bip44AccountType):
-                        return data.get_account_name()
-                    elif isinstance(data, AddressType):
-                        if data.received == 0:
-                            return QColor(Qt.lightGray)
-                        elif data.balance == 0:
-                            return QColor(Qt.gray)
-
-                elif role == Qt.FontRole:
-                    if isinstance(data, Bip44AccountType):
-                        return data.get_account_name()
-                    elif isinstance(data, AddressType):
-                        font = QFont()
-                        # if data.balance > 0:
-                        #     font.setBold(True)
-                        font.setPointSize(font.pointSize() - 2)
-                        return font
+                # elif role == Qt.ForegroundRole:
+                #     if isinstance(data, Bip44AccountType):
+                #         return data.get_account_name()
+                #     elif isinstance(data, AddressType):
+                #         if data.received == 0:
+                #             return QColor(Qt.lightGray)
+                #         elif data.balance == 0:
+                #             return QColor(Qt.gray)
+                #
+                # elif role == Qt.FontRole:
+                #     if isinstance(data, Bip44AccountType):
+                #         return data.get_account_name()
+                #     elif isinstance(data, AddressType):
+                #         font = QFont()
+                #         # if data.balance > 0:
+                #         #     font.setBold(True)
+                #         font.setPointSize(font.pointSize() - 2)
+                #         return font
         return QVariant()
 
     def removeRows(self, row, count, parent=None, *args, **kwargs):

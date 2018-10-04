@@ -146,7 +146,7 @@
           <item>
            <widget class="QStackedWidget" name="swAddressSource">
             <property name="currentIndex">
-             <number>1</number>
+             <number>0</number>
             </property>
             <widget class="QWidget" name="page">
              <layout class="QVBoxLayout" name="verticalLayout_8">
@@ -163,7 +163,7 @@
                <number>0</number>
               </property>
               <item>
-               <widget class="QTreeView" name="listWalletAccounts">
+               <widget class="QTreeView" name="accountsListView">
                 <property name="contextMenuPolicy">
                  <enum>Qt::ActionsContextMenu</enum>
                 </property>
@@ -186,7 +186,7 @@
                <number>0</number>
               </property>
               <item>
-               <widget class="QTableView" name="viewMasternodes">
+               <widget class="QTableView" name="mnListView">
                 <property name="selectionBehavior">
                  <enum>QAbstractItemView::SelectRows</enum>
                 </property>
