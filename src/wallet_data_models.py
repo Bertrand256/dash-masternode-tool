@@ -9,6 +9,7 @@ from PyQt5.QtGui import QColor, QFont
 from more_itertools import consecutive_groups
 from typing import Optional, List, Tuple, Dict
 import app_utils
+import thread_utils
 from app_config import MasternodeConfig
 from app_defs import DEBUG_MODE
 from bip44_wallet import Bip44Wallet
@@ -260,6 +261,19 @@ class AccountListModel(QAbstractItemModel):
     def __init__(self, parent):
         QAbstractItemModel.__init__(self, parent)
         self.accounts: List[Bip44AccountType] = []
+        self.data_lock = thread_utils.EnhRLock()
+
+    def acquire_lock(self):
+        self.data_lock.acquire()
+
+    def release_lock(self):
+        self.data_lock.release()
+
+    def __enter__(self):
+        self.acquire_lock()
+
+    def __exit__(self, type, value, traceback):
+        self.release_lock()
 
     def flags(self, index):
         return Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable

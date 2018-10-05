@@ -50,9 +50,19 @@
          <number>8</number>
         </property>
         <item>
+         <widget class="QPushButton" name="btnReconnectHW">
+          <property name="text">
+           <string>Reconnect Hardware Wallet</string>
+          </property>
+          <property name="autoDefault">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QPushButton" name="btnLoadTransactions">
           <property name="text">
-           <string>Reload</string>
+           <string>Reload transactions</string>
           </property>
           <property name="autoDefault">
            <bool>false</bool>
@@ -146,7 +156,7 @@
           <item>
            <widget class="QStackedWidget" name="swAddressSource">
             <property name="currentIndex">
-             <number>0</number>
+             <number>1</number>
             </property>
             <widget class="QWidget" name="page">
              <layout class="QVBoxLayout" name="verticalLayout_8">
@@ -167,6 +177,9 @@
                 <property name="contextMenuPolicy">
                  <enum>Qt::ActionsContextMenu</enum>
                 </property>
+                <attribute name="headerVisible">
+                 <bool>false</bool>
+                </attribute>
                </widget>
               </item>
              </layout>
