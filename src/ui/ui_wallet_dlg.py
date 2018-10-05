@@ -30,6 +30,10 @@ class Ui_WalletDlg(object):
         self.lay_input = QtWidgets.QHBoxLayout()
         self.lay_input.setSpacing(8)
         self.lay_input.setObjectName("lay_input")
+        self.btnReconnectHW = QtWidgets.QPushButton(self.pnl_input)
+        self.btnReconnectHW.setAutoDefault(False)
+        self.btnReconnectHW.setObjectName("btnReconnectHW")
+        self.lay_input.addWidget(self.btnReconnectHW)
         self.btnLoadTransactions = QtWidgets.QPushButton(self.pnl_input)
         self.btnLoadTransactions.setAutoDefault(False)
         self.btnLoadTransactions.setObjectName("btnLoadTransactions")
@@ -80,6 +84,7 @@ class Ui_WalletDlg(object):
         self.accountsListView = QtWidgets.QTreeView(self.page)
         self.accountsListView.setContextMenuPolicy(QtCore.Qt.ActionsContextMenu)
         self.accountsListView.setObjectName("accountsListView")
+        self.accountsListView.header().setVisible(False)
         self.verticalLayout_8.addWidget(self.accountsListView)
         self.swAddressSource.addWidget(self.page)
         self.page_2 = QtWidgets.QWidget()
@@ -240,7 +245,8 @@ class Ui_WalletDlg(object):
     def retranslateUi(self, WalletDlg):
         _translate = QtCore.QCoreApplication.translate
         WalletDlg.setWindowTitle(_translate("WalletDlg", "Dialog"))
-        self.btnLoadTransactions.setText(_translate("WalletDlg", "Reload"))
+        self.btnReconnectHW.setText(_translate("WalletDlg", "Reconnect Hardware Wallet"))
+        self.btnLoadTransactions.setText(_translate("WalletDlg", "Reload transactions"))
         self.cboAddressSourceMode.setItemText(0, _translate("WalletDlg", "View As: Wallet Account"))
         self.cboAddressSourceMode.setItemText(1, _translate("WalletDlg", "View As: Masternode Address"))
         self.btnCheckAll.setText(_translate("WalletDlg", "Select All"))
