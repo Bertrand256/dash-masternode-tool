@@ -1145,9 +1145,7 @@ class WalletMnItemDelegate(QItemDelegate):
         QItemDelegate.__init__(self, parent)
 
     def createEditor(self, parent, option, index):
-        e = QLineEdit(parent)
-        e.setReadOnly(True)
-        return e
+        return None
 
     def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
         if index.isValid():
@@ -1212,8 +1210,13 @@ class WalletAccountItemDelegate(QItemDelegate):
         self.doc = QTextDocument()
 
     def createEditor(self, parent, option, index):
-        e = QLineEdit(parent)
-        e.setReadOnly(True)
+        e = None
+        if index.isValid():
+            data = index.data()
+            if isinstance(data, AddressType):
+                e = QLineEdit(parent)
+                e.setReadOnly(True)
+                e.setText(data.address)
         return e
 
     def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):

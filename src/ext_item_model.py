@@ -252,7 +252,7 @@ class ExtSortFilterTableModel(ColumnedItemModelMixin, QAbstractTableModel, Attrs
 
         if filtering_sorting:
             self.enable_filter_proxy_model(self)
-        self.data_lock = thread_utils.EnhRLock(2)
+        self.data_lock = thread_utils.EnhRLock()
 
     def acquire_lock(self):
         self.data_lock.acquire()

@@ -188,6 +188,11 @@ class Bip44Wallet(object):
     def reset_accounts_diffs(self):
         self.accounts_modified.clear()
 
+    def clear(self):
+        self.__tree_id = None
+        self.account_keys_by_path.clear()
+        self.account_keys_by_xpub.clear()
+
     def get_tree_id(self):
         if not self.__tree_id:
             db_cursor = self.db_intf.get_cursor()

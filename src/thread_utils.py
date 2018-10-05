@@ -31,6 +31,12 @@ class EnhRLock():
         finally:
             self.int_lock.release()
 
+    def __enter__(self):
+        self.acquire()
+
+    def __exit__(self, type, value, traceback):
+        self.release()
+
     def acquire(self):
         stack = traceback.extract_stack()
         if len(stack) >= 2 + self.stackinfo_skip_lines:
