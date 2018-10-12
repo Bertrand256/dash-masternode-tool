@@ -173,9 +173,12 @@ class Bip44Wallet(object):
         self.purge_unconf_txs_called = False
         self.external_call_level = 0
 
-        # todo: clear after hw tree_id change
         self.account_keys_by_path: Dict[str, Bip44KeysEntry] = {}
         self.account_keys_by_xpub: Dict[str, Bip44KeysEntry] = {}
+
+        self.on_account_added_callback: Callable[[Bip44AccountType], None] = None
+        self.on_account_modified_callback: Callable[[Bip44AccountType], None] = None
+        self.on_account_address_added_callback: Callable[[Bip44AccountType, AddressType, int], None] = None
 
     def reset_tx_diffs(self):
         self.txs_added.clear()
@@ -197,10 +200,10 @@ class Bip44Wallet(object):
         if not self.__tree_id:
             db_cursor = self.db_intf.get_cursor()
             try:
-                db_cursor.execute('select id from ADDRESS_HD_TREE where ident=?', (self.hw_session.hd_tree_ident,))
+                db_cursor.execute('select id from hd_tree where ident=?', (self.hw_session.hd_tree_ident,))
                 row = db_cursor.fetchone()
                 if not row:
-                    db_cursor.execute('insert into ADDRESS_HD_TREE(ident) values(?)', (self.hw_session.hd_tree_ident,))
+                    db_cursor.execute('insert into hd_tree(ident) values(?)', (self.hw_session.hd_tree_ident,))
                     self.__tree_id = db_cursor.lastrowid
                     self.db_intf.commit()
                 else:
@@ -272,7 +275,10 @@ class Bip44Wallet(object):
         """
         db_cursor = self.db_intf.get_cursor()
         try:
-            db_cursor.execute('select * from address where parent_id=? and address_index=?',
+            db_cursor.execute('select a.id, a.parent_id, a.address_index, a.address, a.path, a.tree_id, a.balance, '
+                              'a.received, a.last_scan_block_height, ac.is_change from address a '
+                              'join address ac on ac.id=a.parent_id '
+                              'where a.parent_id=? and a.address_index=?',
                               (parent_key_entry.id, child_addr_index))
             row = db_cursor.fetchone()
             if not row:
@@ -295,15 +301,17 @@ class Bip44Wallet(object):
 
                     return self._get_address_from_dict(addr_info)
                 else:
-                    db_cursor.execute('insert into address(parent_id, address_index, address) values(?,?,?)',
-                                      (parent_key_entry.id, child_addr_index, address))
+                    db_cursor.execute('insert into address(parent_id, address_index, address, is_change) values(?,?,?,?)',
+                                      (parent_key_entry.id, child_addr_index, address,
+                                       1 if parent_key_entry.is_change else 0))
 
                     addr_info = {
                         'id': db_cursor.lastrowid,
                         'parent_id': parent_key_entry.id,
                         'address_index': child_addr_index,
                         'address': address,
-                        'last_scan_block_height': 0
+                        'last_scan_block_height': 0,
+                        'is_change': parent_key_entry.is_change
                     }
 
                     return self._get_address_from_dict(addr_info)
@@ -343,6 +351,7 @@ class Bip44Wallet(object):
             xpub = hw_intf.get_xpub(self.hw_session, account_bip32_path)
             key_entry = self._get_key_entry_by_xpub(xpub)
             key_entry.bip32_path = account_bip32_path
+            self._read_account(key_entry.id)
             self.account_keys_by_path[account_bip32_path] = key_entry
             log.debug('get_account_base_address_by_index exec time: %s', time.time() - tm_begin)
         else:
@@ -350,18 +359,25 @@ class Bip44Wallet(object):
 
         return key_entry
 
-    def _list_xpub_addresses(self, key_entry: Bip44KeysEntry, addr_start_index: int, addr_count: int) -> \
-            Generator[AddressType, None, None]:
+    def _list_child_addresses(self, key_entry: Bip44KeysEntry, addr_start_index: int, addr_count: int,
+                              account: Bip44AccountType) -> Generator[AddressType, None, None]:
 
         tm_begin = time.time()
         try:
             count = 0
             for idx in range(addr_start_index, addr_start_index + addr_count):
                 addr_info = self._get_child_address(key_entry, idx)
+                if account:
+                    is_new, updated, addr_index, addr = account.add_address(addr_info)
+                    if is_new:
+                        if self.on_account_address_added_callback:
+                            self.on_account_address_added_callback(account, addr)
+
                 count += 1
                 yield addr_info
         except Exception as e:
             log.exception('Exception occurred while listing xpub addresses')
+            raise
         finally:
             diff = time.time() - tm_begin
             log.debug(f'list_xpub_addresses exec time: {diff}s, keys count: {count}')
@@ -391,9 +407,13 @@ class Bip44Wallet(object):
                 try:
                     base_addr = self._get_key_entry_by_account_index(account_address_index)
                     db_cursor.execute("select id, received from address where id=?", (base_addr.id,))
-                    id, received = db_cursor.fetchone()
-                    if not id or not received:
-                        break
+                    row = db_cursor.fetchone()
+                    if row:
+                        id, received = row
+                        if not id or not received:
+                            break
+                    else:
+                        log.error('No row returned for address.id=%s', base_addr.id)
                 finally:
                     self.db_intf.release_cursor()
         finally:
@@ -409,20 +429,21 @@ class Bip44Wallet(object):
             if account_index < 0:
                 raise Exception('Invalid account number')
 
-            base_addr = self._get_key_entry_by_account_index(account_index)
+            account_entry = self._get_key_entry_by_account_index(account_index)
+            account = self.accounts_by_id.get(account_entry.id)
 
             for change in (0, 1):
                 if check_break_process_fun and check_break_process_fun():
                     break
 
-                child = base_addr.get_child(change)
-                self._fetch_xpub_txs(child, check_break_process_fun)
+                change_level_entry = account_entry.get_child(change)
+                self._fetch_child_addrs_txs(change_level_entry, account, check_break_process_fun)
         finally:
             self.decrease_ext_call_level()
 
         log.debug(f'fetch_account_txs exec time: {time.time() - tm_begin}s')
 
-    def fetch_account_xpub_txs(self, account_xpub: str, change: int, check_break_process_fun: Callable):
+    def fetch_account_txs_xpub(self, account_xpub: str, change: int, check_break_process_fun: Callable):
         """
         Dedicated for scanning external xpub accounts (not managed by the current hardware wallet) to find the
         first not used ("fresh") addres to be used as a transaction destination.
@@ -433,15 +454,22 @@ class Bip44Wallet(object):
         tm_begin = time.time()
         self.increase_ext_call_level()
         try:
-            key_entry = self._get_key_entry_by_xpub(account_xpub)
-            child = key_entry.get_child(change)
-            self._fetch_xpub_txs(child, check_break_process_fun)
+            account_entry = self._get_key_entry_by_xpub(account_xpub)
+            account = self.accounts_by_id.get(account_entry.id)
+            change_level_entry = account_entry.get_child(change)
+            self._fetch_child_addrs_txs(change_level_entry, account, check_break_process_fun)
         finally:
             self.decrease_ext_call_level()
 
         log.debug(f'fetch_account_xpub_txs exec time: {time.time() - tm_begin}s')
 
-    def _fetch_xpub_txs(self, key_entry: Bip44KeysEntry, check_break_process_fun: Callable = None):
+    def _fetch_child_addrs_txs(self, key_entry: Bip44KeysEntry, account: Bip44AccountType, check_break_process_fun: Callable = None):
+        """
+
+        :param key_entry:
+        :param check_break_process_fun:
+        :return:
+        """
 
         cur_block_height = self.get_block_height()
 
@@ -455,7 +483,7 @@ class Bip44Wallet(object):
 
         empty_addresses = 0
         addresses = []
-        for addr_info in self._list_xpub_addresses(key_entry, 0, MAX_ADDRESSES_TO_SCAN):
+        for addr_info in self._list_child_addresses(key_entry, 0, MAX_ADDRESSES_TO_SCAN, account):
             addresses.append(addr_info)
 
             if len(addresses) >= TX_QUERY_ADDR_CHUNK_SIZE:
@@ -606,12 +634,13 @@ class Bip44Wallet(object):
         else:
             utxo_id = row[0]
             if addr_db_id != row[1]:
+                t = time.time()
                 db_cursor.execute('update tx_output set address_id=?, address=? where id=?', (addr_db_id, address,
                                                                                               utxo_id))
 
                 changed = True
-                log.debug('Updating address_id of a tx_output entry (address_id: %s, tx_id: %s)', addr_db_id,
-                          tx_db_id)
+                log.debug('Updating address_id of a tx_output entry (address_id: %s, tx_id: %s, exec time: %s)',
+                          addr_db_id, tx_db_id, time.time() - t)
         if changed:
             if not tx_db_id in self.txs_added:
                 self.txs_modified[tx_db_id] = addr_db_id
@@ -839,6 +868,10 @@ class Bip44Wallet(object):
                                       'where a1.parent_id=address.id), received=(select sum(received) from '
                                       'address a1 where a1.parent_id=address.id) where id=?', (addr_id,))
 
+                    account = self._read_account(addr_id, db_cursor)
+                    if self.on_account_modified_callback:
+                        self.on_account_modified_callback(account)
+
             finally:
                 if db_cursor.connection.total_changes > 0:
                     self.db_intf.commit()
@@ -909,8 +942,8 @@ class Bip44Wallet(object):
         try:
             in_part = ','.join(['?'] * len(address_ids))
             sql_text = "select o.id, cha.path, a.address_index, tx.block_height, tx.coinbase," \
-                       " tx.block_timestamp, tx.tx_hash, o.address, o.output_index, o.satoshis," \
-                       " o.address_id from tx_output o join address a" \
+                       "tx.block_timestamp, tx.tx_hash, o.address, o.output_index, o.satoshis," \
+                       "o.address_id from tx_output o join address a" \
                        " on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca" \
                        " on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null" \
                        " or spent_input_index is null) and a.id in (" + in_part + ')'
@@ -946,45 +979,80 @@ class Bip44Wallet(object):
         finally:
             self.db_intf.release_cursor()
 
+    def _read_account(self, id: int, db_cursor=None) -> Bip44AccountType:
+        """
+        Read the bip44 account data from db (for a given id) and return it as Bip44AccountType.
+        :param id:
+        :return:
+        """
+        if not db_cursor:
+            db_cursor = self.db_intf.get_cursor()
+            release_cursor = True
+        else:
+            release_cursor = False
+        try:
+            db_cursor.execute("select id, xpub_hash, address_index, path, balance, received from address where "
+                              "parent_id is null and xpub_hash is not null and id=?",
+                              (id,))
+
+            row = db_cursor.fetchone()
+            if row:
+                id, xpub_hash, address_index, bip32_path, balance, received = row
+                account = self.accounts_by_id.get(id)
+                if not account:
+                    account = Bip44AccountType(id, xpub_hash, address_index, bip32_path, balance, received, '')
+                    self.accounts_by_id[id] = account
+                    modified = True
+                    new = True
+                else:
+                    modified = account.update_from_args(balance=balance, received=received, name='')
+                    new = False
+
+                if modified:
+                    self.accounts_modified.append(account)
+
+                if new and account:
+                    self._read_account_addresses(account, db_cursor)
+                    if self.on_account_added_callback:
+                        self.on_account_added_callback(account)
+            else:
+                raise Exception('Cannot find the account record (address) for id: %s', id)
+        finally:
+            if release_cursor:
+                self.db_intf.release_cursor()
+        return account
+
+    def _read_account_addresses(self, account: Bip44AccountType, db_cursor):
+        db_cursor.execute('select a.id, a.address_index, a.address, ac.path parent_path, a.balance, '
+                          'a.received, ac.is_change from address a join address ac on a.parent_id=ac.id '
+                          'where ac.parent_id=? order by ac.address_index, a.address_index', (account.id,))
+        for add_row in db_cursor.fetchall():
+            addr = account.address_by_id(add_row[0])
+            if not addr:
+                addr_info = dict([(col[0], add_row[idx]) for idx, col in enumerate(db_cursor.description)])
+                addr = self._get_address_from_dict(addr_info)
+                if addr.path:
+                    addr.path = addr.path + '/' + str(addr.address_index)
+                account.add_address(addr)
+                if account not in self.accounts_modified:
+                    self.accounts_modified.append(account)
+            else:
+                modified = addr.update_from_args(balance=add_row[4], received=add_row[5])
+                if modified and account not in self.accounts_modified:
+                    self.accounts_modified.append(account)
+
     def list_accounts(self) -> Generator[Bip44AccountType, None, None]:
         tm_begin = time.time()
         db_cursor = self.db_intf.get_cursor()
         try:
             tree_id = self.get_tree_id()
 
-            db_cursor.execute("select id, xpub_hash, address_index, path, balance, received from address where "
-                              "parent_id is null and xpub_hash is not null and tree_id=? order by address_index",
+            db_cursor.execute("select id from address where parent_id is null and xpub_hash is not null and tree_id=? "
+                              "order by address_index",
                               (tree_id,))
 
-            for id, xpub_hash, address_index, bip32_path, balance, received in db_cursor.fetchall():
-                acc = self.accounts_by_id.get(id)
-                if not acc:
-                    acc = Bip44AccountType(id, xpub_hash, address_index, bip32_path, balance, received, '')
-                    self.accounts_by_id[id] = acc
-                    modified = True
-                else:
-                    modified = acc.update_from_args(balance=balance, received=received, name='')
-
-                if modified:
-                    self.accounts_modified.append(acc)
-
-                db_cursor.execute('select a.id, a.address_index, a.address, ac.path parent_path, a.balance, '
-                                  'a.received, ac.is_change from address a join address ac on a.parent_id=ac.id '
-                                  'where ac.parent_id=? order by ac.address_index, a.address_index', (acc.id,))
-                for add_row in db_cursor.fetchall():
-                    addr = acc.address_by_id(add_row[0])
-                    if not addr:
-                        addr_info = dict([(col[0], add_row[idx]) for idx, col in enumerate(db_cursor.description)])
-                        addr = self._get_address_from_dict(addr_info)
-                        if addr.path:
-                            addr.path = addr.path + '/' + str(addr.address_index)
-                        acc.add_address(addr)
-                        if acc not in self.accounts_modified:
-                            self.accounts_modified.append(acc)
-                    else:
-                        modified = addr.update_from_args(balance=add_row[4], received=add_row[5])
-                        if modified and acc not in self.accounts_modified:
-                            self.accounts_modified.append(acc)
+            for id, in db_cursor.fetchall():
+                acc = self._read_account(id, db_cursor)
                 yield acc
         finally:
             self.db_intf.release_cursor()
@@ -1030,7 +1098,7 @@ class Bip44Wallet(object):
                               "join address a2 on a2.id=a1.parent_id where a2.id=?)",
                               (id,))
 
-            db_cursor.execute("update tx_input set address_id=null where address_id in ("
+            db_cursor.execute("delete from tx_input where address_id in ("
                               "select a.id from address a join address a1 on a1.id=a.parent_id "
                               "join address a2 on a2.id=a1.parent_id where a2.id=?)",
                               (id,))
@@ -1044,6 +1112,18 @@ class Bip44Wallet(object):
             acc = self.accounts_by_id.get(id)
             if acc:
                 del self.accounts_by_id[id]
+
+            for p in self.account_keys_by_path:
+                a = self.account_keys_by_path[p]
+                if a.id == id:
+                    del self.account_keys_by_path[p]
+                    break
+
+            for p in self.account_keys_by_xpub:
+                a = self.account_keys_by_xpub[p]
+                if a.id == id:
+                    del self.account_keys_by_xpub[p]
+                    break
         finally:
             self.db_intf.commit()
             self.db_intf.release_cursor()

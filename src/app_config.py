@@ -246,9 +246,9 @@ class AppConfig(object):
 
     def configure_cache(self):
         if self.is_testnet():
-            db_cache_file_name = 'dmt_cache_testnet.db'
+            db_cache_file_name = 'dmt_cache_testnet_v2.db'
         else:
-            db_cache_file_name = 'dmt_cache.db'
+            db_cache_file_name = 'dmt_cache_v2.db'
 
         new_db_cache_file_name = os.path.join(self.cache_dir, db_cache_file_name)
         if self.db_intf:
