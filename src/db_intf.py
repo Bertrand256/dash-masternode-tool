@@ -191,9 +191,9 @@ class DBCache(object):
 
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_LIVE_CONFIG_SYMBOL ON LIVE_CONFIG(symbol)")
 
-            cur.execute("CREATE TABLE IF NOT EXISTS ADDRESS_HD_TREE(id INTEGER PRIMARY KEY, ident TEXT)")
+            cur.execute("CREATE TABLE IF NOT EXISTS hd_tree(id INTEGER PRIMARY KEY, ident TEXT)")
 
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_ADDRESS_TREE_1 ON ADDRESS_HD_TREE(ident)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_hd_tree_1 ON hd_tree(ident)")
 
             if not self.table_columns_exist('address', ['parent_id', 'xpub_hash', 'balance', 'address_index',
                                                         'last_scan_block_height', 'tree_id']):
