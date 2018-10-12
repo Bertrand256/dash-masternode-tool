@@ -192,7 +192,7 @@ def disconnect_hw(hw_client):
     try:
         hw_type = get_hw_type(hw_client)
         if hw_type in (HWType.trezor, HWType.keepkey):
-            hw_client.cancel()
+            # hw_client.cancel()
             hw_client.close()
         elif hw_type == HWType.ledger_nano_s:
             hw_client.dongle.close()
@@ -465,10 +465,10 @@ def get_address_ext(hw_session: HwSessionInfo,
     def get_hd_tree_db_id(tree_ident: str):
         db_id = hd_tree_db_map.get(tree_ident)
         if not db_id:
-            db_cursor.execute('select id from ADDRESS_HD_TREE where ident=?', (tree_ident,))
+            db_cursor.execute('select id from hd_tree where ident=?', (tree_ident,))
             row = db_cursor.fetchone()
             if not row:
-                db_cursor.execute('insert into ADDRESS_HD_TREE(ident) values(?)', (tree_ident,))
+                db_cursor.execute('insert into hd_tree(ident) values(?)', (tree_ident,))
                 db_id = db_cursor.lastrowid
                 hd_tree_db_map[tree_ident] = db_id
             else:

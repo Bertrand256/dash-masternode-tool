@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2018-09
+import bisect
 import hashlib
 import logging
 from PyQt5.QtCore import Qt, QVariant, QModelIndex, QAbstractItemModel
@@ -409,11 +410,39 @@ class AccountListModel(QAbstractItemModel):
     def add_account(self, account: Bip44AccountType):
         existing_account = self.account_by_id(account.id)
         if not existing_account:
-            self.accounts.append(account)
+            idxs = [a.address_index for a in self.accounts]
+            insert_idx = bisect.bisect_right(idxs, account.address_index)
+            self.beginInsertRows(QModelIndex(), insert_idx, insert_idx)
+            self.accounts.insert(insert_idx, account)
+            self.endInsertRows()
             self.modified = True
         else:
             if existing_account.update_from(account):
                 self.modified = True
+
+    def add_account_address(self, account: Bip44AccountType, address: AddressType):
+        account_idx = self.account_index_by_id(account.id)
+        if account_idx is not None:
+            account = self.accounts[account_idx]
+            acc_index = self.index(account_idx, 0)
+            addr_index = account.address_index_by_id(address.id)
+            if addr_index is None:
+                addr_index = account.get_address_insert_index(address)
+                addr_exists = False
+            else:
+                addr_exists = True
+            self.beginInsertRows(acc_index, addr_index, addr_index)
+            if not addr_exists:
+                self.accounts.insert(addr_index, account)
+            self.endInsertRows()
+
+
+    def account_data_changed(self, account: Bip44AccountType, view):
+        idx = self.account_index_by_id(account.id)
+        if idx is not None:
+            index = self.index(idx, 0)
+            self.dataChanged.emit(index, index)
+            view.update(index)
 
     def clear_accounts(self):
         self.accounts.clear()

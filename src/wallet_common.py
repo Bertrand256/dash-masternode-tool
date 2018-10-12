@@ -3,7 +3,7 @@
 # Author: Bertrand256
 # Created on: 2018-09
 import bisect
-from typing import Optional, List, Callable
+from typing import Optional, List, Callable, Tuple
 from common import AttrsProtected
 
 
@@ -195,12 +195,18 @@ class Bip44AccountType(AttrsProtected):
             return True
         return False
 
-    def add_address(self, address: AddressType) -> bool:
+    def add_address(self, address: AddressType) -> Tuple[bool, bool, int, AddressType]:
         """
         :param address:
-        :return: True if this is a new address (not existed in self.addresses) or
-          its attributes has been updated diring this call.
+        :return:
+            [0]: True if this is a new address - not existed before in self.addresses
+            [1]: True if the address attributes has been updated within this call
+            [2]: Address index within the internal list
+            [3]: The AddressType ref (for an existing address it's a ref to an existing object, not
+                the one passed as an argument)
         """
+        is_new = False
+        updated = False
         address.bip44_account = self
         if not address.path:
             if self.bip32_path and address.address_index is not None:
@@ -210,15 +216,23 @@ class Bip44AccountType(AttrsProtected):
                     change = 0
                 address.path = f"{self.bip32_path}/{change}/{address.address_index}"
 
-        addr = self.address_by_id(address.id)
-        if not addr:
-            if self.addresses and address < self.addresses[-1]:
-                bisect.insort_right(self.addresses, address)
-            else:
-                self.addresses.append(address)
-            return True
+        addr_index = self.address_index_by_id(address.id)
+        if addr_index is None:
+            addr_index = self.get_address_insert_index(address)
+            self.addresses.insert(addr_index, address)
+            addr = address
+            is_new = True
         else:
-            return addr.update_from(address)
+            addr = self.addresses[addr_index]
+            updated = addr.update_from(address)
+        return is_new, updated, addr_index, addr
+
+    def get_address_insert_index(self, address) -> int:
+        if self.addresses and address < self.addresses[-1]:
+            addr_index = bisect.bisect_right(self.addresses, address)
+        else:
+            addr_index = len(self.addresses)
+        return addr_index
 
     def address_by_index(self, index):
         if index >= 0 and index < len(self.addresses):

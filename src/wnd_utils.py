@@ -405,41 +405,68 @@ class ThreadWndUtils(QObject):
 thread_wnd_utils = ThreadWndUtils()
 
 
-class WaitWidget(QWidget):
-    def __init__(self, parent=None):
+class SpinnerWidget(QWidget):
+    def __init__(self, parent: QWidget, spinner_size, message: str = '', font_size=None):
 
         QWidget.__init__(self, parent)
-        palette = QPalette(self.palette())
-        palette.setColor(palette.Background, Qt.transparent)
-        self.setPalette(palette)
+        self.spinner_size = spinner_size
+        self.message = message
+        self.font_size = font_size
         self.timer_id = None
 
+    def sizeHint(self):
+        return self.parent().size()
+
     def paintEvent(self, event):
+        par = self.parent()
+        size = min(self.spinner_size, par.width(), par.height())
+        dot_count = 7
+        dot_size = int(size / dot_count) * 1.5
+
+        r = par.rect()
+        spinner_rect = QRect(r.width()/2 - size/2, r.height()/2 - size/2, size, size)
 
         painter = QPainter()
         painter.begin(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.fillRect(event.rect(), QBrush(QColor(255, 255, 255, 127)))
         painter.setPen(QPen(Qt.NoPen))
+        # painter.setBrush(QBrush(QColor(Qt.red)))
+        # painter.drawRect(spinner_rect)
 
-        for i in range(6):
-            if self.counter % 6 == i:
+        for i in range(dot_count):
+            if self.counter % dot_count == i:
                 painter.setBrush(QBrush(QColor(0, 0, 0)))
+                d_size = dot_size * 1.1
             else:
                 painter.setBrush(QBrush(QColor(200, 200, 200)))
-            painter.drawEllipse(
-                self.width() / 2 + 30 * math.cos(2 * math.pi * i / 6.0) - 10,
-                self.height() / 2 + 30 * math.sin(2 * math.pi * i / 6.0) - 10,
-                20, 20)
+                d_size = dot_size
+
+            r = size / 2 - dot_size / 2
+            x = r * math.cos(2 * math.pi * i / dot_count)
+            y = r * math.sin(2 * math.pi * i / dot_count)
+            x_center = spinner_rect.left() + spinner_rect.width() / 2 - dot_size / 2
+            y_center = spinner_rect.top() + spinner_rect.height() / 2 - dot_size / 2
+            painter.drawEllipse(x_center + x, y_center + y, d_size, d_size)
+
+        if self.message:
+            painter.setPen(QPen(Qt.black))
+            if self.font_size:
+                f = painter.font()
+                f.setPointSize(self.font_size)
+                painter.setFont(f)
+            spinner_rect.setTop(spinner_rect.bottom() + 3)
+            spinner_rect.setHeight(painter.fontMetrics().height() * 1.5)
+            r = painter.boundingRect(spinner_rect, Qt.AlignHCenter | Qt.AlignTop, self.message)
+            painter.drawText(r.bottomLeft(), self.message)
 
         painter.end()
 
     def showEvent(self, event):
-
         self.timer_id = self.startTimer(200)
         self.counter = 0
 
     def timerEvent(self, event):
+        if self.geometry() != self.parent().geometry():
+            self.setGeometry(self.parent().geometry())
         self.counter += 1
         self.update()
 
