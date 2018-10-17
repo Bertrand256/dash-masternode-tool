@@ -15,7 +15,7 @@ from app_config import MasternodeConfig
 from app_defs import DEBUG_MODE
 from bip44_wallet import Bip44Wallet
 from ext_item_model import TableModelColumn, ExtSortFilterTableModel
-from wallet_common import Bip44AccountType, AddressType, UtxoType
+from wallet_common import Bip44AccountType, Bip44AddressType, UtxoType
 
 
 log = logging.getLogger('dmt.wallet_dlg')
@@ -24,7 +24,7 @@ log = logging.getLogger('dmt.wallet_dlg')
 class MnAddressItem(object):
     def __init__(self):
         self.masternode: MasternodeConfig = None
-        self.address: AddressType = None
+        self.address: Bip44AddressType = None
 
 
 class MnAddressTableModel(ExtSortFilterTableModel):
@@ -356,25 +356,6 @@ class AccountListModel(QAbstractItemModel):
                         if b:
                             b = b/1e8
                         return b
-
-                # elif role == Qt.ForegroundRole:
-                #     if isinstance(data, Bip44AccountType):
-                #         return data.get_account_name()
-                #     elif isinstance(data, AddressType):
-                #         if data.received == 0:
-                #             return QColor(Qt.lightGray)
-                #         elif data.balance == 0:
-                #             return QColor(Qt.gray)
-                #
-                # elif role == Qt.FontRole:
-                #     if isinstance(data, Bip44AccountType):
-                #         return data.get_account_name()
-                #     elif isinstance(data, AddressType):
-                #         font = QFont()
-                #         # if data.balance > 0:
-                #         #     font.setBold(True)
-                #         font.setPointSize(font.pointSize() - 2)
-                #         return font
         return QVariant()
 
     def removeRows(self, row, count, parent=None, *args, **kwargs):
@@ -420,20 +401,20 @@ class AccountListModel(QAbstractItemModel):
             if existing_account.update_from(account):
                 self.modified = True
 
-    def add_account_address(self, account: Bip44AccountType, address: AddressType):
+    def add_account_address(self, account: Bip44AccountType, address: Bip44AddressType):
         account_idx = self.account_index_by_id(account.id)
         if account_idx is not None:
             account = self.accounts[account_idx]
             acc_index = self.index(account_idx, 0)
-            addr_index = account.address_index_by_id(address.id)
-            if addr_index is None:
-                addr_index = account.get_address_insert_index(address)
+            addr_idx = account.address_index_by_id(address.id)
+            if addr_idx is None:
+                addr_idx = account.get_address_insert_index(address)
                 addr_exists = False
             else:
                 addr_exists = True
-            self.beginInsertRows(acc_index, addr_index, addr_index)
+            self.beginInsertRows(acc_index, addr_idx, addr_idx)
             if not addr_exists:
-                self.accounts.insert(addr_index, account)
+                self.accounts.insert(addr_idx, account)
             self.endInsertRows()
 
 
@@ -442,7 +423,19 @@ class AccountListModel(QAbstractItemModel):
         if idx is not None:
             index = self.index(idx, 0)
             self.dataChanged.emit(index, index)
-            view.update(index)
+
+    def address_data_changed(self, account: Bip44AccountType, address: Bip44AddressType, view):
+        account_idx = self.account_index_by_id(account.id)
+        if account_idx is not None:
+            account = self.accounts[account_idx]
+            acc_index = self.index(account_idx, 0)
+            addr_idx = account.address_index_by_id(address.id)
+            if addr_idx is not None:
+                addr = account.address_by_index(addr_idx)
+                if addr != address:
+                    addr.update_from(address)
+                addr_index = self.index(addr_idx, 0, parent=acc_index)
+                self.dataChanged.emit(addr_index, addr_index)
 
     def clear_accounts(self):
         self.accounts.clear()

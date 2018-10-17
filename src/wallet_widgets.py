@@ -20,7 +20,7 @@ import dash_utils
 from app_defs import FEE_DUFF_PER_BYTE, MIN_TX_FEE
 from encrypted_files import write_file_encrypted, read_file_encrypted
 from hw_common import HwSessionInfo
-from wallet_common import TxOutputType, Bip44AccountType, AddressType
+from wallet_common import TxOutputType, Bip44AccountType, Bip44AddressType
 from wnd_utils import WndUtils
 
 
@@ -1213,7 +1213,7 @@ class WalletAccountItemDelegate(QItemDelegate):
         e = None
         if index.isValid():
             data = index.data()
-            if isinstance(data, AddressType):
+            if isinstance(data, Bip44AddressType):
                 e = QLineEdit(parent)
                 e.setReadOnly(True)
                 e.setText(data.address)
@@ -1262,7 +1262,7 @@ class WalletAccountItemDelegate(QItemDelegate):
                     balance_str = 'Balance: unknown'
                 painter.drawText(r, Qt.AlignLeft, balance_str)
 
-            elif isinstance(data, AddressType):
+            elif isinstance(data, Bip44AddressType):
                 option.font.setPointSize(option.font.pointSize() - 2)
 
                 if option.state & QStyle.State_Selected:

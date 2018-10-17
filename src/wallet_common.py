@@ -66,9 +66,9 @@ class TxOutputType(AttrsProtected):
         self.__bip32_path = bip32_path.strip()
 
 
-class AddressType(AttrsProtected):
+class Bip44AddressType(AttrsProtected):
     def __init__(self):
-        super(AddressType, self).__init__()
+        super(Bip44AddressType, self).__init__()
         self.id = None
         self.xpub_hash = None
         self.parent_id = None
@@ -76,14 +76,14 @@ class AddressType(AttrsProtected):
         self.address = None
         self.path: str = None
         self.tree_id = None
-        self.balance = None
-        self.received = None
+        self.balance = 0
+        self.received = 0
         self.is_change = None
         self.last_scan_block_height = None
         self.bip44_account = None
         self.set_attr_protection()
 
-    def update_from(self, src_addr: 'AddressType') -> bool:
+    def update_from(self, src_addr: 'Bip44AddressType') -> bool:
         """
         Update fields used in UI which can change after fetching transactions.
         :param src_addr: The source address.
@@ -109,28 +109,28 @@ class AddressType(AttrsProtected):
             return True
         return False
 
-    def __gt__(self, other: 'AddressType'):
+    def __gt__(self, other: 'Bip44AddressType'):
         if self.is_change == other.is_change:
             gt = self.address_index > other.address_index
         else:
             gt = self.is_change > other.is_change
         return gt
 
-    def __ge__(self, other: 'AddressType'):
+    def __ge__(self, other: 'Bip44AddressType'):
         if self.is_change == other.is_change:
             ge = self.address_index >= other.address_index
         else:
             ge = self.is_change > other.is_change
         return ge
 
-    def __lt__(self, other: 'AddressType'):
+    def __lt__(self, other: 'Bip44AddressType'):
         if self.is_change == other.is_change:
             lt = self.address_index < other.address_index
         else:
             lt = self.is_change < other.is_change
         return lt
 
-    def __le__(self, other: 'AddressType'):
+    def __le__(self, other: 'Bip44AddressType'):
         if self.is_change == other.is_change:
             le = self.address_index <= other.address_index
         else:
@@ -149,7 +149,7 @@ class Bip44AccountType(AttrsProtected):
         self.balance: Optional[int] = balance
         self.received: Optional[int] = received
         self.name: Optional[str] = name
-        self.addresses: List[AddressType] = []
+        self.addresses: List[Bip44AddressType] = []
         self.set_attr_protection()
 
     def get_hardened_index(self):
@@ -195,14 +195,14 @@ class Bip44AccountType(AttrsProtected):
             return True
         return False
 
-    def add_address(self, address: AddressType) -> Tuple[bool, bool, int, AddressType]:
+    def add_address(self, address: Bip44AddressType) -> Tuple[bool, bool, int, Bip44AddressType]:
         """
         :param address:
         :return:
             [0]: True if this is a new address - not existed before in self.addresses
             [1]: True if the address attributes has been updated within this call
             [2]: Address index within the internal list
-            [3]: The AddressType ref (for an existing address it's a ref to an existing object, not
+            [3]: The Bip44AddressType ref (for an existing address it's a ref to an existing object, not
                 the one passed as an argument)
         """
         is_new = False
