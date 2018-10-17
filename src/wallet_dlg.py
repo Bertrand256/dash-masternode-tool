@@ -27,7 +27,7 @@ from app_config import MasternodeConfig
 from app_defs import HWType, DEBUG_MODE
 from bip44_wallet import Bip44Wallet, Bip44KeysEntry
 from ui.ui_wallet_dlg_options1 import Ui_WdgOptions1
-from wallet_common import UtxoType, Bip44AccountType, AddressType, TxOutputType
+from wallet_common import UtxoType, Bip44AccountType, Bip44AddressType, TxOutputType
 from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
 from hw_common import HardwareWalletCancelException, HwSessionInfo
@@ -89,12 +89,13 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.bip44_wallet = Bip44Wallet(self.hw_session, self.db_intf, self.dashd_intf,
                                         self.app_config.dash_network)
         self.bip44_wallet.on_account_added_callback = self.on_bip44_account_added
-        self.bip44_wallet.on_account_modified_callback = self.on_bip44_account_modified
+        self.bip44_wallet.on_account_changed_callback = self.on_bip44_account_changed
         self.bip44_wallet.on_account_address_added_callback = self.on_bip44_account_address_added
+        self.bip44_wallet.on_account_address_changed_callback = self.on_bip44_account_address_changed
 
         self.utxo_table_model = UtxoTableModel(self, self.masternodes)
         self.mn_model = MnAddressTableModel(self, self.masternodes, self.bip44_wallet)
-        self.finishing = False  # true if closing window
+        self.finishing = False  # true if this window is closing
         self.data_thread_ref: Optional[WorkerThread] = None
         self.last_txs_fetch_time = 0
         self.allow_fetch_transactions = True
@@ -553,14 +554,14 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         idx = self.accountsListView.currentIndex()
         old_sel = self.get_utxo_src_cfg_hash()
         if idx and idx.isValid():
-            data = idx.internalPointer()  # data can by of Bip44AccountType or AddressType
+            data = idx.internalPointer()  # data can by of Bip44AccountType or Bip44AddressType
             if isinstance(data, Bip44AccountType):
                 self.hw_selected_address_id = None
                 if idx and idx.row() < len(self.account_list_model.accounts):
                     self.hw_selected_account_id = self.account_list_model.accounts[idx.row()].id
                 else:
                     self.hw_selected_account_id = None
-            elif isinstance(data, AddressType):
+            elif isinstance(data, Bip44AddressType):
                 self.hw_selected_account_id = data.bip44_account.id
                 self.hw_selected_address_id = data.id
             else:
@@ -623,7 +624,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 node = index.internalPointer()
                 if isinstance(node, Bip44AccountType):
                     acc = node
-                elif isinstance(node, AddressType):
+                elif isinstance(node, Bip44AddressType):
                     acc = node.bip44_account
                 else:
                     raise Exception('No account selected.')
@@ -650,7 +651,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 acc = None
                 acc_index = None
                 addr = index.internalPointer()
-                if isinstance(addr, AddressType):
+                if isinstance(addr, Bip44AddressType):
                     acc_index = index.parent()
                     if acc_index.isValid():
                         acc = acc_index.internalPointer()
@@ -745,7 +746,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                             acc_index = self.account_list_model.index(acc_idx, 0)
                             if acc_index and acc_index.isValid():
                                 self.accountsListView.scrollTo(acc_index, hint=QAbstractItemView.PositionAtTop)
-                    elif isinstance(first_item, AddressType):
+                    elif isinstance(first_item, Bip44AddressType):
                         acc = first_item.bip44_account
                         if acc:
                             acc_idx = self.account_list_model.account_index_by_id(acc.id)
@@ -815,7 +816,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def data_thread(self, ctrl: CtrlObject):
         def check_break_fetch_process():
             if not self.allow_fetch_transactions or self.finishing or ctrl.finish or \
-                self.last_hd_tree != self.hw_session.hd_tree_ident or \
+                (self.utxo_src_mode == 1 and self.last_hd_tree != self.hw_session.hd_tree_ident) or \
                 last_utxos_source_hash != self.cur_utxo_src_hash:
                 raise BreakFetchTransactionsException('Break fetch transactions')
 
@@ -966,19 +967,28 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         :param account: the account being added.
         """
         if not self.finishing:
-            self.account_list_model.add_account(account)
+            if self.utxo_src_mode == 1:
+                self.account_list_model.add_account(account)
 
-    def on_bip44_account_modified(self, account: Bip44AccountType):
+    def on_bip44_account_changed(self, account: Bip44AccountType):
         """
-        Called back from self.bip44_wallet after modification of a bip44 account data (description, balance, addresses)
+        Called back from self.bip44_wallet after modification of a bip44 account data (description, balance, received,
+        addresses)
         :param account: the account being modified.
         """
         if not self.finishing:
-            self.account_list_model.account_data_changed(account, self.accountsListView)
+            if self.utxo_src_mode == 1:
+                self.account_list_model.account_data_changed(account, self.accountsListView)
 
-    def on_bip44_account_address_added(self, account: Bip44AccountType, address: AddressType):
+    def on_bip44_account_address_added(self, account: Bip44AccountType, address: Bip44AddressType):
         if not self.finishing:
-            self.account_list_model.add_account_address(account, address)
+            if self.utxo_src_mode == 1:
+                self.account_list_model.add_account_address(account, address)
+
+    def on_bip44_account_address_changed(self, account: Bip44AccountType, address: Bip44AddressType):
+        if not self.finishing:
+            if self.utxo_src_mode == 1:
+                self.account_list_model.address_data_changed(account, address, self.accountsListView)
 
     @pyqtSlot()
     def on_btnLoadTransactions_clicked(self):
