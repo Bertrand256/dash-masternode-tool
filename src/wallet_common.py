@@ -85,15 +85,17 @@ class Bip44AddressType(AttrsProtected):
 
     def update_from(self, src_addr: 'Bip44AddressType') -> bool:
         """
-        Update fields used in UI which can change after fetching transactions.
+        Update fields which can change after fetching transactions.
         :param src_addr: The source address.
         :return: True if any of the fields had different value before and was updated.
         """
         if self != src_addr:
-            if self.balance != src_addr.balance or \
-               self.received != src_addr.received:
+            if self.balance != src_addr.balance or self.received != src_addr.received or \
+               self.last_scan_block_height != src_addr.last_scan_block_height:
+
                 self.balance = src_addr.balance
                 self.received = src_addr.received
+                self.last_scan_block_height = src_addr.last_scan_block_height
                 return True
         return False
 

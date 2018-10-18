@@ -76,6 +76,19 @@ class MnAddressTableModel(ExtSortFilterTableModel):
             return self.mn_items.index(mn_item)
         return None
 
+    def get_mn_index_by_addr(self, address: Bip44AddressType) -> Optional[int]:
+        for idx, mni in enumerate(self.mn_items):
+            if mni.address.id == address.id:
+                return idx
+        return None
+
+    def address_data_changed(self, address: Bip44AddressType):
+        idx = self.get_mn_index_by_addr(address)
+        if idx is not None:
+            self.mn_items[idx].address.update_from(address)
+            index = self.index(idx, 0)
+            self.dataChanged.emit(index, index)
+
 
 class UtxoTableModel(ExtSortFilterTableModel):
     def __init__(self, parent, masternode_list: List[MasternodeConfig]):
@@ -417,14 +430,13 @@ class AccountListModel(QAbstractItemModel):
                 self.accounts.insert(addr_idx, account)
             self.endInsertRows()
 
-
-    def account_data_changed(self, account: Bip44AccountType, view):
+    def account_data_changed(self, account: Bip44AccountType):
         idx = self.account_index_by_id(account.id)
         if idx is not None:
             index = self.index(idx, 0)
             self.dataChanged.emit(index, index)
 
-    def address_data_changed(self, account: Bip44AccountType, address: Bip44AddressType, view):
+    def address_data_changed(self, account: Bip44AccountType, address: Bip44AddressType):
         account_idx = self.account_index_by_id(account.id)
         if account_idx is not None:
             account = self.accounts[account_idx]
