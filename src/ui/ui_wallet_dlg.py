@@ -100,6 +100,7 @@ class Ui_WalletDlg(object):
         self.verticalLayout_10.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout_10.setObjectName("verticalLayout_10")
         self.mnListView = QtWidgets.QTableView(self.page_2)
+        self.mnListView.setContextMenuPolicy(QtCore.Qt.ActionsContextMenu)
         self.mnListView.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.mnListView.setShowGrid(False)
         self.mnListView.setObjectName("mnListView")
@@ -245,7 +246,7 @@ class Ui_WalletDlg(object):
         self.verticalLayout.addLayout(self.horizontalLayout_3)
 
         self.retranslateUi(WalletDlg)
-        self.swAddressSource.setCurrentIndex(0)
+        self.swAddressSource.setCurrentIndex(1)
         self.tabWidget.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(WalletDlg)
 
