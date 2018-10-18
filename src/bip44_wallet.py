@@ -154,9 +154,8 @@ class Bip44Wallet(object):
         # list of accounts retrieved while calling self.list_accounts
         self.accounts_by_id: Dict[int, Bip44AccountType] = {}
 
-        # accounts added/modified after the last call of reset_accounts_diffs and
-        # also accounts, whose addresses was modified/added:
-        self.accounts_modified:List[Bip44AccountType] = []
+        # list of addresses used by the app by not belonging to an account
+        self.addresses_by_id: Dict[int, Bip44AddressType] = {}
 
         # transactions added/modified since the last reset_tx_diffs call
         self.txs_added: Dict[int, int] = {}  # {'tx_id': 'address_id'}
@@ -177,9 +176,9 @@ class Bip44Wallet(object):
         self.account_keys_by_xpub: Dict[str, Bip44KeysEntry] = {}
 
         self.on_account_added_callback: Callable[[Bip44AccountType], None] = None
-        self.on_account_changed_callback: Callable[[Bip44AccountType], None] = None
+        self.on_account_data_changed_callback: Callable[[Bip44AccountType], None] = None
         self.on_account_address_added_callback: Callable[[Bip44AccountType, Bip44AddressType], None] = None
-        self.on_account_address_changed_callback: Callable[[Bip44AccountType, Bip44AddressType], None] = None
+        self.on_address_data_changed_callback: Callable[[Bip44AccountType, Bip44AddressType], None] = None
 
     def reset_tx_diffs(self):
         self.txs_added.clear()
@@ -189,13 +188,12 @@ class Bip44Wallet(object):
         self.utxos_removed.clear()
         self.addr_bal_updated.clear()
 
-    def reset_accounts_diffs(self):
-        self.accounts_modified.clear()
-
     def clear(self):
         self.__tree_id = None
         self.account_keys_by_path.clear()
         self.account_keys_by_xpub.clear()
+        self.accounts_by_id.clear()
+        self.addresses_by_id.clear()
 
     def get_tree_id(self):
         if not self.__tree_id:
@@ -237,16 +235,29 @@ class Bip44Wallet(object):
             row = db_cursor.fetchone()
             if row:
                 addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
-                return self._get_address_from_dict(addr_info)
+                addr = self._get_address_from_dict(addr_info)
             elif create:
                 db_cursor.execute('insert into address(address) values(?)', (address,))
-                a = Bip44AddressType()
-                a.id = db_cursor.lastrowid
-                return a
+                addr = Bip44AddressType()
+                addr.id = db_cursor.lastrowid
             else:
                 return None
+            self.addresses_by_id[addr.id] = addr
+            return addr
         finally:
             self.db_intf.release_cursor()
+
+    def _find_address_item_in_cache_by_id(self, addr_id: int, db_cursor) -> Tuple[Bip44AddressType, Bip44AccountType]:
+        addr = None
+        acc = None
+        for acc_id in self.accounts_by_id:
+            acc = self.accounts_by_id[acc_id]
+            addr = acc.address_by_id(addr_id)
+            if addr:
+                break
+        if not addr:
+            addr = self.addresses_by_id[addr_id]
+        return (addr, acc)
 
     def _get_bip44_entry_by_xpub(self, xpub) -> Bip44KeysEntry:
         for x in self.account_keys_by_xpub:
@@ -257,18 +268,36 @@ class Bip44Wallet(object):
 
     def _get_address_from_dict(self, address_dict) -> Bip44AddressType:
         addr = Bip44AddressType()
-        addr.id = address_dict.get('id')
-        addr.xpub_hash = address_dict.get('xpub_hash')
-        addr.parent_id = address_dict.get('parent_id')
-        addr.address_index = address_dict.get('address_index')
-        addr.address = address_dict.get('address')
-        addr.path = address_dict.get('path')
-        addr.tree_id = address_dict.get('tree_id')
-        addr.balance = address_dict.get('balance', 0)
-        addr.received = address_dict.get('received', 0)
-        addr.is_change = address_dict.get('is_change')
-        addr.last_scan_block_height = address_dict.get('last_scan_block_height', 0)
+        self._update_address_from_dict(addr, address_dict)
         return addr
+
+    def _update_address_from_dict(self, address: Bip44AddressType, address_dict: dict):
+        address.id = address_dict.get('id')
+        address.xpub_hash = address_dict.get('xpub_hash')
+        address.parent_id = address_dict.get('parent_id')
+        address.address_index = address_dict.get('address_index')
+        address.address = address_dict.get('address')
+        address.path = address_dict.get('path')
+        address.tree_id = address_dict.get('tree_id')
+        address.balance = address_dict.get('balance', 0)
+        address.received = address_dict.get('received', 0)
+        address.is_change = address_dict.get('is_change')
+        address.last_scan_block_height = address_dict.get('last_scan_block_height', 0)
+
+    def _update_address_from_db(self, address: Bip44AddressType, db_cursor):
+        db_cursor.execute('select * from address where id=?', (address.id,))
+        row = db_cursor.fetchone()
+        if row:
+            addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
+            self._update_address_from_dict(address, addr_info)
+        else:
+            log.error('No address with this id: %s', address.id)
+
+    def _fill_temp_ids_table(self, ids: List[int], db_cursor):
+        db_cursor.execute("CREATE TEMPORARY TABLE IF NOT EXISTS temp_ids(id INTEGER PRIMARY KEY)")
+        db_cursor.execute('delete from temp_ids')
+        db_cursor.executemany('insert into temp_ids(id) values(?)',
+                              [(id,) for id in ids])
 
     def _get_child_address(self, parent_key_entry: Bip44KeysEntry, child_addr_index: int) -> Bip44AddressType:
         """
@@ -556,30 +585,29 @@ class Bip44Wallet(object):
         tm_begin = time.time()
         addrinfo_by_address = {}
         addresses = []
+        addr_ids = []
         last_block_height = max_block_height
 
         for addr_info in addr_info_list:
             if addr_info.address:
                 addrinfo_by_address[addr_info.address] = addr_info
                 addresses.append(addr_info.address)
-                bh = addr_info.last_scan_block_height
-                if bh is None:
-                    bh = 0
-                if bh < last_block_height:
-                    last_block_height = bh
+                addr_ids.append(addr_info.id)
 
-            #todo: test
-            # if last_block_height > 3:
-            #     last_block_height -= 3
+        db_cursor = self.db_intf.get_cursor()
+        try:
+            self._fill_temp_ids_table(addr_ids, db_cursor)
+            db_cursor.execute('select min(last_scan_block_height) from address where id in (select id from temp_ids)')
+            row = db_cursor.fetchone()
+            if row:
+                last_block_height = row[0]
 
-        if last_block_height < max_block_height:
-            log.debug(f'getaddressdeltas for {addresses}, start: {last_block_height + 1}, end: {max_block_height}')
-            txids = self.dashd_intf.getaddressdeltas({'addresses': addresses,
-                                                     'start': last_block_height + 1,
-                                                     'end': max_block_height})
+            if last_block_height < max_block_height:
+                log.debug(f'getaddressdeltas for {addresses}, start: {last_block_height + 1}, end: {max_block_height}')
+                txids = self.dashd_intf.getaddressdeltas({'addresses': addresses,
+                                                         'start': last_block_height + 1,
+                                                         'end': max_block_height})
 
-            db_cursor = self.db_intf.get_cursor()
-            try:
                 for tx_entry in txids:
                     address = tx_entry.get('address')
                     addr_db_id = addrinfo_by_address[address].id
@@ -590,14 +618,14 @@ class Bip44Wallet(object):
                     db_cursor.execute('update address set last_scan_block_height=? where id=?',
                                       (max_block_height, addr_info.id))
 
-            finally:
-                if db_cursor.connection.total_changes > 0:
-                    self.db_intf.commit()
-                self.db_intf.release_cursor()
+                for addr_info in addr_info_list:
+                    if addr_info.address:
+                        addr_info.last_scan_block_height = max_block_height
 
-            for addr_info in addr_info_list:
-                if addr_info.address:
-                    addr_info.last_scan_block_height = max_block_height
+        finally:
+            if db_cursor.connection.total_changes > 0:
+                self.db_intf.commit()
+            self.db_intf.release_cursor()
 
         log.debug('_process_addresses_txs exec time: %s', time.time() - tm_begin)
 
@@ -847,10 +875,8 @@ class Bip44Wallet(object):
 
             if addr_ids:
                 # update balances for specific addresses
-                db_cursor.execute("CREATE TEMPORARY TABLE IF NOT EXISTS temp_ids(id INTEGER PRIMARY KEY)")
-                db_cursor.execute('delete from temp_ids')
-                db_cursor.executemany('insert into temp_ids(id) values(?)',
-                                      [(addr_id,) for addr_id in addr_ids])
+                self._fill_temp_ids_table(addr_ids, db_cursor)
+
                 db_cursor.execute(
                     "select id, account_id, real_received, "
                     "real_spent + real_received real_balance from (select a.id id, ca.id change_id, aa.id account_id, "
@@ -879,14 +905,15 @@ class Bip44Wallet(object):
                 db_cursor.execute('update address set balance=?, received=? where id=?',
                                   (real_balance, real_received, id))
 
-                if self.on_account_address_changed_callback:
+                if self.on_address_data_changed_callback:
                     if account:
                         address = account.address_by_id(id)
+                    else:
+                        address, account = self._find_address_item_in_cache_by_id(id, db_cursor)
+                    if address:
                         address.balance = real_balance
                         address.received = real_received
-                        self.on_account_address_changed_callback(account, address)
-                    else:
-                        pass  # todo: notify address changed if there is not account ref passed
+                        self.on_address_data_changed_callback(account, address)
 
             # update balance/received at the account level
             for addr_id in account_ids:
@@ -897,8 +924,8 @@ class Bip44Wallet(object):
                     (addr_id,))
 
                 account = self._read_account(addr_id, db_cursor)
-                if self.on_account_changed_callback:
-                    self.on_account_changed_callback(account)
+                if self.on_account_data_changed_callback:
+                    self.on_account_data_changed_callback(account)
 
             if account is not None and account.id not in account_ids:
                 # update balance/received of the account if it was inconsistent with its the balance of its child
@@ -916,8 +943,8 @@ class Bip44Wallet(object):
                                       (real_balance, real_received, id))
 
                     account = self._read_account(id, db_cursor)
-                    if self.on_account_changed_callback:
-                        self.on_account_changed_callback(account)
+                    if self.on_account_data_changed_callback:
+                        self.on_account_data_changed_callback(account)
 
         finally:
             if db_cursor.connection.total_changes > 0:
@@ -951,9 +978,7 @@ class Bip44Wallet(object):
 
             if only_new:
                 # limit returned utxos only to those existing in the self.utxos_added list
-                db_cursor.execute("CREATE TEMPORARY TABLE IF NOT EXISTS temp_ids(id INTEGER PRIMARY KEY)")
-                db_cursor.executemany('insert into temp_ids(id) values(?)',
-                                      [(utxo_id,) for utxo_id in self.utxos_added])
+                self._fill_temp_ids_table([id for id in self.utxos_added], db_cursor)
                 sql_text += ' and o.id in (select id from temp_ids)'
             sql_text += " order by tx.block_height desc"
 
@@ -996,9 +1021,7 @@ class Bip44Wallet(object):
 
             if only_new:
                 # limit returned utxos only to those existing in the self.utxos_added list
-                db_cursor.execute("CREATE TEMPORARY TABLE IF NOT EXISTS temp_ids(id INTEGER PRIMARY KEY)")
-                db_cursor.executemany('insert into temp_ids(id) values(?)',
-                                      [(utxo_id,) for utxo_id in self.utxos_added])
+                self._fill_temp_ids_table([id for id in self.utxos_added], db_cursor)
                 sql_text += ' and o.id in (select id from temp_ids)'
             sql_text += " order by tx.block_height desc"
 
@@ -1054,9 +1077,6 @@ class Bip44Wallet(object):
                     modified = account.update_from_args(balance=balance, received=received, name='')
                     new = False
 
-                if modified:
-                    self.accounts_modified.append(account)
-
                 if new and account:
                     self._read_account_addresses(account, db_cursor)
                     if self.on_account_added_callback:
@@ -1080,12 +1100,8 @@ class Bip44Wallet(object):
                 if addr.path:
                     addr.path = addr.path + '/' + str(addr.address_index)
                 account.add_address(addr)
-                if account not in self.accounts_modified:
-                    self.accounts_modified.append(account)
             else:
-                modified = addr.update_from_args(balance=add_row[4], received=add_row[5])
-                if modified and account not in self.accounts_modified:
-                    self.accounts_modified.append(account)
+                addr.update_from_args(balance=add_row[4], received=add_row[5])
 
     def list_accounts(self) -> Generator[Bip44AccountType, None, None]:
         tm_begin = time.time()
@@ -1178,15 +1194,18 @@ class Bip44Wallet(object):
         log.debug(f'Deleting address from db. Account address db id: %s', id)
         db_cursor = self.db_intf.get_cursor()
         try:
-            db_cursor.execute("update tx_output set address_id=null, address=null where address_id=?", (id,))
+            db_cursor.execute("delete from tx_output where address_id=?", (id,))
 
             db_cursor.execute("delete from tx_input where address_id=?", (id,))
 
-            # db_cursor.execute("delete from address where parent_id=?", (id,))
-
-            # db_cursor.execute("delete from address where id=?", (id,))
-
             db_cursor.execute("update address set last_scan_block_height=0 where id=?", (id,))
+
+            addr, _ = self._find_address_item_in_cache_by_id(id, db_cursor)
+            if addr:
+                addr.last_scan_block_height = 0
+
+            self._update_addr_balances(None, [id], db_cursor)
+
         finally:
             self.db_intf.commit()
             self.db_intf.release_cursor()

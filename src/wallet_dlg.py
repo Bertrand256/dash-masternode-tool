@@ -50,7 +50,11 @@ CACHE_ITEM_UTXO_SRC_MASTRNODE = 'WalletDlg_UtxoSrc_Masternode_%NETWORK%'
 CACHE_ITEM_UTXO_COLS = 'WalletDlg_UtxoColumns'
 CACHE_ITEM_LAST_RECIPIENTS = 'WalletDlg_LastRecipients_%NETWORK%'
 CACHE_ITEM_MAIN_SPLITTER_SIZES = 'WalletDlg_MainSplitterSizes'
+
 FETCH_DATA_INTERVAL_SECONDS = 60
+MAIN_VIEW_BIP44_ACCOUNTS = 1
+MAIN_VIEW_MASTERNODE_LIST = 2
+
 
 log = logging.getLogger('dmt.wallet_dlg')
 
@@ -89,9 +93,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.bip44_wallet = Bip44Wallet(self.hw_session, self.db_intf, self.dashd_intf,
                                         self.app_config.dash_network)
         self.bip44_wallet.on_account_added_callback = self.on_bip44_account_added
-        self.bip44_wallet.on_account_changed_callback = self.on_bip44_account_changed
+        self.bip44_wallet.on_account_data_changed_callback = self.on_bip44_account_changed
         self.bip44_wallet.on_account_address_added_callback = self.on_bip44_account_address_added
-        self.bip44_wallet.on_account_address_changed_callback = self.on_bip44_account_address_changed
+        self.bip44_wallet.on_address_data_changed_callback = self.on_bip44_account_address_changed
 
         self.utxo_table_model = UtxoTableModel(self, self.masternodes)
         self.mn_model = MnAddressTableModel(self, self.masternodes, self.bip44_wallet)
@@ -113,7 +117,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.cur_utxo_src_hash = ''  # hash of the currently selected utxo source mode
         self.last_hd_tree = ''
 
-        # for self.utxo_src_mode == 2
+        # for self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST
         self.selected_mns: List[MnAddressItem] = []
 
         self.sel_addresses_balance = 0.0
@@ -162,10 +166,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.chbHideCollateralTx.toggled.connect(self.chbHideCollateralTxToggled)
 
         self.cboAddressSourceMode.blockSignals(True)
-        if self.utxo_src_mode == 1:
+        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
             self.swAddressSource.setCurrentIndex(0)
             self.cboAddressSourceMode.setCurrentIndex(0)
-        elif self.utxo_src_mode == 2:
+        elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
             self.swAddressSource.setCurrentIndex(1)
             self.cboAddressSourceMode.setCurrentIndex(1)
         else:
@@ -215,6 +219,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.act_delete_address_data.triggered.connect(self.on_delete_address_triggered)
         self.accountsListView.addAction(self.act_delete_address_data)
 
+        self.act_delete_address_data1 = QAction('Clear address data in cache', self)
+        self.act_delete_address_data1.triggered.connect(self.on_delete_address_triggered)
+        self.mnListView.addAction(self.act_delete_address_data1)
+        # todo: end testing
+
         self.wdg_options_mode1 = None
         self.account_mode_show_addresses = False
 
@@ -251,8 +260,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.splitterMain.setSizes(app_cache.get_value(CACHE_ITEM_MAIN_SPLITTER_SIZES, [100, 600], list))
 
         if self.initial_mn_sel is None:
-            mode = app_cache.get_value(CACHE_ITEM_UTXO_SOURCE_MODE, 2, int)
-            if mode in (1, 2, 3):
+            mode = app_cache.get_value(CACHE_ITEM_UTXO_SOURCE_MODE, MAIN_VIEW_BIP44_ACCOUNTS, int)
+            if mode in (MAIN_VIEW_BIP44_ACCOUNTS, MAIN_VIEW_MASTERNODE_LIST):
                 self.utxo_src_mode = mode
 
         # base bip32 path:
@@ -366,10 +375,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def on_cboAddressSourceMode_currentIndexChanged(self, index):
         self.swAddressSource.setCurrentIndex(index)
         if index == 0:
-            self.utxo_src_mode = 1
+            self.utxo_src_mode = MAIN_VIEW_BIP44_ACCOUNTS
             self.connect_hw()
         elif index == 1:
-            self.utxo_src_mode = 2
+            self.utxo_src_mode = MAIN_VIEW_MASTERNODE_LIST
         else:
             raise Exception('Invalid index.')
         self.on_utxo_src_hash_changed()
@@ -645,39 +654,54 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     self.reflect_ui_account_selection()
 
     def on_delete_address_triggered(self):
-        if self.hw_selected_address_id is not None:
-            index = self.accountsListView.currentIndex()
-            if index and index.isValid():
-                acc = None
-                acc_index = None
-                addr = index.internalPointer()
-                if isinstance(addr, Bip44AddressType):
-                    acc_index = index.parent()
-                    if acc_index.isValid():
-                        acc = acc_index.internalPointer()
+        """For testing only"""
+        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+            if self.hw_selected_address_id is not None:
+                index = self.accountsListView.currentIndex()
+                if index and index.isValid():
+                    acc = None
+                    acc_index = None
+                    addr = index.internalPointer()
+                    if isinstance(addr, Bip44AddressType):
+                        acc_index = index.parent()
+                        if acc_index.isValid():
+                            acc = acc_index.internalPointer()
 
-                if acc and acc_index:
-                    if WndUtils.queryDlg(f"Do you really want to clear address '{addr.address}' data in cache?",
-                                        buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                                        default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
-                        return
+                    if acc and acc_index:
+                        if WndUtils.queryDlg(f"Do you really want to clear address '{addr.address}' data in cache?",
+                                            buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                            default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
+                            return
 
-                    ftx_state = self.allow_fetch_transactions
-                    signals_state = self.accountsListView.blockSignals(True)
-                    with self.account_list_model:
-                        self.allow_fetch_transactions = False
-                        self.account_list_model.removeRow(index.row(), parent=acc_index)
-                        self.bip44_wallet.remove_address(addr.id)
-                        self.allow_fetch_transactions = ftx_state
-                        self.accountsListView.blockSignals(signals_state)
-                        self.reflect_ui_account_selection()
+                        ftx_state = self.allow_fetch_transactions
+                        signals_state = self.accountsListView.blockSignals(True)
+                        with self.account_list_model:
+                            self.allow_fetch_transactions = False
+                            self.account_list_model.removeRow(index.row(), parent=acc_index)
+                            self.bip44_wallet.remove_address(addr.id)
+                            self.allow_fetch_transactions = ftx_state
+                            self.accountsListView.blockSignals(signals_state)
+                            self.reflect_ui_account_selection()
+        elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
+            if self.selected_mns:
+                mns_str = ','.join([mn.masternode.name for mn in self.selected_mns])
+                if WndUtils.queryDlg(f"Do you really want to clear transactions cache data for masternodes: '{mns_str}'?",
+                                    buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                    default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
+                    return
+                for mn in self.selected_mns:
+                    self.bip44_wallet.remove_address(mn.address.id)
+                    with self.utxo_table_model:
+                        self.utxo_table_model.beginResetModel()
+                        self.utxo_table_model.clear_utxos()
+                        self.utxo_table_model.endResetModel()
 
     def get_utxo_src_cfg_hash(self):
         hash = str({self.utxo_src_mode}) + ':'
-        if self.utxo_src_mode == 1:
+        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
             hash = hash + f'{self.hw_account_base_bip32_path}:{self.hw_selected_account_id}:' \
                           f'{self.hw_selected_address_id}'
-        elif self.utxo_src_mode == 2:
+        elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
             for mni in self.selected_mns:
                 hash += str(mni.address.id) + ':'
         return hash
@@ -795,7 +819,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def get_utxo_generator(self, only_new) -> Generator[UtxoType, None, None]:
         list_utxos = None
-        if self.utxo_src_mode == 1:
+        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
             if self.hw_selected_account_id is not None:
                 if self.hw_selected_address_id is None:
                     # list utxos of the whole bip44 account
@@ -803,7 +827,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 else:
                     # list utxos of the specific address
                     list_utxos = self.bip44_wallet.list_utxos_for_addresses([self.hw_selected_address_id], only_new)
-        elif self.utxo_src_mode == 2:
+        elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
             address_ids = []
             for mni in self.selected_mns:
                 if mni.address:
@@ -816,13 +840,13 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def data_thread(self, ctrl: CtrlObject):
         def check_break_fetch_process():
             if not self.allow_fetch_transactions or self.finishing or ctrl.finish or \
-                (self.utxo_src_mode == 1 and self.last_hd_tree != self.hw_session.hd_tree_ident) or \
+                (self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS and self.last_hd_tree != self.hw_session.hd_tree_ident) or \
                 last_utxos_source_hash != self.cur_utxo_src_hash:
                 raise BreakFetchTransactionsException('Break fetch transactions')
 
         log.debug('Starting fetch_transactions_thread')
         try:
-            if self.utxo_src_mode == 1:
+            if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
                 self.connect_hw()
 
             self.last_txs_fetch_time = 0
@@ -831,7 +855,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
             while not ctrl.finish and not self.finishing:
                 hw_error = False
-                if self.utxo_src_mode == 1:  # the hw accounts view needs an hw connection
+                if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:  # the hw accounts view needs an hw connection
                     if not self.hw_connected():
                         hw_error = True
 
@@ -896,9 +920,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                 # a spinner will be shown only only when transactions are fetched the first time
                                 self.show_loading_tx_animation()
 
-                            if self.utxo_src_mode == 1:
+                            if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
                                 fun_to_call = partial(self.bip44_wallet.fetch_all_accounts_txs, check_break_fetch_process)
-                            elif self.utxo_src_mode == 2:
+                            elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
                                 addresses = []
                                 with self.mn_model:
                                     for mni in self.mn_model.mn_items:
@@ -943,8 +967,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.bip44_wallet.reset_tx_diffs()
             function_to_call()
 
-            self.bip44_wallet.reset_accounts_diffs()
-
         if not check_break_execution_callback():
             list_utxos = self.get_utxo_generator(True)
             if list_utxos:
@@ -967,7 +989,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         :param account: the account being added.
         """
         if not self.finishing:
-            if self.utxo_src_mode == 1:
+            if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
                 self.account_list_model.add_account(account)
 
     def on_bip44_account_changed(self, account: Bip44AccountType):
@@ -977,18 +999,19 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         :param account: the account being modified.
         """
         if not self.finishing:
-            if self.utxo_src_mode == 1:
-                self.account_list_model.account_data_changed(account, self.accountsListView)
+            if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+                self.account_list_model.account_data_changed(account)
 
     def on_bip44_account_address_added(self, account: Bip44AccountType, address: Bip44AddressType):
         if not self.finishing:
-            if self.utxo_src_mode == 1:
+            if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
                 self.account_list_model.add_account_address(account, address)
 
     def on_bip44_account_address_changed(self, account: Bip44AccountType, address: Bip44AddressType):
         if not self.finishing:
-            if self.utxo_src_mode == 1:
-                self.account_list_model.address_data_changed(account, address, self.accountsListView)
+            if account:
+                self.account_list_model.address_data_changed(account, address)
+            self.mn_model.address_data_changed(address)
 
     @pyqtSlot()
     def on_btnLoadTransactions_clicked(self):
