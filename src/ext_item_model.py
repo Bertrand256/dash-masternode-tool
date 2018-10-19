@@ -4,7 +4,7 @@
 # Created on: 2018-07
 import logging
 from PyQt5.QtCore import Qt, pyqtSlot, QSortFilterProxyModel, QAbstractTableModel, QVariant
-from PyQt5.QtWidgets import QTableView, QWidget, QAbstractItemView
+from PyQt5.QtWidgets import QTableView, QWidget, QAbstractItemView, QTreeView
 from typing import List, Optional, Any, Dict, Generator
 
 import thread_utils
@@ -124,7 +124,7 @@ class ColumnedItemModelMixin(object):
     def save_col_defs(self, setting_name: str):
         cols = []
         if self.view:
-            hdr = self.view.horizontalHeader()
+            hdr = self.get_view_horizontal_header()
         else:
             hdr = None
 
@@ -155,7 +155,7 @@ class ColumnedItemModelMixin(object):
             self._rebuild_column_index()
 
     def on_view_column_moved(self, logicalIndex, oldVisualIndex, newVisualIndex):
-        hdr = self.view.horizontalHeader()
+        hdr = self.get_view_horizontal_header()
         for logical_index, col in enumerate(self._columns):
             vis_index = hdr.visualIndex(logical_index)
             col.visual_index = vis_index
@@ -194,9 +194,17 @@ class ColumnedItemModelMixin(object):
     def getDefaultColWidths(self):
         return [c.initial_width for c in self._columns]
 
+    def get_view_horizontal_header(self):
+        if isinstance(self.view, QTableView):
+            return self.view.horizontalHeader()
+        elif isinstance(self.view, QTreeView):
+            return self.view.header()
+        else:
+            raise Exception('Unsupported view type: %s', str(type(self.view)))
+
     def set_view(self, view: QAbstractItemView):
         self.view = view
-        self.view.horizontalHeader().sectionMoved.connect(self.on_view_column_moved)
+        self.get_view_horizontal_header().sectionMoved.connect(self.on_view_column_moved)
         if self.proxy_model:
             self.view.setModel(self.proxy_model)
         else:
@@ -207,13 +215,13 @@ class ColumnedItemModelMixin(object):
             if idx is not None:
                 self.view.sortByColumn(idx, self.sorting_order)
         if self.columns_movable:
-            self.view.horizontalHeader().setSectionsMovable(True)
+            self.get_view_horizontal_header().setSectionsMovable(True)
         for idx, col in enumerate(self._columns):
             if col.initial_width:
-                view.horizontalHeader().resizeSection(idx, col.initial_width)
+                self.get_view_horizontal_header().resizeSection(idx, col.initial_width)
 
     def _apply_columns_to_ui(self):
-        hdr = self.view.horizontalHeader()
+        hdr = self.get_view_horizontal_header()
         for cur_visual_index, c in enumerate(sorted(self._columns, key=lambda x: x.visual_index)):
             logical_index = self._columns.index(c)
             hdr.setSectionHidden(logical_index, not c.visible)
@@ -225,7 +233,7 @@ class ColumnedItemModelMixin(object):
         pass
 
     def filterAcceptsRow(self, row_index):
-        pass
+        return True
 
     def invalidateFilter(self):
         if self.proxy_model:
