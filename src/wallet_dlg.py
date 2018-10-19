@@ -156,7 +156,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.utxo_table_model.col_index_by_name('confirmations'), Qt.AscendingOrder)
         self.utxo_table_model.set_view(self.utxoTableView)
 
-        self.accountsListView.setModel(self.account_list_model)
+        # self.accountsListView.setModel(self.account_list_model)
+        self.account_list_model.set_view(self.accountsListView)
 
         self.mn_model.set_view(self.mnListView)
         self.mnListView.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -560,14 +561,15 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.close()
 
     def reflect_ui_account_selection(self):
-        idx = self.accountsListView.currentIndex()
+        view_index = self.accountsListView.currentIndex()
         old_sel = self.get_utxo_src_cfg_hash()
-        if idx and idx.isValid():
-            data = idx.internalPointer()  # data can by of Bip44AccountType or Bip44AddressType
+        if view_index and view_index.isValid():
+            index = self.account_list_model.mapToSource(view_index)
+            data = index.internalPointer()  # data can by of Bip44AccountType or Bip44AddressType
             if isinstance(data, Bip44AccountType):
                 self.hw_selected_address_id = None
-                if idx and idx.row() < len(self.account_list_model.accounts):
-                    self.hw_selected_account_id = self.account_list_model.accounts[idx.row()].id
+                if index and index.row() < len(self.account_list_model.accounts):
+                    self.hw_selected_account_id = self.account_list_model.accounts[index.row()].id
                 else:
                     self.hw_selected_account_id = None
             elif isinstance(data, Bip44AddressType):
@@ -628,8 +630,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def on_delete_account_triggered(self):
         if self.hw_selected_account_id is not None:
-            index = self.accountsListView.currentIndex()
-            if index and index.isValid():
+            view_index = self.accountsListView.currentIndex()
+            if view_index and view_index.isValid():
+                index = self.account_list_model.mapToSource(view_index)
                 node = index.internalPointer()
                 if isinstance(node, Bip44AccountType):
                     acc = node
@@ -657,14 +660,16 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         """For testing only"""
         if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
             if self.hw_selected_address_id is not None:
-                index = self.accountsListView.currentIndex()
-                if index and index.isValid():
+                view_index = self.accountsListView.currentIndex()
+                if view_index and view_index.isValid():
+                    index = self.account_list_model.mapToSource(view_index)
                     acc = None
                     acc_index = None
                     addr = index.internalPointer()
                     if isinstance(addr, Bip44AddressType):
-                        acc_index = index.parent()
-                        if acc_index.isValid():
+                        acc_view_index = view_index.parent()
+                        if acc_view_index.isValid():
+                            acc_index = self.account_list_model.mapToSource(acc_view_index)
                             acc = acc_index.internalPointer()
 
                     if acc and acc_index:
@@ -709,93 +714,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def on_utxo_src_hash_changed(self):
         self.cur_utxo_src_hash = self.get_utxo_src_cfg_hash()
 
-    def reset_accounts_view(self):
-        def reset():
-            try:
-                log.debug('Beginning reset_accounts_view.reset')
-                first_item_index = self.accountsListView.indexAt(self.accountsListView.rect().topLeft() +
-                                                                 QPoint(0, self.accountsListView.header().height() - 2))
-                if first_item_index and first_item_index.isValid():
-                    first_item = first_item_index.internalPointer()
-                else:
-                    first_item = None
-
-                # save the expanded account list to restore them after reset
-                expanded_account_ids = []
-                for account_idx, acc in enumerate(self.account_list_model.accounts):
-                    index = self.account_list_model.index(account_idx, 0)
-                    if index and self.accountsListView.isExpanded(index):
-                        expanded_account_ids.append(acc.id)
-
-                self.account_list_model.beginResetModel()
-                self.account_list_model.endResetModel()
-
-                for account_id in expanded_account_ids:
-                    account_idx = self.account_list_model.account_index_by_id(account_id)
-                    index = self.account_list_model.index(account_idx, 0)
-                    if index:
-                        self.accountsListView.setExpanded(index, True)
-
-                if len(self.account_list_model.accounts) > 0:
-                    if self.hw_selected_account_id is None:
-                        sel_acc = self.account_list_model.accounts[0]
-                    else:
-                        sel_acc = self.account_list_model.account_by_id(self.hw_selected_account_id)
-                        if not sel_acc:
-                            sel_acc = self.account_list_model.accounts[0]
-
-                    self.hw_selected_account_id = sel_acc.id
-                    account_idx = self.account_list_model.account_index_by_id(self.hw_selected_account_id)
-                    if account_idx is not None:
-                        acc = self.account_list_model.accounts[account_idx]
-                        focus_set = False
-                        if self.hw_selected_address_id is not None:
-                            addr_idx = acc.address_index_by_id(self.hw_selected_address_id)
-                            if addr_idx is not None:
-                                account_index = self.account_list_model.index(account_idx, 0)
-                                if account_index and account_index.isValid():
-                                    self.accountsListView.setCurrentIndex(self.account_list_model.index(addr_idx, 0,
-                                                                                                        account_index))
-                                    focus_set = True
-                        if not focus_set:
-                            self.accountsListView.setCurrentIndex(self.account_list_model.index(account_idx, 0))
-                else:
-                    self.hw_selected_account_id = None
-
-                if first_item:
-                    # restore the first visible item
-                    if isinstance(first_item, Bip44AccountType):
-                        acc_idx = self.account_list_model.account_index_by_id(first_item.id)
-                        if acc_idx is not None:
-                            acc_index = self.account_list_model.index(acc_idx, 0)
-                            if acc_index and acc_index.isValid():
-                                self.accountsListView.scrollTo(acc_index, hint=QAbstractItemView.PositionAtTop)
-                    elif isinstance(first_item, Bip44AddressType):
-                        acc = first_item.bip44_account
-                        if acc:
-                            acc_idx = self.account_list_model.account_index_by_id(acc.id)
-                            if acc_idx is not None:
-                                acc_index = self.account_list_model.index(acc_idx, 0)
-                                if acc_index and acc_index.isValid():
-                                    addr_idx = acc.address_index_by_id(first_item.id)
-                                    if addr_idx is not None:
-                                        addr_index = self.account_list_model.index(addr_idx, 0, acc_index)
-                                        if addr_index and addr_index.isValid():
-                                            self.accountsListView.scrollTo(addr_index,
-                                                                           hint=QAbstractItemView.PositionAtTop)
-            finally:
-                log.debug('Finished reset_accounts_view.reset')
-        WndUtils.call_in_main_thread(reset)
-
-    # def reset_utxos_view(self):
-    #     def reset():
-    #         log.debug('Begin reset_utxos_view')
-    #         with self.utxo_table_model:
-    #             self.utxo_table_model.beginResetModel()
-    #             self.utxo_table_model.endResetModel()
-    #         log.debug('Finished reset_utxos_view')
-    #     WndUtils.call_in_main_thread(reset)
-    #
     def hw_connected(self):
         if self.hw_session.hw_type is not None and self.hw_session.hw_client is not None:
             return True

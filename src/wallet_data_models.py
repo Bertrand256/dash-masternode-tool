@@ -271,38 +271,17 @@ class UtxoTableModel(ExtSortFilterTableModel):
             #     self.view.dataChanged(tl_index, br_index, [Qt.DisplayRole, Qt.ForegroundRole, Qt.BackgroundColorRole])
 
 
-class AccountListModel(QAbstractItemModel):
+class AccountListModel(ExtSortFilterTableModel):
     def __init__(self, parent):
-        QAbstractItemModel.__init__(self, parent)
+        ExtSortFilterTableModel.__init__(self, parent, [
+            TableModelColumn('address', 'Address', True, 100)
+        ], False, True)
         self.accounts: List[Bip44AccountType] = []
-        self.data_lock = thread_utils.EnhRLock()
-
-    def acquire_lock(self):
-        self.data_lock.acquire()
-
-    def release_lock(self):
-        self.data_lock.release()
-
-    def __enter__(self):
-        self.acquire_lock()
-
-    def __exit__(self, type, value, traceback):
-        self.release_lock()
+        self.modified = False
+        self.set_attr_protection()
 
     def flags(self, index):
         return Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable
-
-    def headerData(self, section, orientation, role=None):
-        if role != 0:
-            return QVariant()
-        if orientation == 0x1:
-            if section == 0:
-                return ''
-            elif section == 1:
-                return 'Balance'
-            elif section == 2:
-                return 'Received'
-        return ''
 
     def parent(self, index=None):
         try:
@@ -334,9 +313,6 @@ class AccountListModel(QAbstractItemModel):
         except Exception as e:
             log.exception('Exception while creating index')
             raise
-
-    def columnCount(self, parent=None, *args, **kwargs):
-        return 1
 
     def rowCount(self, parent=None, *args, **kwargs):
         if not parent or not parent.isValid():
