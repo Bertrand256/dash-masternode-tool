@@ -420,7 +420,7 @@ class SpinnerWidget(QWidget):
     def paintEvent(self, event):
         par = self.parent()
         size = min(self.spinner_size, par.width(), par.height())
-        dot_count = 7
+        dot_count = 5
         dot_size = int(size / dot_count) * 1.5
 
         r = par.rect()
@@ -429,8 +429,6 @@ class SpinnerWidget(QWidget):
         painter = QPainter()
         painter.begin(self)
         painter.setPen(QPen(Qt.NoPen))
-        # painter.setBrush(QBrush(QColor(Qt.red)))
-        # painter.drawRect(spinner_rect)
 
         for i in range(dot_count):
             if self.counter % dot_count == i:
@@ -465,8 +463,9 @@ class SpinnerWidget(QWidget):
         self.counter = 0
 
     def timerEvent(self, event):
-        if self.geometry() != self.parent().geometry():
-            self.setGeometry(self.parent().geometry())
+        target_geom = QRect(0, 0, self.parent().width(), self.parent().height())
+        if self.geometry() != target_geom:
+            self.setGeometry(target_geom)
         self.counter += 1
         self.update()
 

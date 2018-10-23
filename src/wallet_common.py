@@ -2,9 +2,22 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2018-09
+import base64
 import bisect
-from typing import Optional, List, Callable, Tuple
+import bitcoin
+from bip32utils import BIP32Key, Base58
+from typing import Optional, List, Callable, Tuple, Dict, ByteString
 from common import AttrsProtected
+from dash_utils import bip32_path_string_to_n, bip32_path_n_to_string
+
+
+def xpub_to_hash(xpub: str):
+    xpub_raw = Base58.check_decode(xpub)
+    if xpub_raw[0:4] in (b'\x02\xfe\x52\xcc', b'\x04\x88\xb2\x1e'):  # remove xpub prefix
+        xpub_raw = xpub_raw[4:]
+    xpub_hash = bitcoin.bin_sha256(xpub_raw)
+    xpub_hash = base64.b64encode(xpub_hash)
+    return xpub_hash
 
 
 class UtxoType(AttrsProtected):
@@ -66,22 +79,171 @@ class TxOutputType(AttrsProtected):
         self.__bip32_path = bip32_path.strip()
 
 
-class Bip44AddressType(AttrsProtected):
-    def __init__(self):
-        super(Bip44AddressType, self).__init__()
-        self.id = None
-        self.xpub_hash = None
-        self.parent_id = None
-        self.address_index: Optional[int] = None
+class Bip44Entry(object):
+    def __init__(self,
+                 tree_id: Optional[int],
+                 id: Optional[int],
+                 parent: Optional['Bip44Entry'] = None,
+                 xpub: Optional[str] = None,
+                 address_index: Optional[int] = None,
+                 bip32_path: Optional[str] = None,
+                 bip32_key: Optional[BIP32Key] = None):
+        self.tree_id: int = tree_id
+        self.id: Optional[int] = id
+        self.xpub: str = xpub
+        self.__bip32_path: Optional[int] = ''
+        self.set_bip32_path(bip32_path)
+        self.address_index: Optional[int] = address_index
+        self.__bip32_key: BIP32Key = bip32_key
+        self.__parent: Optional['Bip44Entry'] = parent
+        self.__xpub_hash: Optional[str] = None
+        self.__parent_id: Optional[int] = None
+        self.child_entries: Dict[int, 'Bip44Entry'] = {}
+        self.db_fields = ['address_index', 'path', 'xpub_hash', 'tree_id', 'parent_id']
+
+    def get_hardened_index(self):
+        if self.address_index is not None and self.address_index >= 0x80000000:
+            return self.address_index - 0x80000000
+        else:
+            return None
+
+    def copy_from(self, src_entry: 'Bip44Entry'):
+        self.tree_id = src_entry.tree_id
+        self.id = src_entry.id
+        self.xpub = src_entry.xpub
+        self.__bip32_path = src_entry.__bip32_path
+        self.address_index = src_entry.address_index
+        self.__xpub_hash = src_entry.__xpub_hash
+
+    def set_bip32_path(self, path):
+        self.__bip32_path = path
+
+    @property
+    def bip32_path(self):
+        return self.__bip32_path
+
+    @bip32_path.setter
+    def bip32_path(self, path):
+        self.set_bip32_path(path)
+
+    def get_bip32key(self) -> BIP32Key:
+        if not self.__bip32_key:
+            if not self.xpub:
+                raise Exception('XPUB not set')
+            self.__bip32_key = BIP32Key.fromExtendedKey(self.xpub)
+        return self.__bip32_key
+
+    def get_child_entry(self, index) -> 'Bip44Entry':
+        child = self.child_entries.get(index)
+        if not child:
+            key = self.get_bip32key()
+            child_key = key.ChildKey(index)
+            child_xpub = child_key.ExtendedKey(False, True)
+            if self.bip32_path:
+                bip32_path_n = bip32_path_string_to_n(self.bip32_path)
+                bip32_path_n.append(index)
+                bip32_path = bip32_path_n_to_string(bip32_path_n)
+            else:
+                raise Exception('Unknown BIP32 path of the parrent')
+
+            child = Bip44Entry(tree_id=self.tree_id, id=None, parent=self, xpub=child_xpub, address_index=index,
+                               bip32_path=bip32_path, bip32_key=child_key)
+            self.child_entries[index] = child
+        return child
+
+    def read_from_db(self, db_cursor, create=False):
+        if self.id:
+            db_cursor.execute('select ' + ','.join(self.db_fields) + ',id from address where id=?', (self.id,))
+        elif self.xpub:
+            xpub_hash = xpub_to_hash(self.xpub)
+            db_cursor.execute('select ' + ','.join(self.db_fields) + ',id from address where xpub_hash=?', (xpub_hash,))
+        else:
+            raise Exception('Cannot read from db: both id and xpub_hash are null')
+        row = db_cursor.fetchone()
+        if row:
+            for idx, f in enumerate(self.db_fields):
+                if f in ('address_index', 'balance', 'received', 'tree_id'):
+                    if row[idx] is not None:
+                        self.__setattr__(f, row[idx])
+                elif f == 'path':
+                    if row[idx]:
+                        self.bip32_path = row[idx]
+                elif f == 'xpub_hash':
+                    self.__xpub_hash = row[idx]
+                elif f == 'parent_id':
+                    self.__parent_id = row[idx]
+                else:
+                    raise Exception('Unknown field name')
+            if not self.id:
+                self.id = row[len(self.db_fields)]  # id is an additional field read from db when using xpub_hash as a
+                                                    # key
+            if self.__parent and (not self.__parent_id or self.__parent.id != self.__parent_id):
+                self.__parent_id = self.__parent.id
+                # corrent parent_id in the database
+                db_cursor.execute('update address set parent_id=? where id=?', (self.__parent.id, self.id))
+
+        elif create:
+            self.create_in_db(db_cursor)
+
+    def create_in_db(self, db_cursor):
+        values = []
+        for idx, f in enumerate(self.db_fields):
+            if f in ('address_index', 'balance', 'received', 'tree_id'):
+                values.append(self.__getattribute__(f))
+            elif f == 'path':
+                values.append(self.bip32_path)
+            elif f == 'xpub_hash':
+                if self.xpub:
+                    xh = xpub_to_hash(self.xpub)
+                else:
+                    xh = None
+                values.append(xh)
+            elif f == 'parent_id':
+                if self.__parent_id:
+                    values.append(self.__parent_id)
+                elif self.__parent and self.__parent.id:
+                    values.append(self.__parent.id)
+                else:
+                    values.append(None)
+            else:
+                raise Exception('Unknown field name')
+
+        db_cursor.execute('insert into address(' + ','.join(self.db_fields) + ') values(' +
+                          ','.join(['?'] * len(self.db_fields)) + ')', values)
+        self.id = db_cursor.lastrowid
+
+
+class Bip44AddressType(AttrsProtected, Bip44Entry):
+    def __init__(self, tree_id: Optional[int]):
+        AttrsProtected.__init__(self)
+        Bip44Entry.__init__(self, tree_id=tree_id, id=None, parent=None)
         self.address = None
-        self.path: str = None
-        self.tree_id = None
         self.balance = 0
         self.received = 0
-        self.is_change = None
+        self.name = ''
         self.last_scan_block_height = None
+        self.db_fields.extend(('balance', 'received'))
         self.bip44_account = None
+        self.__is_change = False
         self.set_attr_protection()
+
+    def set_bip32_path(self, path):
+        Bip44Entry.set_bip32_path(self, path)
+        if path:
+            path_n = bip32_path_string_to_n(path)
+            if path_n[-2] == 1:
+                self.__is_change = True
+            else:
+                self.__is_change = False
+
+    def copy_from(self, src_entry: 'Bip44AddressType'):
+        Bip44Entry.copy_from(self, src_entry)
+        self.address = src_entry.address
+        self.balance = src_entry.balance
+        self.received = src_entry.received
+        self.name = src_entry.name
+        self.last_scan_block_height = src_entry.last_scan_block_height
+        self.__is_change = src_entry.__is_change
 
     def update_from(self, src_addr: 'Bip44AddressType') -> bool:
         """
@@ -110,6 +272,10 @@ class Bip44AddressType(AttrsProtected):
             self.received = received
             return True
         return False
+
+    @property
+    def is_change(self):
+        return self.__is_change
 
     def __gt__(self, other: 'Bip44AddressType'):
         if self.is_change == other.is_change:
@@ -140,25 +306,23 @@ class Bip44AddressType(AttrsProtected):
         return le
 
 
-class Bip44AccountType(AttrsProtected):
-    def __init__(self, id: int, xpub_hash: str, address_index: int, bip32_path: str, balance: int, received: int,
-                 name: str):
-        super(Bip44AccountType, self).__init__()
-        self.id: Optional[int] = id
-        self.xpub_hash: str = xpub_hash
-        self.address_index: Optional[int] = address_index
-        self.bip32_path: Optional[int] = bip32_path
-        self.balance: Optional[int] = balance
-        self.received: Optional[int] = received
-        self.name: Optional[str] = name
+class Bip44AccountType(AttrsProtected, Bip44Entry):
+    def __init__(self,
+                 tree_id: Optional[int],
+                 id: Optional[int],
+                 xpub: Optional[str],
+                 address_index: Optional[int],
+                 bip32_path: Optional[str]):
+        AttrsProtected.__init__(self)
+        Bip44Entry.__init__(self, tree_id=tree_id, id=id, parent=None, xpub=xpub, address_index=address_index,
+                            bip32_path=bip32_path)
+        self.balance: Optional[int] = 0
+        self.received: Optional[int] = 0
+        self.name: Optional[str] = ''
         self.addresses: List[Bip44AddressType] = []
+        self.view_fresh_addresses_count = 0  # how many unused addresses will be shown in GUI
+        self.db_fields.extend(('balance', 'received'))
         self.set_attr_protection()
-
-    def get_hardened_index(self):
-        if self.address_index is not None and self.address_index >= 0x80000000:
-            return self.address_index - 0x80000000
-        else:
-            return None
 
     def get_account_name(self):
         if self.name:
@@ -169,6 +333,20 @@ class Bip44AccountType(AttrsProtected):
                 return f'Account #' + str(nr + 1)
             else:
                 return f'Account *' + str(self.address_index)
+
+    def copy_from(self, src_entry: 'Bip44AccountType'):
+        Bip44Entry.copy_from(self, src_entry)
+        self.balance = src_entry.balance
+        self.received = src_entry.received
+        self.name = src_entry.name
+        for a in src_entry.addresses:
+            new_a = self.address_by_id(a.id)
+            if not new_a:
+                new_a = Bip44AddressType(None)
+                new_a.copy_from(a)
+                self.add_address(new_a)
+            else:
+                new_a.copy_from(a)
 
     def update_from(self, src_account: 'Bip44AccountType') -> bool:
         """
@@ -184,20 +362,28 @@ class Bip44AccountType(AttrsProtected):
             return True
         return False
 
-    def update_from_args(self, balance: int, received: int, name: str) -> bool:
+    def update_from_args(self, balance: int, received: int, name: str, bip32_path: str) -> bool:
         """
         Updates the account atttributes which can be changed by fetching new transactions process.
         :param src_account:
         :return: True if any of the attributes have been updated.
         """
-        if balance != self.balance or received != self.received or name != self.name:
+        if balance != self.balance or received != self.received:
             self.balance = balance
             self.received = received
             self.name = name
             return True
+
+        if name != self.name and name:
+            self.name = name
+            return True
+
+        if self.bip32_path != bip32_path and bip32_path:
+            self.bip32_path = bip32_path
+            return True
         return False
 
-    def add_address(self, address: Bip44AddressType) -> Tuple[bool, bool, int, Bip44AddressType]:
+    def add_address(self, address: Bip44AddressType, insert_index: int = None) -> Tuple[bool, bool, int, Bip44AddressType]:
         """
         :param address:
         :return:
@@ -210,17 +396,21 @@ class Bip44AccountType(AttrsProtected):
         is_new = False
         updated = False
         address.bip44_account = self
-        if not address.path:
+        if not address.bip32_path:
             if self.bip32_path and address.address_index is not None:
                 if address.is_change:
                     change = 1
                 else:
                     change = 0
-                address.path = f"{self.bip32_path}/{change}/{address.address_index}"
+                address.bip32_path = f"{self.bip32_path}/{change}/{address.address_index}"
 
         addr_index = self.address_index_by_id(address.id)
         if addr_index is None:
-            addr_index = self.get_address_insert_index(address)
+            if not insert_index:
+                addr_index = self.get_address_insert_index(address)
+            else:
+                addr_index = insert_index
+
             self.addresses.insert(addr_index, address)
             addr = address
             is_new = True

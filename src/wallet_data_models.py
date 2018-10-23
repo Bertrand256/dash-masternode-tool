@@ -7,6 +7,7 @@ import hashlib
 import logging
 from PyQt5.QtCore import Qt, QVariant, QModelIndex, QAbstractItemModel
 from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtWidgets import QTreeView
 from more_itertools import consecutive_groups
 from typing import Optional, List, Tuple, Dict
 import app_utils
@@ -248,7 +249,7 @@ class UtxoTableModel(ExtSortFilterTableModel):
                         return right_value < left_value
         return False
 
-    def filterAcceptsRow(self, source_row):
+    def filterAcceptsRow(self, source_row, source_parent):
         will_show = True
         if 0 <= source_row < len(self.utxos):
             if self.hide_collateral_utxos:
@@ -277,8 +278,15 @@ class AccountListModel(ExtSortFilterTableModel):
             TableModelColumn('address', 'Address', True, 100)
         ], False, True)
         self.accounts: List[Bip44AccountType] = []
-        self.modified = False
+        self.__data_modified = False
         self.set_attr_protection()
+
+    def reset_modified(self):
+        self.__data_modified = False
+
+    @property
+    def data_modified(self):
+        return self.__data_modified
 
     def flags(self, index):
         return Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable
@@ -365,6 +373,35 @@ class AccountListModel(ExtSortFilterTableModel):
                 self.endRemoveRows()
             return removed
 
+    def filterAcceptsRow(self, source_row, source_parent):
+        def count_prev_zero_received(acc: Bip44AccountType, start_index: int):
+            cnt = 0
+            index = start_index
+            while index>0:
+                a = acc.address_by_index(index)
+                if not a.received:
+                    cnt += 1
+                else:
+                    break
+                index -= 1
+            return cnt
+
+        will_show = True
+        if source_parent.isValid():
+            acc = source_parent.internalPointer()
+            if isinstance(acc, Bip44AccountType):
+                addr = acc.address_by_index(source_row)
+                if addr:
+                    if addr.received == 0:
+                        prev_cnt = count_prev_zero_received(acc, source_row - 1)
+                        if prev_cnt + 1 > acc.view_fresh_addresses_count:
+                            will_show = False
+        return will_show
+
+    def increase_account_fresh_addr_count(self, acc: Bip44AccountType, increase_count=1):
+        acc.view_fresh_addresses_count += increase_count
+        self.invalidateFilter()
+
     def account_by_id(self, id: int) -> Optional[Bip44AccountType]:
         for a in self.accounts:
             if a.id == id:
@@ -379,38 +416,43 @@ class AccountListModel(ExtSortFilterTableModel):
 
     def add_account(self, account: Bip44AccountType):
         existing_account = self.account_by_id(account.id)
+        self.__data_modified = True
         if not existing_account:
+            account_loc = Bip44AccountType(None, None, None, None, None)
+            account_loc.copy_from(account)
+
             idxs = [a.address_index for a in self.accounts]
             insert_idx = bisect.bisect_right(idxs, account.address_index)
             self.beginInsertRows(QModelIndex(), insert_idx, insert_idx)
-            self.accounts.insert(insert_idx, account)
+            self.accounts.insert(insert_idx, account_loc)
             self.endInsertRows()
-            self.modified = True
         else:
-            if existing_account.update_from(account):
-                self.modified = True
+            existing_account.copy_from(account)
 
     def add_account_address(self, account: Bip44AccountType, address: Bip44AddressType):
         account_idx = self.account_index_by_id(account.id)
         if account_idx is not None:
-            account = self.accounts[account_idx]
+            account_loc = self.accounts[account_idx]
             acc_index = self.index(account_idx, 0)
-            addr_idx = account.address_index_by_id(address.id)
+            addr_idx = account_loc.address_index_by_id(address.id)
             if addr_idx is None:
-                addr_idx = account.get_address_insert_index(address)
-                addr_exists = False
-            else:
-                addr_exists = True
-            self.beginInsertRows(acc_index, addr_idx, addr_idx)
-            if not addr_exists:
-                self.accounts.insert(addr_idx, account)
-            self.endInsertRows()
+                self.__data_modified = True
+                addr_loc = Bip44AddressType(None)
+                addr_loc.copy_from(address)
+                addr_idx = account_loc.get_address_insert_index(addr_loc)
+                self.beginInsertRows(acc_index, addr_idx, addr_idx)
+                account_loc.add_address(addr_loc, addr_idx)
+                self.endInsertRows()
 
     def account_data_changed(self, account: Bip44AccountType):
-        idx = self.account_index_by_id(account.id)
-        if idx is not None:
-            index = self.index(idx, 0)
-            self.dataChanged.emit(index, index)
+        account_idx = self.account_index_by_id(account.id)
+        if account_idx is not None:
+            account_loc = self.accounts[account_idx]
+            if account != account_loc:
+                account_loc.update_from(account)
+                self.__data_modified = True
+                index = self.index(account_idx, 0)
+                self.dataChanged.emit(index, index)
 
     def address_data_changed(self, account: Bip44AccountType, address: Bip44AddressType):
         account_idx = self.account_index_by_id(account.id)
@@ -419,19 +461,21 @@ class AccountListModel(ExtSortFilterTableModel):
             acc_index = self.index(account_idx, 0)
             addr_idx = account.address_index_by_id(address.id)
             if addr_idx is not None:
-                addr = account.address_by_index(addr_idx)
-                if addr != address:
-                    addr.update_from(address)
+                addr_loc = account.address_by_index(addr_idx)
+                if addr_loc != address:
+                    addr_loc.update_from(address)
                 addr_index = self.index(addr_idx, 0, parent=acc_index)
+                self.__data_modified = True
                 self.dataChanged.emit(addr_index, addr_index)
 
+    def remove_account(self, index):
+        if 0 <= index < len(self.accounts):
+            self.__data_modified = True
+            self.beginRemoveRows(QModelIndex(), index, index)
+            del self.accounts[index]
+            self.endRemoveRows()
+
     def clear_accounts(self):
+        self.__data_modified = True
         self.accounts.clear()
-
-    def sort_accounts(self):
-        try:
-            self.accounts.sort(key=lambda x: x.address_index)
-        except Exception as e:
-            pass
-
 

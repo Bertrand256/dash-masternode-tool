@@ -2951,7 +2951,7 @@ class ProposalsModel(ExtSortFilterTableModel):
                         diff = right_value < left_value
                         return diff
 
-    def filterAcceptsRow(self, row_index):
+    def filterAcceptsRow(self, row_index, source_parent):
         will_show = True
         try:
             if row_index >= 0 and row_index < len(self.proposals):
