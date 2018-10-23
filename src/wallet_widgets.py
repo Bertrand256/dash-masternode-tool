@@ -1272,10 +1272,13 @@ class WalletAccountItemDelegate(QItemDelegate):
                         color = Qt.black
                 else:
                     # if balance is zero use bold font
-                    if data.balance == 0:
-                        color = Qt.gray
-                    else:
+                    if data.balance > 0:
                         color = Qt.black
+                    else:
+                        if data.received > 0:
+                            color = Qt.darkGray
+                        else:
+                            color = Qt.darkGreen
 
                 painter.setPen(QPen(color))
                 painter.setFont(option.font)

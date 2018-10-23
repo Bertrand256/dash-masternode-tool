@@ -45,7 +45,7 @@ class ColumnedSortFilterProxyModel(QSortFilterProxyModel):
             logging.exception('exception occurred')
 
     def filterAcceptsRow(self, source_row, source_parent):
-        return self.source_model.filterAcceptsRow(source_row)
+        return self.source_model.filterAcceptsRow(source_row, source_parent)
 
     def lessThan(self, left, right):
         is_less = None
@@ -232,7 +232,7 @@ class ColumnedItemModelMixin(object):
     def lessThan(self, col_index, left_row_index, right_row_index):
         pass
 
-    def filterAcceptsRow(self, row_index):
+    def filterAcceptsRow(self, row_index, source_parent):
         return True
 
     def invalidateFilter(self):

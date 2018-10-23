@@ -13,7 +13,7 @@ from functools import partial
 from typing import Tuple, List, Optional, Dict, Generator, Callable
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSlot, QStringListModel, QItemSelectionModel, \
-    QItemSelection, QSortFilterProxyModel, QAbstractItemModel, QModelIndex, QObject, QAbstractListModel, QPoint
+    QItemSelection, QSortFilterProxyModel, QAbstractItemModel, QModelIndex, QObject, QAbstractListModel, QPoint, QRect
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox, QSplitter, QVBoxLayout, QPushButton, \
     QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout, QAction, QAbstractItemView, QStatusBar
@@ -25,7 +25,7 @@ import hw_intf
 import thread_utils
 from app_config import MasternodeConfig
 from app_defs import HWType, DEBUG_MODE
-from bip44_wallet import Bip44Wallet, Bip44KeysEntry
+from bip44_wallet import Bip44Wallet, Bip44Entry
 from ui.ui_wallet_dlg_options1 import Ui_WdgOptions1
 from wallet_common import UtxoType, Bip44AccountType, Bip44AddressType, TxOutputType
 from dashd_intf import DashdInterface, DashdIndexException
@@ -50,6 +50,7 @@ CACHE_ITEM_UTXO_SRC_MASTRNODE = 'WalletDlg_UtxoSrc_Masternode_%NETWORK%'
 CACHE_ITEM_UTXO_COLS = 'WalletDlg_UtxoColumns'
 CACHE_ITEM_LAST_RECIPIENTS = 'WalletDlg_LastRecipients_%NETWORK%'
 CACHE_ITEM_MAIN_SPLITTER_SIZES = 'WalletDlg_MainSplitterSizes'
+CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES = 'WalletDlg_ShowAccountAddresses'
 
 FETCH_DATA_INTERVAL_SECONDS = 60
 MAIN_VIEW_BIP44_ACCOUNTS = 1
@@ -131,7 +132,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.account_list_model = AccountListModel(self)
         self.data_thread_event = threading.Event()
 
-        self.account_mode_show_addresses = False
+        self.account_mode_show_individual_addresses = False
         self.wdg_loading_txs_animation = None
 
         self.setupUi()
@@ -178,7 +179,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.cboAddressSourceMode.blockSignals(False)
 
         self.set_message("")
-        self.set_message_2("")
         self.wdg_dest_adresses = SendFundsDestination(self.dest_widget, self, self.main_ui.config,
                                                       self.main_ui.hw_session)
         self.wdg_dest_adresses.resized_signal.connect(self.on_dest_addresses_resized)
@@ -208,8 +208,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.act_show_individual_addresses = QAction('Show individual addresses', self)
         self.act_show_individual_addresses.triggered.connect(self.on_show_individual_addresses_triggered)
         self.act_show_individual_addresses.setCheckable(True)
-        self.act_show_individual_addresses.setChecked(self.account_mode_show_addresses)
+        self.act_show_individual_addresses.setChecked(self.account_mode_show_individual_addresses)
         self.accountsListView.addAction(self.act_show_individual_addresses)
+        self.act_show_account_next_fresh_address = QAction('Show next fresh address', self)
+        self.act_show_account_next_fresh_address.triggered.connect(self.on_show_account_next_fresh_address_triggered)
+        self.accountsListView.addAction(self.act_show_account_next_fresh_address)
 
         # todo: for testing only:
         self.act_delete_account_data = QAction('Clear account data in cache', self)
@@ -226,7 +229,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         # todo: end testing
 
         self.wdg_options_mode1 = None
-        self.account_mode_show_addresses = False
 
         self.prepare_options_widgets()
         self.update_ui_show_individual_addresses()
@@ -300,6 +302,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             except Exception:
                 log.exception('Cannot restore data from cache.')
 
+        self.account_mode_show_individual_addresses = app_cache.get_value(CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES, False, bool)
+
     def save_cache_settings(self):
         app_cache.save_window_size(self)
         app_cache.set_value(CACHE_ITEM_MAIN_SPLITTER_SIZES, self.splitterMain.sizes())
@@ -335,6 +339,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             except Exception:
                 log.exception('Cannot save data to cache.')
         app_cache.set_value(CACHE_ITEM_LAST_RECIPIENTS.replace('%NETWORK%', self.app_config.dash_network), rcp_data)
+        app_cache.set_value(CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES, self.account_mode_show_individual_addresses)
 
     def stop_threads(self):
         self.finishing = True
@@ -395,19 +400,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             else:
                 self.lbl_message.setVisible(True)
                 self.lbl_message.setText(message)
-
-        if threading.current_thread() != threading.main_thread():
-            self.call_in_main_thread(set_msg, message)
-        else:
-            set_msg(message)
-
-    def set_message_2(self, message):
-        def set_msg(message):
-            if not message:
-                self.lbl_message_2.setVisible(False)
-            else:
-                self.lbl_message_2.setVisible(True)
-                self.lbl_message_2.setText(message)
 
         if threading.current_thread() != threading.main_thread():
             self.call_in_main_thread(set_msg, message)
@@ -577,6 +569,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.hw_selected_address_id = data.id
             else:
                 return
+            self.update_details_tab()
         self.on_utxo_src_hash_changed()
 
         if old_sel != self.get_utxo_src_cfg_hash():
@@ -603,6 +596,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     self.selected_mns.append(mni)
             self.on_utxo_src_hash_changed()
             self.data_thread_event.set()
+            self.update_details_tab()
 
     def update_context_actions(self):
         visible = False
@@ -616,17 +610,20 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         else:
             self.act_delete_account_data.setVisible(False)
 
+    def show_address_on_hw(self, addr: Bip44AddressType):
+        _a = hw_intf.get_address(self.hw_session, addr.bip32_path, True,
+                                 f'Displaying address <b>{addr.address}</b>.<br>Click the confirmation button on'
+                                 f' your device.')
+        if _a != addr.address:
+            raise Exception('Address inconsistency between db cache and device')
+
     def on_show_address_on_hw_triggered(self):
         if self.hw_selected_address_id is not None:
             a = self.account_list_model.account_by_id(self.hw_selected_account_id)
             if a:
                 addr = a.address_by_id(self.hw_selected_address_id)
                 if addr:
-                    _a = hw_intf.get_address(self.hw_session, addr.path, True,
-                                             f'Displaying address <b>{addr.address}</b>.<br>Click the confirmation button on'
-                                             f' your device.')
-                    if _a != addr.address:
-                        raise Exception('Address inconsistency between db cache and device')
+                    self.show_address_on_hw(addr)
 
     def on_delete_account_triggered(self):
         if self.hw_selected_account_id is not None:
@@ -650,7 +647,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 signals_state = self.accountsListView.blockSignals(True)
                 with self.account_list_model:
                     self.allow_fetch_transactions = False
-                    self.account_list_model.removeRow(index.row())
+                    self.account_list_model.remove_account(index.row())
                     self.bip44_wallet.remove_account(acc.id)
                     self.allow_fetch_transactions = fx_state
                     self.accountsListView.blockSignals(signals_state)
@@ -700,6 +697,23 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         self.utxo_table_model.beginResetModel()
                         self.utxo_table_model.clear_utxos()
                         self.utxo_table_model.endResetModel()
+
+    @pyqtSlot()
+    def on_show_account_next_fresh_address_triggered(self):
+        view_index = self.accountsListView.currentIndex()
+        if view_index and view_index.isValid():
+            index = self.account_list_model.mapToSource(view_index)
+            acc = None
+            data = index.internalPointer()
+            if isinstance(data, Bip44AddressType):
+                acc_view_index = view_index.parent()
+                if acc_view_index.isValid():
+                    acc_index = self.account_list_model.mapToSource(acc_view_index)
+                    acc = acc_index.internalPointer()
+            elif isinstance(data, Bip44AccountType):
+                acc = data
+            if acc:
+                self.account_list_model.increase_account_fresh_addr_count(acc, 1)
 
     def get_utxo_src_cfg_hash(self):
         hash = str({self.utxo_src_mode}) + ':'
@@ -788,7 +802,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                 # will be displayed by the callback method self.on_bip44_account_added
                                 for a in self.bip44_wallet.list_accounts():
                                     pass
-                                # self.reset_accounts_view()
 
                             self.last_hd_tree = self.hw_session.hd_tree_ident
                             last_hd_tree_fetched_txs = ''
@@ -809,7 +822,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                 self.utxo_table_model.endResetModel()
 
                         if list_utxos:
-                            self.set_message_2('Loading data for display...')
+                            self.set_message('Loading data for display...')
                             log.debug('Fetching utxos from the database')
                             self.utxo_table_model.set_block_height(self.bip44_wallet.get_block_height())
 
@@ -826,17 +839,14 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                             log.debug('Reset UTXO model time: %s', time.time() - t)
                             log.debug('Fetching of utxos finished')
-                            self.set_message_2('Displaying data...')
+                            self.set_message('Displaying data...')
 
-                        self.set_message_2('')
+                        self.set_message('')
 
                     if self.last_txs_fetch_time == 0 or (time.time() - self.last_txs_fetch_time > FETCH_DATA_INTERVAL_SECONDS):
                         if self.allow_fetch_transactions:
                             self.set_message('Fetching transactions...')
-
-                            if last_hd_tree_fetched_txs != self.hw_session.hd_tree_ident:
-                                # a spinner will be shown only only when transactions are fetched the first time
-                                self.show_loading_tx_animation()
+                            self.show_loading_tx_animation()
 
                             if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
                                 fun_to_call = partial(self.bip44_wallet.fetch_all_accounts_txs, check_break_fetch_process)
@@ -880,25 +890,34 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         transactions - those changes will be reflected in GUI after the call completes.
         :return:
         """
-        accounts_modified = False
-        with self.account_list_model:
-            self.bip44_wallet.reset_tx_diffs()
-            function_to_call()
+        try:
+            self.account_list_model.reset_modified()
+            with self.account_list_model:
+                self.bip44_wallet.reset_tx_diffs()
+                function_to_call()
 
-        if not check_break_execution_callback():
-            list_utxos = self.get_utxo_generator(True)
-            if list_utxos:
-                self.utxo_table_model.set_block_height(self.bip44_wallet.get_block_height())
+            if not check_break_execution_callback():
+                if self.account_list_model.data_modified:
+                    WndUtils.call_in_main_thread(self.account_list_model.invalidateFilter)
 
-                new_utxos = []
-                for utxo in list_utxos:
-                    new_utxos.append(utxo)
+                list_utxos = self.get_utxo_generator(True)
+                if list_utxos:
+                    self.utxo_table_model.set_block_height(self.bip44_wallet.get_block_height())
 
-                removed_utxos = [x for x in self.bip44_wallet.utxos_removed]
+                    new_utxos = []
+                    for utxo in list_utxos:
+                        new_utxos.append(utxo)
 
-                if new_utxos or removed_utxos:
-                    with self.utxo_table_model:
-                        WndUtils.call_in_main_thread(self.utxo_table_model.update_utxos, new_utxos, removed_utxos)
+                    removed_utxos = [x for x in self.bip44_wallet.utxos_removed]
+
+                    if new_utxos or removed_utxos:
+                        with self.utxo_table_model:
+                            WndUtils.call_in_main_thread(self.utxo_table_model.update_utxos, new_utxos, removed_utxos)
+
+        except BreakFetchTransactionsException:
+            raise
+        except Exception as e:
+            WndUtils.errorMsg(str(e))
 
     def on_bip44_account_added(self, account: Bip44AccountType):
         """
@@ -907,8 +926,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         :param account: the account being added.
         """
         if not self.finishing:
-            if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
-                self.account_list_model.add_account(account)
+            def fun():
+                if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+                    self.account_list_model.add_account(account)
+
+            WndUtils.call_in_main_thread(fun)
 
     def on_bip44_account_changed(self, account: Bip44AccountType):
         """
@@ -917,19 +939,27 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         :param account: the account being modified.
         """
         if not self.finishing:
-            if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
-                self.account_list_model.account_data_changed(account)
+            def fun():
+                if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+                    self.account_list_model.account_data_changed(account)
+
+            WndUtils.call_in_main_thread(fun)
 
     def on_bip44_account_address_added(self, account: Bip44AccountType, address: Bip44AddressType):
         if not self.finishing:
-            if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
-                self.account_list_model.add_account_address(account, address)
+            def fun():
+                if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+                    self.account_list_model.add_account_address(account, address)
+
+            WndUtils.call_in_main_thread(fun)
 
     def on_bip44_account_address_changed(self, account: Bip44AccountType, address: Bip44AddressType):
-        if not self.finishing:
-            if account:
+        if not self.finishing and account:
+            def fun():
                 self.account_list_model.address_data_changed(account, address)
-            self.mn_model.address_data_changed(address)
+                self.mn_model.address_data_changed(address)
+
+            WndUtils.call_in_main_thread(fun)
 
     @pyqtSlot()
     def on_btnLoadTransactions_clicked(self):
@@ -998,12 +1028,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     @pyqtSlot()
     def on_show_individual_addresses_triggered(self):
-        self.account_mode_show_addresses = not self.account_mode_show_addresses
+        self.account_mode_show_individual_addresses = not self.account_mode_show_individual_addresses
         self.update_ui_show_individual_addresses()
-        self.act_show_individual_addresses.setChecked(self.account_mode_show_addresses)
+        self.act_show_individual_addresses.setChecked(self.account_mode_show_individual_addresses)
 
     def update_ui_show_individual_addresses(self):
-        if not self.account_mode_show_addresses:
+        if not self.account_mode_show_individual_addresses:
             self.accountsListView.collapseAll()
             self.accountsListView.setItemsExpandable(False)
             self.accountsListView.setRootIsDecorated(False)
@@ -1014,7 +1044,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def show_loading_tx_animation(self):
         if not self.wdg_loading_txs_animation:
             def show():
-                self.wdg_loading_txs_animation = SpinnerWidget(self.accountsListView, 60, 'Loading data...', 11)
+                size = min(self.wdgSpinner.height(), self.wdgSpinner.width())
+                g = self.wdgSpinner.geometry()
+                g.setWidth(size)
+                g.setHeight(size)
+                self.wdgSpinner.setGeometry(g)
+                self.wdg_loading_txs_animation = SpinnerWidget(self.wdgSpinner, size, '', 11)
                 self.wdg_loading_txs_animation.show()
 
             WndUtils.call_in_main_thread(show)
@@ -1027,3 +1062,48 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.wdg_loading_txs_animation = None
 
             WndUtils.call_in_main_thread(hide)
+
+    def update_details_tab(self):
+        def set_text(text):
+            self.edtDetailsAddress.setPlainText(text)
+            textEdit = self.edtDetailsAddress
+
+            font = textEdit.document().defaultFont()  # or another font if you change it
+            fontMetrics = QtGui.QFontMetrics(font)  # a QFontMetrics based on our font
+            textSize = fontMetrics.size(0, text)
+            textHeight = textSize.height()  # constant may need to be tweaked
+            textEdit.setFixedHeight(max(textHeight, self.edtDetailsReceived.height()))
+
+        addr_value = ''
+        addr_lbl = ''
+        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+            if self.hw_selected_address_id:
+                addr_lbl = 'Address'
+                a = self.account_list_model.account_by_id(self.hw_selected_account_id)
+                if a:
+                    a = a.address_by_id(self.hw_selected_address_id)
+                    addr_value = a.address
+            elif self.hw_selected_account_id:
+                addr_lbl = 'XPUB'
+                a = self.account_list_model.account_by_id(self.hw_selected_account_id)
+                if a:
+                    addr_value = a.xpub
+        elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
+            pass
+
+        html = f"""<head>
+<style type="text/css">
+    .lbl {{font-weight: bold; text-align: right; padding-right:6px; white-space:nowrap}}
+</style>
+</head>
+<body>
+<table>
+<tr><td class="lbl">{addr_lbl}</td><td>{addr_value}</td></tr>
+<tr><td class="lbl">Path</td><td>{a.bip32_path if a else ''}</td></tr>
+<tr><td class="lbl">Balance</td><td>{app_utils.to_string(a.balance/1e8)} Dash</td></tr>
+<tr><td class="lbl">Received</td><td>{app_utils.to_string(a.received/1e8)} Dash</td></tr>
+</table>
+</body>
+"""
+        self.edtDetailsAddress.setText(html)
+
