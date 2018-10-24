@@ -153,6 +153,11 @@ class UtxoTableModel(ExtSortFilterTableModel):
                                     return 'Unconfirmed'
                                 else:
                                     return app_utils.to_string(utxo.__getattribute__(field_name))
+                            elif field_name == 'address':
+                                if utxo.address_obj and utxo.address_obj.label:
+                                    return utxo.address_obj.label
+                                else:
+                                    return utxo.address
                             else:
                                 return app_utils.to_string(utxo.__getattribute__(field_name))
                     elif role == Qt.ForegroundRole:
