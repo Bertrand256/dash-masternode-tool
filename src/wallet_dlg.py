@@ -213,6 +213,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.act_show_account_next_fresh_address = QAction('Show next fresh address', self)
         self.act_show_account_next_fresh_address.triggered.connect(self.on_show_account_next_fresh_address_triggered)
         self.accountsListView.addAction(self.act_show_account_next_fresh_address)
+        self.act_set_entry_label = QAction('Set label', self)
+        self.act_set_entry_label.triggered.connect(self.on_act_set_entry_label_triggered)
+        self.accountsListView.addAction(self.act_set_entry_label)
 
         # todo: for testing only:
         self.act_delete_account_data = QAction('Clear account data in cache', self)
@@ -376,6 +379,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 dest_index = self.mn_model.mapFromSource(source_row_idx)
                 sel.select(dest_index, dest_index)
         self.mnListView.selectionModel().select(sel, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
+        self.update_details_tab()
 
     @pyqtSlot(int)
     def on_cboAddressSourceMode_currentIndexChanged(self, index):
@@ -783,7 +787,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
             self.last_txs_fetch_time = 0
             last_utxos_source_hash = ''
-            last_hd_tree_fetched_txs = ''
 
             while not ctrl.finish and not self.finishing:
                 hw_error = False
@@ -804,7 +807,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                     pass
 
                             self.last_hd_tree = self.hw_session.hd_tree_ident
-                            last_hd_tree_fetched_txs = ''
 
                 if not hw_error:
                     if self.finishing:
@@ -864,7 +866,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                 try:
                                     self.call_fun_monitor_txs(fun_to_call, check_break_fetch_process)
                                     self.last_txs_fetch_time = int(time.time())
-                                    last_hd_tree_fetched_txs = self.hw_session.hd_tree_ident
                                 except BreakFetchTransactionsException:
                                     # the purpose of this exception is to break the fetch routine only
                                     pass
@@ -917,6 +918,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         except BreakFetchTransactionsException:
             raise
         except Exception as e:
+            log.exception('Exception occurred')
             WndUtils.errorMsg(str(e))
 
     def on_bip44_account_added(self, account: Bip44AccountType):
@@ -1074,22 +1076,36 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             textHeight = textSize.height()  # constant may need to be tweaked
             textEdit.setFixedHeight(max(textHeight, self.edtDetailsReceived.height()))
 
-        addr_value = ''
+        addr_str = ''
         addr_lbl = ''
+        addr_path = ''
+        balance = 0
+        received = 0
         if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
             if self.hw_selected_address_id:
                 addr_lbl = 'Address'
-                a = self.account_list_model.account_by_id(self.hw_selected_account_id)
-                if a:
-                    a = a.address_by_id(self.hw_selected_address_id)
-                    addr_value = a.address
+                acc = self.account_list_model.account_by_id(self.hw_selected_account_id)
+                if acc:
+                    addr = acc.address_by_id(self.hw_selected_address_id)
+                    if addr:
+                        addr_path = addr.bip32_path
+                        addr_str = addr.address
+                        balance = addr.balance
+                        received = addr.received
             elif self.hw_selected_account_id:
                 addr_lbl = 'XPUB'
-                a = self.account_list_model.account_by_id(self.hw_selected_account_id)
-                if a:
-                    addr_value = a.xpub
+                addr = self.account_list_model.account_by_id(self.hw_selected_account_id)
+                if addr:
+                    addr_path = addr.bip32_path
+                    addr_str = addr.xpub
+                    balance = addr.balance
+                    received = addr.received
         elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
-            pass
+            addr_lbl = 'Address'
+            addr_path = ', '.join([mn.address.bip32_path for mn in self.selected_mns if mn.address.bip32_path is not None])
+            addr_str = ', '.join([mn.address.address for mn in self.selected_mns if mn.address.address is not None])
+            balance = sum([mn.address.balance for mn in self.selected_mns])
+            received = sum([mn.address.received for mn in self.selected_mns])
 
         html = f"""<head>
 <style type="text/css">
@@ -1098,12 +1114,30 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 </head>
 <body>
 <table>
-<tr><td class="lbl">{addr_lbl}</td><td>{addr_value}</td></tr>
-<tr><td class="lbl">Path</td><td>{a.bip32_path if a else ''}</td></tr>
-<tr><td class="lbl">Balance</td><td>{app_utils.to_string(a.balance/1e8)} Dash</td></tr>
-<tr><td class="lbl">Received</td><td>{app_utils.to_string(a.received/1e8)} Dash</td></tr>
+<tr><td class="lbl">{addr_lbl}</td><td>{addr_str}</td></tr>
+<tr><td class="lbl">Path</td><td>{addr_path}</td></tr>
+<tr><td class="lbl">Balance</td><td>{app_utils.to_string(balance/1e8)} Dash</td></tr>
+<tr><td class="lbl">Received</td><td>{app_utils.to_string(received/1e8)} Dash</td></tr>
 </table>
 </body>
 """
         self.edtDetailsAddress.setText(html)
+
+    def on_act_set_entry_label_triggered(self):
+        entry = None
+        if self.hw_selected_address_id:
+            acc = self.account_list_model.account_by_id(self.hw_selected_account_id)
+            if acc:
+                entry = acc.address_by_id(self.hw_selected_address_id)
+        elif self.hw_selected_account_id:
+            entry = self.account_list_model.account_by_id(self.hw_selected_account_id)
+
+        if entry:
+            label, ok = QInputDialog.getText(self, 'Enter new label', 'Enter new label', text = entry.label)
+            if ok:
+                fx_state = self.allow_fetch_transactions
+                with self.account_list_model:
+                    self.allow_fetch_transactions = False
+                    self.bip44_wallet.set_label_for_entry(entry, label)
+                    self.allow_fetch_transactions = fx_state
 

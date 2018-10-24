@@ -324,6 +324,12 @@ def bip32_path_string_to_n(path_str):
     return elems
 
 
+def bip32_path_string_append_elem(path_str: str, elem: int):
+    path_n = bip32_path_string_to_n(path_str)
+    path_n.append(elem)
+    return bip32_path_n_to_string(path_n)
+
+
 def compose_tx_locking_script(dest_address, dash_newtork: str):
     """
     Create a Locking script (ScriptPubKey) that will be assigned to a transaction output.

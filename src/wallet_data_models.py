@@ -39,7 +39,11 @@ class MnAddressTableModel(ExtSortFilterTableModel):
             mni.masternode = mn
             if mni.masternode.collateralAddress:
                 a = bip44_wallet.get_address_item(mni.masternode.collateralAddress, True)
-                mni.address = a
+                address_loc = Bip44AddressType(tree_id=None)
+                address_loc.copy_from(a)
+                if not address_loc.bip32_path:
+                    address_loc.bip32_path = mni.masternode.collateralBip32Path
+                mni.address = address_loc
                 self.mn_items.append(mni)
 
     def flags(self, index):
@@ -451,8 +455,8 @@ class AccountListModel(ExtSortFilterTableModel):
             if account != account_loc:
                 account_loc.update_from(account)
                 self.__data_modified = True
-                index = self.index(account_idx, 0)
-                self.dataChanged.emit(index, index)
+            index = self.index(account_idx, 0)
+            self.dataChanged.emit(index, index)
 
     def address_data_changed(self, account: Bip44AccountType, address: Bip44AddressType):
         account_idx = self.account_index_by_id(account.id)
