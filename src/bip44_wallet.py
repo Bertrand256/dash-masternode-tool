@@ -19,7 +19,8 @@ from dash_utils import bip32_path_string_to_n, pubkey_to_address, bip32_path_n_t
 from dashd_intf import DashdInterface
 from hw_common import HwSessionInfo
 from db_intf import DBCache
-from wallet_common import Bip44AccountType, Bip44AddressType, UtxoType, TxOutputType, xpub_to_hash, Bip44Entry
+from wallet_common import Bip44AccountType, Bip44AddressType, UtxoType, TxOutputType, xpub_to_hash, Bip44Entry, \
+    address_to_hash
 
 TX_QUERY_ADDR_CHUNK_SIZE = 10
 ADDRESS_SCAN_GAP_LIMIT = 20
@@ -47,7 +48,7 @@ class Bip44Wallet(object):
         self.account_by_id: Dict[int, Bip44AccountType] = {}
         self.account_by_bip32_path: Dict[str, Bip44AccountType] = {}  # todo: clear when switching
 
-        # list of addresses used by the app by not belonging to an account
+        # list of addresses created withing the current hd tree
         self.addresses_by_id: Dict[int, Bip44AddressType] = {}
 
         # transactions added/modified since the last reset_tx_diffs call
@@ -56,6 +57,7 @@ class Bip44Wallet(object):
         self.txs_removed: Dict[int, int] = {}  # {'tx_id': 'tx_id'}
 
         # utxos added/removed since the last reset_tx_diffs call
+        self.utxos_by_id: Dict[int, UtxoType] = {}
         self.utxos_added: Dict[int, int] = {}  # {'tx_output.id': 'address_id'}
         self.utxos_removed: Dict[int, int] = {}  # {'tx_output.id': 'address_id'}
 
@@ -82,6 +84,7 @@ class Bip44Wallet(object):
         self.__tree_id = None
         self.account_by_id.clear()
         self.addresses_by_id.clear()
+        self.utxos_by_id.clear()
 
     def get_tree_id(self):
         if not self.__tree_id:
@@ -137,6 +140,7 @@ class Bip44Wallet(object):
                 addr = Bip44AddressType(tree_id=None)
                 addr.address = address
                 addr.id = db_cursor.lastrowid
+                self.addresses_by_id[addr.id] = addr
                 self.db_intf.commit()
             else:
                 return None
@@ -164,7 +168,6 @@ class Bip44Wallet(object):
         addr = Bip44AddressType(address_dict.get('tree_id'))
 
         addr.id = address_dict.get('id')
-        #todo: verify if needed: address.parent_id = address_dict.get('parent_id')
         if addr.address_index is None:
             addr.address_index = address_dict.get('address_index')
         if addr.address is None:
@@ -178,6 +181,7 @@ class Bip44Wallet(object):
         addr.balance = address_dict.get('balance', 0)
         addr.received = address_dict.get('received', 0)
         addr.last_scan_block_height = address_dict.get('last_scan_block_height', 0)
+        self.addresses_by_id[addr.id] = addr
         return addr
 
     def _fill_temp_ids_table(self, ids: List[int], db_cursor):
@@ -221,7 +225,7 @@ class Bip44Wallet(object):
 
                     return self._get_address_from_dict(addr_info)
                 else:
-                    h = Bip44Entry.get_address_hash(address)
+                    h = address_to_hash(address)
                     db_cursor.execute('select label from labels.address_label where key=?', (h,))
                     row = db_cursor.fetchone()
                     if row:
@@ -933,6 +937,27 @@ class Bip44Wallet(object):
         # return base64.b64decode(txid_wrapped).hex()
         return txid_wrapped  # todo: for testling only
 
+    def _get_utxo(self, id: int, tx_hash: str, address_id: int, output_index: int, satoshis: int,
+                  block_height: int, block_ts: int, coinbase: int):
+        utxo = self.utxos_by_id.get(id)
+        if not utxo:
+            utxo = UtxoType()
+            self.utxos_by_id[id] = utxo
+        utxo.id = id
+        utxo.txid = self._unwrap_txid(tx_hash)
+        if not address_id:
+            utxo.address_obj = None
+        else:
+            utxo.address_obj = self.addresses_by_id.get(address_id)
+        utxo.output_index = output_index
+        utxo.satoshis = satoshis
+        utxo.block_height = block_height
+        utxo.time_stamp = block_ts
+        utxo.time_str = app_utils.to_string(datetime.datetime.fromtimestamp(block_ts))
+        utxo.coinbase = coinbase
+        utxo.get_cur_block_height_fun = self.get_block_height_nofetch
+        return utxo
+
     def list_utxos_for_account(self, account_id: int, only_new = False) -> Generator[UtxoType, None, None]:
         """
         :param account_id: database id of the account's record
@@ -940,11 +965,9 @@ class Bip44Wallet(object):
         tm_begin = time.time()
         db_cursor = self.db_intf.get_cursor()
         try:
-            sql_text = "select o.id, cha.path, a.address_index, tx.block_height, tx.coinbase, " \
-                       "tx.block_timestamp," \
-                       "tx.tx_hash, o.address, o.output_index, o.satoshis, o.address_id from tx_output o " \
-                       "join address a " \
-                       "on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca " \
+            sql_text = "select o.id, tx.block_height, tx.coinbase, tx.block_timestamp," \
+                       "tx.tx_hash, o.output_index, o.satoshis, o.address_id from tx_output o " \
+                       "join address a on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca " \
                        "on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null " \
                        "or spent_input_index is null) and aca.id=?"
 
@@ -958,27 +981,21 @@ class Bip44Wallet(object):
             db_cursor.execute(sql_text, (account_id,))
             log.debug('SQL exec time: %s', time.time() - t)
 
-            for id, path, addr_index, block_height, coinbase, block_timestamp, tx_hash, address, output_index,\
-                satoshis, address_id in db_cursor.fetchall():
+            for id, block_height, coinbase, block_timestamp, tx_hash, \
+                output_index, satoshis, address_id in db_cursor.fetchall():
 
-                utxo = UtxoType()
-                utxo.id = id
-                utxo.txid = self._unwrap_txid(tx_hash)
-                utxo.address = address
-                utxo.address_id = address_id
-                utxo.output_index = output_index
-                utxo.satoshis = satoshis
-                utxo.block_height = block_height
-                utxo.bip32_path = path + '/' + str(addr_index) if path else ''
-                utxo.time_stamp = block_timestamp
-                utxo.time_str = app_utils.to_string(datetime.datetime.fromtimestamp(block_timestamp))
-                utxo.coinbase = coinbase
-                utxo.get_cur_block_height_fun = self.get_block_height_nofetch
+                utxo = self._get_utxo(id, tx_hash, address_id, output_index, satoshis, block_height,
+                                      block_timestamp, coinbase)
                 yield utxo
         finally:
             if db_cursor.connection.total_changes > 0:
                 self.db_intf.commit()
             self.db_intf.release_cursor()
+
+            for id in self.utxos_removed:
+                if id in self.utxos_by_id:
+                    del self.utxos_by_id[id]
+
         diff = time.time() - tm_begin
         log.debug('list_utxos_for_account exec time: %ss', diff)
 
@@ -986,9 +1003,8 @@ class Bip44Wallet(object):
         db_cursor = self.db_intf.get_cursor()
         try:
             in_part = ','.join(['?'] * len(address_ids))
-            sql_text = "select o.id, cha.path, a.address_index, tx.block_height, tx.coinbase," \
-                       "tx.block_timestamp, tx.tx_hash, o.address, o.output_index, o.satoshis," \
-                       "o.address_id from tx_output o join address a" \
+            sql_text = "select o.id, tx.block_height, tx.coinbase,tx.block_timestamp, tx.tx_hash, o.output_index, " \
+                       "o.satoshis, o.address_id from tx_output o join address a" \
                        " on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca" \
                        " on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null" \
                        " or spent_input_index is null) and a.id in (" + in_part + ')'
@@ -1001,28 +1017,22 @@ class Bip44Wallet(object):
 
             db_cursor.execute(sql_text, address_ids)
 
-            for id, path, addr_index, block_height, coinbase, block_timestamp, tx_hash, address, output_index,\
-                satoshis, address_id in db_cursor.fetchall():
+            for id, block_height, coinbase, block_timestamp, tx_hash, \
+                output_index, satoshis, address_id in db_cursor.fetchall():
 
-                utxo = UtxoType()
-                utxo.id = id
-                utxo.txid = self._unwrap_txid(tx_hash)
-                utxo.address = address
-                utxo.address_id = address_id
-                utxo.output_index = output_index
-                utxo.satoshis = satoshis
-                utxo.block_height = block_height
-                utxo.bip32_path = path + '/' + str(addr_index) if path else ''
-                utxo.time_stamp = block_timestamp
-                utxo.time_str = app_utils.to_string(datetime.datetime.fromtimestamp(block_timestamp))
-                utxo.coinbase = coinbase
-                utxo.get_cur_block_height_fun = self.get_block_height_nofetch
+                utxo = self._get_utxo(id, tx_hash, address_id, output_index, satoshis, block_height,
+                                      block_timestamp, coinbase)
+
                 yield utxo
 
         finally:
             if db_cursor.connection.total_changes > 0:
                 self.db_intf.commit()
             self.db_intf.release_cursor()
+
+            for id in self.utxos_removed:
+                if id in self.utxos_by_id:
+                    del self.utxos_by_id[id]
 
     def list_accounts(self) -> Generator[Bip44AccountType, None, None]:
         tm_begin = time.time()
@@ -1094,8 +1104,14 @@ class Bip44Wallet(object):
             db_cursor.execute("delete from address where parent_id=?", (id,))
 
             db_cursor.execute("delete from address where id=?", (id,))
+
             acc = self.account_by_id.get(id)
             if acc:
+                # remove the all addresses related to this account from an helper-dictionary
+                for a in acc.addresses:
+                    if a.id in self.addresses_by_id:
+                        del self.addresses_by_id[a.id]
+
                 del self.account_by_id[id]
             acc = self.account_by_bip32_path.get(acc.bip32_path)
             if acc:
@@ -1136,7 +1152,7 @@ class Bip44Wallet(object):
 
             entry.label = label
             if entry.address:
-                addr_hash = Bip44Entry.get_address_hash(entry.address)
+                addr_hash = address_to_hash(entry.address)
                 db_cursor.execute("select id from labels.address_label where key=?", (addr_hash,))
                 row = db_cursor.fetchone()
                 if not row:
@@ -1159,8 +1175,14 @@ class Bip44Wallet(object):
             self.db_intf.release_cursor()
 
         if isinstance(entry, Bip44AddressType):
+            addr_loc = self.addresses_by_id.get(entry.id)
+            if addr_loc:
+                addr_loc.label = label
             if self.on_account_address_added_callback:
                 self.on_account_address_added_callback(entry.bip44_account, entry)
         elif isinstance(entry, Bip44AccountType):
+            acc_loc = self.account_by_id.get(entry.id)
+            if acc_loc:
+                acc_loc.label = label
             if self.on_account_data_changed_callback:
                 self.on_account_data_changed_callback(entry)

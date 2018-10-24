@@ -22,17 +22,25 @@ def xpub_to_hash(xpub: str):
     return xpub_hash
 
 
+def address_to_hash(address):
+    abin = base58.b58decode(address)
+    hash = bitcoin.bin_sha256(abin)
+    hash = base64.b64encode(hash)
+    return hash.decode('ascii')
+
+
 class UtxoType(AttrsProtected):
     def __init__(self):
         super(UtxoType, self).__init__()
         self.id = None
-        self.address: str = None
-        self.address_id: int = None
+        # self.address: str = None
+        # self.address_id: int = None
+        self.address_obj: 'Bip44AddressType' = None
         self.txid = None
         self.output_index = None
         self.satoshis = None
         self.block_height = None
-        self.bip32_path = None
+        # self.bip32_path = None
         self.time_stamp = 0  # block timestamp
         self.time_str = None
         self.is_collateral = False
@@ -53,6 +61,24 @@ class UtxoType(AttrsProtected):
     @property
     def coinbase_locked(self):
         return True if self.coinbase and self.confirmations < 100 else False
+
+    @property
+    def bip32_path(self):
+        if self.address_obj:
+            return self.address_obj.bip32_path
+        return None
+
+    @property
+    def address(self):
+        if self.address_obj:
+            return self.address_obj.address
+        return None
+
+    @property
+    def address_id(self):
+        if self.address_obj:
+            return self.address_obj.id
+        return None
 
 
 class TxOutputType(AttrsProtected):
@@ -198,19 +224,12 @@ class Bip44Entry(object):
         elif create:
             self.create_in_db(db_cursor)
 
-    @staticmethod
-    def get_address_hash(address):
-        abin = base58.b58decode(address)
-        hash = bitcoin.bin_sha256(abin)
-        hash = base64.b64encode(hash)
-        return hash.decode('ascii')
-
     def create_in_db(self, db_cursor):
         values = []
 
         if not self.label and self.address:
             # trye to retriev label of the address, stored in a dedicated database
-            h = self.get_address_hash(self.address)
+            h = address_to_hash(self.address)
             db_cursor.execute('select label from labels.address_label where key=?', (h,))
             row = db_cursor.fetchone()
             if row:
