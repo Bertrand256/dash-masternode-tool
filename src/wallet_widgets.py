@@ -1229,10 +1229,10 @@ class WalletAccountItemDelegate(QItemDelegate):
                 painter.setBrush(QBrush(option.palette.highlight()))
                 if option.state & QStyle.State_HasFocus:
                     primary_color = Qt.white
-                    secondary_color = Qt.cyan
+                    secondary_color = Qt.white
                 else:
                     primary_color = Qt.black
-                    secondary_color = Qt.darkCyan
+                    secondary_color = Qt.black
             else:
                 painter.setBrush(QBrush(Qt.white))
                 primary_color = Qt.black
@@ -1288,8 +1288,11 @@ class WalletAccountItemDelegate(QItemDelegate):
                 painter.drawText(r, Qt.AlignLeft, idx_str)
 
                 r.setLeft(r.left() + fm.width('/000 '))
-                painter.drawText(r, Qt.AlignLeft, data.address)
-
+                if data.label:
+                    t = data.label
+                else:
+                    t = data.address
+                painter.drawText(r, Qt.AlignLeft, t)
 
             # # draw the masternode description
             #

@@ -3101,7 +3101,7 @@ class VotesModel(QAbstractTableModel):
                 logging.debug('Get votes fot proposal id: ' + str(self.proposal.db_id))
                 cur.execute("SELECT voting_time, voting_result, masternode_ident, m.ip "
                             "FROM VOTING_RESULTS v "
-                            "LEFT OUTER JOIN MASTERNODES m on m.ident = v.masternode_ident "
+                            "LEFT OUTER JOIN masternode m on m.ident = v.masternode_ident "
                             "WHERE proposal_id=? order by voting_time desc", (self.proposal.db_id,))
 
                 for row in cur.fetchall():
