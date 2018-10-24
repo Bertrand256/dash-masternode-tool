@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-10
+import os
+
 import sqlite3
 import logging
 import threading
@@ -25,6 +27,7 @@ class DBCache(object):
 
     def __init__(self):
         self.db_cache_file_name = ''
+        self.db_labels_file_name = ''
         self.db_active = False
         self.lock = thread_utils.EnhRLock(stackinfo_skip_lines=1)
         self.depth = 0
@@ -37,6 +40,8 @@ class DBCache(object):
         if not db_cache_file_name:
             raise Exception('Invalid database cache file name value.')
         self.db_cache_file_name = db_cache_file_name
+        dir, ext = os.path.splitext(db_cache_file_name)
+        self.db_labels_file_name = dir + '_labels' + ext
 
         if not self.db_active:
             log.debug('Trying to acquire db cache session')
@@ -44,6 +49,9 @@ class DBCache(object):
             try:
                 if self.db_conn is None:
                     self.db_conn = sqlite3.connect(self.db_cache_file_name)
+                    db_conn2 = sqlite3.connect(self.db_labels_file_name)
+                    db_conn2.close()
+                    self.db_conn.execute(f"attach database '{self.db_labels_file_name}' as labels")
 
                 self.create_structures()
                 self.db_active = True
@@ -71,6 +79,7 @@ class DBCache(object):
             self.depth += 1
             if self.db_conn is None:
                 self.db_conn = sqlite3.connect(self.db_cache_file_name)
+                self.db_conn.execute(f"attach database '{self.db_labels_file_name}' as labels")
             log.debug('Acquired db cache session (%d)' % self.depth)
             return self.db_conn.cursor()
         else:
@@ -121,17 +130,17 @@ class DBCache(object):
         try:
             cur = self.db_conn.cursor()
             # create structires for masternodes data:
-            cur.execute("CREATE TABLE IF NOT EXISTS MASTERNODES(id INTEGER PRIMARY KEY, ident TEXT, status TEXT,"
+            cur.execute("CREATE TABLE IF NOT EXISTS masternodes(id INTEGER PRIMARY KEY, ident TEXT, status TEXT,"
                         " protocol TEXT, payee TEXT, last_seen INTEGER, active_seconds INTEGER,"
                         " last_paid_time INTEGER, last_paid_block INTEGER, ip TEXT,"
                         " dmt_active INTEGER, dmt_create_time TEXT, dmt_deactivation_time TEXT)")
 
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_MASTERNODES_DMT_ACTIVE ON MASTERNODES(dmt_active)")
+            cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_DMT_ACTIVE ON masternodes(dmt_active)")
 
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_MASTERNODES_IDENT ON MASTERNODES(ident)")
+            cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_IDENT ON masternodes(ident)")
 
             # create structures for proposals:
-            cur.execute("CREATE TABLE IF NOT EXISTS PROPOSALS(id INTEGER PRIMARY KEY, name TEXT, payment_start TEXT,"
+            cur.execute("CREATE TABLE IF NOT EXISTS proposals(id INTEGER PRIMARY KEY, name TEXT, payment_start TEXT,"
                         " payment_end TEXT, payment_amount REAL, yes_count INTEGER, absolute_yes_count INTEGER,"
                         " no_count INTEGER, abstain_count INTEGER, creation_time TEXT, url TEXT, payment_address TEXT,"
                         " type INTEGER, hash TEXT,  collateral_hash TEXT, f_blockchain_validity INTEGER,"
@@ -202,7 +211,7 @@ class DBCache(object):
             cur.execute("CREATE TABLE IF NOT EXISTS address(id INTEGER PRIMARY KEY,"
                         "xpub_hash TEXT, parent_id INTEGER, address_index INTEGER, address TEXT, path TEXT, "
                         "tree_id INTEGER, balance INTEGER DEFAULT 0 NOT NULL, received INTEGER DEFAULT 0 NOT NULL, "
-                        "is_change INTEGER, last_scan_block_height INTEGER DEFAULT 0 NOT NULL)")
+                        "is_change INTEGER, last_scan_block_height INTEGER DEFAULT 0 NOT NULL, label TEXT)")
 
             cur.execute("CREATE INDEX IF NOT EXISTS idx_address_1 ON address(xpub_hash)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_address_2 ON address(parent_id, address_index)")
@@ -218,7 +227,7 @@ class DBCache(object):
             cur.execute("CREATE INDEX IF NOT EXISTS tx_1 ON tx(tx_hash)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_1 ON tx(block_height)")
 
-            cur.execute("CREATE TABLE IF NOT EXISTS tx_output(id INTEGER PRIMARY KEY, address_id INEGER, "
+            cur.execute("CREATE TABLE IF NOT EXISTS tx_output(id INTEGER PRIMARY KEY, address_id INTEGER, "
                         "address TEXT NOT NULL, tx_id INTEGER NOT NULL, output_index INTEGER NOT NULL, "
                         "satoshis INTEGER NOT NULL, spent_tx_id INTEGER, spent_input_index INTEGER)")
 
@@ -230,9 +239,12 @@ class DBCache(object):
 
             cur.execute("CREATE TABLE IF NOT EXISTS tx_input(id INTEGER PRIMARY KEY, address_id INEGER NOT NULL, "
                         "tx_id INTEGER NOT NULL, input_index INTEGER NOT NULL, satoshis INTEGER NOT NULL)")
-
             cur.execute("CREATE INDEX IF NOT EXISTS tx_input_1 ON tx_input(tx_id, input_index)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_input_2 ON tx_input(address_id)")
+
+            cur.execute('create table if not exists labels.address_label(id INTEGER PRIMARY KEY, key TEXT, label TEXT, '
+                        'timestamp INTEGER)')
+            cur.execute('create index if not exists labels.address_label_1 on address_label(key)')
 
         except Exception:
             log.exception('Exception while initializing database.')

@@ -11,11 +11,11 @@ import datetime
 import logging
 from bip32utils import BIP32Key, Base58
 from collections import namedtuple
-from typing import List, Dict, Tuple, Optional, Any, Generator, NamedTuple, Callable, ByteString
+from typing import List, Dict, Tuple, Optional, Any, Generator, NamedTuple, Callable, ByteString, Union
 import app_utils
 import hw_intf
 from common import AttrsProtected
-from dash_utils import bip32_path_string_to_n, pubkey_to_address, bip32_path_n_to_string
+from dash_utils import bip32_path_string_to_n, pubkey_to_address, bip32_path_n_to_string, bip32_path_string_append_elem
 from dashd_intf import DashdInterface
 from hw_common import HwSessionInfo
 from db_intf import DBCache
@@ -123,11 +123,21 @@ class Bip44Wallet(object):
             row = db_cursor.fetchone()
             if row:
                 addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
+                if not addr_info.get('path'):
+                    parent_id = addr_info.get('parent_id')
+                    address_index = addr_info.get('address_index')
+                    if parent_id is not None and address_index is not None:
+                        db_cursor.execute('select path from address where id=?', (parent_id,))
+                        row = db_cursor.fetchone()
+                        if row and row[0]:
+                            addr_info['path'] = bip32_path_string_append_elem(row[0], address_index)
                 addr = self._get_address_from_dict(addr_info)
             elif create:
                 db_cursor.execute('insert into address(address) values(?)', (address,))
                 addr = Bip44AddressType(tree_id=None)
+                addr.address = address
                 addr.id = db_cursor.lastrowid
+                self.db_intf.commit()
             else:
                 return None
             self.addresses_by_id[addr.id] = addr
@@ -163,6 +173,8 @@ class Bip44Wallet(object):
             addr.bip32_path = address_dict.get('path')
         if not addr.tree_id:
             addr.tree_id = address_dict.get('tree_id')
+        if not addr.label:
+            addr.label = address_dict.get('label')
         addr.balance = address_dict.get('balance', 0)
         addr.received = address_dict.get('received', 0)
         addr.last_scan_block_height = address_dict.get('last_scan_block_height', 0)
@@ -184,7 +196,7 @@ class Bip44Wallet(object):
         db_cursor = self.db_intf.get_cursor()
         try:
             db_cursor.execute('select a.id, a.parent_id, a.address_index, a.address, a.path, a.tree_id, a.balance, '
-                              'a.received, a.last_scan_block_height, ac.is_change from address a '
+                              'a.received, a.last_scan_block_height, ac.is_change, a.label from address a '
                               'join address ac on ac.id=a.parent_id '
                               'where a.parent_id=? and a.address_index=?',
                               (parent_key_entry.id, child_addr_index))
@@ -209,14 +221,23 @@ class Bip44Wallet(object):
 
                     return self._get_address_from_dict(addr_info)
                 else:
-                    db_cursor.execute('insert into address(parent_id, address_index, address) values(?,?,?)',
-                                      (parent_key_entry.id, child_addr_index, address))
+                    h = Bip44Entry.get_address_hash(address)
+                    db_cursor.execute('select label from labels.address_label where key=?', (h,))
+                    row = db_cursor.fetchone()
+                    if row:
+                        label = row[0]
+                    else:
+                        label = ''
+
+                    db_cursor.execute('insert into address(parent_id, address_index, address, label) values(?,?,?,?)',
+                                      (parent_key_entry.id, child_addr_index, address, label))
 
                     addr_info = {
                         'id': db_cursor.lastrowid,
                         'parent_id': parent_key_entry.id,
                         'address_index': child_addr_index,
                         'address': address,
+                        'label': label,
                         'last_scan_block_height': 0
                     }
 
@@ -295,9 +316,11 @@ class Bip44Wallet(object):
                 account = Bip44AccountType(self.get_tree_id(), id, xpub=xpub, address_index=account_index,
                                            bip32_path=account_bip32_path)
                 account.read_from_db(db_cursor)
+                account.evaluate_address_if_null(db_cursor, self.dash_network)
             else:
                 account = Bip44AccountType(self.get_tree_id(), id=None, xpub=xpub, address_index=account_index,
                                            bip32_path=account_bip32_path)
+                account.evaluate_address_if_null(db_cursor, self.dash_network)
                 account.create_in_db(db_cursor)
                 self.db_intf.commit()
 
@@ -330,6 +353,7 @@ class Bip44Wallet(object):
 
             if account.bip32_path:
                 account.xpub = hw_intf.get_xpub(self.hw_session, account.bip32_path)
+                account.evaluate_address_if_null(db_cursor, self.dash_network)
 
             self._read_account_addresses(account, db_cursor)
             if self.on_account_added_callback:
@@ -340,11 +364,12 @@ class Bip44Wallet(object):
 
             if not account.xpub and account.bip32_path:
                 account.xpub = hw_intf.get_xpub(self.hw_session, account.bip32_path)
+                account.evaluate_address_if_null(db_cursor, self.dash_network)
         return account
 
     def _read_account_addresses(self, account: Bip44AccountType, db_cursor):
         db_cursor.execute('select a.id, a.address_index, a.address, ac.path parent_path, a.balance, '
-                          'a.received, ac.is_change from address a join address ac on a.parent_id=ac.id '
+                          'a.received, ac.is_change, a.label from address a join address ac on a.parent_id=ac.id '
                           'where ac.parent_id=? order by ac.address_index, a.address_index', (account.id,))
         for add_row in db_cursor.fetchall():
             addr = account.address_by_id(add_row[0])
@@ -378,12 +403,16 @@ class Bip44Wallet(object):
 
                         change_level_node = account.get_child_entry(change)
                         change_level_node.read_from_db(db_cursor, create=True)
+                        change_level_node.evaluate_address_if_null(db_cursor, self.dash_network)
                         self._fetch_child_addrs_txs(change_level_node, account, check_break_process_fun)
                     self._update_addr_balances(account)
                     account.read_from_db(db_cursor)
+                    account.evaluate_address_if_null(db_cursor, self.dash_network)
                     if not account.received:
                         break
                 finally:
+                    if db_cursor.connection.total_changes > 0:
+                        self.db_intf.commit()
                     self.db_intf.release_cursor()
         finally:
             self.decrease_ext_call_level()
@@ -427,9 +456,10 @@ class Bip44Wallet(object):
         try:
             account_entry = self._get_key_entry_by_xpub(account_xpub)
             account = self.account_by_id.get(account_entry.id)
-            change_level_entry = account_entry.get_child_entry(change)
-            change_level_entry.read_from_db(db_cursor, create=True)
-            self._fetch_child_addrs_txs(change_level_entry, account, check_break_process_fun)
+            change_level_node = account_entry.get_child_entry(change)
+            change_level_node.read_from_db(db_cursor, create=True)
+            change_level_node.evaluate_address_if_null(db_cursor, self.dash_network)
+            self._fetch_child_addrs_txs(change_level_node, account, check_break_process_fun)
             self._update_addr_balances(account)
         finally:
             self.decrease_ext_call_level()
@@ -946,6 +976,8 @@ class Bip44Wallet(object):
                 utxo.get_cur_block_height_fun = self.get_block_height_nofetch
                 yield utxo
         finally:
+            if db_cursor.connection.total_changes > 0:
+                self.db_intf.commit()
             self.db_intf.release_cursor()
         diff = time.time() - tm_begin
         log.debug('list_utxos_for_account exec time: %ss', diff)
@@ -988,6 +1020,8 @@ class Bip44Wallet(object):
                 yield utxo
 
         finally:
+            if db_cursor.connection.total_changes > 0:
+                self.db_intf.commit()
             self.db_intf.release_cursor()
 
     def list_accounts(self) -> Generator[Bip44AccountType, None, None]:
@@ -1004,6 +1038,8 @@ class Bip44Wallet(object):
                 acc = self._get_account_by_id(id, db_cursor)
                 yield acc
         finally:
+            if db_cursor.connection.total_changes > 0:
+                self.db_intf.commit()
             self.db_intf.release_cursor()
         diff = time.time() - tm_begin
         log.debug(f'Accounts read time: {diff}s')
@@ -1087,3 +1123,44 @@ class Bip44Wallet(object):
         finally:
             self.db_intf.commit()
             self.db_intf.release_cursor()
+
+    def set_label_for_entry(self, entry: Union[Bip44AddressType, Bip44AccountType], label: str):
+        db_cursor = self.db_intf.get_cursor()
+        try:
+            if isinstance(entry, Bip44AddressType):
+                address = entry.address
+            elif isinstance(entry, Bip44AccountType):
+                address = entry.address
+            else:
+                raise Exception('Invalid argument type')
+
+            entry.label = label
+            if entry.address:
+                addr_hash = Bip44Entry.get_address_hash(entry.address)
+                db_cursor.execute("select id from labels.address_label where key=?", (addr_hash,))
+                row = db_cursor.fetchone()
+                if not row:
+                    if label:
+                        db_cursor.execute('insert into labels.address_label(key, label, timestamp) values(?,?,?)',
+                                          (addr_hash, label, int(time.time())))
+                else:
+                    if label:
+                        db_cursor.execute('update labels.address_label set label=?, timestamp=? where id=?',
+                                          (label, int(time.time()), row[0]))
+                    else:
+                        db_cursor.execute('delete from labels.address_label where id=?', (row[0],))
+                db_cursor.execute('update address set label=? where id=?', (label, entry.id))
+            else:
+                log.error('This entry has null address value: %s', entry.id)
+                return
+        finally:
+            if db_cursor.connection.total_changes > 0:
+                self.db_intf.commit()
+            self.db_intf.release_cursor()
+
+        if isinstance(entry, Bip44AddressType):
+            if self.on_account_address_added_callback:
+                self.on_account_address_added_callback(entry.bip44_account, entry)
+        elif isinstance(entry, Bip44AccountType):
+            if self.on_account_data_changed_callback:
+                self.on_account_data_changed_callback(entry)
