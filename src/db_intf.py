@@ -228,19 +228,24 @@ class DBCache(object):
             cur.execute("CREATE INDEX IF NOT EXISTS tx_1 ON tx(block_height)")
 
             cur.execute("CREATE TABLE IF NOT EXISTS tx_output(id INTEGER PRIMARY KEY, address_id INTEGER, "
-                        "address TEXT NOT NULL, tx_id INTEGER NOT NULL, output_index INTEGER NOT NULL, "
-                        "satoshis INTEGER NOT NULL, spent_tx_id INTEGER, spent_input_index INTEGER)")
+                        "address TEXT, tx_id INTEGER NOT NULL, output_index INTEGER NOT NULL, "
+                        "satoshis INTEGER NOT NULL, spent_tx_id INTEGER, spent_input_index INTEGER, "
+                        "script_type TEXT)")
 
             cur.execute("CREATE INDEX IF NOT EXISTS tx_output_1 ON tx_output(tx_id, output_index)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_output_2 ON tx_output(address_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_output_3 ON tx_output(address)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_output_4 ON tx_output(spent_tx_id)")
-            cur.execute("CREATE INDEX IF NOT EXISTS tx_output_5 ON tx_output(spent_input_index)")
 
-            cur.execute("CREATE TABLE IF NOT EXISTS tx_input(id INTEGER PRIMARY KEY, address_id INEGER NOT NULL, "
-                        "tx_id INTEGER NOT NULL, input_index INTEGER NOT NULL, satoshis INTEGER NOT NULL)")
+            cur.execute("CREATE TABLE IF NOT EXISTS tx_input(id INTEGER PRIMARY KEY, src_address TEXT, "
+                        "src_address_id INTEGER, tx_id INTEGER NOT NULL, input_index INTEGER NOT NULL, "
+                        "satoshis INTEGER DEFAULT 0, src_tx_hash TEXT, src_tx_id INTEGER, src_tx_output_index INTEGER, "
+                        "coinbase INTEGER DEFAULT 0 NOT NULL)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_input_1 ON tx_input(tx_id, input_index)")
-            cur.execute("CREATE INDEX IF NOT EXISTS tx_input_2 ON tx_input(address_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_input_2 ON tx_input(src_address_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_input_3 ON tx_input(src_address)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_input_4 ON tx_input(src_tx_hash)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_input_5 ON tx_input(src_tx_id)")
 
             cur.execute('create table if not exists labels.address_label(id INTEGER PRIMARY KEY, key TEXT, label TEXT, '
                         'timestamp INTEGER)')
