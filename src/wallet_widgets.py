@@ -1284,10 +1284,13 @@ class WalletAccountItemDelegate(QItemDelegate):
                 painter.setFont(option.font)
                 fm = QFontMetrics(option.font)
 
-                idx_str = f'/{data.address_index}: '
+                if not data.is_change:
+                    idx_str = f'0/{data.address_index}: '
+                else:
+                    idx_str = f'1/{data.address_index}: '
                 painter.drawText(r, Qt.AlignLeft, idx_str)
 
-                r.setLeft(r.left() + fm.width('/000 '))
+                r.setLeft(r.left() + fm.width('1/000: '))
                 if data.label:
                     t = data.label
                 else:

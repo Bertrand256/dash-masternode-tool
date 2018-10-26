@@ -56,7 +56,6 @@ class Bip44Wallet(object):
 
         # transactions added/modified since the last reset_tx_diffs call
         self.txs_added: Dict[int, int] = {}  # {'tx_id': 'address_id'}
-        self.txs_modified: Dict[int, int] = {}  # {'tx_id': 'address_id'}
         self.txs_removed: Dict[int, int] = {}  # {'tx_id': 'tx_id'}
 
         # utxos added/removed since the last reset_tx_diffs call
@@ -74,7 +73,6 @@ class Bip44Wallet(object):
 
     def reset_tx_diffs(self):
         self.txs_added.clear()
-        self.txs_modified.clear()
         self.txs_removed.clear()
         self.utxos_added.clear()
         self.utxos_removed.clear()
@@ -212,19 +210,26 @@ class Bip44Wallet(object):
                 parent_key = parent_key_entry.get_bip32key()
                 key = parent_key.ChildKey(child_addr_index)
                 address = pubkey_to_address(key.PublicKey().hex(), self.dash_network)
+                if not parent_key_entry.bip32_path:
+                    raise Exception('BIP32 path of the parent key not set')
+                bip32_path = bip32_path_string_append_elem(parent_key_entry.bip32_path, child_addr_index)
 
                 db_cursor.execute('select * from address where address=?',
                                   (address,))
                 row = db_cursor.fetchone()
                 if row:
                     addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
-                    if addr_info.get('parent_id') != parent_key_entry.id or addr_info.get('address_index') != child_addr_index:
+                    if addr_info.get('parent_id') != parent_key_entry.id or \
+                        addr_info.get('address_index') != child_addr_index or addr_info.get('path') != bip32_path or \
+                        addr_info.get('tree_id') != parent_key_entry.tree_id:
                         # address wasn't initially opened as a part of xpub account scan, so update its attrs
-                        db_cursor.execute('update address set parent_id=?, address_index=? where id=?',
-                                          (parent_key_entry.id, child_addr_index, row[0]))
+                        db_cursor.execute('update address set parent_id=?, address_index=?, path=? where id=?',
+                                          (parent_key_entry.id, child_addr_index, bip32_path, row[0]))
 
                         addr_info['parent_id'] = parent_key_entry.id
                         addr_info['address_index'] = child_addr_index
+                        addr_info['path'] = bip32_path
+                        addr_info['tree_id'] = parent_key_entry.tree_id
 
                     return self._get_address_from_dict(addr_info)
                 else:
@@ -236,8 +241,10 @@ class Bip44Wallet(object):
                     else:
                         label = ''
 
-                    db_cursor.execute('insert into address(parent_id, address_index, address, label) values(?,?,?,?)',
-                                      (parent_key_entry.id, child_addr_index, address, label))
+                    db_cursor.execute('insert into address(parent_id, address_index, address, label, path, tree_id) '
+                                      'values(?,?,?,?,?,?)',
+                                      (parent_key_entry.id, child_addr_index, address, label, bip32_path,
+                                       parent_key_entry.tree_id))
 
                     addr_id = db_cursor.lastrowid
                     addr_info = {
@@ -246,7 +253,9 @@ class Bip44Wallet(object):
                         'address_index': child_addr_index,
                         'address': address,
                         'label': label,
-                        'last_scan_block_height': 0
+                        'last_scan_block_height': 0,
+                        'path': bip32_path,
+                        'tree_id': parent_key_entry.tree_id
                     }
                     self.addr_ids_created[addr_id] = addr_id
                     return self._get_address_from_dict(addr_info)
@@ -658,12 +667,6 @@ class Bip44Wallet(object):
                 tx_id = db_cursor.lastrowid
                 self.txs_added[tx_id] = tx_id
 
-                for index, vout in enumerate(tx_json.get('vout', [])):
-                    self._process_tx_output_entry(db_cursor, tx_id, txhash, index, tx_json)
-
-                for index, vin in enumerate(tx_json.get('vin', [])):
-                    self._process_tx_input_entry(db_cursor, tx_id, tx_hash, index, tx_json)
-
                 db_cursor.execute('update tx_input set src_tx_id=? where src_tx_id is null and src_tx_hash=?',
                                   (tx_id, txhash))
             else:
@@ -673,10 +676,11 @@ class Bip44Wallet(object):
             tx_id = row[0]
             height = row[1]
 
+            if not tx_json:
+                tx_json = self.dashd_intf.getrawtransaction(txhash, 1)
+
             if not height:
                 # it is unconfirmed transactions; check whether it has been confirmed since the last call
-                if not tx_json:
-                    tx_json = self.dashd_intf.getrawtransaction(txhash, 1)
 
                 block_height = tx_json.get('height', 0)
                 if block_height:
@@ -686,6 +690,14 @@ class Bip44Wallet(object):
                     db_cursor.execute('update tx set block_height=?, block_timestamp=? where id=?',
                                       (block_height, block_timestamp, tx_id))
                     self.db_intf.commit()
+
+        if tx_json:
+            for index, vout in enumerate(tx_json.get('vout', [])):
+                self._process_tx_output_entry(db_cursor, tx_id, txhash, index, tx_json)
+
+            for index, vin in enumerate(tx_json.get('vin', [])):
+                self._process_tx_input_entry(db_cursor, tx_id, tx_hash, index, tx_json)
+
         return tx_id, tx_json
 
     def _process_tx_output_entry(self, db_cursor, tx_id: Optional[int], txhash: str, tx_index: int,
@@ -703,21 +715,23 @@ class Bip44Wallet(object):
         if tx_index < len(vouts):
             vout = vouts[tx_index]
 
-            db_cursor.execute('select id, address_id, spent_tx_id, spent_input_index '
-                              'from tx_output where tx_id=? and output_index=?', (tx_id, tx_index))
-            row = db_cursor.fetchone()
-            if not row:
-                spk = vout.get('scriptPubKey', {})
-                if spk:
-                    address = ','.join(spk.get('addresses', []))
+            spk = vout.get('scriptPubKey', {})
+            if spk:
+                address = ','.join(spk.get('addresses', []))
+                if address:
+                    # I assume that there will never be more than one address
+                    addr_id = self.get_address_id(address, db_cursor)
+                else:
+                    addr_id = None
+
+                db_cursor.execute('select id, address_id, spent_tx_id, spent_input_index '
+                                  'from tx_output where tx_id=? and output_index=?', (tx_id, tx_index))
+                row = db_cursor.fetchone()
+
+                if not row:
                     satoshis = vout.get('valueSat')
                     scr_type = spk.get('type')
-                    if address:
-                        addr_id = self.get_address_id(address, db_cursor)
-                        if addr_id:
-                            self.addr_bal_updated[addr_id] = True
-                    else:
-                        addr_id = None
+
                     # check if this output has already been spent
                     db_cursor.execute('select tx_id, input_index from tx_input where src_tx_hash=? and '
                                       'src_tx_output_index=?', (txhash, tx_index))
@@ -735,8 +749,15 @@ class Bip44Wallet(object):
                                        scr_type))
                     utxo_id = db_cursor.lastrowid
                     self.utxos_added[utxo_id] = utxo_id
+                    if addr_id:
+                        self.addr_bal_updated[addr_id] = True
                 else:
-                    log.warning('No scriptPub in output, txhash: %s, index: %s', txhash, tx_index)
+                    if addr_id != row[1]:
+                        if addr_id:
+                            self.addr_bal_updated[addr_id] = True
+                        db_cursor.execute('update tx_output set address_id=? where id=?', (addr_id, row[0]))
+            else:
+                log.warning('No scriptPub in output, txhash: %s, index: %s', txhash, tx_index)
 
     def _process_tx_input_entry(self, db_cursor, tx_id: Optional[int], txhash: Optional[str], tx_index: int,
                                 tx_json: Optional[Dict]):
@@ -754,18 +775,20 @@ class Bip44Wallet(object):
         if tx_index < len(vins):
             vin = vins[tx_index]
 
-            db_cursor.execute('select id from tx_input where tx_id=? and input_index=?', (tx_id, tx_index))
+            db_cursor.execute('select id, src_address_id from tx_input where tx_id=? and input_index=?',
+                              (tx_id, tx_index))
             row = db_cursor.fetchone()
+            addr = vin.get('address')
+            if addr:
+                addr_id = self.get_address_id(addr, db_cursor)
+            else:
+                addr_id = None
+            coinbase = 1 if vin.get('coinbase') else 0
+
             if not row:
                 satoshis = vin.get('valueSat')
                 if satoshis:
                     satoshis = -satoshis
-                addr = vin.get('address')
-                if addr:
-                    addr_id = self.get_address_id(addr, db_cursor)
-                else:
-                    addr_id = None
-                coinbase = 1 if vin.get('coinbase') else 0
                 related_txhash = vin.get('txid')
                 related_tx_index = vin.get('vout')
                 if related_txhash:
@@ -777,10 +800,6 @@ class Bip44Wallet(object):
                                   'src_tx_hash, src_tx_id, src_tx_output_index, coinbase) values(?,?,?,?,?,?,?,?,?)',
                                   (tx_id, tx_index, addr, addr_id, satoshis, related_txhash, related_tx_id,
                                    related_tx_index, coinbase))
-
-                if not tx_id in self.txs_added:
-                    self.txs_modified[tx_id] = addr_id
-
                 if addr_id:
                     self.addr_bal_updated[addr_id] = True
 
@@ -799,9 +818,13 @@ class Bip44Wallet(object):
                             if utxo_id in self.utxos_added:
                                 del self.utxos_added[utxo_id]  # the registered utxo has just been spent
                             else:
-                                if addr_id:
-                                    self.utxos_removed[utxo_id] = utxo_id
+                                self.utxos_removed[utxo_id] = utxo_id
                             self.addr_bal_updated[addr_id] = True
+            else:
+                if row[1] != addr_id:
+                    if addr_id:
+                        self.addr_bal_updated[addr_id] = True
+                    db_cursor.execute('update tx_input set src_address_id=? where id=?', (addr_id, row[0]))
 
     def _purge_unconfirmed_transactions(self, db_cursor):
         db_cursor2 = None
@@ -1108,7 +1131,7 @@ class Bip44Wallet(object):
                               "join address a2 on a2.id=a1.parent_id where a2.id=?)",
                               (id,))
 
-            db_cursor.execute("delete from tx_input where src_address_id in ("
+            db_cursor.execute("update tx_input set src_address_id=null where src_address_id in ("
                               "select a.id from address a join address a1 on a1.id=a.parent_id "
                               "join address a2 on a2.id=a1.parent_id where a2.id=?)",
                               (id,))

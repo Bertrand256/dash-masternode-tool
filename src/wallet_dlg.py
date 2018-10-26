@@ -16,7 +16,7 @@ from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSlot, QStringLis
     QItemSelection, QSortFilterProxyModel, QAbstractItemModel, QModelIndex, QObject, QAbstractListModel, QPoint, QRect
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox, QSplitter, QVBoxLayout, QPushButton, \
-    QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout, QAction, QAbstractItemView, QStatusBar
+    QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout, QAction, QAbstractItemView, QStatusBar, QCheckBox
 from cryptography.fernet import Fernet
 import app_cache
 import app_utils
@@ -51,6 +51,7 @@ CACHE_ITEM_UTXO_COLS = 'WalletDlg_UtxoColumns'
 CACHE_ITEM_LAST_RECIPIENTS = 'WalletDlg_LastRecipients_%NETWORK%'
 CACHE_ITEM_MAIN_SPLITTER_SIZES = 'WalletDlg_MainSplitterSizes'
 CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES = 'WalletDlg_ShowAccountAddresses'
+CACHE_ITEM_SHOW_ZERO_BALANCE_ADDRESSES = 'WalletDlg_ShowZeroBalanceAddresses'
 
 FETCH_DATA_INTERVAL_SECONDS = 60
 MAIN_VIEW_BIP44_ACCOUNTS = 1
@@ -132,7 +133,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.account_list_model = AccountListModel(self)
         self.data_thread_event = threading.Event()
 
-        self.account_mode_show_individual_addresses = False
+        self.accounts_view_show_individual_addresses = False
+        self.accounts_view_show_zero_balance_addesses = False
         self.wdg_loading_txs_animation = None
 
         self.setupUi()
@@ -201,15 +203,18 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.mnListView.selectionModel().selectionChanged.connect(self.on_viewMasternodes_selectionChanged)
         self.mnListView.setItemDelegateForColumn(0, WalletMnItemDelegate(self.mnListView))
 
+        l = self.pageAccountsListView.layout()
+        self.wdg_accounts_view_options = QtWidgets.QWidget()
+        ui = Ui_WdgOptions1()
+        ui.setupUi(self.wdg_accounts_view_options)
+        ui.btnApply.clicked.connect(self.on_btnAccountsViewOptionsApply_clicked)
+        l.insertWidget(0, self.wdg_accounts_view_options)
+        self.wdg_accounts_view_options.hide()
+
         # context menu actions:
         self.act_show_address_on_hw = QAction('Show address on hardware wallet', self)
         self.act_show_address_on_hw.triggered.connect(self.on_show_address_on_hw_triggered)
         self.accountsListView.addAction(self.act_show_address_on_hw)
-        self.act_show_individual_addresses = QAction('Show individual addresses', self)
-        self.act_show_individual_addresses.triggered.connect(self.on_show_individual_addresses_triggered)
-        self.act_show_individual_addresses.setCheckable(True)
-        self.act_show_individual_addresses.setChecked(self.account_mode_show_individual_addresses)
-        self.accountsListView.addAction(self.act_show_individual_addresses)
         self.act_show_account_next_fresh_address = QAction('Show next fresh address', self)
         self.act_show_account_next_fresh_address.triggered.connect(self.on_show_account_next_fresh_address_triggered)
         self.accountsListView.addAction(self.act_show_account_next_fresh_address)
@@ -231,10 +236,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.mnListView.addAction(self.act_delete_address_data1)
         # todo: end testing
 
-        self.wdg_options_mode1 = None
-
-        self.prepare_options_widgets()
         self.update_ui_show_individual_addresses()
+        self.update_ui_view_mode_options()
 
         self.update_context_actions()
         self.start_threads()
@@ -244,20 +247,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.allow_fetch_transactions = False
         self.stop_threads()
         self.save_cache_settings()
-
-    # todo: testing
-    # def keyPressEvent(self, event):
-    #     mods = int(event.modifiers())
-    #     processed = False
-    #
-    #     if mods == int(Qt.ControlModifier) | int(Qt.AltModifier):
-    #
-    #         if ord('C') == event.key():
-    #             self.main_ui.on_action_command_console_triggered(None)
-    #             processed = True
-    #
-    #     if not processed:
-    #         QDialog.keyPressEvent(self, event)
 
     def restore_cache_settings(self):
         app_cache.restore_window_size(self)
@@ -305,7 +294,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             except Exception:
                 log.exception('Cannot restore data from cache.')
 
-        self.account_mode_show_individual_addresses = app_cache.get_value(CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES, False, bool)
+        self.accounts_view_show_individual_addresses = app_cache.get_value(CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES, False,
+                                                                           bool)
+        self.accounts_view_show_zero_balance_addesses = app_cache.get_value(CACHE_ITEM_SHOW_ZERO_BALANCE_ADDRESSES,
+                                                                            False, bool)
 
     def save_cache_settings(self):
         app_cache.save_window_size(self)
@@ -342,7 +334,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             except Exception:
                 log.exception('Cannot save data to cache.')
         app_cache.set_value(CACHE_ITEM_LAST_RECIPIENTS.replace('%NETWORK%', self.app_config.dash_network), rcp_data)
-        app_cache.set_value(CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES, self.account_mode_show_individual_addresses)
+        app_cache.set_value(CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES, self.accounts_view_show_individual_addresses)
+        app_cache.set_value(CACHE_ITEM_SHOW_ZERO_BALANCE_ADDRESSES, self.accounts_view_show_zero_balance_addesses)
 
     def stop_threads(self):
         self.finishing = True
@@ -393,6 +386,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             raise Exception('Invalid index.')
         self.on_utxo_src_hash_changed()
         self.data_thread_event.set()
+        self.update_ui_view_mode_options()
 
     def on_dest_addresses_resized(self):
         self.splitter.setSizes([1, self.wdg_dest_adresses.sizeHint().height()])
@@ -1019,30 +1013,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         if self.connect_hw():
             self.data_thread_event.set()
 
-    def prepare_options_widgets(self):
-        # self.wdg_options_mode1 = QtWidgets.QWidget(self)
-        # self.wdg_options_mode1.setVisible(False)
-        # ui = Ui_WdgOptions1()
-        # ui.setupUi(self.wdg_options_mode1)
-        # ui.btnApply.clicked.connect(self.on_btnMode1OptionsApply_clicked)
-        # self.vlayoutViewMode.insertWidget(1, self.wdg_options_mode1)
-        pass
-
-    @pyqtSlot()
-    def on_show_individual_addresses_triggered(self):
-        self.account_mode_show_individual_addresses = not self.account_mode_show_individual_addresses
-        self.update_ui_show_individual_addresses()
-        self.act_show_individual_addresses.setChecked(self.account_mode_show_individual_addresses)
-
-    def update_ui_show_individual_addresses(self):
-        if not self.account_mode_show_individual_addresses:
-            self.accountsListView.collapseAll()
-            self.accountsListView.setItemsExpandable(False)
-            self.accountsListView.setRootIsDecorated(False)
-        else:
-            self.accountsListView.setItemsExpandable(True)
-            self.accountsListView.setRootIsDecorated(True)
-
     def show_loading_tx_animation(self):
         if not self.wdg_loading_txs_animation:
             def show():
@@ -1140,4 +1110,45 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     self.allow_fetch_transactions = False
                     self.bip44_wallet.set_label_for_entry(entry, label)
                     self.allow_fetch_transactions = fx_state
+
+    def update_ui_show_individual_addresses(self):
+        if not self.accounts_view_show_individual_addresses:
+            self.accountsListView.collapseAll()
+            self.accountsListView.setItemsExpandable(False)
+            self.accountsListView.setRootIsDecorated(False)
+        else:
+            self.accountsListView.setItemsExpandable(True)
+            self.accountsListView.setRootIsDecorated(True)
+
+    def update_ui_view_mode_options(self):
+        if self.wdg_accounts_view_options.isVisible():
+            self.htmlViewModeOptions.hide()
+        else:
+            if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+                self.htmlViewModeOptions.show()
+            else:
+                self.htmlViewModeOptions.hide()
+
+    def on_htmlViewModeOptions_linkActivated(self, link):
+        c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowAddresses')
+        if c:
+            c.setChecked(self.accounts_view_show_individual_addresses)
+        c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowZeroBalanceAddresses')
+        if c:
+            c.setChecked(self.accounts_view_show_zero_balance_addesses)
+        self.wdg_accounts_view_options.show()
+        self.update_ui_view_mode_options()
+
+    def on_btnAccountsViewOptionsApply_clicked(self):
+        c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowAddresses')
+        if c:
+            self.accounts_view_show_individual_addresses = c.isChecked()
+        c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowZeroBalanceAddresses')
+        if c:
+            self.accounts_view_show_zero_balance_addesses = c.isChecked()
+        self.account_list_model.show_zero_balance_addresses = self.accounts_view_show_zero_balance_addesses
+        self.account_list_model.invalidateFilter()
+        self.update_ui_show_individual_addresses()
+        self.wdg_accounts_view_options.hide()
+        self.update_ui_view_mode_options()
 

@@ -766,7 +766,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 if self.next_budget_amount:
                     budget_approved_user_yes += \
                         f'({app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_amount, 2))}% of the available buget'
-                    if self.next_budget_approved is not None:
+                    if self.next_budget_approved:
                         budget_approved_user_yes += f', {app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_approved, 2))}% of the approved budget'
                     budget_approved_user_yes += ')'
                 budget_approved_user_yes += '</td></tr>'
@@ -3101,7 +3101,7 @@ class VotesModel(QAbstractTableModel):
                 logging.debug('Get votes fot proposal id: ' + str(self.proposal.db_id))
                 cur.execute("SELECT voting_time, voting_result, masternode_ident, m.ip "
                             "FROM VOTING_RESULTS v "
-                            "LEFT OUTER JOIN masternode m on m.ident = v.masternode_ident "
+                            "LEFT OUTER JOIN masternodes m on m.ident = v.masternode_ident "
                             "WHERE proposal_id=? order by voting_time desc", (self.proposal.db_id,))
 
                 for row in cur.fetchall():
