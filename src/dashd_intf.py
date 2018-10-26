@@ -719,7 +719,7 @@ class DashdInterface(WndUtils):
             cancelling will be possible - only when user is prompted for a password).
         """
         if not self.active:
-            log.debug("Trying to open connection: %s" % self.cur_conn_def.get_description())
+            log.info("Connecting to: %s" % self.cur_conn_def.get_description())
             try:
                 # make the owner know, we are connecting
                 if self.on_connection_initiated_callback:

@@ -211,7 +211,8 @@ class DBCache(object):
             cur.execute("CREATE TABLE IF NOT EXISTS address(id INTEGER PRIMARY KEY,"
                         "xpub_hash TEXT, parent_id INTEGER, address_index INTEGER, address TEXT, path TEXT, "
                         "tree_id INTEGER, balance INTEGER DEFAULT 0 NOT NULL, received INTEGER DEFAULT 0 NOT NULL, "
-                        "is_change INTEGER, last_scan_block_height INTEGER DEFAULT 0 NOT NULL, label TEXT)")
+                        "is_change INTEGER, last_scan_block_height INTEGER DEFAULT 0 NOT NULL, label TEXT,"
+                        "status INTEGER DEFAULT 0)")
 
             cur.execute("CREATE INDEX IF NOT EXISTS idx_address_1 ON address(xpub_hash)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_address_2 ON address(parent_id, address_index)")
