@@ -148,7 +148,7 @@
         <property name="childrenCollapsible">
          <bool>true</bool>
         </property>
-        <widget class="QWidget" name="widget_2" native="true">
+        <widget class="QWidget" name="wdgLeftPanel" native="true">
          <layout class="QVBoxLayout" name="vlayoutViewMode">
           <item>
            <layout class="QHBoxLayout" name="horizontalLayout">
@@ -188,12 +188,18 @@
              </widget>
             </item>
             <item>
-             <widget class="QToolButton" name="btnModeSettings">
+             <widget class="QLabel" name="htmlViewModeOptions">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
               <property name="toolTip">
-               <string>Settings</string>
+               <string>Options</string>
               </property>
               <property name="text">
-               <string>...</string>
+               <string>&lt;a href=&quot;#test&quot;&gt;&lt;img src=&quot;img/settings@16px.png&quot;&gt;&lt;/a&gt;</string>
               </property>
              </widget>
             </item>
@@ -202,10 +208,13 @@
           <item>
            <widget class="QStackedWidget" name="swAddressSource">
             <property name="currentIndex">
-             <number>0</number>
+             <number>1</number>
             </property>
-            <widget class="QWidget" name="page">
+            <widget class="QWidget" name="pageAccountsListView">
              <layout class="QVBoxLayout" name="verticalLayout_8">
+              <property name="spacing">
+               <number>-1</number>
+              </property>
               <property name="leftMargin">
                <number>0</number>
               </property>
@@ -230,7 +239,7 @@
               </item>
              </layout>
             </widget>
-            <widget class="QWidget" name="page_2">
+            <widget class="QWidget" name="pageMnListView">
              <layout class="QVBoxLayout" name="verticalLayout_10">
               <property name="leftMargin">
                <number>0</number>
@@ -272,7 +281,7 @@
           </item>
          </layout>
         </widget>
-        <widget class="QWidget" name="widget_3" native="true">
+        <widget class="QWidget" name="wdgRightPanel" native="true">
          <layout class="QVBoxLayout" name="verticalLayout_9">
           <property name="leftMargin">
            <number>0</number>

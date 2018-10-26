@@ -288,6 +288,7 @@ class AccountListModel(ExtSortFilterTableModel):
         ], False, True)
         self.accounts: List[Bip44AccountType] = []
         self.__data_modified = False
+        self.show_zero_balance_addresses = False
         self.set_attr_protection()
 
     def reset_modified(self):
@@ -405,6 +406,12 @@ class AccountListModel(ExtSortFilterTableModel):
                         prev_cnt = count_prev_zero_received(acc, source_row - 1)
                         if prev_cnt + 1 > acc.view_fresh_addresses_count:
                             will_show = False
+                    elif addr.balance == 0:
+                        will_show = self.show_zero_balance_addresses
+        else:
+            acc = self.accounts[source_row]
+            if (not acc.received and acc.status != 1 and source_row != 0) or acc.status == 2:
+                will_show = False
         return will_show
 
     def increase_account_fresh_addr_count(self, acc: Bip44AccountType, increase_count=1):

@@ -201,7 +201,7 @@ class Bip44Entry(object):
         row = db_cursor.fetchone()
         if row:
             for idx, f in enumerate(self.db_fields):
-                if f in ('address_index', 'balance', 'received', 'tree_id', 'address', 'label'):
+                if f in ('address_index', 'balance', 'received', 'tree_id', 'address', 'label', 'status'):
                     if row[idx] is not None:
                         self.__setattr__(f, row[idx])
                 elif f == 'path':
@@ -236,7 +236,7 @@ class Bip44Entry(object):
                 self.label = row[0]
 
         for idx, f in enumerate(self.db_fields):
-            if f in ('address_index', 'balance', 'received', 'tree_id', 'address', 'label'):
+            if f in ('address_index', 'balance', 'received', 'tree_id', 'address', 'label', 'status'):
                 values.append(self.__getattribute__(f))
             elif f == 'path':
                 values.append(self.bip32_path)
@@ -365,8 +365,9 @@ class Bip44AccountType(AttrsProtected, Bip44Entry):
         self.balance: Optional[int] = 0
         self.received: Optional[int] = 0
         self.addresses: List[Bip44AddressType] = []
+        self.status: int = 0  # 0: default, 1: force show (used when received = 0), 2: force hide (used when received > 0)
         self.view_fresh_addresses_count = 0  # how many unused addresses will be shown in GUI
-        self.db_fields.extend(('balance', 'received'))
+        self.db_fields.extend(('balance', 'received', 'status'))
         self.set_attr_protection()
 
     def get_account_name(self):
@@ -383,6 +384,7 @@ class Bip44AccountType(AttrsProtected, Bip44Entry):
         Bip44Entry.copy_from(self, src_entry)
         self.balance = src_entry.balance
         self.received = src_entry.received
+        self.status = src_entry.status
         for a in src_entry.addresses:
             new_a = self.address_by_id(a.id)
             if not new_a:
