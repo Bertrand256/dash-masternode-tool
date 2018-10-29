@@ -43,6 +43,7 @@ class Bip44Wallet(object):
         self.cur_block_height = None
         self.last_get_block_height_ts = 0
         self.__tree_id = None
+        self.__tree_label = ''
 
         # list of accounts retrieved while calling self.list_accounts
         self.account_by_id: Dict[int, Bip44AccountType] = {}
@@ -86,21 +87,29 @@ class Bip44Wallet(object):
         self.utxos_by_id.clear()
         self.addr_ids_created.clear()
 
-    def get_tree_id(self):
+    def get_tree_info(self) -> Tuple[int, str]:
+        """
+        :return: Tuple[int <tree id>, str <tree label>]
+        """
+        label = ''
         if not self.__tree_id:
             db_cursor = self.db_intf.get_cursor()
             try:
-                db_cursor.execute('select id from hd_tree where ident=?', (self.hw_session.hd_tree_ident,))
+                db_cursor.execute('select id, label from hd_tree where ident=?', (self.hw_session.hd_tree_ident,))
                 row = db_cursor.fetchone()
                 if not row:
                     db_cursor.execute('insert into hd_tree(ident) values(?)', (self.hw_session.hd_tree_ident,))
                     self.__tree_id = db_cursor.lastrowid
                     self.db_intf.commit()
                 else:
-                    self.__tree_id = row[0]
+                    self.__tree_id, self.__tree_label = row
             finally:
                 self.db_intf.release_cursor()
-        return self.__tree_id
+        return self.__tree_id, self.__tree_label
+
+    def get_tree_id(self):
+        id, l = self.get_tree_info()
+        return id
 
     def get_block_height(self):
         if self.cur_block_height is None or \
@@ -1224,3 +1233,14 @@ class Bip44Wallet(object):
                 acc_loc.label = label
             if self.on_account_data_changed_callback:
                 self.on_account_data_changed_callback(entry)
+
+    def set_label_for_hd_identity(self, id: int, label: str):
+        db_cursor = self.db_intf.get_cursor()
+        try:
+            db_cursor.execute("update hd_tree set label=? where id=?", (label, id))
+            if self.__tree_id == id:
+                self.__tree_label = label
+        finally:
+            self.db_intf.commit()
+            self.db_intf.release_cursor()
+

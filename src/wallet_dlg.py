@@ -240,6 +240,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.update_ui_view_mode_options()
 
         self.update_context_actions()
+        self.update_hw_info()
         self.start_threads()
 
     def closeEvent(self, event):
@@ -726,6 +727,55 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def on_utxo_src_hash_changed(self):
         self.cur_utxo_src_hash = self.get_utxo_src_cfg_hash()
 
+    def fetch_transactions(self):
+        self.last_txs_fetch_time = 0
+        self.data_thread_event.set()
+
+    def update_hw_info(self):
+        if not self.hw_connected():
+            # t = f'<table><tr><td>Hardware wallet not connected</td>' \
+            #     f'<td><a href="hw-connect"><img height="16" src="img/hw-test.png"></img></a></td></tr></table>'
+            t = f'<table><tr><td>Hardware wallet <span>not connected</span></td>' \
+                f'<td> (<a href="hw-connect">connect</a>)</td></tr></table>'
+        else:
+            ht = HWType.get_desc(self.hw_session.hw_type)
+            id, label = self.bip44_wallet.get_tree_info()
+            if label:
+                label = f'<td> as <i>{label}</i></td>'
+            # t = f'<table><tr><td>Connected to {ht}</td><td><a href="hw-disconnect"><img src="img/eject@16px.png"></img></a></td>' \
+            #     f'<td> as {label}</td></tr></table>'
+            t = f'<table><tr><td>Connected to {ht}</td><td> (<a href="hw-disconnect">disconnect</a>)</td>' \
+                f'{label}<td><a href="hw-identity-label"><img src="img/label@16px.png"></img></a></td></tr></table>'
+        self.lblHW.setText(t)
+
+    def on_lblHW_linkHovered(self, link):
+        if link == 'hw-identity-label':
+            self.lblHW.setToolTip('Set/change hw identity label')
+        elif link == 'hw-disconnect':
+            self.lblHW.setToolTip('Disconnect hardware wallet')
+        elif link == 'hw-connect':
+            self.lblHW.setToolTip('Connect to hardware wallet')
+        else:
+            self.lblHW.setToolTip('')
+
+    def on_lblHW_linkActivated(self, link):
+        if link == 'hw-identity-label':
+            self.set_hd_identity_label()
+        elif link == 'hw-disconnect':
+            self.disconnect_hw()
+        elif link == 'hw-connect':
+            self.connect_hw()
+        self.update_hw_info()
+
+    def set_hd_identity_label(self):
+        if self.hw_connected():
+            id, label = self.bip44_wallet.get_tree_info()
+
+            label, ok = QInputDialog.getText(self, 'Identity label', 'Enter label for current hw identity', text=label)
+            if ok:
+                self.bip44_wallet.set_label_for_hd_identity(id, label)
+                self.update_hw_info()
+
     def hw_connected(self):
         if self.hw_session.hw_type is not None and self.hw_session.hw_client is not None:
             return True
@@ -733,7 +783,22 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             return False
 
     def disconnect_hw(self):
+        self.allow_fetch_transactions = False
+
+        # clear the utxo model data
+        with self.utxo_table_model:
+            self.utxo_table_model.beginResetModel()
+            self.utxo_table_model.clear_utxos()
+            self.utxo_table_model.endResetModel()
+
+        # clear the account model data
+        self.account_list_model.beginResetModel()
+        self.account_list_model.clear_accounts()
+        self.account_list_model.endResetModel()
         self.main_ui.disconnect_hardware_wallet()
+        self.bip44_wallet.clear()
+        self.allow_fetch_transactions = True
+        self.last_hd_tree = ''
 
     def connect_hw(self):
         def connect():
@@ -801,6 +866,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                     pass
 
                             self.last_hd_tree = self.hw_session.hd_tree_ident
+                            WndUtils.call_in_main_thread(self.update_hw_info)
 
                 if not hw_error:
                     if self.finishing:
@@ -957,11 +1023,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
             WndUtils.call_in_main_thread(fun)
 
-    @pyqtSlot()
-    def on_btnLoadTransactions_clicked(self):
-        self.last_txs_fetch_time = 0
-        self.data_thread_event.set()
-
     def on_edtSourceBip32Path_returnPressed(self):
         self.on_btnLoadTransactions_clicked()
 
@@ -988,30 +1049,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def on_utxoTableView_selectionChanged(self, selected, deselected):
         self.update_recipient_area_utxos()
-
-    @pyqtSlot()
-    def on_btnReconnectHW_clicked(self):
-        self.allow_fetch_transactions = False
-
-        # clear the utxo model data
-        with self.utxo_table_model:
-            self.utxo_table_model.beginResetModel()
-            self.utxo_table_model.clear_utxos()
-            self.utxo_table_model.endResetModel()
-
-        # todo: clear transactions model
-
-        # clear the account model data
-        self.account_list_model.beginResetModel()
-        self.account_list_model.clear_accounts()
-        self.account_list_model.endResetModel()
-
-        self.disconnect_hw()
-        self.bip44_wallet.clear()
-        self.allow_fetch_transactions = True
-        self.last_hd_tree = ''
-        if self.connect_hw():
-            self.data_thread_event.set()
 
     def show_loading_tx_animation(self):
         if not self.wdg_loading_txs_animation:
