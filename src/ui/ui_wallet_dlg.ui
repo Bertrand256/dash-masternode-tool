@@ -50,22 +50,9 @@
          <number>8</number>
         </property>
         <item>
-         <widget class="QPushButton" name="btnReconnectHW">
+         <widget class="QLabel" name="lblHW">
           <property name="text">
-           <string>Reconnect Hardware Wallet</string>
-          </property>
-          <property name="autoDefault">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="btnLoadTransactions">
-          <property name="text">
-           <string>Reload transactions</string>
-          </property>
-          <property name="autoDefault">
-           <bool>false</bool>
+           <string/>
           </property>
          </widget>
         </item>
