@@ -189,15 +189,13 @@ class AppConfig(object):
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
 
-        log_exists = os.path.exists(self.log_file)
-        self.log_handler = RotatingFileHandler(filename=self.log_file, mode='a', backupCount=30)
+        self.log_handler = RotatingFileHandler(filename=self.log_file, mode='a', maxBytes=2000000, backupCount=30)
         logger = logging.getLogger()
         formatter = logging.Formatter(fmt=DEFAULT_LOG_FORMAT, datefmt='%Y-%m-%d %H:%M:%S')
         self.log_handler.setFormatter(formatter)
-        if log_exists:
-            self.log_handler.doRollover()
         logger.addHandler(self.log_handler)
         self.set_log_level('INFO')
+        logging.info(f'===========================================================================')
         logging.info(f'Application started (v {self.app_version})')
         self.restore_loggers_config()
 

@@ -959,20 +959,21 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                             'Current path: <span style="color:blue">%s</span><br>'
                                             % (paths_checked, paths_found, cur_bip32_path))
 
-                                        addr_of_cur_path = hw_intf.get_address_ext(
-                                            self.hw_session, address_n, db_cur, self.config.hw_encrypt_string,
-                                            self.config.hw_decrypt_string)
+                                        # todo: use Bip44Wallet to scan addresses
+                                        # addr_of_cur_path = hw_intf.get_address_ext(
+                                        #     self.hw_session, address_n, db_cur, self.config.hw_encrypt_string,
+                                        #     self.config.hw_decrypt_string)
 
-                                        paths_checked += 1
-                                        if addr_to_find_bip32 == addr_of_cur_path:
-                                            found_adresses[addr_to_find_bip32] = cur_bip32_path
-                                            found = True
-                                            paths_found += 1
-                                            break
-                                        elif not found_adresses.get(addr_of_cur_path, None) and \
-                                                        addr_of_cur_path in addresses:
-                                            # address of current bip32 path is in the search list
-                                            found_adresses[addr_of_cur_path] = cur_bip32_path
+                                        # paths_checked += 1
+                                        # if addr_to_find_bip32 == addr_of_cur_path:
+                                        #     found_adresses[addr_to_find_bip32] = cur_bip32_path
+                                        #     found = True
+                                        #     paths_found += 1
+                                        #     break
+                                        # elif not found_adresses.get(addr_of_cur_path, None) and \
+                                        #                 addr_of_cur_path in addresses:
+                                        #     # address of current bip32 path is in the search list
+                                        #     found_adresses[addr_of_cur_path] = cur_bip32_path
 
                                     if found:
                                         break

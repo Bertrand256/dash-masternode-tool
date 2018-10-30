@@ -2,7 +2,12 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
-from typing import Optional, Tuple, List, Dict
+import os
+
+import traceback
+from PyQt5 import QtWidgets
+from PyQt5.QtCore import QEventLoop
+from typing import Optional, Tuple, List, Dict, Callable
 import simplejson
 import binascii
 import unicodedata
@@ -17,6 +22,7 @@ from hw_common import HardwareWalletCancelException, ask_for_pass_callback, ask_
     select_hw_device, HwSessionInfo
 import logging
 import wallet_common
+from thread_fun_dlg import ThreadFunDlg
 from wnd_utils import WndUtils
 
 
@@ -26,11 +32,26 @@ class MyTrezorTextUIMixin(TextUIMixin):
         super(TextUIMixin, self).__init__(*args, **kwargs)
         self.ask_for_pin_fun = ask_for_pin_fun
         self.ask_for_pass_fun = ask_for_pass_fun
+        self._msg_dlg = None
+        self.show_popup_fun: Callable[[bool], None] = None
         self.__mnemonic = Mnemonic('english')
+
+    def clear_popup_msg(self):
+        self.show_popup_fun = None
+
+    def callback_ButtonRequest(self, msg):
+        # if not self.is_popup_message_visible():
+        #     self.show_popup_message('Confirmation', 'Complete the action on your Trezor device')
+        if self.show_popup_fun:
+            self.show_popup_fun(True)
+        return trezor_proto.ButtonAck()
 
     def callback_PassphraseRequest(self, msg):
         if msg.on_device is True:
             return trezor_proto.PassphraseAck()
+
+        if self.show_popup_fun:
+            self.show_popup_fun(False)
 
         passphrase = self.ask_for_pass_fun(msg)
         if passphrase is None:
