@@ -131,9 +131,18 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
     :return:
     """
     def get_session_info_trezor(cli, hw_session: HwSessionInfo):
+        def call_get_public_node(ctrl, cli, path_n):
+            cli.show_popup_fun = ctrl.show_dialog_fun
+            pk = cli.get_public_node(path_n).node.public_key
+            cli.show_popup_fun = None
+            return pk
+
         path = dash_utils.get_default_bip32_base_path(hw_session.app_config.dash_network)
         path_n = dash_utils.bip32_path_string_to_n(path)
-        pub = cli.get_public_node(path_n).node.public_key
+        # show message for Trezor T device while waiting for the user to choose the passphrase input method
+        pub = WndUtils.run_thread_dialog(call_get_public_node, (cli, path_n,), title='Confirm',
+                                         text='<b>Complete the action on your Trezor device</b>',
+                                         show_window_delay_ms=-1)
         hw_session.set_base_info(path, pub)
 
     control_trezor_keepkey_libs(hw_type)
@@ -445,76 +454,6 @@ def get_xpub(hw_session: HwSessionInfo, bip32_path):
         raise Exception('HW client not open.')
 
 
-def get_address_ext(hw_session: HwSessionInfo,
-                    bip32_path_n: List[int],
-                    db_cursor: sqlite3.Cursor,
-                    encrypt_fun: Callable,
-                    decrypt_fun: Callable):
-    """
-    Reads address of a specific bip32 path from hardware wallet, using db cache to speed-up operation
-    by avoiding utilization the hardware wallet device as quite slow for this operation.
-    :param hw_session:
-    :param bip32_path_n:
-    :param db_cursor:
-    :param encrypt_fun:
-    :param decrypt_fun:
-    :return:
-    """
-    global hd_tree_db_map, bip32_address_map
-
-    def get_hd_tree_db_id(tree_ident: str):
-        db_id = hd_tree_db_map.get(tree_ident)
-        if not db_id:
-            db_cursor.execute('select id from hd_tree where ident=?', (tree_ident,))
-            row = db_cursor.fetchone()
-            if not row:
-                db_cursor.execute('insert into hd_tree(ident) values(?)', (tree_ident,))
-                db_id = db_cursor.lastrowid
-                hd_tree_db_map[tree_ident] = db_id
-            else:
-                db_id = row[0]
-        return db_id
-
-    try:
-        map_dict = bip32_address_map.get(hw_session.hd_tree_ident)
-        if not map_dict:
-            map_dict = {}
-            bip32_address_map[hw_session.hd_tree_ident] = map_dict
-
-        path_str = dash_utils.bip32_path_n_to_string(bip32_path_n)
-        address = map_dict.get(path_str)
-        db_id = None
-        if not address:
-            # look for address in db cache
-            hd_tree_id = get_hd_tree_db_id(hw_session.hd_tree_ident)
-            db_cursor.execute('select id, address from ADDRESS where tree_id=? and path=?', (hd_tree_id, path_str))
-            row = db_cursor.fetchone()
-            if row:
-                db_id, address = row
-                # address is encrypted; try to decrypt it
-                try:
-                    address = decrypt_fun(address).decode('ascii')
-                    if not dash_utils.validate_address(address, hw_session.app_config.dash_network):
-                        address = None
-                except Exception:
-                    address = None
-
-            if not address:
-                address = get_address(hw_session, bip32_path_n)
-                map_dict[path_str] = address
-                address_encrypted = encrypt_fun(bytes(address, 'ascii'))
-                if db_id:
-                    # update db record: it was encrypted with no longer valid encryption key
-                    db_cursor.execute('update ADDRESS set address=? where id=?', (address_encrypted, db_id))
-                else:
-                    db_cursor.execute('insert into ADDRESS(tree_id, path, address) values(?,?,?)',
-                                      (hd_tree_id, path_str, address_encrypted))
-        return address
-    except Exception as e:
-        logging.exception('Unhandled exception occurred')
-        return get_address(hw_session, bip32_path_n)
-
-
 def wipe_device(hw_type: HWType, hw_device_id: Optional[str], parent_window = None) -> Tuple[Optional[str], bool]:
     """
     Wipes the hardware wallet device.
@@ -744,7 +683,7 @@ def hw_encrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
     if len(value) != 32:
         raise ValueError("Invalid password length (<> 32).")
 
-    return WndUtils.run_thread_dialog(encrypt, (hw_session, bip32_path_n, label, value), True)
+    return WndUtils.run_thread_dialog(encrypt, (hw_session, bip32_path_n, label, value), True, show_window_delay_ms=200)
 
 
 @control_hw_call

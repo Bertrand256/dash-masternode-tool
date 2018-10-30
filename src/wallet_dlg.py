@@ -92,7 +92,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         self.dashd_intf: DashdInterface = main_ui.dashd_intf
         self.db_intf: DBCache = main_ui.config.db_intf
-        self.bip44_wallet = Bip44Wallet(self.hw_session, self.db_intf, self.dashd_intf,
+        self.bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.hw_session, self.db_intf, self.dashd_intf,
                                         self.app_config.dash_network)
         self.bip44_wallet.on_account_added_callback = self.on_bip44_account_added
         self.bip44_wallet.on_account_data_changed_callback = self.on_bip44_account_changed
@@ -117,7 +117,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         # 2: masternode collateral address
         self.utxo_src_mode: Optional[int] = None
         self.cur_utxo_src_hash = ''  # hash of the currently selected utxo source mode
-        self.last_hd_tree = ''
+        self.cur_hd_tree_id = None
 
         # for self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST
         self.selected_mns: List[MnAddressItem] = []
@@ -240,7 +240,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.update_ui_view_mode_options()
 
         self.update_context_actions()
-        self.update_hw_info()
         self.start_threads()
 
     def closeEvent(self, event):
@@ -717,7 +716,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def get_utxo_src_cfg_hash(self):
         hash = str({self.utxo_src_mode}) + ':'
         if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
-            hash = hash + f'{self.hw_account_base_bip32_path}:{self.hw_selected_account_id}:' \
+            hash = hash + f'{self.cur_hd_tree_id}:{self.hw_account_base_bip32_path}:{self.hw_selected_account_id}:' \
                           f'{self.hw_selected_address_id}'
         elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
             for mni in self.selected_mns:
@@ -733,48 +732,66 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def update_hw_info(self):
         if not self.hw_connected():
-            # t = f'<table><tr><td>Hardware wallet not connected</td>' \
-            #     f'<td><a href="hw-connect"><img height="16" src="img/hw-test.png"></img></a></td></tr></table>'
             t = f'<table><tr><td>Hardware wallet <span>not connected</span></td>' \
                 f'<td> (<a href="hw-connect">connect</a>)</td></tr></table>'
         else:
             ht = HWType.get_desc(self.hw_session.hw_type)
-            id, label = self.bip44_wallet.get_tree_info()
+            id, label = self.bip44_wallet.get_hd_identity_info()
             if label:
                 label = f'<td> as <i>{label}</i></td>'
-            # t = f'<table><tr><td>Connected to {ht}</td><td><a href="hw-disconnect"><img src="img/eject@16px.png"></img></a></td>' \
-            #     f'<td> as {label}</td></tr></table>'
+            else:
+                label = f'<td> as <i>Identity #{str(id)}</i></td>'
             t = f'<table><tr><td>Connected to {ht}</td><td> (<a href="hw-disconnect">disconnect</a>)</td>' \
-                f'{label}<td><a href="hw-identity-label"><img src="img/label@16px.png"></img></a></td></tr></table>'
+                f'{label}<td><a href="hd-identity-label"><img src="img/label@16px.png"></img></a></td>' \
+                f'<td><a href="hd-identity-delete"><img src="img/delete@16px.png"></img></a></td>' \
+                f'<td><a href="tx-fetch"><img src="img/autorenew@16px.png"></img></a></td></tr></table>'
         self.lblHW.setText(t)
 
     def on_lblHW_linkHovered(self, link):
-        if link == 'hw-identity-label':
+        if link == 'hd-identity-label':
             self.lblHW.setToolTip('Set/change hw identity label')
         elif link == 'hw-disconnect':
             self.lblHW.setToolTip('Disconnect hardware wallet')
         elif link == 'hw-connect':
             self.lblHW.setToolTip('Connect to hardware wallet')
+        elif link == 'hd-identity-delete':
+            self.lblHW.setToolTip('Purge this identity from cache')
+        elif link == 'tx-fetch':
+            self.lblHW.setToolTip('Force fetch transactions')
         else:
             self.lblHW.setToolTip('')
 
     def on_lblHW_linkActivated(self, link):
-        if link == 'hw-identity-label':
+        if link == 'hd-identity-label':
             self.set_hd_identity_label()
         elif link == 'hw-disconnect':
             self.disconnect_hw()
         elif link == 'hw-connect':
             self.connect_hw()
+        elif link == 'hd-identity-delete':
+            self.delete_hd_identity()
+        elif link == 'tx-fetch':
+            self.fetch_transactions()
         self.update_hw_info()
 
     def set_hd_identity_label(self):
         if self.hw_connected():
-            id, label = self.bip44_wallet.get_tree_info()
+            id, label = self.bip44_wallet.get_hd_identity_info()
 
             label, ok = QInputDialog.getText(self, 'Identity label', 'Enter label for current hw identity', text=label)
             if ok:
-                self.bip44_wallet.set_label_for_hd_identity(id, label)
+                self.bip44_wallet.set_label_for_hw_identity(id, label)
                 self.update_hw_info()
+
+    def delete_hd_identity(self):
+        if WndUtils.queryDlg(f"Do you really want to purge the current identity from cache?",
+                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                             default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
+            return
+        id, _ = self.bip44_wallet.get_hd_identity_info()
+        if id:
+            self.bip44_wallet.delete_hd_identity(id)
+            self.disconnect_hw()
 
     def hw_connected(self):
         if self.hw_session.hw_type is not None and self.hw_session.hw_client is not None:
@@ -798,13 +815,16 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.main_ui.disconnect_hardware_wallet()
         self.bip44_wallet.clear()
         self.allow_fetch_transactions = True
-        self.last_hd_tree = ''
+        self.cur_hd_tree_id = None
 
     def connect_hw(self):
         def connect():
             if self.main_ui.connect_hardware_wallet():
                 self.app_config.initialize_hw_encryption(self.main_ui.hw_session)
+                self.cur_hd_tree_id, _ = self.bip44_wallet.get_hd_identity_info()
                 self.update_context_actions()
+                self.update_hw_info()
+                self.on_utxo_src_hash_changed()
                 return True
             return False
         if not self.hw_connected():
@@ -833,9 +853,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         return list_utxos
 
     def data_thread(self, ctrl: CtrlObject):
+        last_hd_tree_id = None
         def check_break_fetch_process():
             if not self.allow_fetch_transactions or self.finishing or ctrl.finish or \
-                (self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS and self.last_hd_tree != self.hw_session.hd_tree_ident) or \
+                (self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS and last_hd_tree_id != self.cur_hd_tree_id) or \
                 last_utxos_source_hash != self.cur_utxo_src_hash:
                 raise BreakFetchTransactionsException('Break fetch transactions')
 
@@ -854,7 +875,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         hw_error = True
 
                     if not hw_error:
-                        if self.last_hd_tree != self.hw_session.hd_tree_ident:
+                        if last_hd_tree_id != self.cur_hd_tree_id:
                             # not read hw accounts yet or switched to another hw/used another passphrase
 
                             with self.account_list_model:
@@ -865,7 +886,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                 for a in self.bip44_wallet.list_accounts():
                                     pass
 
-                            self.last_hd_tree = self.hw_session.hd_tree_ident
+                            last_hd_tree_id = self.cur_hd_tree_id
                             WndUtils.call_in_main_thread(self.update_hw_info)
 
                 if not hw_error:
@@ -940,7 +961,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         except Exception as e:
             log.exception('Exception occurred')
-            WndUtils.errorMsg(str(e))
+            WndUtils.errorMsg('An unknown error occurred, please close and reopen the window. Details: ' + str(e))
         finally:
             self.data_thread_ref = None
         log.debug('Finishing fetch_transactions_thread')

@@ -107,7 +107,8 @@ class WndUtils:
 
     @staticmethod
     def run_thread_dialog(worker_fun: Callable[[CtrlObject, Any], Any], worker_fun_args: Tuple[Any,...],
-                          close_after_finish=True, buttons=None, title='', text=None, center_by_window=None):
+                          close_after_finish=True, buttons=None, title='', text=None, center_by_window=None,
+                          show_window_delay_ms: Optional[int] = 0):
         """
         Executes worker_fun function inside a thread. Function provides a dialog for UI feedback (messages 
         and/or progressbar).
@@ -118,8 +119,10 @@ class WndUtils:
         :return: value returned from worker_fun
         """
         ui = ThreadFunDlg(worker_fun, worker_fun_args, close_after_finish,
-                          buttons=buttons, title=title, text=text, center_by_window=center_by_window)
-        ui.exec_()
+                          buttons=buttons, title=title, text=text, center_by_window=center_by_window,
+                          show_window_delay_ms=show_window_delay_ms)
+        # ui.exec_()
+        ui.wait_for_worker_completion()
         ret = ui.getResult()
         ret_exception = ui.worker_exception
         del ui
