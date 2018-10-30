@@ -34,7 +34,7 @@ log = logging.getLogger('dmt.bip44_wallet')
 
 
 class Bip44Wallet(object):
-    def __init__(self, hw_session: HwSessionInfo, db_intf: DBCache, dashd_intf: DashdInterface, dash_network: str):
+    def __init__(self, coin_name: str, hw_session: HwSessionInfo, db_intf: DBCache, dashd_intf: DashdInterface, dash_network: str):
         self.db = None
         self.hw_session = hw_session
         self.dash_network = dash_network
@@ -42,7 +42,9 @@ class Bip44Wallet(object):
         self.dashd_intf = dashd_intf
         self.cur_block_height = None
         self.last_get_block_height_ts = 0
+        self.__coin_name = coin_name
         self.__tree_id = None
+        self.__tree_ident = None
         self.__tree_label = ''
 
         # list of accounts retrieved while calling self.list_accounts
@@ -86,19 +88,20 @@ class Bip44Wallet(object):
         self.addresses_by_id.clear()
         self.utxos_by_id.clear()
         self.addr_ids_created.clear()
+        self.reset_tx_diffs()
 
-    def get_tree_info(self) -> Tuple[int, str]:
+    def get_hd_identity_info(self) -> Tuple[int, str]:
         """
         :return: Tuple[int <tree id>, str <tree label>]
         """
-        label = ''
         if not self.__tree_id:
             db_cursor = self.db_intf.get_cursor()
             try:
-                db_cursor.execute('select id, label from hd_tree where ident=?', (self.hw_session.hd_tree_ident,))
+                self.__tree_ident = self.hw_session.get_hd_tree_ident(self.__coin_name)
+                db_cursor.execute('select id, label from hd_tree where ident=?', (self.__tree_ident,))
                 row = db_cursor.fetchone()
                 if not row:
-                    db_cursor.execute('insert into hd_tree(ident) values(?)', (self.hw_session.hd_tree_ident,))
+                    db_cursor.execute('insert into hd_tree(ident) values(?)', (self.__tree_ident,))
                     self.__tree_id = db_cursor.lastrowid
                     self.db_intf.commit()
                 else:
@@ -108,8 +111,14 @@ class Bip44Wallet(object):
         return self.__tree_id, self.__tree_label
 
     def get_tree_id(self):
-        id, l = self.get_tree_info()
+        id, l = self.get_hd_identity_info()
         return id
+
+    def validate_hd_tree(self):
+        if self.__tree_ident != self.hw_session.get_hd_tree_ident(self.__coin_name):
+            # user switched to another hw identity (e.g. enter bip39 different passphrase)
+            log.info('Switching HD identity')
+            self.clear()
 
     def get_block_height(self):
         if self.cur_block_height is None or \
@@ -425,6 +434,7 @@ class Bip44Wallet(object):
     def fetch_all_accounts_txs(self, check_break_process_fun: Callable):
         log.debug('Starting fetching transactions for all accounts.')
 
+        self.validate_hd_tree()
         self.addr_ids_created.clear()
         self.increase_ext_call_level()
         try:
@@ -491,6 +501,7 @@ class Bip44Wallet(object):
         """
 
         tm_begin = time.time()
+        self.validate_hd_tree()
         self.addr_ids_created.clear()
         self.increase_ext_call_level()
         db_cursor = self.db_intf.get_cursor()
@@ -575,6 +586,7 @@ class Bip44Wallet(object):
 
     def fetch_addresses_txs(self, addr_info_list: List[Bip44AddressType], check_break_process_fun: Callable):
         tm_begin = time.time()
+        self.validate_hd_tree()
         self.increase_ext_call_level()
 
         cur_block_height = self.get_block_height()
@@ -1022,6 +1034,7 @@ class Bip44Wallet(object):
         :param account_id: database id of the account's record
         """
         tm_begin = time.time()
+        self.validate_hd_tree()
         db_cursor = self.db_intf.get_cursor()
         try:
             sql_text = "select o.id, tx.block_height, tx.coinbase, tx.block_timestamp," \
@@ -1059,6 +1072,7 @@ class Bip44Wallet(object):
         log.debug('list_utxos_for_account exec time: %ss', diff)
 
     def list_utxos_for_addresses(self, address_ids: List[int], only_new = False) -> Generator[UtxoType, None, None]:
+        self.validate_hd_tree()
         db_cursor = self.db_intf.get_cursor()
         try:
             in_part = ','.join(['?'] * len(address_ids))
@@ -1095,6 +1109,7 @@ class Bip44Wallet(object):
 
     def list_accounts(self) -> Generator[Bip44AccountType, None, None]:
         tm_begin = time.time()
+        self.validate_hd_tree()
         self.addr_ids_created.clear()
         db_cursor = self.db_intf.get_cursor()
         try:
@@ -1234,12 +1249,31 @@ class Bip44Wallet(object):
             if self.on_account_data_changed_callback:
                 self.on_account_data_changed_callback(entry)
 
-    def set_label_for_hd_identity(self, id: int, label: str):
+    def set_label_for_hw_identity(self, id: int, label: str):
         db_cursor = self.db_intf.get_cursor()
         try:
             db_cursor.execute("update hd_tree set label=? where id=?", (label, id))
             if self.__tree_id == id:
                 self.__tree_label = label
+        finally:
+            self.db_intf.commit()
+            self.db_intf.release_cursor()
+
+    def delete_hd_identity(self, id: int):
+        db_cursor = self.db_intf.get_cursor()
+        try:
+            db_cursor.execute("update tx_input set src_address_id=null where src_address_id in (select id from "
+                              "address where tree_id=?)", (id,))
+            db_cursor.execute("update tx_output set address_id=null where address_id in (select id from address "
+                              "where tree_id=?)", (id,))
+            db_cursor.execute("delete from address where id in (select ca.parent_id from address a join address ca "
+                              "on ca.id=a.parent_id where a.tree_id=?)", (id,))
+            db_cursor.execute("delete from address where id in (select a.parent_id from address a where a.tree_id=?)",
+                              (id,))
+            db_cursor.execute("delete from address where tree_id=?", (id,))
+            db_cursor.execute("delete from main.hd_tree where id=?", (id,))
+            if self.__tree_id == id:
+                self.clear()
         finally:
             self.db_intf.commit()
             self.db_intf.release_cursor()
