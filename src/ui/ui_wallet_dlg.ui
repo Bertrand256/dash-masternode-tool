@@ -175,7 +175,7 @@
              </widget>
             </item>
             <item>
-             <widget class="QLabel" name="htmlViewModeOptions">
+             <widget class="QLabel" name="lblViewModeOptions">
               <property name="sizePolicy">
                <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
                 <horstretch>0</horstretch>
@@ -186,7 +186,7 @@
                <string>Options</string>
               </property>
               <property name="text">
-               <string>&lt;a href=&quot;#test&quot;&gt;&lt;img src=&quot;img/settings@16px.png&quot;&gt;&lt;/a&gt;</string>
+               <string/>
               </property>
              </widget>
             </item>
