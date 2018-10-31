@@ -85,9 +85,9 @@ class Bip44Wallet(object):
     def clear(self):
         self.__tree_id = None
         self.account_by_id.clear()
+        self.account_by_bip32_path.clear()
         self.addresses_by_id.clear()
         self.utxos_by_id.clear()
-        self.addr_ids_created.clear()
         self.reset_tx_diffs()
 
     def get_hd_identity_info(self) -> Tuple[int, str]:

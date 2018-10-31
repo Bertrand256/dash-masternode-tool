@@ -133,8 +133,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.setIcon(self.action_open_proposals_window, "thumbs-up-down.png")
         self.setIcon(self.action_test_hw_connection, "hw-test.png")
         self.setIcon(self.action_disconnect_hw, "hw-disconnect.png")
-        self.setIcon(self.action_transfer_funds_for_cur_mn, "money-transfer-1.png")
-        self.setIcon(self.action_transfer_funds_for_all_mns, "money-transfer-2.png")
         self.setIcon(self.action_transfer_funds_for_any_address, "wallet.png")
         self.setIcon(self.action_sign_message_for_cur_mn, "sign.png")
         self.setIcon(self.action_hw_configuration, "hw.png")
@@ -146,8 +144,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.action_open_proposals_window.setIconVisibleInMenu(False)
         self.action_test_hw_connection.setIconVisibleInMenu(False)
         self.action_disconnect_hw.setIconVisibleInMenu(False)
-        self.action_transfer_funds_for_cur_mn.setIconVisibleInMenu(False)
-        self.action_transfer_funds_for_all_mns.setIconVisibleInMenu(False)
         self.action_transfer_funds_for_any_address.setIconVisibleInMenu(False)
         self.action_sign_message_for_cur_mn.setIconVisibleInMenu(False)
         self.action_hw_configuration.setIconVisibleInMenu(False)
@@ -652,8 +648,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.action_check_network_connection.setEnabled(True)
             self.btnBroadcastMn.setEnabled(True)
             self.btnRefreshMnStatus.setEnabled(True)
-            self.action_transfer_funds_for_cur_mn.setEnabled(True)
-            self.action_transfer_funds_for_all_mns.setEnabled(True)
             self.action_transfer_funds_for_any_address.setEnabled(True)
 
             if self.dashd_connection_ok:
@@ -672,8 +666,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.btnBroadcastMn.setEnabled(False)
             self.btnRefreshMnStatus.setEnabled(False)
             # disable all actions that utilize dash network
-            self.action_transfer_funds_for_cur_mn.setEnabled(False)
-            self.action_transfer_funds_for_all_mns.setEnabled(False)
             self.action_transfer_funds_for_any_address.setEnabled(False)
             self.checkDashdConnection(call_on_check_finished=connection_test_finished)
         else:
@@ -764,18 +756,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         # check if Dash testnet is supported by this hardware wallet
 
                         found_testnet_support = False
-                        self.config.hw_coin_name = ''
                         if self.config.hw_type in (HWType.trezor, HWType.keepkey):
-                            for coin in ('Dash Testnet', 'tDash'):
-                                try:
-                                    addr = self.hw_client.get_address(coin, [0, 0], False)
-                                    if dash_utils.validate_address(addr, self.config.dash_network):
-                                        found_testnet_support = True
-                                        self.config.hw_coin_name = coin
-                                        break
-                                except Exception as e:
-                                    if str(e).find('Invalid coin name') < 0:
-                                        logging.exception('Failed when looking for Dash testnet support')
+                            try:
+                                addr = self.hw_client.get_address('Dash Testnet', [0, 0], False)
+                                if dash_utils.validate_address(addr, self.config.dash_network):
+                                    found_testnet_support = True
+                            except Exception as e:
+                                if str(e).find('Invalid coin name') < 0:
+                                    logging.exception('Failed when looking for Dash testnet support')
                         elif self.config.hw_type == HWType.ledger_nano_s:
                             addr = hw_intf.get_address(self.hw_session,
                                                        dash_utils.get_default_bip32_path(self.config.dash_network))
@@ -793,8 +781,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 pass
                             self.setStatus2Text(msg, 'red')
                             return
-                    else:
-                        self.config.hw_coin_name = 'Dash'
 
                     logging.info('Connected to a hardware wallet')
                     self.setStatus2Text('<b>HW status:</b> connected to %s' % hw_intf.get_hw_label(self.hw_client),
