@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+import importlib
 import os
-
 import traceback
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import QEventLoop
-from typing import Optional, Tuple, List, Dict, Callable
+from typing import Optional, Tuple, List, Dict, Callable, Iterable, Type, Set
 import simplejson
 import binascii
 import unicodedata
@@ -16,14 +16,16 @@ from mnemonic import Mnemonic
 from trezorlib.client import TextUIMixin, ProtocolMixin, BaseClient, CallException
 from trezorlib.tx_api import TxApiInsight
 from trezorlib import messages as trezor_proto
-from trezorlib.transport import enumerate_devices
+import trezorlib.transport
 import dash_utils
 from hw_common import HardwareWalletCancelException, ask_for_pass_callback, ask_for_pin_callback, ask_for_word_callback, \
     select_hw_device, HwSessionInfo
 import logging
 import wallet_common
-from thread_fun_dlg import ThreadFunDlg
 from wnd_utils import WndUtils
+
+
+log = logging.getLogger('dmt.hw_intf_trezor')
 
 
 class MyTrezorTextUIMixin(TextUIMixin):
@@ -93,6 +95,43 @@ class MyTrezorClient(ProtocolMixin, MyTrezorTextUIMixin, BaseClient):
     def __init__(self, transport, ask_for_pin_fun, ask_for_pass_fun, *args, **kwargs):
         super().__init__(transport=transport, ask_for_pin_fun=ask_for_pin_fun, ask_for_pass_fun=ask_for_pass_fun,
                          *args, **kwargs)
+
+
+def all_transports() -> Iterable[Type[trezorlib.transport.Transport]]:
+    """ Patched version from trezorlib module to avoid the missing libusb-1.0 library exception. """
+    transports = set()  # type: Set[Type[trezorlib.transport.Transport]]
+    for modname in ("bridge", "hid", "udp", "webusb"):
+        try:
+            # Import the module and find the Transport class.
+            # To avoid iterating over every item, the module should assign its Transport class
+            # to a constant named TRANSPORT.
+            module = importlib.import_module("." + modname, 'trezorlib.transport')
+            try:
+                transports.add(getattr(module, "TRANSPORT"))
+            except AttributeError:
+                log.warning("Skipping broken module {}".format(modname))
+        except ImportError as e:
+            log.info("Failed to import module {}: {}".format(modname, e))
+        except OSError as e:
+            log.info("Failed to import module {}: {}".format(modname, e))
+
+    return transports
+
+
+def enumerate_devices() -> Iterable[trezorlib.transport.Transport]:
+    """ Patched version from trezorlib module to avoid the missing libusb-1.0 library exception. """
+    devices = []  # type: List[trezorlib.transport.Transport]
+    for transport in all_transports():
+        try:
+            found = transport.enumerate()
+            log.info("Enumerating {}: found {} devices".format(transport.__name__, len(found)))
+            devices.extend(found)
+        except NotImplementedError:
+            log.error("{} does not implement device enumeration".format(transport.__name__))
+        except Exception as e:
+            log.error("Failed to enumerate {}. {}: {}".format(transport.__name__, e.__class__.__name__, e))
+    return devices
+
 
 def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = False) \
         -> Tuple[List[Dict], List[Exception]]:
