@@ -214,6 +214,15 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         l.insertWidget(0, self.wdg_accounts_view_options)
         self.wdg_accounts_view_options.hide()
 
+        img_path = os.path.join(self.app_config.app_path if self.app_config.app_path else '', 'img')
+        if sys.platform == 'win32':
+            h = self.pnl_input.height()
+            img_size_str = f'height="{h}" width="{h}"'
+        else:
+            img_size_str = ''
+        self.lblViewModeOptions.setText(f'<a href="#view-mode-options"><img {img_size_str} '
+                                        f'src="{img_path}/settings@16px.png"></a>')
+
         # context menu actions:
         self.act_show_address_on_hw = QAction('Show address on hardware wallet', self)
         self.act_show_address_on_hw.triggered.connect(self.on_show_address_on_hw_triggered)
@@ -726,9 +735,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         img_path = os.path.join(self.app_config.app_path if self.app_config.app_path else '', 'img')
         if sys.platform == 'win32':
             h = self.pnl_input.height()
-            h_str = f'height="{h}" width="{h}"'
+            img_size_str = f'height="{h}" width="{h}"'
         else:
-            h_str = ''
+            img_size_str = ''
 
         if not self.hw_connected():
             t = f'<table><tr><td>Hardware wallet <span>not connected</span></td>' \
@@ -741,9 +750,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             else:
                 label = f'<td> as <i>Identity #{str(id)}</i></td>'
             t = f'<table><tr><td>Connected to {ht}</td><td> (<a href="hw-disconnect">disconnect</a>)</td>' \
-                f'{label}<td><a href="hd-identity-label"><img {h_str} src="{img_path}/label@16px.png"></img></a></td>' \
-                f'<td><a href="hd-identity-delete"><img {h_str} src="{img_path}/delete@16px.png"></img></a></td>' \
-                f'<td><a href="tx-fetch"><img {h_str} src="{img_path}/autorenew@16px.png"></img></a></td></tr></table>'
+                f'{label}<td><a href="hd-identity-label"><img {img_size_str} src="{img_path}/label@16px.png"></img></a></td>' \
+                f'<td><a href="hd-identity-delete"><img {img_size_str} src="{img_path}/delete@16px.png"></img></a></td>' \
+                f'<td><a href="tx-fetch"><img {img_size_str} src="{img_path}/autorenew@16px.png"></img></a></td></tr></table>'
         self.lblHW.setText(t)
 
     def on_lblHW_linkHovered(self, link):
@@ -1188,14 +1197,14 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def update_ui_view_mode_options(self):
         if self.wdg_accounts_view_options.isVisible():
-            self.htmlViewModeOptions.hide()
+            self.lblViewModeOptions.hide()
         else:
             if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
-                self.htmlViewModeOptions.show()
+                self.lblViewModeOptions.show()
             else:
-                self.htmlViewModeOptions.hide()
+                self.lblViewModeOptions.hide()
 
-    def on_htmlViewModeOptions_linkActivated(self, link):
+    def on_lblViewModeOptions_linkActivated(self, link):
         c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowAddresses')
         if c:
             c.setChecked(self.accounts_view_show_individual_addresses)
