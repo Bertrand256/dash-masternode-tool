@@ -346,6 +346,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def start_threads(self):
         self.finishing = False
         if not self.data_thread_ref:
+            if self.hw_connected():
+                self.update_hw_info()
             self.data_thread_ref = self.run_thread(self, self.data_thread, ())
 
     def setup_transactions_table_view(self):
@@ -552,7 +554,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def reflect_ui_account_selection(self):
         view_index = self.accountsListView.currentIndex()
-        old_sel = self.get_utxo_src_cfg_hash()
         if view_index and view_index.isValid():
             index = self.account_list_model.mapToSource(view_index)
             data = index.internalPointer()  # data can by of Bip44AccountType or Bip44AddressType
@@ -569,18 +570,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 return
             self.update_details_tab()
         self.on_utxo_src_hash_changed()
-
-        if old_sel != self.get_utxo_src_cfg_hash():
-            # todo: this shouldn't be needed
-            # with self.utxo_table_model:
-            #     self.utxo_table_model.beginResetModel()
-            #     try:
-            #         self.utxo_table_model.clear_utxos()
-            #         self.reset_utxos_view()
-            #     finally:
-            #         self.utxo_table_model.endResetModel()
-            self.data_thread_event.set()
-            self.update_context_actions()
 
     def on_accountsListView_selectionChanged(self):
         """Selected BIP44 account or address changed. """
@@ -815,7 +804,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.main_ui.disconnect_hardware_wallet()
         self.bip44_wallet.clear()
         self.allow_fetch_transactions = True
+        self.hw_selected_account_id = None
+        self.hw_selected_address_id = None
         self.cur_hd_tree_id = None
+        self.cur_utxo_src_hash = None
 
     def connect_hw(self):
         def connect():
@@ -825,6 +817,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.update_context_actions()
                 self.update_hw_info()
                 self.on_utxo_src_hash_changed()
+                self.hw_selected_account_id = None
+                self.hw_selected_address_id = None
+                self.cur_hd_tree_id = None
+                self.cur_utxo_src_hash = None
+                self.fetch_transactions()
                 return True
             return False
         if not self.hw_connected():
@@ -873,6 +870,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:  # the hw accounts view needs an hw connection
                     if not self.hw_connected():
                         hw_error = True
+                        last_hd_tree_id = None
 
                     if not hw_error:
                         if last_hd_tree_id != self.cur_hd_tree_id:

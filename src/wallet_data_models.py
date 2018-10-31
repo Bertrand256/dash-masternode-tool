@@ -387,7 +387,7 @@ class AccountListModel(ExtSortFilterTableModel):
         def count_prev_zero_received(acc: Bip44AccountType, start_index: int):
             cnt = 0
             index = start_index
-            while index>0:
+            while index >= 0:
                 a = acc.address_by_index(index)
                 if not a.received:
                     cnt += 1
@@ -403,9 +403,11 @@ class AccountListModel(ExtSortFilterTableModel):
                 addr = acc.address_by_index(source_row)
                 if addr:
                     if addr.received == 0:
-                        prev_cnt = count_prev_zero_received(acc, source_row - 1)
-                        if prev_cnt + 1 > acc.view_fresh_addresses_count:
-                            will_show = False
+                        will_show = False
+                        if not addr.is_change:
+                            prev_cnt = count_prev_zero_received(acc, source_row - 1)
+                            if prev_cnt < acc.view_fresh_addresses_count:
+                                will_show = True
                     elif addr.balance == 0:
                         will_show = self.show_zero_balance_addresses
         else:

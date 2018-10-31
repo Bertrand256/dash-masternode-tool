@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>869</width>
+    <width>837</width>
     <height>502</height>
    </rect>
   </property>
@@ -835,7 +835,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>869</width>
+     <width>837</width>
      <height>22</height>
     </rect>
    </property>
@@ -843,8 +843,6 @@
     <property name="title">
      <string>Tools</string>
     </property>
-    <addaction name="action_transfer_funds_for_cur_mn"/>
-    <addaction name="action_transfer_funds_for_all_mns"/>
     <addaction name="action_transfer_funds_for_any_address"/>
     <addaction name="separator"/>
     <addaction name="action_sign_message_for_cur_mn"/>
@@ -905,8 +903,6 @@
    <addaction name="action_open_proposals_window"/>
    <addaction name="separator"/>
    <addaction name="action_transfer_funds_for_any_address"/>
-   <addaction name="action_transfer_funds_for_cur_mn"/>
-   <addaction name="action_transfer_funds_for_all_mns"/>
    <addaction name="action_sign_message_for_cur_mn"/>
   </widget>
   <action name="action_transfer_funds_for_cur_mn">
@@ -921,7 +917,7 @@
   </action>
   <action name="action_transfer_funds_for_any_address">
    <property name="text">
-    <string>Transfer Funds for Any Address</string>
+    <string>Transfer Funds / Wallet</string>
    </property>
   </action>
   <action name="action_sign_message_for_cur_mn">
