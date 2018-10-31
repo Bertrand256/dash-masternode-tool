@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-04
+import os
 
 import base64
 import hashlib
@@ -720,6 +721,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.data_thread_event.set()
 
     def update_hw_info(self):
+        img_path = os.path.join(self.app_config.app_path if self.app_config.app_path else '', 'img')
+
         if not self.hw_connected():
             t = f'<table><tr><td>Hardware wallet <span>not connected</span></td>' \
                 f'<td> (<a href="hw-connect">connect</a>)</td></tr></table>'
@@ -731,9 +734,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             else:
                 label = f'<td> as <i>Identity #{str(id)}</i></td>'
             t = f'<table><tr><td>Connected to {ht}</td><td> (<a href="hw-disconnect">disconnect</a>)</td>' \
-                f'{label}<td><a href="hd-identity-label"><img src="img/label@16px.png"></img></a></td>' \
-                f'<td><a href="hd-identity-delete"><img src="img/delete@16px.png"></img></a></td>' \
-                f'<td><a href="tx-fetch"><img src="img/autorenew@16px.png"></img></a></td></tr></table>'
+                f'{label}<td><a href="hd-identity-label"><img src="{img_path}/label@16px.png"></img></a></td>' \
+                f'<td><a href="hd-identity-delete"><img src="{img_path}/delete@16px.png"></img></a></td>' \
+                f'<td><a href="tx-fetch"><img src="{img_path}/autorenew@16px.png"></img></a></td></tr></table>'
         self.lblHW.setText(t)
 
     def on_lblHW_linkHovered(self, link):
