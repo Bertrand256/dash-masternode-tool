@@ -47,6 +47,7 @@ add_files = [
  ('img/save.png','/img'),
  ('img/settings@16px.png','/img'),
  ('img/sign.png','/img'),
+ ('img/sign@32px.png','/img'),
  ('img/thumbs-up-down.png','/img'),
  ('img/uncheck.png','/img'),
  ('img/wallet.png','/img'),

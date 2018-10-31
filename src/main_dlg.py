@@ -134,7 +134,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.setIcon(self.action_test_hw_connection, "hw-test.png")
         self.setIcon(self.action_disconnect_hw, "hw-disconnect.png")
         self.setIcon(self.action_transfer_funds_for_any_address, "wallet.png")
-        self.setIcon(self.action_sign_message_for_cur_mn, "sign.png")
+        self.setIcon(self.action_sign_message_for_cur_mn, "sign@32px.png")
         self.setIcon(self.action_hw_configuration, "hw.png")
         self.setIcon(self.action_hw_initialization_recovery, "recover.png")
         # icons will not be visible in menu
