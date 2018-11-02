@@ -5,7 +5,7 @@
 import logging
 import math
 import re
-from PyQt5.QtGui import QPen, QBrush, QTextDocument, QFont, QFontMetrics
+from PyQt5.QtGui import QPen, QBrush, QTextDocument, QFont, QFontMetrics, QPalette
 from functools import partial
 from typing import List, Callable, Optional, Tuple
 import sys
@@ -29,6 +29,9 @@ OUTPUT_VALUE_UNIT_PERCENT = 'PCT'
 MAX_DATA_FILE_SIZE = 10000000
 CSV_SEPARATOR = ';'
 CACHE_ITEM_DATA_FILE_MRU_LIST = 'SendFundsDestination_DataFileMRUList'
+
+
+log = logging.getLogger('dmt.wallet_dlg')
 
 
 class SendFundsDestinationItem(QObject):
@@ -1137,8 +1140,8 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
 class WalletMnItemDelegate(QItemDelegate):
     """
     """
-    CellVerticalMargin = 2
-    CellHorizontalMargin = 2
+    CellVerticalMargin = 3
+    CellHorizontalMargin = 6
     CellLinesMargin = 2
 
     def __init__(self, parent):
@@ -1154,15 +1157,21 @@ class WalletMnItemDelegate(QItemDelegate):
 
             painter.setPen(QPen(Qt.NoPen))
             if option.state & QStyle.State_Selected:
-                painter.setBrush(QBrush(option.palette.highlight()))
-                primary_color = Qt.white
-                secondary_color = Qt.cyan
+                if option.state & QStyle.State_HasFocus:
+                    primary_color = Qt.white
+                    secondary_color = Qt.white
+                    painter.setBrush(QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
+                else:
+                    primary_color = Qt.black
+                    secondary_color = Qt.black
+                    painter.setBrush(QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
             else:
                 painter.setBrush(QBrush(Qt.white))
                 primary_color = Qt.black
                 secondary_color = Qt.darkGray
             painter.drawRect(option.rect)
 
+            # draw the masternode description
             option.font.setBold(True)
             painter.setPen(QPen(primary_color))
             painter.setFont(option.font)
@@ -1170,11 +1179,9 @@ class WalletMnItemDelegate(QItemDelegate):
             fm = option.fontMetrics
             r.setLeft(r.left() + WalletMnItemDelegate.CellHorizontalMargin)
             r.setTop(r.top() + WalletMnItemDelegate.CellVerticalMargin)
-
-            # draw the masternode description
             painter.drawText(r, Qt.AlignLeft, mn.masternode.name)
 
-            # draw the mn address balance:
+            # draw the mn address balance below:
             option.font.setBold(False)
             option.font.setPointSize(option.font.pointSize() - 2)
             painter.setPen(QPen(secondary_color))
@@ -1192,7 +1199,7 @@ class WalletMnItemDelegate(QItemDelegate):
     def sizeHint(self, option, index):
         sh = QItemDelegate.sizeHint(self, option, index)
         fm = option.fontMetrics
-        h = WalletMnItemDelegate.CellHorizontalMargin * 2 + WalletMnItemDelegate.CellLinesMargin
+        h = WalletMnItemDelegate.CellVerticalMargin * 2 + WalletMnItemDelegate.CellLinesMargin
         h += (fm.height() * 2) - 2
         sh.setHeight(h)
         return sh
@@ -1226,13 +1233,14 @@ class WalletAccountItemDelegate(QItemDelegate):
 
             painter.setPen(QPen(Qt.NoPen))
             if option.state & QStyle.State_Selected:
-                painter.setBrush(QBrush(option.palette.highlight()))
                 if option.state & QStyle.State_HasFocus:
                     primary_color = Qt.white
                     secondary_color = Qt.white
+                    painter.setBrush(QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
                 else:
                     primary_color = Qt.black
                     secondary_color = Qt.black
+                    painter.setBrush(QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
             else:
                 painter.setBrush(QBrush(Qt.white))
                 primary_color = Qt.black
@@ -1297,21 +1305,6 @@ class WalletAccountItemDelegate(QItemDelegate):
                     t = data.address
                 painter.drawText(r, Qt.AlignLeft, t)
 
-            # # draw the masternode description
-            #
-            # # draw the mn address balance:
-            # option.font.setBold(False)
-            # option.font.setPointSize(option.font.pointSize() - 2)
-            # painter.setPen(QPen(secondary_color))
-            # painter.setFont(option.font)
-            #
-            # r.setTop(r.top() + fm.height() + WalletMnItemDelegate.CellLinesMargin)
-            # if mn.address.balance is not None:
-            #     balance_str = 'Balance: ' + app_utils.to_string(mn.address.balance / 1e8) + ' Dash'
-            # else:
-            #     balance_str = 'Balance: unknown'
-            # painter.drawText(r, Qt.AlignLeft, balance_str)
-
             painter.restore()
 
     def sizeHint(self, option, index):
@@ -1320,7 +1313,7 @@ class WalletAccountItemDelegate(QItemDelegate):
             data = index.data()
             if isinstance(data, Bip44AccountType):
                 fm = option.fontMetrics
-                h = WalletMnItemDelegate.CellHorizontalMargin * 2 + WalletMnItemDelegate.CellLinesMargin
+                h = WalletMnItemDelegate.CellVerticalMargin * 2 + WalletMnItemDelegate.CellLinesMargin
                 h += (fm.height() * 2) - 2
                 sh.setHeight(h)
         return sh
