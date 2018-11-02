@@ -162,6 +162,11 @@
                 <height>16777215</height>
                </size>
               </property>
+              <property name="font">
+               <font>
+                <pointsize>14</pointsize>
+               </font>
+              </property>
               <item>
                <property name="text">
                 <string>View As: Wallet Account</string>
@@ -283,7 +288,7 @@
            <number>0</number>
           </property>
           <item>
-           <widget class="QTabWidget" name="tabWidget">
+           <widget class="QTabWidget" name="detailsTab">
             <property name="currentIndex">
              <number>0</number>
             </property>
@@ -482,7 +487,7 @@
                <number>6</number>
               </property>
               <item>
-               <widget class="QTableView" name="tabViewTransactions"/>
+               <widget class="QTableView" name="txTableView"/>
               </item>
              </layout>
             </widget>

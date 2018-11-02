@@ -6,7 +6,7 @@ import base64
 import bisect
 import bitcoin
 from bip32utils import BIP32Key, Base58
-from typing import Optional, List, Callable, Tuple, Dict, ByteString
+from typing import Optional, List, Callable, Tuple, Dict, ByteString, Union
 
 import base58
 from common import AttrsProtected
@@ -27,6 +27,23 @@ def address_to_hash(address):
     hash = bitcoin.bin_sha256(abin)
     hash = base64.b64encode(hash)
     return hash.decode('ascii')
+
+
+class TxType(AttrsProtected):
+    def __init__(self):
+        super(TxType, self).__init__()
+        self.id = None
+        self.is_coinbase = False
+        self.sender_addrs: List[Union[Bip44AddressType, str]] = []
+        self.rcp_address: Optional[Bip44AddressType] = None  # != None if recipient is our own address
+        self.rcp_address_str: str = None
+        self.satoshis: int = 0
+        self.tx_id: int = None
+        self.tx_hash: str = ''
+        self.block_height: int = 0
+        self.block_time_stamp: int = 0
+        self.block_time_str: str = None
+        self.set_attr_protection()
 
 
 class UtxoType(AttrsProtected):

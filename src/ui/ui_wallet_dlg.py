@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_wallet_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.9.2
+# Created by: PyQt5 UI code generator 5.11.3
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -81,6 +81,9 @@ class Ui_WalletDlg(object):
         self.cboAddressSourceMode.setSizePolicy(sizePolicy)
         self.cboAddressSourceMode.setMinimumSize(QtCore.QSize(0, 0))
         self.cboAddressSourceMode.setMaximumSize(QtCore.QSize(16777215, 16777215))
+        font = QtGui.QFont()
+        font.setPointSize(14)
+        self.cboAddressSourceMode.setFont(font)
         self.cboAddressSourceMode.setObjectName("cboAddressSourceMode")
         self.cboAddressSourceMode.addItem("")
         self.cboAddressSourceMode.addItem("")
@@ -129,8 +132,8 @@ class Ui_WalletDlg(object):
         self.verticalLayout_9 = QtWidgets.QVBoxLayout(self.wdgRightPanel)
         self.verticalLayout_9.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout_9.setObjectName("verticalLayout_9")
-        self.tabWidget = QtWidgets.QTabWidget(self.wdgRightPanel)
-        self.tabWidget.setObjectName("tabWidget")
+        self.detailsTab = QtWidgets.QTabWidget(self.wdgRightPanel)
+        self.detailsTab.setObjectName("detailsTab")
         self.tabSend = QtWidgets.QWidget()
         self.tabSend.setObjectName("tabSend")
         self.verticalLayout_5 = QtWidgets.QVBoxLayout(self.tabSend)
@@ -196,16 +199,16 @@ class Ui_WalletDlg(object):
         self.dest_widget.setObjectName("dest_widget")
         self.verticalLayout_3.addWidget(self.dest_widget)
         self.verticalLayout_5.addWidget(self.splitter)
-        self.tabWidget.addTab(self.tabSend, "")
+        self.detailsTab.addTab(self.tabSend, "")
         self.tabTransactions = QtWidgets.QWidget()
         self.tabTransactions.setObjectName("tabTransactions")
         self.horizontalLayout_5 = QtWidgets.QHBoxLayout(self.tabTransactions)
         self.horizontalLayout_5.setContentsMargins(6, 6, 6, 6)
         self.horizontalLayout_5.setObjectName("horizontalLayout_5")
-        self.tabViewTransactions = QtWidgets.QTableView(self.tabTransactions)
-        self.tabViewTransactions.setObjectName("tabViewTransactions")
-        self.horizontalLayout_5.addWidget(self.tabViewTransactions)
-        self.tabWidget.addTab(self.tabTransactions, "")
+        self.txTableView = QtWidgets.QTableView(self.tabTransactions)
+        self.txTableView.setObjectName("txTableView")
+        self.horizontalLayout_5.addWidget(self.txTableView)
+        self.detailsTab.addTab(self.tabTransactions, "")
         self.tabDetails = QtWidgets.QWidget()
         self.tabDetails.setObjectName("tabDetails")
         self.verticalLayout_7 = QtWidgets.QVBoxLayout(self.tabDetails)
@@ -214,8 +217,8 @@ class Ui_WalletDlg(object):
         self.edtDetailsAddress.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContents)
         self.edtDetailsAddress.setObjectName("edtDetailsAddress")
         self.verticalLayout_7.addWidget(self.edtDetailsAddress)
-        self.tabWidget.addTab(self.tabDetails, "")
-        self.verticalLayout_9.addWidget(self.tabWidget)
+        self.detailsTab.addTab(self.tabDetails, "")
+        self.verticalLayout_9.addWidget(self.detailsTab)
         self.verticalLayout_6.addWidget(self.splitterMain)
         self.verticalLayout.addWidget(self.widget)
         self.layStatusBar = QtWidgets.QHBoxLayout()
@@ -254,7 +257,7 @@ class Ui_WalletDlg(object):
 
         self.retranslateUi(WalletDlg)
         self.swAddressSource.setCurrentIndex(1)
-        self.tabWidget.setCurrentIndex(0)
+        self.detailsTab.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(WalletDlg)
 
     def retranslateUi(self, WalletDlg):
@@ -267,9 +270,9 @@ class Ui_WalletDlg(object):
         self.btnUncheckAll.setText(_translate("WalletDlg", "Unselect All"))
         self.btnUtxoViewColumns.setText(_translate("WalletDlg", "Columns..."))
         self.chbHideCollateralTx.setText(_translate("WalletDlg", "Hide collateral utxos"))
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tabSend), _translate("WalletDlg", "Send"))
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tabTransactions), _translate("WalletDlg", "Transactions"))
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tabDetails), _translate("WalletDlg", "Details"))
+        self.detailsTab.setTabText(self.detailsTab.indexOf(self.tabSend), _translate("WalletDlg", "Send"))
+        self.detailsTab.setTabText(self.detailsTab.indexOf(self.tabTransactions), _translate("WalletDlg", "Transactions"))
+        self.detailsTab.setTabText(self.detailsTab.indexOf(self.tabDetails), _translate("WalletDlg", "Details"))
         self.btnSend.setText(_translate("WalletDlg", "Prepare Transaction"))
         self.btnClose.setText(_translate("WalletDlg", "Close"))
 

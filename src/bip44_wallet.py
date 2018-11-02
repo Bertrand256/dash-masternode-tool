@@ -20,7 +20,7 @@ from dashd_intf import DashdInterface
 from hw_common import HwSessionInfo
 from db_intf import DBCache
 from wallet_common import Bip44AccountType, Bip44AddressType, UtxoType, TxOutputType, xpub_to_hash, Bip44Entry, \
-    address_to_hash
+    address_to_hash, TxType
 
 TX_QUERY_ADDR_CHUNK_SIZE = 10
 ADDRESS_SCAN_GAP_LIMIT = 20
@@ -51,7 +51,7 @@ class Bip44Wallet(object):
         self.account_by_id: Dict[int, Bip44AccountType] = {}
         self.account_by_bip32_path: Dict[str, Bip44AccountType] = {}  # todo: clear when switching
 
-        # list of addresses created withing the current hd tree
+        # list of addresses created within the current hd tree
         self.addresses_by_id: Dict[int, Bip44AddressType] = {}
         # addresses whose balance has been modified since the last call of reset_tx_diffs
         self.addr_bal_updated: Dict[int, int] = {}  # {'address_id': 'address_id' }
@@ -168,7 +168,7 @@ class Bip44Wallet(object):
         finally:
             self.db_intf.release_cursor()
 
-    def _find_address_item_in_cache_by_id(self, addr_id: int, db_cursor) -> Tuple[Bip44AddressType, Bip44AccountType]:
+    def _find_address_item_in_cache_by_id(self, addr_id: int) -> Tuple[Bip44AddressType, Bip44AccountType]:
         addr = None
         acc = None
         for acc_id in self.account_by_id:
@@ -586,7 +586,6 @@ class Bip44Wallet(object):
 
     def fetch_addresses_txs(self, addr_info_list: List[Bip44AddressType], check_break_process_fun: Callable):
         tm_begin = time.time()
-        self.validate_hd_tree()
         self.increase_ext_call_level()
 
         cur_block_height = self.get_block_height()
@@ -956,7 +955,7 @@ class Bip44Wallet(object):
                     if account:
                         address = account.address_by_id(id)
                     else:
-                        address, account = self._find_address_item_in_cache_by_id(id, db_cursor)
+                        address, account = self._find_address_item_in_cache_by_id(id)
                     if address:
                         address.balance = real_balance
                         address.received = real_received
@@ -1072,7 +1071,6 @@ class Bip44Wallet(object):
         log.debug('list_utxos_for_account exec time: %ss', diff)
 
     def list_utxos_for_addresses(self, address_ids: List[int], only_new = False) -> Generator[UtxoType, None, None]:
-        self.validate_hd_tree()
         db_cursor = self.db_intf.get_cursor()
         try:
             in_part = ','.join(['?'] * len(address_ids))
@@ -1106,6 +1104,120 @@ class Bip44Wallet(object):
             for id in self.utxos_removed:
                 if id in self.utxos_by_id:
                     del self.utxos_by_id[id]
+
+    def list_txs_for_account(self, account_id: int, only_new = False) -> Generator[TxType, None, None]:
+        """
+        :param account_id: database id of the account's record
+        """
+        tm_begin = time.time()
+        self.validate_hd_tree()
+        db_cursor = self.db_intf.get_cursor()
+        try:
+            sql_text = """
+                select 'o' type,
+                       group_concat(DISTINCT a.id) src_addr_ids, -- my addresses
+                       o.address_id dest_address_id, -- if dest is my address
+                       o.address dest_address,   -- dest address
+                       o.satoshis,
+                       t.id,
+                       t.tx_hash,
+                       t.block_height,
+                       t.block_timestamp,
+                       0 is_coinbase
+                from tx_input i join tx t on t.id=i.tx_id join address a on a.id=i.src_address_id join address ac on ac.id=a.parent_id
+                join address aa on aa.id=ac.parent_id
+                join tx_output o on o.tx_id=t.id left join address ao on ao.id=o.address_id
+                where aa.id=?
+                group by o.id
+                union
+                select 'i' type,
+                       group_concat(DISTINCT i.src_address||':'||ifnull(src_address_id,'')), -- my or others (sender) addresses
+                       o.address_id, -- my dest address id
+                       o.address,  -- my dest address
+                       o.satoshis,
+                       t.id,
+                       t.tx_hash,
+                       t.block_height,
+                       t.block_timestamp, max(i.coinbase) is_coinbase
+                from tx_output o join tx t on t.id=o.tx_id join address a on a.id=o.address_id join address ac on ac.id=a.parent_id
+                join address aa on aa.id=ac.parent_id
+                join tx_input i on i.tx_id=t.id
+                where aa.id=?
+                group by o.id
+                order by 8 desc
+            """
+            t = time.time()
+            db_cursor.execute(sql_text, (account_id,))
+            log.debug('SQL exec time: %s', time.time() - t)
+
+            for type, snd_addrs, rcp_addr_id, rcp_address, satoshis, tx_id, tx_hash, bh, bts, is_coinbase in db_cursor.fetchall():
+                tx = TxType()
+                tx.id = tx_id
+                tx.tx_hash = tx_hash
+                tx.is_coinbase = is_coinbase
+                tx.satoshis = satoshis
+                tx.block_height = bh
+                tx.block_time_stamp = bts
+                tx.block_time_str = app_utils.to_string(datetime.datetime.fromtimestamp(bts))
+                if rcp_addr_id:
+                    tx.rcp_address = self.addresses_by_id.get(rcp_addr_id)
+                if snd_addrs:
+                    for ad_str in snd_addrs.split(','):
+                        elems = ad_str.split(':')
+                        if len(elems) == 1:
+                            id = elems[0]
+                            addr_str = ''
+                        else:
+                            addr_str, id = elems
+                        if id:
+                            a = self.addresses_by_id.get(id)
+                            tx.sender_addrs.append(a)
+                        else:
+                            tx.sender_addrs.append(addr_str)
+                yield tx
+        finally:
+            if db_cursor.connection.total_changes > 0:
+                self.db_intf.commit()
+            self.db_intf.release_cursor()
+
+            for id in self.utxos_removed:
+                if id in self.utxos_by_id:
+                    del self.utxos_by_id[id]
+
+        diff = time.time() - tm_begin
+        log.debug('list_utxos_for_account exec time: %ss', diff)
+
+    def list_txs_for_addresses(self, address_ids: List[int], only_new = False) -> Generator[TxType, None, None]:
+        db_cursor = self.db_intf.get_cursor()
+        try:
+            pass
+            # in_part = ','.join(['?'] * len(address_ids))
+            # sql_text = "select o.id, tx.block_height, tx.coinbase,tx.block_timestamp, tx.tx_hash, o.output_index, " \
+            #            "o.satoshis, o.address_id from tx_output o join address a" \
+            #            " on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca" \
+            #            " on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null" \
+            #            " or spent_input_index is null) and a.id in (" + in_part + ')'
+            #
+            # if only_new:
+            #     # limit returned utxos only to those existing in the self.utxos_added list
+            #     self._fill_temp_ids_table([id for id in self.utxos_added], db_cursor)
+            #     sql_text += ' and o.id in (select id from temp_ids)'
+            # sql_text += " order by tx.block_height desc"
+            #
+            # db_cursor.execute(sql_text, address_ids)
+            #
+            # for id, block_height, coinbase, block_timestamp, tx_hash, \
+            #     output_index, satoshis, address_id in db_cursor.fetchall():
+            #
+            #     utxo = self._get_utxo(id, tx_hash, address_id, output_index, satoshis, block_height,
+            #                           block_timestamp, coinbase)
+            #
+            #     yield utxo
+
+        finally:
+            if db_cursor.connection.total_changes > 0:
+                self.db_intf.commit()
+            self.db_intf.release_cursor()
 
     def list_accounts(self) -> Generator[Bip44AccountType, None, None]:
         tm_begin = time.time()
@@ -1192,7 +1304,7 @@ class Bip44Wallet(object):
 
             db_cursor.execute("update address set last_scan_block_height=0 where id=?", (id,))
 
-            addr, _ = self._find_address_item_in_cache_by_id(id, db_cursor)
+            addr, _ = self._find_address_item_in_cache_by_id(id)
             if addr:
                 addr.last_scan_block_height = 0
 
