@@ -37,7 +37,7 @@ from hw_common import HardwareWalletCancelException, HwSessionInfo
 from hw_intf import prepare_transfer_tx, get_address
 from ext_item_model import ExtSortFilterTableModel, TableModelColumn
 from thread_fun_dlg import WorkerThread, CtrlObject
-from tx_history_widgets import TransactionsModel, TransactionsProxyModel
+from tx_history_widgets import TransactionsModel
 from wallet_data_models import UtxoTableModel, MnAddressTableModel, AccountListModel, MnAddressItem
 from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget
 from ui import ui_wallet_dlg
@@ -51,6 +51,7 @@ CACHE_ITEM_HW_SEL_ACCOUNT_ADDR_ID = 'WalletDlg_UtxoSrc_HwAccountId'
 CACHE_ITEM_HW_SRC_BIP32_PATH = 'WalletDlg_UtxoSrc_HwBip32Path_%NETWORK%'
 CACHE_ITEM_UTXO_SRC_MASTRNODE = 'WalletDlg_UtxoSrc_Masternode_%NETWORK%'
 CACHE_ITEM_UTXO_COLS = 'WalletDlg_UtxoColumns'
+CACHE_ITEM_TXS_COLS = 'WalletDlg_TxsColumns'
 CACHE_ITEM_LAST_RECIPIENTS = 'WalletDlg_LastRecipients_%NETWORK%'
 CACHE_ITEM_MAIN_SPLITTER_SIZES = 'WalletDlg_MainSplitterSizes'
 CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES = 'WalletDlg_ShowAccountAddresses'
@@ -104,6 +105,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         self.utxo_table_model = UtxoTableModel(self, self.masternodes)
         self.mn_model = MnAddressTableModel(self, self.masternodes, self.bip44_wallet)
+        self.tx_model = TransactionsModel(self)
+
         self.finishing = False  # true if this window is closing
         self.data_thread_ref: Optional[WorkerThread] = None
         self.last_txs_fetch_time = 0
@@ -161,6 +164,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.utxoTableView.horizontalHeader().setSortIndicator(
             self.utxo_table_model.col_index_by_name('confirmations'), Qt.AscendingOrder)
         self.utxo_table_model.set_view(self.utxoTableView)
+        self.tx_model.set_view(self.txTableView)
 
         # self.accountsListView.setModel(self.account_list_model)
         self.account_list_model.set_view(self.accountsListView)
@@ -169,7 +173,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.mnListView.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.mn_view_restore_selection()
 
-        self.setup_transactions_table_view()
         self.chbHideCollateralTx.toggled.connect(self.chbHideCollateralTxToggled)
 
         self.cboAddressSourceMode.blockSignals(True)
@@ -283,6 +286,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.hw_selected_account_id = app_cache.get_value(CACHE_ITEM_HW_SEL_ACCOUNT_ADDR_ID, 0x80000000, int)
 
         self.utxo_table_model.restore_col_defs(CACHE_ITEM_UTXO_COLS)
+        self.tx_model.restore_col_defs(CACHE_ITEM_TXS_COLS)
 
         # restore the selected masternodes
         sel_hashes = app_cache.get_value(
@@ -330,6 +334,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                             sel_hashes)
 
         self.utxo_table_model.save_col_defs(CACHE_ITEM_UTXO_COLS)
+        self.tx_model.save_col_defs(CACHE_ITEM_TXS_COLS)
 
         # recipient list
         rcp_list = self.wdg_dest_adresses.get_recipients_list()
@@ -357,23 +362,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def start_threads(self):
         self.finishing = False
+        self.update_hw_info()
         if not self.data_thread_ref:
-            if self.hw_connected():
-                self.update_hw_info()
             self.data_thread_ref = self.run_thread(self, self.data_thread, ())
-
-    def setup_transactions_table_view(self):
-        self.tabViewTransactions.setSortingEnabled(True)
-        self.tx_model = TransactionsModel(self)
-        self.tx_proxy_model = TransactionsProxyModel(self)
-        self.tx_proxy_model.setSourceModel(self.tx_model)
-        self.tabViewTransactions.setModel(self.tx_proxy_model)
-        self.tabViewTransactions.setItemDelegate(ReadOnlyTableCellDelegate(self.tabViewTransactions))
-        self.tabViewTransactions.verticalHeader().setDefaultSectionSize(self.tabViewTransactions.verticalHeader().fontMetrics().height() + 4)
-
-        for idx, col in enumerate(self.tx_model.columns):
-            if not col.visible:
-                self.tabViewTransactions.setColumnHidden(idx, True)
 
     def mn_view_restore_selection(self):
         """Restores selection in the masternodes view (on the left side) using values from the self.selected_mns list.
@@ -391,6 +382,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     @pyqtSlot(int)
     def on_cboAddressSourceMode_currentIndexChanged(self, index):
         self.swAddressSource.setCurrentIndex(index)
+
+        with self.utxo_table_model:
+            self.utxo_table_model.beginResetModel()
+            self.utxo_table_model.clear_utxos()
+            self.utxo_table_model.endResetModel()
+
         if index == 0:
             self.utxo_src_mode = MAIN_VIEW_BIP44_ACCOUNTS
             self.connect_hw()
@@ -1227,3 +1224,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.wdg_accounts_view_options.hide()
         self.update_ui_view_mode_options()
 
+    def on_detailsTab_currentChanged(self, index):
+        if index == self.detailsTab.indexOf(self.tabTransactions):
+            pass

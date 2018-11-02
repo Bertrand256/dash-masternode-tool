@@ -11,20 +11,35 @@ from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox, QSplitter, QVBoxLayout, QPushButton, \
     QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout
 import app_utils
-from ext_item_model import TableModelColumn
+from ext_item_model import TableModelColumn, ExtSortFilterTableModel
 
 
-class TransactionsModel(QAbstractTableModel):
+class TransactionsModel(ExtSortFilterTableModel):
     def __init__(self, parent):
+        ExtSortFilterTableModel.__init__(self, parent, [
+            TableModelColumn('amount', 'Amount', True, 100),
+            TableModelColumn('date', 'Date', True, 100),
+            TableModelColumn('height', 'Height', False, 100),
+            TableModelColumn('senders', 'Sender', True, 100),
+            TableModelColumn('receiver', 'Receiver', True, 100),
+            TableModelColumn('txid', 'TX ID', False, 100),
+            TableModelColumn('tx_index', 'TX index', False, 100),
+            TableModelColumn('coinbase', 'Coinbase TX', False, 100),
+            TableModelColumn('comment', 'Comment', True, 100)
+        ], False, True)
+        self.accounts: List[Bip44AccountType] = []
+        self.__data_modified = False
+        self.show_zero_balance_addresses = False
+        self.set_attr_protection()
+
         QAbstractTableModel.__init__(self, parent)
-        self.columns = [TableModelColumn('satoshis', 'Amount', True, 100),
+        self.columns = [TableModelColumn('amount', 'Amount', True, 100),
                         TableModelColumn('date', 'Date', True, 100),
+                        TableModelColumn('height', 'Height', False, 100),
+                        TableModelColumn('senders', 'Sender', True, 100),
+                        TableModelColumn('receiver', 'Receiver', True, 100),
                         TableModelColumn('txid', 'TX ID', False, 100),
                         TableModelColumn('tx_index', 'TX index', False, 100),
-                        TableModelColumn('height', 'Height', False, 100),
-                        TableModelColumn('block_hash', 'Block hash', False, 100),
-                        TableModelColumn('address', 'Address', True, 100),
-                        TableModelColumn('address_bip32_path', 'BIP32 path', False, 100),
                         TableModelColumn('coinbase', 'Coinbase TX', False, 100),
                         TableModelColumn('comment', 'Comment', True, 100)
                         ]
