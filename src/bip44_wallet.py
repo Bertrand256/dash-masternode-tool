@@ -241,8 +241,10 @@ class Bip44Wallet(object):
                         addr_info.get('address_index') != child_addr_index or addr_info.get('path') != bip32_path or \
                         addr_info.get('tree_id') != parent_key_entry.tree_id:
                         # address wasn't initially opened as a part of xpub account scan, so update its attrs
-                        db_cursor.execute('update address set parent_id=?, address_index=?, path=? where id=?',
-                                          (parent_key_entry.id, child_addr_index, bip32_path, row[0]))
+                        db_cursor.execute('update address set parent_id=?, address_index=?, path=?, tree_id=? '
+                                          'where id=?',
+                                          (parent_key_entry.id, child_addr_index, bip32_path, parent_key_entry.tree_id,
+                                           row[0]))
 
                         addr_info['parent_id'] = parent_key_entry.id
                         addr_info['address_index'] = child_addr_index
@@ -328,6 +330,7 @@ class Bip44Wallet(object):
         :return:
         """
         tm_begin = time.time()
+        tree_id = self.get_tree_id()
         b32_path = self.hw_session.base_bip32_path
         if not b32_path:
             log.error('hw_session.base_bip32_path not set. Probable cause: not initialized HW session.')
@@ -339,7 +342,7 @@ class Bip44Wallet(object):
         if not account:
             xpub = hw_intf.get_xpub(self.hw_session, account_bip32_path)
             xpub_hash = xpub_to_hash(xpub)
-            db_cursor.execute('select id, path from address where xpub_hash=?', (xpub_hash,))
+            db_cursor.execute('select id, path from address where xpub_hash=? and tree_id=?', (xpub_hash, tree_id))
             row = db_cursor.fetchone()
             if row:
                 id, path = row
@@ -1147,7 +1150,7 @@ class Bip44Wallet(object):
                 order by 8 desc
             """
             t = time.time()
-            db_cursor.execute(sql_text, (account_id,))
+            db_cursor.execute(sql_text, (account_id, account_id))
             log.debug('SQL exec time: %s', time.time() - t)
 
             for type, snd_addrs, rcp_addr_id, rcp_address, satoshis, tx_id, tx_hash, bh, bts, is_coinbase in db_cursor.fetchall():
@@ -1157,10 +1160,11 @@ class Bip44Wallet(object):
                 tx.is_coinbase = is_coinbase
                 tx.satoshis = satoshis
                 tx.block_height = bh
-                tx.block_time_stamp = bts
+                tx.block_timestamp = bts
                 tx.block_time_str = app_utils.to_string(datetime.datetime.fromtimestamp(bts))
                 if rcp_addr_id:
                     tx.rcp_address = self.addresses_by_id.get(rcp_addr_id)
+                tx.rcp_address_str = rcp_address
                 if snd_addrs:
                     for ad_str in snd_addrs.split(','):
                         elems = ad_str.split(':')
@@ -1170,8 +1174,12 @@ class Bip44Wallet(object):
                         else:
                             addr_str, id = elems
                         if id:
+                            id = int(id)
                             a = self.addresses_by_id.get(id)
-                            tx.sender_addrs.append(a)
+                            if a:
+                                tx.sender_addrs.append(a)
+                            else:
+                                log.warning('Cannot find cached address for id: %s', id)
                         else:
                             tx.sender_addrs.append(addr_str)
                 yield tx
