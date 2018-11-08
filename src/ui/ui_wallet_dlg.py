@@ -206,6 +206,8 @@ class Ui_WalletDlg(object):
         self.horizontalLayout_5.setContentsMargins(6, 6, 6, 6)
         self.horizontalLayout_5.setObjectName("horizontalLayout_5")
         self.txTableView = QtWidgets.QTableView(self.tabTransactions)
+        self.txTableView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.txTableView.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.txTableView.setObjectName("txTableView")
         self.horizontalLayout_5.addWidget(self.txTableView)
         self.detailsTab.addTab(self.tabTransactions, "")
@@ -257,7 +259,7 @@ class Ui_WalletDlg(object):
 
         self.retranslateUi(WalletDlg)
         self.swAddressSource.setCurrentIndex(1)
-        self.detailsTab.setCurrentIndex(0)
+        self.detailsTab.setCurrentIndex(1)
         QtCore.QMetaObject.connectSlotsByName(WalletDlg)
 
     def retranslateUi(self, WalletDlg):

@@ -30,18 +30,18 @@ from app_config import MasternodeConfig
 from app_defs import HWType, DEBUG_MODE
 from bip44_wallet import Bip44Wallet, Bip44Entry
 from ui.ui_wallet_dlg_options1 import Ui_WdgOptions1
-from wallet_common import UtxoType, Bip44AccountType, Bip44AddressType, TxOutputType
+from wallet_common import UtxoType, Bip44AccountType, Bip44AddressType, TxOutputType, TxType
 from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
 from hw_common import HardwareWalletCancelException, HwSessionInfo
 from hw_intf import prepare_transfer_tx, get_address
 from ext_item_model import ExtSortFilterTableModel, TableModelColumn
 from thread_fun_dlg import WorkerThread, CtrlObject
-from tx_history_widgets import TransactionsModel
-from wallet_data_models import UtxoTableModel, MnAddressTableModel, AccountListModel, MnAddressItem
+from wallet_data_models import UtxoTableModel, MnAddressTableModel, AccountListModel, MnAddressItem, TransactionTableModel
 from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget
 from ui import ui_wallet_dlg
-from wallet_widgets import SendFundsDestination, WalletMnItemDelegate, WalletAccountItemDelegate
+from wallet_widgets import SendFundsDestination, WalletMnItemDelegate, WalletAccountItemDelegate, \
+    TxRecipientItemDelegate
 from transaction_dlg import TransactionDlg
 
 
@@ -105,10 +105,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         self.utxo_table_model = UtxoTableModel(self, self.masternodes)
         self.mn_model = MnAddressTableModel(self, self.masternodes, self.bip44_wallet)
-        self.tx_model = TransactionsModel(self)
+        self.tx_table_model = TransactionTableModel(self)
 
         self.finishing = False  # true if this window is closing
         self.data_thread_ref: Optional[WorkerThread] = None
+        self.display_thread_ref: Optional[WorkerThread] = None
         self.last_txs_fetch_time = 0
         self.allow_fetch_transactions = True
         self.update_data_view_thread_ref: Optional[WorkerThread] = None
@@ -122,7 +123,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         # 1: wallet account (the account number and base bip32 path are selected from the GUI by a user)
         # 2: masternode collateral address
         self.utxo_src_mode: Optional[int] = None
-        self.cur_utxo_src_hash = ''  # hash of the currently selected utxo source mode
+        self.cur_utxo_src_hash = None  # hash of the currently selected utxo source mode
         self.cur_hd_tree_id = None
 
         # for self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST
@@ -138,6 +139,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         self.account_list_model = AccountListModel(self)
         self.data_thread_event = threading.Event()
+        self.display_thread_event = threading.Event()
 
         self.accounts_view_show_individual_addresses = False
         self.accounts_view_show_zero_balance_addesses = False
@@ -164,7 +166,16 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.utxoTableView.horizontalHeader().setSortIndicator(
             self.utxo_table_model.col_index_by_name('confirmations'), Qt.AscendingOrder)
         self.utxo_table_model.set_view(self.utxoTableView)
-        self.tx_model.set_view(self.txTableView)
+        
+        self.txTableView.setSortingEnabled(True)
+        self.txTableView.setItemDelegate(ReadOnlyTableCellDelegate(self.txTableView))
+        self.txTableView.verticalHeader().setDefaultSectionSize(
+            self.txTableView.verticalHeader().fontMetrics().height() + 4)
+        self.txTableView.horizontalHeader().setSortIndicator(
+            self.tx_table_model.col_index_by_name('confirmations'), Qt.AscendingOrder)
+        self.txTableView.setItemDelegateForColumn(self.tx_table_model.col_index_by_name('recipient'),
+                                                  TxRecipientItemDelegate(self.accountsListView))
+        self.tx_table_model.set_view(self.txTableView)
 
         # self.accountsListView.setModel(self.account_list_model)
         self.account_list_model.set_view(self.accountsListView)
@@ -286,7 +297,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.hw_selected_account_id = app_cache.get_value(CACHE_ITEM_HW_SEL_ACCOUNT_ADDR_ID, 0x80000000, int)
 
         self.utxo_table_model.restore_col_defs(CACHE_ITEM_UTXO_COLS)
-        self.tx_model.restore_col_defs(CACHE_ITEM_TXS_COLS)
+        self.tx_table_model.restore_col_defs(CACHE_ITEM_TXS_COLS)
 
         # restore the selected masternodes
         sel_hashes = app_cache.get_value(
@@ -334,7 +345,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                             sel_hashes)
 
         self.utxo_table_model.save_col_defs(CACHE_ITEM_UTXO_COLS)
-        self.tx_model.save_col_defs(CACHE_ITEM_TXS_COLS)
+        self.tx_table_model.save_col_defs(CACHE_ITEM_TXS_COLS)
 
         # recipient list
         rcp_list = self.wdg_dest_adresses.get_recipients_list()
@@ -357,12 +368,17 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def stop_threads(self):
         self.finishing = True
         self.data_thread_event.set()
+        self.display_thread_event.set()
         if self.data_thread_ref:
             self.data_thread_ref.wait(5000)
+        if self.display_thread_ref:
+            self.display_thread_ref.wait(5000)
 
     def start_threads(self):
         self.finishing = False
         self.update_hw_info()
+        if not self.display_thread_ref:
+            self.display_thread_ref = self.run_thread(self, self.display_thread, ())
         if not self.data_thread_ref:
             self.data_thread_ref = self.run_thread(self, self.data_thread, ())
 
@@ -388,6 +404,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.utxo_table_model.clear_utxos()
             self.utxo_table_model.endResetModel()
 
+        with self.tx_table_model:
+            self.tx_table_model.beginResetModel()
+            self.tx_table_model.clear_utxos()
+            self.tx_table_model.endResetModel()
+
         if index == 0:
             self.utxo_src_mode = MAIN_VIEW_BIP44_ACCOUNTS
             self.connect_hw()
@@ -396,7 +417,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         else:
             raise Exception('Invalid index.')
         self.on_utxo_src_hash_changed()
-        self.data_thread_event.set()
+        self.display_thread_event.set()
         self.update_ui_view_mode_options()
 
     def on_dest_addresses_resized(self):
@@ -582,6 +603,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def on_accountsListView_selectionChanged(self):
         """Selected BIP44 account or address changed. """
+        self.display_thread_event.set()
         self.reflect_ui_account_selection()
 
     def on_viewMasternodes_selectionChanged(self):
@@ -591,7 +613,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 if mni.address:
                     self.selected_mns.append(mni)
             self.on_utxo_src_hash_changed()
-            self.data_thread_event.set()
+            self.display_thread_event.set()
             self.update_details_tab()
 
     def update_context_actions(self):
@@ -693,6 +715,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         self.utxo_table_model.beginResetModel()
                         self.utxo_table_model.clear_utxos()
                         self.utxo_table_model.endResetModel()
+
+                    with self.tx_table_model:
+                        self.tx_table_model.beginResetModel()
+                        self.tx_table_model.clear_utxos()
+                        self.tx_table_model.endResetModel()
 
     @pyqtSlot()
     def on_show_account_next_fresh_address_triggered(self):
@@ -813,10 +840,18 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.utxo_table_model.clear_utxos()
             self.utxo_table_model.endResetModel()
 
+        # and the txes model data
+        with self.tx_table_model:
+            self.tx_table_model.beginResetModel()
+            self.tx_table_model.clear_txes()
+            self.tx_table_model.endResetModel()
+
         # clear the account model data
-        self.account_list_model.beginResetModel()
-        self.account_list_model.clear_accounts()
-        self.account_list_model.endResetModel()
+        with self.account_list_model:
+            self.account_list_model.beginResetModel()
+            self.account_list_model.clear_accounts()
+            self.account_list_model.endResetModel()
+
         self.main_ui.disconnect_hardware_wallet()
         self.bip44_wallet.clear()
         self.allow_fetch_transactions = True
@@ -830,13 +865,14 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             if self.main_ui.connect_hardware_wallet():
                 self.app_config.initialize_hw_encryption(self.main_ui.hw_session)
                 self.cur_hd_tree_id, _ = self.bip44_wallet.get_hd_identity_info()
+                log.debug('Connected HW, self.cur_hd_tree_id: %s', self.cur_hd_tree_id)
                 self.update_context_actions()
                 self.update_hw_info()
                 self.on_utxo_src_hash_changed()
                 self.hw_selected_account_id = None
                 self.hw_selected_address_id = None
-                self.cur_hd_tree_id = None
                 self.cur_utxo_src_hash = None
+                self.display_thread_event.set()
                 self.fetch_transactions()
                 return True
             return False
@@ -845,10 +881,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         else:
             return True
 
-    def get_utxo_generator(self, only_new) -> Generator[UtxoType, None, None]:
+    def get_utxo_list_generator(self, only_new) -> Generator[UtxoType, None, None]:
         list_utxos = None
         if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
-            if self.hw_selected_account_id is not None:
+            if self.hw_selected_account_id is not None and self.cur_hd_tree_id:
                 if self.hw_selected_address_id is None:
                     # list utxos of the whole bip44 account
                     list_utxos = self.bip44_wallet.list_utxos_for_account(self.hw_selected_account_id, only_new)
@@ -865,24 +901,37 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             raise Exception('Invalid utxo_src_mode')
         return list_utxos
 
-    def data_thread(self, ctrl: CtrlObject):
+    def get_txs_list_generator(self, only_new) -> Generator[TxType, None, None]:
+        list_txs = None
+        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+            if self.hw_selected_account_id is not None and self.cur_hd_tree_id:
+                if self.hw_selected_address_id is None:
+                    # list utxos of the whole bip44 account
+                    list_txs = self.bip44_wallet.list_txs_for_account(self.hw_selected_account_id, only_new)
+                else:
+                    # list utxos of the specific address
+                    list_txs = self.bip44_wallet.list_txs_for_addresses([self.hw_selected_address_id], only_new)
+        elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
+            address_ids = []
+            for mni in self.selected_mns:
+                if mni.address:
+                    address_ids.append(mni.address.id)
+            list_txs = self.bip44_wallet.list_txs_for_addresses(address_ids)
+        else:
+            raise Exception('Invalid utxo_src_mode')
+        return list_txs
+
+    def display_thread(self, ctrl: CtrlObject):
         last_hd_tree_id = None
-        def check_break_fetch_process():
-            if not self.allow_fetch_transactions or self.finishing or ctrl.finish or \
-                (self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS and last_hd_tree_id != self.cur_hd_tree_id) or \
-                last_utxos_source_hash != self.cur_utxo_src_hash:
-                raise BreakFetchTransactionsException('Break fetch transactions')
-
-        log.debug('Starting fetch_transactions_thread')
+        log.debug('Starting display_thread')
         try:
-            if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
-                self.connect_hw()
-
             self.last_txs_fetch_time = 0
-            last_utxos_source_hash = ''
+            last_addr_selection_hash_for_utxo = ''
+            last_addr_selection_hash_for_txes = ''
 
             while not ctrl.finish and not self.finishing:
                 hw_error = False
+
                 if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:  # the hw accounts view needs an hw connection
                     if not self.hw_connected():
                         hw_error = True
@@ -892,53 +941,119 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         if last_hd_tree_id != self.cur_hd_tree_id:
                             # not read hw accounts yet or switched to another hw/used another passphrase
 
+                            log.debug('About to start listing accounts')
                             with self.account_list_model:
-                                self.account_list_model.clear_accounts()
-
-                                # load the bip44 account list; wee only need to iterate over accounts - accounts
-                                # will be displayed by the callback method self.on_bip44_account_added
+                                log.debug('Listing accounts')
                                 for a in self.bip44_wallet.list_accounts():
                                     pass
+                                log.debug('Finished listing accounts')
 
                             last_hd_tree_id = self.cur_hd_tree_id
-                            WndUtils.call_in_main_thread(self.update_hw_info)
+                        else:
+                            log.debug('last_hd_tree_id: %s', last_hd_tree_id)
 
                 if not hw_error:
                     if self.finishing:
                         break
 
-                    if last_utxos_source_hash != self.cur_utxo_src_hash:
-                        # reload the utxo view
-                        last_utxos_source_hash = self.cur_utxo_src_hash
+                    if self.detailsTab.currentIndex() == self.detailsTab.indexOf(self.tabSend):
+                        # current tab: the list of utxos
 
-                        list_utxos = self.get_utxo_generator(False)
-                        if len(self.utxo_table_model.utxos) > 0:
+                        if last_addr_selection_hash_for_utxo != self.cur_utxo_src_hash:
+                            # reload the utxo view
+                            last_addr_selection_hash_for_utxo = self.cur_utxo_src_hash
+
+                            list_utxos_generator = self.get_utxo_list_generator(False)
                             with self.utxo_table_model:
                                 self.utxo_table_model.beginResetModel()
                                 self.utxo_table_model.clear_utxos()
                                 self.utxo_table_model.endResetModel()
 
-                        if list_utxos:
-                            self.set_message('Loading data for display...')
-                            log.debug('Fetching utxos from the database')
-                            self.utxo_table_model.set_block_height(self.bip44_wallet.get_block_height())
+                            if list_utxos_generator:
+                                log.debug('Reading utxos from database')
+                                self.utxo_table_model.set_block_height(self.bip44_wallet.get_block_height())
 
-                            t = time.time()
-                            self.utxo_table_model.beginResetModel()
-                            try:
-                                with self.utxo_table_model:
-                                    for utxo in list_utxos:
-                                        if self.finishing:
-                                            break
-                                        self.utxo_table_model.add_utxo(utxo)
-                            finally:
-                                self.utxo_table_model.endResetModel()
+                                t = time.time()
+                                self.utxo_table_model.beginResetModel()
+                                try:
+                                    with self.utxo_table_model:
+                                        for utxo in list_utxos_generator:
+                                            if self.finishing:
+                                                break
+                                            self.utxo_table_model.add_utxo(utxo)
+                                finally:
+                                    self.utxo_table_model.endResetModel()
 
-                            log.debug('Reset UTXO model time: %s', time.time() - t)
-                            log.debug('Fetching of utxos finished')
-                            self.set_message('Displaying data...')
+                                log.debug('Reading of utxos finished, time: %s', time.time() - t)
 
-                        self.set_message('')
+                    elif self.detailsTab.currentIndex() == self.detailsTab.indexOf(self.tabTransactions):
+                        # current tab: the list of transactions
+
+                        if last_addr_selection_hash_for_txes != self.cur_utxo_src_hash:
+
+                            list_txs_generator = self.get_txs_list_generator(False)
+                            if list_txs_generator:
+                                log.debug('Reading transactions from database')
+
+                                last_addr_selection_hash_for_txes = self.cur_utxo_src_hash
+                                with self.tx_table_model:
+                                    self.tx_table_model.beginResetModel()
+                                    self.tx_table_model.clear_txes()
+                                    self.tx_table_model.endResetModel()
+
+                                #todo: implement this:
+                                # self.utxo_table_model.set_block_height(self.bip44_wallet.get_block_height())
+
+                                t = time.time()
+                                self.tx_table_model.beginResetModel()
+                                try:
+                                    with self.tx_table_model:
+                                        for utxo in list_txs_generator:
+                                            if self.finishing:
+                                                break
+                                            self.tx_table_model.add_tx(utxo)
+                                finally:
+                                    self.tx_table_model.endResetModel()
+
+                                log.debug('Reading of transactions finished, time: %s', time.time() - t)
+                            else:
+                                log.debug('Empty list_utxos_generator')
+
+                self.display_thread_event.wait(10)
+                if self.display_thread_event.is_set():
+                    self.display_thread_event.clear()
+
+        except Exception as e:
+            log.exception('Exception occurred')
+            WndUtils.errorMsg('An unknown error occurred, please close and reopen the window. Details: ' + str(e))
+        finally:
+            self.display_thread_ref = None
+        log.debug('Finishing display_thread')
+
+    def data_thread(self, ctrl: CtrlObject):
+        last_hd_tree_id = None
+
+        def check_break_fetch_process():
+            if not self.allow_fetch_transactions or self.finishing or ctrl.finish or \
+                (self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS and last_hd_tree_id != self.cur_hd_tree_id):
+                raise BreakFetchTransactionsException('Break fetch transactions')
+
+        log.debug('Starting data_thread')
+        try:
+            if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+                self.connect_hw()
+
+            self.last_txs_fetch_time = 0
+
+            while not ctrl.finish and not self.finishing:
+                hw_error = False
+                if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:  # the hw accounts view needs an hw connection
+                    if not self.hw_connected():
+                        hw_error = True
+
+                if not hw_error:
+                    if self.finishing:
+                        break
 
                     if self.last_txs_fetch_time == 0 or (time.time() - self.last_txs_fetch_time > FETCH_DATA_INTERVAL_SECONDS):
                         if self.allow_fetch_transactions:
@@ -959,6 +1074,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                             if fun_to_call:
                                 try:
+                                    last_hd_tree_id = self.cur_hd_tree_id
                                     self.call_fun_monitor_txs(fun_to_call, check_break_fetch_process)
                                     self.last_txs_fetch_time = int(time.time())
                                 except BreakFetchTransactionsException:
@@ -978,7 +1094,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             WndUtils.errorMsg('An unknown error occurred, please close and reopen the window. Details: ' + str(e))
         finally:
             self.data_thread_ref = None
-        log.debug('Finishing fetch_transactions_thread')
+        log.debug('Finishing data_thread')
 
     def call_fun_monitor_txs(self, function_to_call: Callable, check_break_execution_callback: Callable):
         """
@@ -986,7 +1102,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         transactions - those changes will be reflected in GUI after the call completes.
         :return:
         """
+        def invalidate_accounts_filter():
+            with self.account_list_model:
+                self.account_list_model.invalidateFilter()
+
         try:
+            log.debug('Calling %s', str(function_to_call))
             self.account_list_model.reset_modified()
             with self.account_list_model:
                 self.bip44_wallet.reset_tx_diffs()
@@ -994,9 +1115,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
             if not check_break_execution_callback():
                 if self.account_list_model.data_modified:
-                    WndUtils.call_in_main_thread(self.account_list_model.invalidateFilter)
+                    WndUtils.call_in_main_thread(invalidate_accounts_filter)
 
-                list_utxos = self.get_utxo_generator(True)
+                list_utxos = self.get_utxo_list_generator(True)
                 if list_utxos:
                     self.utxo_table_model.set_block_height(self.bip44_wallet.get_block_height())
 
@@ -1015,6 +1136,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         except Exception as e:
             log.exception('Exception occurred')
             WndUtils.errorMsg(str(e))
+        finally:
+            log.debug('Finished calling %s', str(function_to_call))
 
     def on_bip44_account_added(self, account: Bip44AccountType):
         """
@@ -1027,6 +1150,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
                     self.account_list_model.add_account(account)
 
+            log.debug('Adding account %s', account.id)
             WndUtils.call_in_main_thread(fun)
 
     def on_bip44_account_changed(self, account: Bip44AccountType):
@@ -1040,6 +1164,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
                     self.account_list_model.account_data_changed(account)
 
+            log.debug('Account modified %s', account.id)
             WndUtils.call_in_main_thread(fun)
 
     def on_bip44_account_address_added(self, account: Bip44AccountType, address: Bip44AddressType):
@@ -1218,12 +1343,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowZeroBalanceAddresses')
         if c:
             self.accounts_view_show_zero_balance_addesses = c.isChecked()
-        self.account_list_model.show_zero_balance_addresses = self.accounts_view_show_zero_balance_addesses
-        self.account_list_model.invalidateFilter()
+        with self.account_list_model:
+            self.account_list_model.show_zero_balance_addresses = self.accounts_view_show_zero_balance_addesses
+            self.account_list_model.invalidateFilter()
         self.update_ui_show_individual_addresses()
         self.wdg_accounts_view_options.hide()
         self.update_ui_view_mode_options()
 
     def on_detailsTab_currentChanged(self, index):
-        if index == self.detailsTab.indexOf(self.tabTransactions):
-            pass
+        self.display_thread_event.set()
