@@ -38,11 +38,11 @@ class TxType(AttrsProtected):
         self.rcp_address: Optional[Bip44AddressType] = None  # != None if recipient is our own address
         self.rcp_address_str: str = None
         self.satoshis: int = 0
-        self.tx_id: int = None
         self.tx_hash: str = ''
         self.block_height: int = 0
-        self.block_time_stamp: int = 0
+        self.block_timestamp: int = 0
         self.block_time_str: str = None
+        self.label: str = ''
         self.set_attr_protection()
 
 
@@ -212,7 +212,8 @@ class Bip44Entry(object):
             db_cursor.execute('select ' + ','.join(self.db_fields) + ',id from address where id=?', (self.id,))
         elif self.xpub:
             xpub_hash = xpub_to_hash(self.xpub)
-            db_cursor.execute('select ' + ','.join(self.db_fields) + ',id from address where xpub_hash=?', (xpub_hash,))
+            db_cursor.execute('select ' + ','.join(self.db_fields) + ',id from address where xpub_hash=? and tree_id=?',
+                              (xpub_hash, self.tree_id))
         else:
             raise Exception('Cannot read from db: both id and xpub_hash are null')
         row = db_cursor.fetchone()

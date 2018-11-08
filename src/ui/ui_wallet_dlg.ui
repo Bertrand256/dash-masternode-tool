@@ -290,7 +290,7 @@
           <item>
            <widget class="QTabWidget" name="detailsTab">
             <property name="currentIndex">
-             <number>0</number>
+             <number>1</number>
             </property>
             <widget class="QWidget" name="tabSend">
              <attribute name="title">
@@ -487,7 +487,14 @@
                <number>6</number>
               </property>
               <item>
-               <widget class="QTableView" name="txTableView"/>
+               <widget class="QTableView" name="txTableView">
+                <property name="selectionMode">
+                 <enum>QAbstractItemView::SingleSelection</enum>
+                </property>
+                <property name="selectionBehavior">
+                 <enum>QAbstractItemView::SelectRows</enum>
+                </property>
+               </widget>
               </item>
              </layout>
             </widget>

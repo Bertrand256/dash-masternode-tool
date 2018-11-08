@@ -20,7 +20,7 @@ import dash_utils
 from app_defs import FEE_DUFF_PER_BYTE, MIN_TX_FEE
 from encrypted_files import write_file_encrypted, read_file_encrypted
 from hw_common import HwSessionInfo
-from wallet_common import TxOutputType, Bip44AccountType, Bip44AddressType
+from wallet_common import TxOutputType, Bip44AccountType, Bip44AddressType, TxType
 from wnd_utils import WndUtils
 
 
@@ -1214,7 +1214,6 @@ class WalletAccountItemDelegate(QItemDelegate):
 
     def __init__(self, parent):
         QItemDelegate.__init__(self, parent)
-        self.doc = QTextDocument()
 
     def createEditor(self, parent, option, index):
         e = None
@@ -1316,4 +1315,91 @@ class WalletAccountItemDelegate(QItemDelegate):
                 h = WalletMnItemDelegate.CellVerticalMargin * 2 + WalletMnItemDelegate.CellLinesMargin
                 h += (fm.height() * 2) - 2
                 sh.setHeight(h)
+        return sh
+
+class TxRecipientItemDelegate(QItemDelegate):
+    """ Displays a recipient data in the transactions table view. """
+    CellVerticalMargin = 2
+    CellHorizontalMargin = 2
+    CellLinesMargin = 2
+
+    def __init__(self, parent):
+        QItemDelegate.__init__(self, parent)
+
+    # def createEditor(self, parent, option, index):
+    #     e = None
+    #     if index.isValid():
+    #         data = index.data()
+    #         e = QLineEdit(parent)
+    #         e.setReadOnly(True)
+    #         e.setText('')
+    #     return e
+    #
+    def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
+        if index.isValid():
+            tx = index.data()
+            painter.save()
+
+            painter.setPen(QPen(Qt.NoPen))
+            fg_color = None
+            selected = False
+            if option.state & QStyle.State_Selected:
+                if option.state & QStyle.State_HasFocus:
+                    selected = True
+                    painter.setBrush(QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
+                else:
+                    painter.setBrush(QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
+            else:
+                painter.setBrush(QBrush(Qt.white))
+            painter.drawRect(option.rect)
+
+            r = option.rect
+            r.setLeft(r.left() + TxRecipientItemDelegate.CellHorizontalMargin)
+            r.setTop(r.top() + TxRecipientItemDelegate.CellVerticalMargin)
+
+            if isinstance(tx, TxType):
+                painter.setFont(option.font)
+                if tx.rcp_address:
+                    fm = option.fontMetrics
+                    if not selected:
+                        painter.setPen(QPen(Qt.darkGreen))
+                    else:
+                        painter.setPen(QPen(Qt.white))
+                    painter.drawText(r, Qt.AlignLeft, tx.rcp_address.address)
+
+                    # in the second line displayy additional info regarding the user's recipient address
+                    if tx.rcp_address.is_change:
+                        s = 'Your own change address, path: ' + tx.rcp_address.bip32_path
+                    else:
+                        s = 'Your own address, path: ' + tx.rcp_address.bip32_path
+
+                    r.setTop(r.top() + fm.height() + WalletMnItemDelegate.CellLinesMargin)
+                    if not selected:
+                        painter.setPen(QPen(Qt.darkGray))
+                    else:
+                        painter.setPen(QPen(Qt.white))
+                    painter.drawText(r, Qt.AlignLeft, s)
+                else:
+                    if not selected:
+                        painter.setPen(QPen(Qt.black))
+                    else:
+                        painter.setPen(QPen(Qt.white))
+                    painter.drawText(r, Qt.AlignLeft, tx.rcp_address_str)
+
+            painter.restore()
+
+    def sizeHint(self, option, index):
+        sh = QItemDelegate.sizeHint(self, option, index)
+        if index.isValid():
+            tx = index.data()
+            if isinstance(tx, TxType):
+                if tx.rcp_address:
+                    ln = 2
+                else:
+                    ln = 1
+                fm = option.fontMetrics
+                h = WalletMnItemDelegate.CellVerticalMargin * 2 + WalletMnItemDelegate.CellLinesMargin
+                h += (fm.height() * ln) - 2
+                sh.setHeight(h)
+                sh.setWidth(fm.width(tx.rcp_address_str))
         return sh
