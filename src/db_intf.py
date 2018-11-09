@@ -92,10 +92,12 @@ class DBCache(object):
                 if self.depth == 0:
                     raise Exception('Cursor not acquired by this thread.')
                 self.depth -= 1
-                if self.depth == 0:
-                    self.db_conn.close()
-                    self.db_conn = None
-                self.lock.release()
+                try:
+                    if self.depth == 0:
+                        self.db_conn.close()
+                        self.db_conn = None
+                finally:
+                    self.lock.release()
                 log.debug('Released db cache session (%d)' % self.depth)
             finally:
                 self.lock.release()

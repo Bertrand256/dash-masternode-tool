@@ -5,7 +5,7 @@
 import sys
 
 import re
-from typing import Optional, Callable, Dict
+from typing import Optional, Callable, Dict, List
 import simplejson
 import logging
 
@@ -20,10 +20,14 @@ import app_utils
 from app_config import AppConfig
 from dashd_intf import DashdInterface
 from ui.ui_transaction_dlg import Ui_TransactionDlg
+from wallet_common import UtxoType, TxOutputType
 from wnd_utils import WndUtils
 
 
 CACHE_ITEM_DETAILS_WORD_WRAP = 'TransactionDlg_DetailsWordWrap'
+
+
+log = logging.getLogger('dmt.transaction_dlg')
 
 
 class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
@@ -32,7 +36,8 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                  dashd_intf: DashdInterface,
                  raw_transaction: str,
                  use_instant_send: bool,
-                 after_send_tx_callback: Callable[[Dict], None],
+                 tx_inputs: List[UtxoType],
+                 after_send_tx_callback: Callable[[dict], None],
                  decoded_transaction: Optional[dict] = None,
                  dependent_transactions: Optional[dict] = None,
                  ):
@@ -45,6 +50,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
         self.transaction_sent = False
         self.raw_transaction = raw_transaction
         self.use_instant_send = use_instant_send
+        self.tx_inputs = tx_inputs
         self.tx_id = None  # will be decoded from rawtransaction
         self.tx_size = None  # as above
         self.decoded_transaction: Optional[dict] = decoded_transaction
@@ -83,6 +89,23 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                 try:
                     self.decoded_transaction = self.dashd_intf.decoderawtransaction(self.raw_transaction)
                     self.decoded_transaction['hex'] = self.raw_transaction
+
+                    # fill up the missing fields for this new (not yet unpublished) transaction which will
+                    # be needed when registering pending transaction in cache
+                    vins = self.decoded_transaction.get('vin')
+                    if vins:
+                        for idx, vin in enumerate(vins):
+                            if idx < len(self.tx_inputs):
+                                inp = self.tx_inputs[idx]
+                                if not vin.get('valueSat'):
+                                    vin['valueSat'] = inp.satoshis
+                                if not vin.get('value'):
+                                    vin['value'] = round(inp.satoshis / 1e8, 8)
+                                if not vin.get('address'):
+                                    vin['address'] = inp.address
+                            else:
+                                log.warning('Input index of the decoded transaction does not exist in the input list')
+
                 except JSONRPCException as e:
                     if re.match('.*400 Bad Request', str(e)) and len(self.raw_transaction):
                         raise Exception('Error while decoding raw transaction: ' + str(e) + '.' +

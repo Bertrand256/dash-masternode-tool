@@ -35,8 +35,10 @@ class TxType(AttrsProtected):
         self.id = None
         self.is_coinbase = False
         self.sender_addrs: List[Union[Bip44AddressType, str]] = []
-        self.rcp_address: Optional[Bip44AddressType] = None  # != None if recipient is our own address
-        self.rcp_address_str: str = None
+        self.recipient_addrs: List[Union[Bip44AddressType, str]] = []
+        # self.rcp_address: Optional[Bip44AddressType] = None  # != None if recipient is our own address
+        # self.rcp_address_str: str = None
+        self.direction: int = None  # 1: incoming, -1: outgoing
         self.satoshis: int = 0
         self.tx_hash: str = ''
         self.block_height: int = 0
