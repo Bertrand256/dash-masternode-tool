@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_wallet_dlg_options1.ui'
 #
-# Created by: PyQt5 UI code generator 5.9.2
+# Created by: PyQt5 UI code generator 5.11.3
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -36,6 +36,9 @@ class Ui_WdgOptions1(object):
         self.chbShowZeroBalanceAddresses = QtWidgets.QCheckBox(self.frame)
         self.chbShowZeroBalanceAddresses.setObjectName("chbShowZeroBalanceAddresses")
         self.verticalLayout.addWidget(self.chbShowZeroBalanceAddresses)
+        self.chbShowNotUsedAddresses = QtWidgets.QCheckBox(self.frame)
+        self.chbShowNotUsedAddresses.setObjectName("chbShowNotUsedAddresses")
+        self.verticalLayout.addWidget(self.chbShowNotUsedAddresses)
         self.horizontalLayout = QtWidgets.QHBoxLayout()
         self.horizontalLayout.setSpacing(0)
         self.horizontalLayout.setObjectName("horizontalLayout")
@@ -55,6 +58,7 @@ class Ui_WdgOptions1(object):
         WdgOptions1.setWindowTitle(_translate("WdgOptions1", "Form"))
         self.chbShowAddresses.setText(_translate("WdgOptions1", "Show individual addresses"))
         self.chbShowZeroBalanceAddresses.setText(_translate("WdgOptions1", "Show addresses with zero balance"))
+        self.chbShowNotUsedAddresses.setText(_translate("WdgOptions1", "Show addresses not yet used"))
         self.btnApply.setText(_translate("WdgOptions1", "Apply"))
 
 

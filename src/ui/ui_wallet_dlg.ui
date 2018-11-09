@@ -473,7 +473,7 @@
              <attribute name="title">
               <string>Transactions</string>
              </attribute>
-             <layout class="QHBoxLayout" name="horizontalLayout_5">
+             <layout class="QVBoxLayout" name="verticalLayout_11">
               <property name="leftMargin">
                <number>6</number>
               </property>
@@ -487,7 +487,18 @@
                <number>6</number>
               </property>
               <item>
-               <widget class="QTableView" name="txTableView">
+               <layout class="QVBoxLayout" name="verticalLayout_12">
+                <item>
+                 <widget class="QToolButton" name="btnTxesViewColumns">
+                  <property name="text">
+                   <string>Columns...</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QTableView" name="txesTableView">
                 <property name="selectionMode">
                  <enum>QAbstractItemView::SingleSelection</enum>
                 </property>
