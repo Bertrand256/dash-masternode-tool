@@ -4,17 +4,13 @@
 # Created on: 2018-07
 
 import time
-import base64
-import bisect
-import bitcoin
 import datetime
 import logging
-from bip32utils import BIP32Key, Base58
-from collections import namedtuple
+from PyQt5 import QtCore
 from typing import List, Dict, Tuple, Optional, Any, Generator, NamedTuple, Callable, ByteString, Union
+from PyQt5.QtCore import QObject
 import app_utils
 import hw_intf
-from common import AttrsProtected
 from dash_utils import bip32_path_string_to_n, pubkey_to_address, bip32_path_n_to_string, bip32_path_string_append_elem
 from dashd_intf import DashdInterface
 from hw_common import HwSessionInfo
@@ -27,14 +23,18 @@ ADDRESS_SCAN_GAP_LIMIT = 20
 MAX_ADDRESSES_TO_SCAN = 1000
 MAX_BIP44_ACCOUNTS = 200
 GET_BLOCKHEIGHT_MIN_SECONDS = 30
-UNCONFIRMED_TX_PURGE_SECONDS = 60
+UNCONFIRMED_TX_PURGE_SECONDS = 60000
+UNCONFIRMED_TX_BLOCK_HEIGHT = 99999999
 
 
 log = logging.getLogger('dmt.bip44_wallet')
 
 
-class Bip44Wallet(object):
+class Bip44Wallet(QObject):
+    blockheight_changed = QtCore.pyqtSignal(int)
+
     def __init__(self, coin_name: str, hw_session: HwSessionInfo, db_intf: DBCache, dashd_intf: DashdInterface, dash_network: str):
+        QObject.__init__(self)
         self.db = None
         self.hw_session = hw_session
         self.dash_network = dash_network
@@ -123,8 +123,11 @@ class Bip44Wallet(object):
     def get_block_height(self):
         if self.cur_block_height is None or \
            (time.time() - self.last_get_block_height_ts >= GET_BLOCKHEIGHT_MIN_SECONDS):
-            self.cur_block_height = self.dashd_intf.getblockcount()
+            new_bh = self.dashd_intf.getblockcount()
             self.last_get_block_height_ts = time.time()
+            if self.cur_block_height != new_bh:
+                self.cur_block_height = new_bh
+                self.blockheight_changed.emit(new_bh)
         return self.cur_block_height
 
     def get_block_height_nofetch(self):
@@ -672,7 +675,7 @@ class Bip44Wallet(object):
                 if not tx_json:
                     tx_json = self.dashd_intf.getrawtransaction(txhash, 1)
 
-                block_height = tx_json.get('height', 0)
+                block_height = tx_json.get('height')
                 if block_height:
                     block_hash = self.dashd_intf.getblockhash(block_height)
                     block_header = self.dashd_intf.getblockheader(block_hash)
@@ -680,6 +683,7 @@ class Bip44Wallet(object):
                 else:
                     # if block_height equals 0, it's non confirmed transaction and block_timestamp stores
                     # the time when tx has been added to the cache
+                    block_height = UNCONFIRMED_TX_BLOCK_HEIGHT
                     block_timestamp = int(time.time())
 
                 tx_vin = tx_json.get('vin', [])
@@ -702,7 +706,7 @@ class Bip44Wallet(object):
             if not tx_json:
                 tx_json = self.dashd_intf.getrawtransaction(txhash, 1)
 
-            if not height:
+            if height == UNCONFIRMED_TX_BLOCK_HEIGHT:
                 # it is unconfirmed transactions; check whether it has been confirmed since the last call
 
                 block_height = tx_json.get('height', 0)
@@ -853,7 +857,8 @@ class Bip44Wallet(object):
         db_cursor2 = None
         try:
             limit_ts = int(time.time()) - UNCONFIRMED_TX_PURGE_SECONDS
-            db_cursor.execute('select id from tx where block_height=0 and block_timestamp<?', (limit_ts,))
+            db_cursor.execute('select id from tx where block_height=? and block_timestamp<?',
+                              (UNCONFIRMED_TX_BLOCK_HEIGHT, limit_ts,))
             for tx_row in db_cursor.fetchall():
                 if not db_cursor2:
                     db_cursor2 = self.db_intf.get_cursor()
@@ -864,7 +869,7 @@ class Bip44Wallet(object):
             self.db_intf.commit()
 
     def purge_transaction(self, tx_id: int, db_cursor=None):
-        log.debug('Purging timed-out unconfirmed transaction (td_id: %s).', tx_id)
+        log.info('Purging timed-out unconfirmed transaction (td_id: %s).', tx_id)
         if not db_cursor:
             db_cursor = self.db_intf.get_cursor()
             release_cursor = True
@@ -877,7 +882,7 @@ class Bip44Wallet(object):
             # following addressses will have balance changed after purging the transaction
             db_cursor.execute('select address_id from tx_output where address_id is not null and '
                               '(tx_id=? or spent_tx_id=?) union '
-                              'select src_address_id from tx_input where address_id is not null and tx_id=?',
+                              'select src_address_id from tx_input where src_address_id is not null and tx_id=?',
                               (tx_id, tx_id, tx_id))
 
             for row in db_cursor.fetchall():
@@ -1080,7 +1085,7 @@ class Bip44Wallet(object):
             sql_text = "select o.id, tx.block_height, tx.coinbase,tx.block_timestamp, tx.tx_hash, o.output_index, " \
                        "o.satoshis, o.address_id from tx_output o join address a" \
                        " on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca" \
-                       " on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null" \
+                       " on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null " \
                        " or spent_input_index is null) and a.id in (" + in_part + ')'
 
             if only_new:
@@ -1112,76 +1117,78 @@ class Bip44Wallet(object):
         """
         :param account_id: database id of the account's record
         """
+        def parse_addrs_str_gen(addrs_str: str) -> Generator[Union[Bip44AddressType, str], None, None]:
+            if addrs_str:
+                for addr_str in addrs_str.split(','):
+                    elems = addr_str.split(':')
+                    if len(elems) == 1:
+                        id = elems[0]
+                        addr_str = ''
+                    else:
+                        addr_str, id = elems
+                    if id:
+                        id = int(id)
+                        a = self.addresses_by_id.get(id)
+                        if a:
+                            yield a
+                    else:
+                        yield addr_str
+
         tm_begin = time.time()
         self.validate_hd_tree()
         db_cursor = self.db_intf.get_cursor()
         try:
             sql_text = """
-                select 'o' type,
-                       group_concat(DISTINCT a.id) src_addr_ids, -- my addresses
-                       o.address_id dest_address_id, -- if dest is my address
-                       o.address dest_address,   -- dest address
-                       o.satoshis,
+                select -1 type,
+                       group_concat(DISTINCT a.id) src_addr_ids,
+                       (select group_concat(DISTINCT a.address||':'||ifnull(o.address_id,'')) from tx_output o where o.tx_id=t.id) rcp_addresses,
+                       sum(i.satoshis),
                        t.id,
                        t.tx_hash,
                        t.block_height,
                        t.block_timestamp,
-                       0 is_coinbase
+                       0 is_coinbase,
+                       -1
                 from tx_input i join tx t on t.id=i.tx_id join address a on a.id=i.src_address_id join address ac on ac.id=a.parent_id
                 join address aa on aa.id=ac.parent_id
-                join tx_output o on o.tx_id=t.id left join address ao on ao.id=o.address_id
                 where aa.id=?
-                group by o.id
+                group by t.id
                 union
-                select 'i' type,
-                       group_concat(DISTINCT i.src_address||':'||ifnull(src_address_id,'')), -- my or others (sender) addresses
-                       o.address_id, -- my dest address id
-                       o.address,  -- my dest address
+                select 1 type,
+                       group_concat(DISTINCT i.src_address||':'||ifnull(src_address_id,'')),
+                       o.address||':'||ifnull(o.address_id,''),
                        o.satoshis,
                        t.id,
                        t.tx_hash,
                        t.block_height,
-                       t.block_timestamp, max(i.coinbase) is_coinbase
+                       t.block_timestamp, max(i.coinbase) is_coinbase,
+                       o.id
                 from tx_output o join tx t on t.id=o.tx_id join address a on a.id=o.address_id join address ac on ac.id=a.parent_id
                 join address aa on aa.id=ac.parent_id
                 join tx_input i on i.tx_id=t.id
                 where aa.id=?
                 group by o.id
-                order by 8 desc
+                order by block_height desc, type desc
             """
             t = time.time()
             db_cursor.execute(sql_text, (account_id, account_id))
             log.debug('SQL exec time: %s', time.time() - t)
 
-            for type, snd_addrs, rcp_addr_id, rcp_address, satoshis, tx_id, tx_hash, bh, bts, is_coinbase in db_cursor.fetchall():
+            for type, snd_addrs, rcp_addrs, satoshis, tx_id, tx_hash, bh, bts, is_coinbase, output_id \
+                    in db_cursor.fetchall():
                 tx = TxType()
-                tx.id = tx_id
+                tx.id = str(tx_id) + ':' + str(output_id) + ':' + str(type)
                 tx.tx_hash = tx_hash
                 tx.is_coinbase = is_coinbase
                 tx.satoshis = satoshis
+                tx.direction = type
                 tx.block_height = bh
                 tx.block_timestamp = bts
                 tx.block_time_str = app_utils.to_string(datetime.datetime.fromtimestamp(bts))
-                if rcp_addr_id:
-                    tx.rcp_address = self.addresses_by_id.get(rcp_addr_id)
-                tx.rcp_address_str = rcp_address
-                if snd_addrs:
-                    for ad_str in snd_addrs.split(','):
-                        elems = ad_str.split(':')
-                        if len(elems) == 1:
-                            id = elems[0]
-                            addr_str = ''
-                        else:
-                            addr_str, id = elems
-                        if id:
-                            id = int(id)
-                            a = self.addresses_by_id.get(id)
-                            if a:
-                                tx.sender_addrs.append(a)
-                            else:
-                                log.warning('Cannot find cached address for id: %s', id)
-                        else:
-                            tx.sender_addrs.append(addr_str)
+                for a in parse_addrs_str_gen(snd_addrs):
+                    tx.sender_addrs.append(a)
+                for a in parse_addrs_str_gen(rcp_addrs):
+                    tx.recipient_addrs.append(a)
                 yield tx
         finally:
             if db_cursor.connection.total_changes > 0:

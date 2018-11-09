@@ -11,7 +11,8 @@ from typing import List, Callable, Optional, Tuple
 import sys
 import os
 from PyQt5 import QtCore, QtWidgets
-from PyQt5.QtCore import QSize, QEventLoop, QObject, QTimer, QVariant, pyqtSlot, QModelIndex,Qt
+from PyQt5.QtCore import QSize, QEventLoop, QObject, QTimer, QVariant, pyqtSlot, QModelIndex, Qt, QRect, QPoint, \
+    QMargins
 from PyQt5.QtWidgets import QPushButton, QToolButton, QWidgetItem, QSpacerItem, QLayout, QHBoxLayout, QLineEdit, \
     QLabel, QComboBox, QMenu, QMessageBox, QVBoxLayout, QCheckBox, QItemDelegate, QStyleOptionViewItem, QStyle
 import app_cache
@@ -1326,18 +1327,24 @@ class TxRecipientItemDelegate(QItemDelegate):
     def __init__(self, parent):
         QItemDelegate.__init__(self, parent)
 
-    # def createEditor(self, parent, option, index):
-    #     e = None
-    #     if index.isValid():
-    #         data = index.data()
-    #         e = QLineEdit(parent)
-    #         e.setReadOnly(True)
-    #         e.setText('')
-    #     return e
-    #
+    def createEditor(self, parent, option, index):
+        e = None
+        if index.isValid():
+            addr_list = index.data()
+            e = QLineEdit(parent)
+            e.setReadOnly(True)
+            addrs = []
+            for a in addr_list:
+                if isinstance(a, Bip44AddressType):
+                    addrs.append(a.address)
+                else:
+                    addrs.append(a)
+            e.setText(', '.join(addrs))
+        return e
+
     def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
         if index.isValid():
-            tx = index.data()
+            addr_list = index.data()
             painter.save()
 
             painter.setPen(QPen(Qt.NoPen))
@@ -1357,49 +1364,56 @@ class TxRecipientItemDelegate(QItemDelegate):
             r.setLeft(r.left() + TxRecipientItemDelegate.CellHorizontalMargin)
             r.setTop(r.top() + TxRecipientItemDelegate.CellVerticalMargin)
 
-            if isinstance(tx, TxType):
+            if isinstance(addr_list, list):
                 painter.setFont(option.font)
-                if tx.rcp_address:
-                    fm = option.fontMetrics
-                    if not selected:
-                        painter.setPen(QPen(Qt.darkGreen))
-                    else:
-                        painter.setPen(QPen(Qt.white))
-                    painter.drawText(r, Qt.AlignLeft, tx.rcp_address.address)
+                fm = option.fontMetrics
+                for addr in addr_list:
+                    if isinstance(addr, Bip44AddressType):
+                        if not selected:
+                            painter.setPen(QPen(Qt.darkGreen))
+                        else:
+                            painter.setPen(QPen(Qt.white))
+                        painter.drawText(r, Qt.AlignLeft, addr.address)
 
-                    # in the second line displayy additional info regarding the user's recipient address
-                    if tx.rcp_address.is_change:
-                        s = 'Your own change address, path: ' + tx.rcp_address.bip32_path
+                        # in the second line displayy additional info regarding the user's recipient address
+                        # if addr.is_change:
+                        #     s = ' (your own change address, path: ' + addr.bip32_path + ')'
+                        # else:
+                        #     s = ' (your own address, path: ' + addr.bip32_path + ')'
+                        #
+                        # if not selected:
+                        #     painter.setPen(QPen(Qt.darkGray))
+                        # else:
+                        #     painter.setPen(QPen(Qt.white))
+                        # painter.drawText(r - QMargins(fm.width(addr.address), 0, 0, 0), Qt.AlignLeft, s)
                     else:
-                        s = 'Your own address, path: ' + tx.rcp_address.bip32_path
-
+                        if not selected:
+                            painter.setPen(QPen(Qt.black))
+                        else:
+                            painter.setPen(QPen(Qt.white))
+                        painter.drawText(r, Qt.AlignLeft, addr)
                     r.setTop(r.top() + fm.height() + WalletMnItemDelegate.CellLinesMargin)
-                    if not selected:
-                        painter.setPen(QPen(Qt.darkGray))
-                    else:
-                        painter.setPen(QPen(Qt.white))
-                    painter.drawText(r, Qt.AlignLeft, s)
-                else:
-                    if not selected:
-                        painter.setPen(QPen(Qt.black))
-                    else:
-                        painter.setPen(QPen(Qt.white))
-                    painter.drawText(r, Qt.AlignLeft, tx.rcp_address_str)
 
             painter.restore()
 
     def sizeHint(self, option, index):
         sh = QItemDelegate.sizeHint(self, option, index)
         if index.isValid():
-            tx = index.data()
-            if isinstance(tx, TxType):
-                if tx.rcp_address:
-                    ln = 2
-                else:
-                    ln = 1
+            addr_list = index.data()
+            if isinstance(addr_list, list):
+                w = 0
                 fm = option.fontMetrics
-                h = WalletMnItemDelegate.CellVerticalMargin * 2 + WalletMnItemDelegate.CellLinesMargin
-                h += (fm.height() * ln) - 2
-                sh.setHeight(h)
-                sh.setWidth(fm.width(tx.rcp_address_str))
+                ln = -1
+                for ln, a in enumerate(addr_list):
+                    if isinstance(a, Bip44AddressType):
+                        w = max(w, fm.width(a.address))
+                    else:
+                        w = max(w, fm.width(a))
+                ln += 1
+
+                if ln:
+                    h = WalletMnItemDelegate.CellVerticalMargin * 2 + WalletMnItemDelegate.CellLinesMargin
+                    h += (fm.height() * ln) - 2
+                    sh.setHeight(h)
+                    sh.setWidth(w)
         return sh

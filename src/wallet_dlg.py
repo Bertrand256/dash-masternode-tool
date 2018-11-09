@@ -38,7 +38,7 @@ from hw_intf import prepare_transfer_tx, get_address
 from ext_item_model import ExtSortFilterTableModel, TableModelColumn
 from thread_fun_dlg import WorkerThread, CtrlObject
 from wallet_data_models import UtxoTableModel, MnAddressTableModel, AccountListModel, MnAddressItem, TransactionTableModel
-from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget
+from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, HyperlinkItemDelegate
 from ui import ui_wallet_dlg
 from wallet_widgets import SendFundsDestination, WalletMnItemDelegate, WalletAccountItemDelegate, \
     TxRecipientItemDelegate
@@ -56,6 +56,7 @@ CACHE_ITEM_LAST_RECIPIENTS = 'WalletDlg_LastRecipients_%NETWORK%'
 CACHE_ITEM_MAIN_SPLITTER_SIZES = 'WalletDlg_MainSplitterSizes'
 CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES = 'WalletDlg_ShowAccountAddresses'
 CACHE_ITEM_SHOW_ZERO_BALANCE_ADDRESSES = 'WalletDlg_ShowZeroBalanceAddresses'
+CACHE_ITEM_SHOW_NOT_USED_ADDRESSES = 'WalletDlg_ShowNotUsedAddresses'
 
 FETCH_DATA_INTERVAL_SECONDS = 60
 MAIN_VIEW_BIP44_ACCOUNTS = 1
@@ -105,7 +106,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         self.utxo_table_model = UtxoTableModel(self, self.masternodes)
         self.mn_model = MnAddressTableModel(self, self.masternodes, self.bip44_wallet)
-        self.tx_table_model = TransactionTableModel(self)
+        self.tx_table_model = TransactionTableModel(self, main_ui.config.get_block_explorer_tx())
+
+        self.bip44_wallet.blockheight_changed.connect(self.tx_table_model.set_blockheight)
 
         self.finishing = False  # true if this window is closing
         self.data_thread_ref: Optional[WorkerThread] = None
@@ -124,7 +127,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         # 2: masternode collateral address
         self.utxo_src_mode: Optional[int] = None
         self.cur_utxo_src_hash = None  # hash of the currently selected utxo source mode
-        self.cur_hd_tree_id = None
+        if self.hw_connected():
+            self.cur_hd_tree_id,_ = self.bip44_wallet.get_hd_identity_info()
+        else:
+            self.cur_hd_tree_id = None
 
         # for self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST
         self.selected_mns: List[MnAddressItem] = []
@@ -143,6 +149,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         self.accounts_view_show_individual_addresses = False
         self.accounts_view_show_zero_balance_addesses = False
+        self.accounts_view_show_not_used_addresses = False
         self.wdg_loading_txs_animation = None
 
         self.setupUi()
@@ -155,6 +162,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.setIcon(self.btnCheckAll, 'check.png')
         self.setIcon(self.btnUncheckAll, 'uncheck.png')
         self.restore_cache_settings()
+        self.splitterMain.setStretchFactor(0, 0)
+        self.splitterMain.setStretchFactor(1, 1)
 
         self.utxo_table_model.set_hide_collateral_utxos(True)
         self.utxoTableView.setSortingEnabled(True)
@@ -167,15 +176,17 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.utxo_table_model.col_index_by_name('confirmations'), Qt.AscendingOrder)
         self.utxo_table_model.set_view(self.utxoTableView)
         
-        self.txTableView.setSortingEnabled(True)
-        self.txTableView.setItemDelegate(ReadOnlyTableCellDelegate(self.txTableView))
-        self.txTableView.verticalHeader().setDefaultSectionSize(
-            self.txTableView.verticalHeader().fontMetrics().height() + 4)
-        self.txTableView.horizontalHeader().setSortIndicator(
+        self.txesTableView.setSortingEnabled(True)
+        self.txesTableView.setItemDelegate(ReadOnlyTableCellDelegate(self.txesTableView))
+        self.txesTableView.verticalHeader().setDefaultSectionSize(
+            self.txesTableView.verticalHeader().fontMetrics().height() + 4)
+        self.txesTableView.horizontalHeader().setSortIndicator(
             self.tx_table_model.col_index_by_name('confirmations'), Qt.AscendingOrder)
-        self.txTableView.setItemDelegateForColumn(self.tx_table_model.col_index_by_name('recipient'),
-                                                  TxRecipientItemDelegate(self.accountsListView))
-        self.tx_table_model.set_view(self.txTableView)
+        self.txesTableView.setItemDelegateForColumn(self.tx_table_model.col_index_by_name('recipient'),
+                                                  TxRecipientItemDelegate(self.txesTableView))
+        self.txesTableView.setItemDelegateForColumn(self.tx_table_model.col_index_by_name('senders'),
+                                                  TxRecipientItemDelegate(self.txesTableView))
+        self.tx_table_model.set_view(self.txesTableView)
 
         # self.accountsListView.setModel(self.account_list_model)
         self.account_list_model.set_view(self.accountsListView)
@@ -325,6 +336,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                                                            bool)
         self.accounts_view_show_zero_balance_addesses = app_cache.get_value(CACHE_ITEM_SHOW_ZERO_BALANCE_ADDRESSES,
                                                                             False, bool)
+        self.accounts_view_show_not_used_addresses = app_cache.get_value(CACHE_ITEM_SHOW_NOT_USED_ADDRESSES,
+                                                                        False, bool)
+        self.account_list_model.show_zero_balance_addresses = self.accounts_view_show_zero_balance_addesses
+        self.account_list_model.show_not_used_addresses = self.accounts_view_show_not_used_addresses
 
     def save_cache_settings(self):
         app_cache.save_window_size(self)
@@ -364,6 +379,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         app_cache.set_value(CACHE_ITEM_LAST_RECIPIENTS.replace('%NETWORK%', self.app_config.dash_network), rcp_data)
         app_cache.set_value(CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES, self.accounts_view_show_individual_addresses)
         app_cache.set_value(CACHE_ITEM_SHOW_ZERO_BALANCE_ADDRESSES, self.accounts_view_show_zero_balance_addesses)
+        app_cache.set_value(CACHE_ITEM_SHOW_NOT_USED_ADDRESSES, self.accounts_view_show_not_used_addresses)
 
     def stop_threads(self):
         self.finishing = True
@@ -464,6 +480,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def on_btnUtxoViewColumns_clicked(self):
         self.utxo_table_model.exec_columns_dialog(self)
 
+    @pyqtSlot(bool)
+    def on_btnTxesViewColumns_clicked(self):
+        self.tx_table_model.exec_columns_dialog(self)
+
     @pyqtSlot()
     def on_btnSend_clicked(self):
         """
@@ -560,7 +580,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         self.errorMsg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
                     else:
                         after_send_tx_fun = partial(self.process_after_sending_transaction, tx_inputs, tx_outputs)
-                        tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex, use_is,
+                        tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex, use_is, tx_inputs,
                                                 after_send_tx_fun)
                         tx_dlg.exec_()
             except Exception as e:
@@ -949,8 +969,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                 log.debug('Finished listing accounts')
 
                             last_hd_tree_id = self.cur_hd_tree_id
-                        else:
-                            log.debug('last_hd_tree_id: %s', last_hd_tree_id)
 
                 if not hw_error:
                     if self.finishing:
@@ -1333,6 +1351,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowZeroBalanceAddresses')
         if c:
             c.setChecked(self.accounts_view_show_zero_balance_addesses)
+        c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowNotUsedAddresses')
+        if c:
+            c.setChecked(self.accounts_view_show_not_used_addresses)
         self.wdg_accounts_view_options.show()
         self.update_ui_view_mode_options()
 
@@ -1343,8 +1364,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowZeroBalanceAddresses')
         if c:
             self.accounts_view_show_zero_balance_addesses = c.isChecked()
+        c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowNotUsedAddresses')
+        if c:
+            self.accounts_view_show_not_used_addresses = c.isChecked()
         with self.account_list_model:
             self.account_list_model.show_zero_balance_addresses = self.accounts_view_show_zero_balance_addesses
+            self.account_list_model.show_not_used_addresses = self.accounts_view_show_not_used_addresses
             self.account_list_model.invalidateFilter()
         self.update_ui_show_individual_addresses()
         self.wdg_accounts_view_options.hide()

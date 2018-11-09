@@ -5,16 +5,17 @@
 import bisect
 import hashlib
 import logging
-from PyQt5.QtCore import Qt, QVariant, QModelIndex, QAbstractItemModel
-from PyQt5.QtGui import QColor, QFont
-from PyQt5.QtWidgets import QTreeView
+from PyQt5.QtCore import Qt, QVariant, QModelIndex, QAbstractItemModel, QUrl
+from PyQt5.QtGui import QColor, QFont, QDesktopServices
+from PyQt5.QtWidgets import QTreeView, QTableView
 from more_itertools import consecutive_groups
 from typing import Optional, List, Tuple, Dict
 import app_utils
 import thread_utils
+import wnd_utils
 from app_config import MasternodeConfig
 from app_defs import DEBUG_MODE
-from bip44_wallet import Bip44Wallet
+from bip44_wallet import Bip44Wallet, UNCONFIRMED_TX_BLOCK_HEIGHT
 from ext_item_model import TableModelColumn, ExtSortFilterTableModel
 from wallet_common import Bip44AccountType, Bip44AddressType, UtxoType, TxType
 
@@ -102,6 +103,7 @@ class AccountListModel(ExtSortFilterTableModel):
         self.accounts: List[Bip44AccountType] = []
         self.__data_modified = False
         self.show_zero_balance_addresses = False
+        self.show_not_used_addresses = False
         self.set_attr_protection()
 
     def reset_modified(self):
@@ -220,10 +222,13 @@ class AccountListModel(ExtSortFilterTableModel):
                     if addr:
                         if addr.received == 0:
                             will_show = False
-                            if not addr.is_change:
-                                prev_cnt = count_prev_zero_received(acc, source_row - 1)
-                                if prev_cnt < acc.view_fresh_addresses_count:
-                                    will_show = True
+                            if self.show_not_used_addresses:
+                                will_show = True
+                            else:
+                                if not addr.is_change:
+                                    prev_cnt = count_prev_zero_received(acc, source_row - 1)
+                                    if prev_cnt < acc.view_fresh_addresses_count:
+                                        will_show = True
                         elif addr.balance == 0:
                             will_show = self.show_zero_balance_addresses
             else:
@@ -375,7 +380,7 @@ class UtxoTableModel(ExtSortFilterTableModel):
                                 if utxo.masternode:
                                     return utxo.masternode.name
                             elif field_name == 'confirmations':
-                                if utxo.confirmations == 0:
+                                if utxo.block_height == UNCONFIRMED_TX_BLOCK_HEIGHT:
                                     return 'Unconfirmed'
                                 else:
                                     return app_utils.to_string(utxo.__getattribute__(field_name))
@@ -508,8 +513,9 @@ class UtxoTableModel(ExtSortFilterTableModel):
 
 
 class TransactionTableModel(ExtSortFilterTableModel):
-    def __init__(self, parent):
+    def __init__(self, parent, tx_explorer_url: str):
         ExtSortFilterTableModel.__init__(self, parent, [
+            TableModelColumn('direction', 'Direction', True, 50),
             TableModelColumn('satoshis', 'Amount', True, 100),
             TableModelColumn('block_time_str', 'Date', True, 100),
             TableModelColumn('block_height', 'Height', True, 100),
@@ -519,11 +525,23 @@ class TransactionTableModel(ExtSortFilterTableModel):
             TableModelColumn('tx_hash', 'TX ID', False, 100),
             TableModelColumn('is_coinbase', 'Coinbase TX', True, 100),
             TableModelColumn('label', 'Comment', True, 100)
-        ], False, True)
+        ], True, True)
+        if DEBUG_MODE:
+            self.insert_column(len(self._columns), TableModelColumn('id', 'DB id', True, 40))
         self.txes: List[TxType] = []
         self.txes_by_id: Dict[int, TxType] = {}
+        self.tx_explorer_url = tx_explorer_url
         self.__current_block_height = None
         self.__data_modified = False
+
+    def set_view(self, table_view: QTableView):
+        super().set_view(table_view)
+        link_delagate = wnd_utils.HyperlinkItemDelegate(table_view)
+        link_delagate.linkActivated.connect(self.hyperlink_activated)
+        table_view.setItemDelegateForColumn(self.col_index_by_name('tx_hash'), link_delagate)
+
+    def hyperlink_activated(self, link):
+        QDesktopServices.openUrl(QUrl(link))
 
     def rowCount(self, parent=None, *args, **kwargs):
         return len(self.txes)
@@ -539,21 +557,34 @@ class TransactionTableModel(ExtSortFilterTableModel):
             if row_idx < len(self.txes):
                 tx = self.txes[row_idx]
                 if role in (Qt.DisplayRole, Qt.EditRole):
-                    if col.name == 'satoshis':
+                    if col.name == 'direction':
+                        return 'IN' if tx.direction == 1 else 'OUT'
+                    elif col.name == 'satoshis':
                         return app_utils.to_string(round(tx.satoshis / 1e8, 8))
                     elif col.name == 'senders':
-                        return 'senders'
+                        return tx.sender_addrs
                     elif col.name == 'recipient':
-                        return tx
+                        return tx.recipient_addrs
+                    elif col.name == 'block_height':
+                        if tx.block_height == UNCONFIRMED_TX_BLOCK_HEIGHT:
+                            return 0
+                        else:
+                            return tx.block_height
+                    elif col.name == 'tx_hash':
+                        if self.tx_explorer_url:
+                            url = self.tx_explorer_url.replace('%TXID%', tx.tx_hash)
+                            url = f'<a href="{url}">{tx.tx_hash}</a>'
+                            return url
+                        else:
+                            return tx.tx_hash
                     elif col.name == 'confirmations':
                         if self.__current_block_height is None:
                             return ''
                         else:
-                            c = self.__current_block_height - tx.block_height
-                            if c == 0:
+                            if tx.block_height == UNCONFIRMED_TX_BLOCK_HEIGHT:
                                 return 'Unconfirmed'
                             else:
-                                return app_utils.to_string(c)
+                                return app_utils.to_string(self.__current_block_height - tx.block_height)
                     else:
                         return app_utils.to_string(tx.__getattribute__(col.name))
                 elif role == Qt.ForegroundRole:
@@ -570,6 +601,10 @@ class TransactionTableModel(ExtSortFilterTableModel):
                         else:
                             return Qt.AlignLeft
         return QVariant()
+
+    def set_blockheight(self, cur_blockheight):
+        if self.__current_block_height != cur_blockheight:
+            self.__current_block_height = cur_blockheight
 
     def add_tx(self, tx: TxType, insert_pos = None):
         if not tx.id in self.txes_by_id:
@@ -597,8 +632,16 @@ class TransactionTableModel(ExtSortFilterTableModel):
                     col_name = 'block_timestamp'
                 elif col_name in ('senders', 'recipient'):
                     return False
-                left_value = left_tx.__getattribute__(col_name)
-                right_value = right_tx.__getattribute__(col_name)
+                elif col_name == 'confirmations':
+                    if self.__current_block_height is not None:
+                        left_value = self.__current_block_height - left_tx.block_height
+                        right_value = self.__current_block_height - right_tx.block_height
+                    else:
+                        return False
+                else:
+                    left_value = left_tx.__getattribute__(col_name)
+                    right_value = right_tx.__getattribute__(col_name)
+
                 if isinstance(left_value, (int, float)) and isinstance(right_value, (int, float)):
                     if not reverse:
                         return left_value < right_value
