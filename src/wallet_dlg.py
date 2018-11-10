@@ -38,10 +38,11 @@ from hw_intf import prepare_transfer_tx, get_address
 from ext_item_model import ExtSortFilterTableModel, TableModelColumn
 from thread_fun_dlg import WorkerThread, CtrlObject
 from wallet_data_models import UtxoTableModel, MnAddressTableModel, AccountListModel, MnAddressItem, TransactionTableModel
-from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, HyperlinkItemDelegate
+from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, HyperlinkItemDelegate, \
+    LineEditTableCellDelegate
 from ui import ui_wallet_dlg
 from wallet_widgets import SendFundsDestination, WalletMnItemDelegate, WalletAccountItemDelegate, \
-    TxRecipientItemDelegate
+    TxSenderRecipientItemDelegate
 from transaction_dlg import TransactionDlg
 
 
@@ -183,9 +184,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.txesTableView.horizontalHeader().setSortIndicator(
             self.tx_table_model.col_index_by_name('confirmations'), Qt.AscendingOrder)
         self.txesTableView.setItemDelegateForColumn(self.tx_table_model.col_index_by_name('recipient'),
-                                                  TxRecipientItemDelegate(self.txesTableView))
+                                                    TxSenderRecipientItemDelegate(self.txesTableView, is_sender=False))
         self.txesTableView.setItemDelegateForColumn(self.tx_table_model.col_index_by_name('senders'),
-                                                  TxRecipientItemDelegate(self.txesTableView))
+                                                    TxSenderRecipientItemDelegate(self.txesTableView, is_sender=True))
+        self.txesTableView.setItemDelegateForColumn(
+            self.tx_table_model.col_index_by_name('label'),
+            LineEditTableCellDelegate(self.txesTableView, self.app_config.get_app_img_dir()))
         self.tx_table_model.set_view(self.txesTableView)
 
         # self.accountsListView.setModel(self.account_list_model)
@@ -1377,3 +1381,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def on_detailsTab_currentChanged(self, index):
         self.display_thread_event.set()
+
+    def save_tx_comment(self, a):
+        pass

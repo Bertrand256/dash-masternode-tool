@@ -254,6 +254,10 @@ class DBCache(object):
                         'timestamp INTEGER)')
             cur.execute('create index if not exists labels.address_label_1 on address_label(key)')
 
+            cur.execute('create table if not exists labels.tx_out_label(id INTEGER PRIMARY KEY, key TEXT, label TEXT, '
+                        'timestamp INTEGER)')  # key: tx hash + '-' + output_index
+            cur.execute('create index if not exists labels.tx_out_label_1 on address_label(key)')
+
         except Exception:
             log.exception('Exception while initializing database.')
             raise

@@ -1176,6 +1176,7 @@ class Bip44Wallet(QObject):
 
             for type, snd_addrs, rcp_addrs, satoshis, tx_id, tx_hash, bh, bts, is_coinbase, output_id \
                     in db_cursor.fetchall():
+
                 tx = TxType()
                 tx.id = str(tx_id) + ':' + str(output_id) + ':' + str(type)
                 tx.tx_hash = tx_hash
@@ -1375,6 +1376,34 @@ class Bip44Wallet(QObject):
                 acc_loc.label = label
             if self.on_account_data_changed_callback:
                 self.on_account_data_changed_callback(entry)
+
+    def set_label_for_transaction(self, tx: TxType, label: str):
+        db_cursor = self.db_intf.get_cursor()
+        # try:
+        #
+        #     entry.label = label
+        #     if entry.address:
+        #         addr_hash = address_to_hash(entry.address)
+        #         db_cursor.execute("select id from labels.address_label where key=?", (addr_hash,))
+        #         row = db_cursor.fetchone()
+        #         if not row:
+        #             if label:
+        #                 db_cursor.execute('insert into labels.address_label(key, label, timestamp) values(?,?,?)',
+        #                                   (addr_hash, label, int(time.time())))
+        #         else:
+        #             if label:
+        #                 db_cursor.execute('update labels.address_label set label=?, timestamp=? where id=?',
+        #                                   (label, int(time.time()), row[0]))
+        #             else:
+        #                 db_cursor.execute('delete from labels.address_label where id=?', (row[0],))
+        #         db_cursor.execute('update address set label=? where id=?', (label, entry.id))
+        #     else:
+        #         log.error('This entry has null address value: %s', entry.id)
+        #         return
+        # finally:
+        #     if db_cursor.connection.total_changes > 0:
+        #         self.db_intf.commit()
+        #     self.db_intf.release_cursor()
 
     def set_label_for_hw_identity(self, id: int, label: str):
         db_cursor = self.db_intf.get_cursor()
