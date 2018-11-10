@@ -970,6 +970,9 @@ class AppConfig(object):
         else:
             return None
 
+    def get_app_img_dir(self):
+        return os.path.join(self.app_path, '', 'img')
+
 
 class MasternodeConfig:
     def __init__(self):
@@ -1351,5 +1354,3 @@ class DashNetworkConnectionCfg(object):
         if not isinstance(testnet, bool):
             raise Exception('Ivalid type of "testnet" argument')
         self.__testnet = testnet
-
-
