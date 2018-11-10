@@ -8,7 +8,7 @@ import os
 import threading
 import traceback
 from functools import partial
-from typing import Callable, Optional, NewType, Any, Tuple, Dict
+from typing import Callable, Optional, NewType, Any, Tuple, Dict, List
 import app_utils
 import thread_utils
 import time
@@ -18,7 +18,7 @@ from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEven
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap, QTextDocument, QCursor, \
     QAbstractTextDocumentLayout, QFontMetrics
 from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit, \
-    QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView
+    QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView, QAction
 import math
 import message_dlg
 from thread_fun_dlg import ThreadFunDlg, WorkerThread, CtrlObject
@@ -182,7 +182,11 @@ class WndUtils:
     def setIcon(self, widget, ico):
         if isinstance(ico, str):
             icon = QIcon()
-            icon.addPixmap(QPixmap(os.path.join(self.app_config.app_path if self.app_config else '', "img/" + ico)))
+            if self.app_config:
+                path = self.app_config.get_app_img_dir()
+            else:
+                path = 'img'
+            icon.addPixmap(QPixmap(os.path.join(path, ico)))
         else:
             icon = self.style().standardIcon(ico)
         widget.setIcon(icon)
@@ -489,6 +493,71 @@ class ReadOnlyTableCellDelegate(QItemDelegate):
         e = QLineEdit(parent)
         e.setReadOnly(True)
         return e
+
+
+class LineEditTableCellDelegate(QItemDelegate):
+    """
+    Used for enabling read-only and text selectable cells in QTableView widgets.
+    """
+    def __init__(self, parent, img_dir: str):
+        QItemDelegate.__init__(self, parent, )
+        self.img_dir = img_dir
+        self.save_action = QAction('Save', self)
+        self.set_icon(self.save_action, "save@16px.png")
+        self.save_action.triggered.connect(self.on_save_data)
+        self.undo_action = QAction('Revert', self)
+        self.set_icon(self.undo_action, "undo@16px.png")
+        self.undo_action.triggered.connect(self.on_revert_data)
+        self.editor = None
+        self.old_data = ''
+        self.cur_item_index = None
+        self.data_history: Dict[QModelIndex, List[str]] = {}
+
+    def set_icon(self, widget, ico_name):
+        icon = QIcon()
+        icon.addPixmap(QPixmap(os.path.join(self.img_dir, ico_name)))
+        widget.setIcon(icon)
+
+    def on_save_data(self):
+        if self.editor:
+            self.commitData.emit(self.editor)
+            self.closeEditor.emit(self.editor)
+            self.editor = None
+
+    def on_revert_data(self):
+        if self.editor and self.cur_item_index:
+            sd = self.data_history.get(self.cur_item_index)
+            if sd:
+                sd.pop()
+                if sd:
+                    t = sd[-1]
+                else:
+                    t = ''
+                self.editor.setText(t)
+
+    def createEditor(self, parent, option, index):
+        self.cur_item_index = index
+        self.editor = QLineEdit(parent)
+        self.editor.addAction(self.save_action, QLineEdit.TrailingPosition)
+        if self.data_history.get(index):
+            self.editor.addAction(self.undo_action, QLineEdit.TrailingPosition)
+        return self.editor
+
+    def setEditorData(self, editor, index):
+        self.old_data = index.data()
+        editor.setText(self.old_data)
+        sd = self.data_history.get(index)
+        if not sd:
+            sd = []
+            self.data_history[index] = sd
+        if self.old_data:
+            if not sd or sd[-1] != self.old_data:
+                sd.append(self.old_data)
+
+    def setModelData(self, editor, model, index):
+        new_data = editor.text()
+        if new_data != self.old_data:
+            model.setData(index, new_data)
 
 
 HTML_LINK_HORZ_MARGIN = 3

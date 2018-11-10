@@ -8,6 +8,7 @@ import logging
 from PyQt5.QtCore import Qt, QVariant, QModelIndex, QAbstractItemModel, QUrl
 from PyQt5.QtGui import QColor, QFont, QDesktopServices
 from PyQt5.QtWidgets import QTreeView, QTableView
+from PyQt5 import QtGui
 from more_itertools import consecutive_groups
 from typing import Optional, List, Tuple, Dict
 import app_utils
@@ -558,13 +559,19 @@ class TransactionTableModel(ExtSortFilterTableModel):
                 tx = self.txes[row_idx]
                 if role in (Qt.DisplayRole, Qt.EditRole):
                     if col.name == 'direction':
-                        return 'IN' if tx.direction == 1 else 'OUT'
+                        if tx.direction == 1:
+                            if tx.is_coinbase:
+                                return 'In - New coins'
+                            else:
+                                return 'In'
+                        else:
+                            return 'Out'
                     elif col.name == 'satoshis':
                         return app_utils.to_string(round(tx.satoshis / 1e8, 8))
                     elif col.name == 'senders':
-                        return tx.sender_addrs
+                        return tx
                     elif col.name == 'recipient':
-                        return tx.recipient_addrs
+                        return tx
                     elif col.name == 'block_height':
                         if tx.block_height == UNCONFIRMED_TX_BLOCK_HEIGHT:
                             return 0
@@ -588,7 +595,17 @@ class TransactionTableModel(ExtSortFilterTableModel):
                     else:
                         return app_utils.to_string(tx.__getattribute__(col.name))
                 elif role == Qt.ForegroundRole:
-                    pass
+                    if col.name == 'direction':
+                        if tx.direction == 1:
+                            if tx.is_coinbase:
+                                return QtGui.QColor(Qt.darkBlue)
+                            else:
+                                return QtGui.QColor(Qt.darkGreen)
+                        else:
+                            return QtGui.QColor(Qt.red)
+                    elif col.name == 'satoshis':
+                        if tx.satoshis < 0:
+                            return QtGui.QColor(Qt.red)
 
                 elif role == Qt.BackgroundRole:
                     pass
@@ -601,6 +618,19 @@ class TransactionTableModel(ExtSortFilterTableModel):
                         else:
                             return Qt.AlignLeft
         return QVariant()
+
+    def setData(self, index, value, role=None):
+        if index.isValid():
+            col_idx = index.column()
+            row_idx = index.row()
+            col = self.col_by_index(col_idx)
+            if row_idx < len(self.txes):
+                tx = self.txes[row_idx]
+                if role == Qt.EditRole:
+                    if col.name == 'label':
+                        tx.label = str(value)
+                        return True
+        return False
 
     def set_blockheight(self, cur_blockheight):
         if self.__current_block_height != cur_blockheight:

@@ -1318,19 +1318,27 @@ class WalletAccountItemDelegate(QItemDelegate):
                 sh.setHeight(h)
         return sh
 
-class TxRecipientItemDelegate(QItemDelegate):
+
+class TxSenderRecipientItemDelegate(QItemDelegate):
     """ Displays a recipient data in the transactions table view. """
     CellVerticalMargin = 2
     CellHorizontalMargin = 2
     CellLinesMargin = 2
 
-    def __init__(self, parent):
+    def __init__(self, parent, is_sender):
         QItemDelegate.__init__(self, parent)
+        self.is_sender = is_sender
 
     def createEditor(self, parent, option, index):
         e = None
         if index.isValid():
-            addr_list = index.data()
+            tx = index.data()
+            if not tx:
+                return
+            if self.is_sender:
+                addr_list = tx.sender_addrs
+            else:
+                addr_list = tx.recipient_addrs
             e = QLineEdit(parent)
             e.setReadOnly(True)
             addrs = []
@@ -1344,11 +1352,17 @@ class TxRecipientItemDelegate(QItemDelegate):
 
     def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
         if index.isValid():
-            addr_list = index.data()
+            tx = index.data()
+            if not tx:
+                return
+
+            if self.is_sender:
+                addr_list = tx.sender_addrs
+            else:
+                addr_list = tx.recipient_addrs
             painter.save()
 
             painter.setPen(QPen(Qt.NoPen))
-            fg_color = None
             selected = False
             if option.state & QStyle.State_Selected:
                 if option.state & QStyle.State_HasFocus:
@@ -1361,45 +1375,60 @@ class TxRecipientItemDelegate(QItemDelegate):
             painter.drawRect(option.rect)
 
             r = option.rect
-            r.setLeft(r.left() + TxRecipientItemDelegate.CellHorizontalMargin)
-            r.setTop(r.top() + TxRecipientItemDelegate.CellVerticalMargin)
+            r.setLeft(r.left() + TxSenderRecipientItemDelegate.CellHorizontalMargin)
+            r.setTop(r.top() + TxSenderRecipientItemDelegate.CellVerticalMargin)
 
             if isinstance(addr_list, list):
                 painter.setFont(option.font)
                 fm = option.fontMetrics
-                for addr in addr_list:
-                    if isinstance(addr, Bip44AddressType):
-                        if not selected:
-                            painter.setPen(QPen(Qt.darkGreen))
-                        else:
-                            painter.setPen(QPen(Qt.white))
-                        painter.drawText(r, Qt.AlignLeft, addr.address)
+                if addr_list:
+                    for addr in addr_list:
+                        if isinstance(addr, Bip44AddressType):
+                            if not selected:
+                                painter.setPen(QPen(Qt.darkGreen))
+                            else:
+                                painter.setPen(QPen(Qt.white))
+                            painter.drawText(r, Qt.AlignLeft, addr.address)
 
-                        # in the second line displayy additional info regarding the user's recipient address
-                        # if addr.is_change:
-                        #     s = ' (your own change address, path: ' + addr.bip32_path + ')'
-                        # else:
-                        #     s = ' (your own address, path: ' + addr.bip32_path + ')'
-                        #
-                        # if not selected:
-                        #     painter.setPen(QPen(Qt.darkGray))
-                        # else:
-                        #     painter.setPen(QPen(Qt.white))
-                        # painter.drawText(r - QMargins(fm.width(addr.address), 0, 0, 0), Qt.AlignLeft, s)
-                    else:
+                            # in the second line displayy additional info regarding the user's recipient address
+                            # if addr.is_change:
+                            #     s = ' (your own change address, path: ' + addr.bip32_path + ')'
+                            # else:
+                            #     s = ' (your own address, path: ' + addr.bip32_path + ')'
+                            #
+                            # if not selected:
+                            #     painter.setPen(QPen(Qt.darkGray))
+                            # else:
+                            #     painter.setPen(QPen(Qt.white))
+                            # painter.drawText(r - QMargins(fm.width(addr.address), 0, 0, 0), Qt.AlignLeft, s)
+                        else:
+                            if not selected:
+                                painter.setPen(QPen(Qt.black))
+                            else:
+                                painter.setPen(QPen(Qt.white))
+                            painter.drawText(r, Qt.AlignLeft, addr)
+                        r.setTop(r.top() + fm.height() + WalletMnItemDelegate.CellLinesMargin)
+                else:
+                    if self.is_sender and tx.is_coinbase:
                         if not selected:
-                            painter.setPen(QPen(Qt.black))
+                            painter.setPen(QPen(Qt.darkGray))
                         else:
                             painter.setPen(QPen(Qt.white))
-                        painter.drawText(r, Qt.AlignLeft, addr)
-                    r.setTop(r.top() + fm.height() + WalletMnItemDelegate.CellLinesMargin)
+                        painter.drawText(r, Qt.AlignLeft, '[New coins]')
 
             painter.restore()
 
     def sizeHint(self, option, index):
         sh = QItemDelegate.sizeHint(self, option, index)
         if index.isValid():
-            addr_list = index.data()
+            tx = index.data()
+            if not tx:
+                return
+
+            if self.is_sender:
+                addr_list = tx.sender_addrs
+            else:
+                addr_list = tx.recipient_addrs
             if isinstance(addr_list, list):
                 w = 0
                 fm = option.fontMetrics
