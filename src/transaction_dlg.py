@@ -37,6 +37,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                  raw_transaction: str,
                  use_instant_send: bool,
                  tx_inputs: List[UtxoType],
+                 tx_outputs: List[TxOutputType],
                  after_send_tx_callback: Callable[[dict], None],
                  decoded_transaction: Optional[dict] = None,
                  dependent_transactions: Optional[dict] = None,
@@ -51,6 +52,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
         self.raw_transaction = raw_transaction
         self.use_instant_send = use_instant_send
         self.tx_inputs = tx_inputs
+        self.tx_outputs = tx_outputs
         self.tx_id = None  # will be decoded from rawtransaction
         self.tx_size = None  # as above
         self.decoded_transaction: Optional[dict] = decoded_transaction
@@ -157,7 +159,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                             else:
                                 tx_size_str = f'{self.tx_size} bytes'
 
-                        # prepare list of recipients
+                        # prepare the list of recipients
                         outputs_total = 0.0
                         recipients = ''
                         for row_idx, vout in enumerate(vout_list):
@@ -171,10 +173,20 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                                     address = ads[0]
                                 else:
                                     address = str(ads)
+
+                            address_info = ''
+                            if row_idx < len(self.tx_outputs):
+                                tx_out = self.tx_outputs[row_idx]
+                                if tx_out.address_ref:
+                                    if tx_out.address_ref.is_change:
+                                        address_info = f' (the change {tx_out.address_ref.bip32_path})'
+                                    else:
+                                        address_info = f' (yours)'
+
                             if row_idx == 0:
-                                recipients = f'<tr><td class="lbl"><p class="lbl">Recipients:</p></td><td>{address}</td><td><p class="val">{app_utils.to_string(val)} Dash</p></td></tr>'
+                                recipients = f'<tr><td class="lbl"><p class="lbl">Recipients:</p></td><td>{address} {address_info}</td><td><p class="val">{app_utils.to_string(val)} Dash</p></td><td></td></tr>'
                             else:
-                                recipients += f'<tr><td></td><td>{address}</td><td><p class="val">{app_utils.to_string(val)} Dash</p></td></tr>'
+                                recipients += f'<tr><td></td><td>{address} {address_info}</td><td><p class="val">{app_utils.to_string(val)} Dash</p></td><td></td></tr>'
 
                         fee = round(inputs_total - outputs_total, 8)
 

@@ -24,7 +24,7 @@
       </font>
      </property>
      <property name="lineWrapMode">
-      <enum>QTextEdit::NoWrap</enum>
+      <enum>QTextEdit::WidgetWidth</enum>
      </property>
      <property name="placeholderText">
       <string>Type 'help' to display commands description</string>

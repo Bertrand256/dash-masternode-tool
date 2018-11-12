@@ -2,9 +2,12 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2018-09
+import json
 import re
 from PyQt5.QtCore import pyqtSlot, QEvent, Qt
 from PyQt5.QtWidgets import QDialog, QDialogButtonBox
+from bitcoinrpc.authproxy import EncodeDecimal
+
 from ui import ui_cmd_console_dlg
 from wnd_utils import WndUtils
 import logging
@@ -16,6 +19,7 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
     def __init__(self, main_dlg, app_config):
         QDialog.__init__(self, main_dlg)
         ui_cmd_console_dlg.Ui_CmdConsoleDlg.__init__(self)
+        self.main_dlg = main_dlg
         self.app_config = app_config
 
         # user will be able to configure only those loggers, that exist in the known loggers list
@@ -143,6 +147,27 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
             if not ok:
                 self.error('Invalid command arguments: ' + args)
 
+        elif cmd == 'rpc':
+
+            match = re.match(r"^(\w+)\s*(.*)", args, re.IGNORECASE)
+            if match and len(match.groups()) >= 1:
+                args = match.group(2) if len(match.groups()) > 1 else None
+                if args:
+                    args = args.strip().strip("'")
+                    try:
+                        a = json.loads(args)
+                        ok = self.rpc_command(match.group(1), a)
+                    except:
+                        a = args.split()
+                        for idx, el in enumerate(a):
+                            if isinstance(el, str) and el.lower() in ('true','false'):
+                                a[idx] = (el.lower() == 'true')
+                        ok = self.rpc_command(match.group(1), *a)
+                else:
+                    ok = self.rpc_command(match.group(1))
+            else:
+                self.error('Missing the RPC command name')
+
         else:
             self.error('Invalid command: ' + cmd)
 
@@ -186,6 +211,9 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
 
         <b>display modules</b>
           Displays all logger modules. 
+
+        <b>rpc command ["arg1",...]</b>
+          Sends a RPC call to the RPC node you are connected to. 
         """
         lines = help.split('\n')
         if len(lines) > 1:
@@ -219,11 +247,13 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
         else:
             self.error('Log handler or log formatter not set in the app_config module.')
 
-    def message(self, msg, color=None):
+    def message(self, msg, color=None, style=None):
         if color:
             s = 'style="color:'+color+'"'
         else:
             s = ''
+        if style:
+            s = 'style="' + style + '"'
         self.edtCmdLog.append(f'<span {s}>{msg}</span>')
 
     def error(self, msg):
@@ -262,6 +292,21 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
         for h in l.handlers:
             h.setFormatter(formatter)
         self.message('Log format set to: ' + format_string)
+
+    def rpc_command(self, command: str, *args):
+        if self.main_dlg.dashd_intf:
+            ret = self.main_dlg.dashd_intf.rpc_call(command, *args)
+            try:
+                if isinstance(ret, str):
+                    ret = json.loads(ret)
+                ret = json.dumps(ret, default=EncodeDecimal, indent = 4, separators = (',', ': '))
+            except Exception:
+                pass
+            self.message(ret, style="white-space: pre-wrap;")
+            return True
+        else:
+            WndUtils.errorMsg('Not connected to a Dash node')
+            return False
 
     @pyqtSlot()
     def on_buttonBox_accepted(self):

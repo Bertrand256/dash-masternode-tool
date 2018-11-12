@@ -28,7 +28,7 @@ import hw_intf
 import thread_utils
 from app_config import MasternodeConfig
 from app_defs import HWType, DEBUG_MODE
-from bip44_wallet import Bip44Wallet, Bip44Entry
+from bip44_wallet import Bip44Wallet, Bip44Entry, BreakFetchTransactionsException
 from ui.ui_wallet_dlg_options1 import Ui_WdgOptions1
 from wallet_common import UtxoType, Bip44AccountType, Bip44AddressType, TxOutputType, TxType
 from dashd_intf import DashdInterface, DashdIndexException
@@ -65,11 +65,6 @@ MAIN_VIEW_MASTERNODE_LIST = 2
 
 
 log = logging.getLogger('dmt.wallet_dlg')
-
-
-class BreakFetchTransactionsException(Exception):
-    def __init__(self, *args, **kwargs):
-        Exception.__init__(self, *args, *kwargs)
 
 
 class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
@@ -426,7 +421,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         with self.tx_table_model:
             self.tx_table_model.beginResetModel()
-            self.tx_table_model.clear_utxos()
+            self.tx_table_model.clear_txes()
             self.tx_table_model.endResetModel()
 
         if index == 0:
@@ -503,14 +498,14 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 return
 
             bip32_to_address = {}  # for saving addresses read from HW by BIP32 path
-            total_satoshis = 0
+            total_satoshis_inputs = 0
             coinbase_locked_exist = False
 
             # verify if:
             #  - utxo is the masternode collateral transation
             #  - the utxo Dash (signing) address matches the hardware wallet address for a given path
             for utxo_idx, utxo in enumerate(tx_inputs):
-                total_satoshis += utxo.satoshis
+                total_satoshis_inputs += utxo.satoshis
                 log.info(f'UTXO satosis: {utxo.satoshis}')
                 if utxo.is_collateral:
                     if self.queryDlg(
@@ -551,21 +546,40 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             try:
                 tx_outputs = self.wdg_dest_adresses.get_tx_destination_data()
                 if tx_outputs:
-                    total_satoshis_actual = 0
+                    total_satoshis_outputs = 0
                     for dd in tx_outputs:
-                        total_satoshis_actual += dd.satoshis
-                        log.info(f'dest amount: {dd.satoshis}')
+                        total_satoshis_outputs += dd.satoshis
+                        dd.address_ref = self.bip44_wallet.get_address_item(dd.address, False)
 
                     fee = self.wdg_dest_adresses.get_tx_fee()
-                    use_is = self.wdg_dest_adresses.get_use_instant_send()
-                    log.info(f'fee: {fee}')
-                    if total_satoshis != total_satoshis_actual + fee:
-                        log.warning(f'total_satoshis ({total_satoshis}) != total_satoshis_real '
-                                        f'({total_satoshis_actual}) + fee ({fee})')
-                        log.warning(f'total_satoshis_real + fee: {total_satoshis_actual + fee}')
+                    change = round(total_satoshis_inputs - total_satoshis_outputs - fee, 0)
+                    if change:
+                        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+                            # find first unused address of the change for the current account
+                            acc = None
+                            if self.hw_selected_account_id:
+                                acc = self.account_list_model.account_by_id(self.hw_selected_account_id)
+                            if not acc:
+                                raise Exception('Cannot find the current account')
+                            else:
+                                change_addr = self.bip44_wallet.find_xpub_first_unused_address(acc, 1)
+                                if not change_addr:
+                                    raise Exception('Cannot find the account change address')
+                        elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
+                            # in the masternode view, address for the change will be taken fron the first input
+                            change_addr = self.bip44_wallet.get_address_item(tx_inputs[0].address, True)
+                        else:
+                            raise Exception('Implement')
 
-                        if abs(total_satoshis - total_satoshis_actual - fee) > 10:
-                            raise Exception('Data validation failure')
+                        if change_addr:
+                            out = TxOutputType()
+                            out.address = change_addr.address
+                            out.bip32_path = change_addr.bip32_path
+                            out.satoshis = change
+                            out.address_ref = change_addr
+                            tx_outputs.append(out)
+
+                    use_is = self.wdg_dest_adresses.get_use_instant_send()
 
                     try:
                         serialized_tx, amount_to_send = prepare_transfer_tx(
@@ -585,7 +599,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     else:
                         after_send_tx_fun = partial(self.process_after_sending_transaction, tx_inputs, tx_outputs)
                         tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex, use_is, tx_inputs,
-                                                after_send_tx_fun)
+                                                tx_outputs, after_send_tx_fun)
                         tx_dlg.exec_()
             except Exception as e:
                 log.exception('Unknown error occurred.')
@@ -1149,9 +1163,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                     removed_utxos = [x for x in self.bip44_wallet.utxos_removed]
 
-                    if new_utxos or removed_utxos:
-                        with self.utxo_table_model:
-                            WndUtils.call_in_main_thread(self.utxo_table_model.update_utxos, new_utxos, removed_utxos)
+                    #todo: temporarity turned off
+                    # if new_utxos or removed_utxos:
+                    #     with self.utxo_table_model:
+                    #         WndUtils.call_in_main_thread(self.utxo_table_model.update_utxos, new_utxos, removed_utxos)
+                    #     pass
 
         except BreakFetchTransactionsException:
             raise
