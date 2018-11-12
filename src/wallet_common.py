@@ -104,6 +104,7 @@ class TxOutputType(AttrsProtected):
     def __init__(self):
         super(TxOutputType, self).__init__()
         self.__address: str = ''
+        self.address_ref: Bip44AddressType = None  # not null if the recipient of the output is the user's own address
         self.satoshis: int = None
         self.__bip32_path: str = None  # required only for change output
         self.is_change = False

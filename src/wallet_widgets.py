@@ -262,7 +262,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.recipients: List[SendFundsDestinationItem] = []
         self.change_addresses: List[Tuple[str, str]] = []  # List[Tuple[address, bip32 path]]
         self.change_controls_visible = True
-        self.address_widget_width = None
+        self.address_widget_width = 150 # todo: remove
         self.inputs_total_amount = 0.0
         self.fee_amount = 0.0
         self.add_to_fee = 0.0
@@ -367,34 +367,6 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.lay_addresses.setContentsMargins(0, 0, 0, 0)
         self.lay_scroll_area.addLayout(self.lay_addresses)
 
-        # controls for the 'change' address/amount (it's placed in the last row of the addresses grid layout):
-        self.lbl_change_address = QLabel(self.scroll_area_widget)
-        self.lbl_change_address.setText('The change address')
-        self.lbl_change_address.setAlignment(QtCore.Qt.AlignRight|QtCore.Qt.AlignTrailing|QtCore.Qt.AlignVCenter)
-        self.lay_addresses.addWidget(self.lbl_change_address, 0, 0)
-        # the 'change' address combobox:
-        self.cbo_change_address = QtWidgets.QComboBox(self.scroll_area_widget)
-        width = self.cbo_change_address.fontMetrics().width('XvqNXF23dRBksxjW3VQGrBtJw7vkhWhenQ')
-        self.address_widget_width = width + 40
-        # combobox width on macos needs to be tweaked:
-        self.cbo_change_address.setMinimumWidth(self.address_widget_width + {'darwin': 5}.get(sys.platform, 0))
-        self.lay_addresses.addWidget(self.cbo_change_address, 0, 1)
-        self.lbl_change_amount = QLabel(self.scroll_area_widget)
-        self.set_change_value_label()
-        self.lay_addresses.addWidget(self.lbl_change_amount, 0, 2)
-        # read only editbox for the amount of the change:
-        self.edt_change_amount = QLineEdit(self.scroll_area_widget)
-        self.edt_change_amount.setFixedWidth(100)
-        self.edt_change_amount.setReadOnly(True)
-        self.edt_change_amount.setStyleSheet('background-color:lightgray')
-        self.lay_addresses.addWidget(self.edt_change_amount, 0, 3)
-        # label dedicated to the second-unit value (e.g percentage if the main unit is set to (Dash) amount value)
-        self.lbl_second_unit = QLabel(self.scroll_area_widget)
-        self.lbl_second_unit.setTextInteractionFlags(
-            QtCore.Qt.LinksAccessibleByMouse | QtCore.Qt.TextSelectableByMouse)
-        self.lay_addresses.addWidget(self.lbl_second_unit, 0, 4)
-        self.lay_addresses.setColumnStretch(6, 1)
-
         # the last row of the grid layout is dedicated to 'fee' controls
         self.lbl_fee = QLabel(self.scroll_area_widget)
         self.lbl_fee.setText('Fee [Dash]')
@@ -416,6 +388,12 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.btn_get_default_fee.setToolTip('Use default fee')
         self.btn_get_default_fee.clicked.connect(self.on_btn_get_default_fee_clicked)
         self.lay_fee_value.addWidget(self.btn_get_default_fee)
+        self.lbl_change_label = QLabel(self.scroll_area_widget)
+        self.lbl_change_label.setText('  The change: ')
+        self.lay_fee_value.addWidget(self.lbl_change_label)
+        self.lbl_change_value = QLabel(self.scroll_area_widget)
+        self.lbl_change_value.setText('')
+        self.lay_fee_value.addWidget(self.lbl_change_value)
         self.lay_fee_value.addStretch(0)
 
         # instant send
@@ -704,33 +682,14 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.display_totals()
 
     def update_the_change_ui(self):
-        msg = ''
-        if self.change_amount < 0:
-            used_amount = round(self.inputs_total_amount - self.change_amount, 8) + 0
-            msg = f'Not enough funds - used amount: ' \
-                  f'{used_amount}, available: {self.inputs_total_amount}. Adjust ' \
-                  f'the output values.'
-        self.display_message(msg, 'red')
-
-        if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT:
-            if self.inputs_total_amount - self.fee_amount - self.add_to_fee != 0:
-                change_pct = self.change_amount * 100 / \
-                             (self.inputs_total_amount - self.fee_amount - self.add_to_fee) + 0
-            else:
-                change_pct = 0.0
-            the_change_second_unit_str = app_utils.to_string(round(change_pct, 3)) + '%'
-            the_change_first_unit_str = app_utils.to_string(round(self.change_amount, 8))
+        if self.change_amount <= 0:
+            self.lbl_change_label.setVisible(False)
+            self.lbl_change_value.setVisible(False)
         else:
-            # pct
-            the_change_second_unit_str = app_utils.to_string(self.change_amount) + ' Dash'
-            if self.inputs_total_amount - self.fee_amount - self.add_to_fee > 0:
-                change_pct = (self.change_amount * 100) / (self.inputs_total_amount - self.fee_amount - self.add_to_fee)
-            else:
-                change_pct = 0.0
-            the_change_first_unit_str = app_utils.to_string(round(change_pct, 3))
-
-        self.edt_change_amount.setText(the_change_first_unit_str)
-        self.lbl_second_unit.setText(the_change_second_unit_str)
+            self.lbl_change_label.setVisible(True)
+            self.lbl_change_value.setVisible(True)
+            val_str = app_utils.to_string(round(self.change_amount, 8))
+            self.lbl_change_value.setText(val_str)
 
     def read_fee_value_from_ui(self):
         text = self.edt_fee_value.text()
@@ -776,18 +735,6 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         visible = len(self.recipients) > 1
         for item in self.recipients:
             item.set_btn_remove_address_visible(visible)
-
-    def set_change_addresses(self, addresses: List[Tuple[str, str]]):
-        """
-        :param addresses: addresses[0]: dest change address
-                          addresses[1]: dest change bip32
-        :return:
-        """
-        self.cbo_change_address.clear()
-        self.change_addresses.clear()
-        for addr in addresses:
-            self.cbo_change_address.addItem(addr[0])
-            self.change_addresses.append((addr[0], addr[1]))
 
     def set_input_amount(self, amount, inputs_count):
         self.inputs_count = inputs_count
@@ -1103,16 +1050,6 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
                 out.satoshis = round(addr.get_value_amount() * 1e8)
                 dest_data.append(out)
 
-            if self.change_amount > 0.0:
-                change_address_idx = self.cbo_change_address.currentIndex()
-                if change_address_idx >= 0 and change_address_idx < len(self.change_addresses):
-                    out = TxOutputType()
-                    out.address = self.change_addresses[change_address_idx][0]
-                    out.satoshis = round(self.change_amount * 1e8)
-                    out.bip32_path = self.change_addresses[change_address_idx][1]
-                    dest_data.append(out)
-                else:
-                    raise Exception('Invalid address for the change.')
             return dest_data
         else:
             return []
