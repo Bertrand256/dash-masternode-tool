@@ -43,6 +43,7 @@ except ImportError:
 # how many seconds cached masternodes data are valid; cached masternode data is used only for non-critical
 # features
 MASTERNODES_CACHE_VALID_SECONDS = 60 * 60  # 60 minutes
+TX_SEND_SIMULATION_MODE = False
 
 
 class ForwardServer (socketserver.ThreadingTCPServer):
@@ -1077,7 +1078,7 @@ class DashdInterface(WndUtils):
     @control_rpc_call
     def getrawtransaction(self, txid, verbose):
         if self.open():
-            if app_defs.DEBUG_MODE:
+            if TX_SEND_SIMULATION_MODE:
                 tx = self.test_txs_by_txid.get(txid)
                 if tx:
                     return tx
@@ -1162,7 +1163,7 @@ class DashdInterface(WndUtils):
     @control_rpc_call
     def sendrawtransaction(self, tx, use_instant_send):
         if self.open():
-            if app_defs.DEBUG_MODE:  #todo: testing
+            if TX_SEND_SIMULATION_MODE:
                 return self.simulate_send_transaction(tx)
             else:
                 return self.proxy.sendrawtransaction(tx, False, use_instant_send)
@@ -1216,7 +1217,7 @@ class DashdInterface(WndUtils):
     def getaddressdeltas(self, *args):
         if self.open():
             deltas_list = self.proxy.getaddressdeltas(*args)
-            if app_defs.DEBUG_MODE and len(args) > 0 and isinstance(args[0], dict):
+            if TX_SEND_SIMULATION_MODE and len(args) > 0 and isinstance(args[0], dict):
                 addrs = args[0].get('addresses')
                 if addrs:
                     for a in addrs:
@@ -1234,3 +1235,10 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
+    @control_rpc_call
+    def rpc_call(self, command, *args):
+        if self.open():
+            c = self.proxy.__getattr__(command)
+            return c(*args)
+        else:
+            raise Exception('Not connected')

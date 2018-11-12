@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2018-07
-
+import threading
 import time
 import datetime
 import logging
@@ -25,9 +25,15 @@ MAX_BIP44_ACCOUNTS = 200
 GET_BLOCKHEIGHT_MIN_SECONDS = 30
 UNCONFIRMED_TX_PURGE_SECONDS = 60000
 UNCONFIRMED_TX_BLOCK_HEIGHT = 99999999
+DEFAULT_TX_FETCH_PRIORITY = 1  # the higher the number to higher the priority
 
 
 log = logging.getLogger('dmt.bip44_wallet')
+
+
+class BreakFetchTransactionsException(Exception):
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, *kwargs)
 
 
 class Bip44Wallet(QObject):
@@ -46,6 +52,9 @@ class Bip44Wallet(QObject):
         self.__tree_id = None
         self.__tree_ident = None
         self.__tree_label = ''
+        self.__cur_tx_fetch_prioriry = None
+        self.__waiting_tx_fetch_priority = None
+        self.__tx_fetch_end_event = threading.Event()
 
         # list of accounts retrieved while calling self.list_accounts
         self.account_by_id: Dict[int, Bip44AccountType] = {}
@@ -53,6 +62,8 @@ class Bip44Wallet(QObject):
 
         # list of addresses created within the current hd tree
         self.addresses_by_id: Dict[int, Bip44AddressType] = {}
+        self.addresses_by_address: Dict[str, Bip44AddressType] = {}
+
         # addresses whose balance has been modified since the last call of reset_tx_diffs
         self.addr_bal_updated: Dict[int, int] = {}  # {'address_id': 'address_id' }
         self.addr_ids_created: Dict[int, int] = {}  # {'address_id': 'address_id' }
@@ -87,6 +98,7 @@ class Bip44Wallet(QObject):
         self.account_by_id.clear()
         self.account_by_bip32_path.clear()
         self.addresses_by_id.clear()
+        self.addresses_by_address.clear()
         self.utxos_by_id.clear()
         self.reset_tx_diffs()
 
@@ -141,35 +153,40 @@ class Bip44Wallet(QObject):
         return None
 
     def get_address_item(self, address: str, create: bool) -> Optional[Bip44AddressType]:
-        db_cursor = self.db_intf.get_cursor()
-        try:
-            db_cursor.execute('select * from address where address=?', (address,))
-            row = db_cursor.fetchone()
-            if row:
-                addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
-                if not addr_info.get('path'):
-                    parent_id = addr_info.get('parent_id')
-                    address_index = addr_info.get('address_index')
-                    if parent_id is not None and address_index is not None:
-                        db_cursor.execute('select path from address where id=?', (parent_id,))
-                        row = db_cursor.fetchone()
-                        if row and row[0]:
-                            addr_info['path'] = bip32_path_string_append_elem(row[0], address_index)
-                addr = self._get_address_from_dict(addr_info)
-            elif create:
-                db_cursor.execute('insert into address(address) values(?)', (address,))
-                addr = Bip44AddressType(tree_id=None)
-                addr.address = address
-                addr.id = db_cursor.lastrowid
+        addr = self.addresses_by_address.get(address)
+
+        if not addr:
+            db_cursor = self.db_intf.get_cursor()
+            try:
+                db_cursor.execute('select * from address where address=?', (address,))
+                row = db_cursor.fetchone()
+                if row:
+                    addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
+                    if not addr_info.get('path'):
+                        parent_id = addr_info.get('parent_id')
+                        address_index = addr_info.get('address_index')
+                        if parent_id is not None and address_index is not None:
+                            db_cursor.execute('select path from address where id=?', (parent_id,))
+                            row = db_cursor.fetchone()
+                            if row and row[0]:
+                                addr_info['path'] = bip32_path_string_append_elem(row[0], address_index)
+                    addr = self._get_address_from_dict(addr_info)
+                elif create:
+                    db_cursor.execute('insert into address(address) values(?)', (address,))
+                    addr = Bip44AddressType(tree_id=None)
+                    addr.address = address
+                    addr.id = db_cursor.lastrowid
+                    self.addresses_by_id[addr.id] = addr
+                    self.addresses_by_address[addr.address] = addr
+                    self.db_intf.commit()
+                    self.addr_ids_created[addr.id] = addr.id
+                else:
+                    return None
                 self.addresses_by_id[addr.id] = addr
-                self.db_intf.commit()
-                self.addr_ids_created[addr.id] = addr.id
-            else:
-                return None
-            self.addresses_by_id[addr.id] = addr
-            return addr
-        finally:
-            self.db_intf.release_cursor()
+                self.addresses_by_address[addr.address] = addr
+            finally:
+                self.db_intf.release_cursor()
+        return addr
 
     def _find_address_item_in_cache_by_id(self, addr_id: int) -> Tuple[Bip44AddressType, Bip44AccountType]:
         addr = None
@@ -204,6 +221,7 @@ class Bip44Wallet(QObject):
         addr.received = address_dict.get('received', 0)
         addr.last_scan_block_height = address_dict.get('last_scan_block_height', 0)
         self.addresses_by_id[addr.id] = addr
+        self.addresses_by_address[addr.address] = addr
         return addr
 
     def _fill_temp_ids_table(self, ids: List[int], db_cursor):
@@ -437,103 +455,7 @@ class Bip44Wallet(QObject):
             if db_cursor.connection.total_changes:
                 self.db_intf.commit()
 
-    def fetch_all_accounts_txs(self, check_break_process_fun: Callable):
-        log.debug('Starting fetching transactions for all accounts.')
-
-        self.validate_hd_tree()
-        self.addr_ids_created.clear()
-        self.increase_ext_call_level()
-        try:
-            for idx in range(MAX_BIP44_ACCOUNTS):
-                if check_break_process_fun and check_break_process_fun():
-                    break
-
-                db_cursor = self.db_intf.get_cursor()
-                try:
-                    account_address_index = 0x80000000 + idx
-                    account = self._get_account_by_index(account_address_index, db_cursor)
-                    for change in (0, 1):
-                        if check_break_process_fun and check_break_process_fun():
-                            break
-
-                        change_level_node = account.get_child_entry(change)
-                        change_level_node.read_from_db(db_cursor, create=True)
-                        change_level_node.evaluate_address_if_null(db_cursor, self.dash_network)
-                        self._fetch_child_addrs_txs(change_level_node, account, check_break_process_fun)
-                    self._update_addr_balances(account)
-                    account.read_from_db(db_cursor)
-                    account.evaluate_address_if_null(db_cursor, self.dash_network)
-                    self._process_addresses_created(db_cursor)
-                    if not account.received:
-                        break
-                finally:
-                    if db_cursor.connection.total_changes > 0:
-                        self.db_intf.commit()
-                    self.db_intf.release_cursor()
-        finally:
-            self.decrease_ext_call_level()
-        log.debug('Finished fetching transactions for all accounts.')
-
-    # def fetch_account_txs(self, account_index: int, check_break_process_fun: Callable):
-    #     log.debug(f'fetch_account_txs account index: {account_index}')
-    #     tm_begin = time.time()
-    #
-    #     self.increase_ext_call_level()
-    #     try:
-    #         if account_index < 0:
-    #             raise Exception('Invalid account number')
-    #
-    #         account_entry = self._get_account_id_by_index(account_index)
-    #         account = self.accounts_by_id.get(account_entry.id)
-    #
-    #         for change in (0, 1):
-    #             if check_break_process_fun and check_break_process_fun():
-    #                 break
-    #
-    #             change_level_entry = account_entry.get_child(change)
-    #             self._fetch_child_addrs_txs(change_level_entry, account, check_break_process_fun)
-    #         self._update_addr_balances(account)
-    #     finally:
-    #         self.decrease_ext_call_level()
-    #
-    #     log.debug(f'fetch_account_txs exec time: {time.time() - tm_begin}s')
-
-    def fetch_account_txs_xpub(self, account_xpub: str, change: int, check_break_process_fun: Callable):
-        """
-        Dedicated for scanning external xpub accounts (not managed by the current hardware wallet) to find the
-        first not used ("fresh") addres to be used as a transaction destination.
-        :param account_xpub: xpub of the account
-        :param change: 0 or 1 (usually 0, since there is no reason to scan the change addresses)
-        """
-
-        tm_begin = time.time()
-        self.validate_hd_tree()
-        self.addr_ids_created.clear()
-        self.increase_ext_call_level()
-        db_cursor = self.db_intf.get_cursor()
-        try:
-            account_entry = self._get_key_entry_by_xpub(account_xpub)
-            account = self.account_by_id.get(account_entry.id)
-            change_level_node = account_entry.get_child_entry(change)
-            change_level_node.read_from_db(db_cursor, create=True)
-            change_level_node.evaluate_address_if_null(db_cursor, self.dash_network)
-            self._fetch_child_addrs_txs(change_level_node, account, check_break_process_fun)
-            self._update_addr_balances(account)
-            self._process_addresses_created(db_cursor)
-        finally:
-            self.decrease_ext_call_level()
-            self.db_intf.release_cursor()
-
-        log.debug(f'fetch_account_xpub_txs exec time: {time.time() - tm_begin}s')
-
     def _fetch_child_addrs_txs(self, key_entry: Bip44Entry, account: Bip44AccountType, check_break_process_fun: Callable = None):
-        """
-
-        :param key_entry:
-        :param check_break_process_fun:
-        :return:
-        """
-
         cur_block_height = self.get_block_height()
 
         if not self.purge_unconf_txs_called:
@@ -553,11 +475,13 @@ class Bip44Wallet(QObject):
 
                 if check_break_process_fun and check_break_process_fun():
                     break
+                self._check_terminate_tx_fetch()
 
                 self._process_addresses_txs(addresses, cur_block_height)
 
                 if check_break_process_fun and check_break_process_fun():
                     break
+                self._check_terminate_tx_fetch()
 
                 # count the number of addresses with no associated transactions starting from the end
                 _empty_addresses = 0
@@ -868,6 +792,163 @@ class Bip44Wallet(QObject):
                 self.db_intf.release_cursor()  # we are releasing cursor2
             self.db_intf.commit()
 
+    def _check_terminate_tx_fetch(self):
+        if self.__waiting_tx_fetch_priority is not None and \
+           self.__cur_tx_fetch_prioriry < self.__waiting_tx_fetch_priority:
+            raise BreakFetchTransactionsException('Break fetch transactions')
+
+    def _wait_for_tx_fetch_terminate(self, new_priority: int):
+        """ Waits for the current tx fetch process terminates if started from another thread. """
+
+        if self.__tx_fetch_end_event.is_set():
+            self.__tx_fetch_end_event.clear()
+
+        while self.__waiting_tx_fetch_priority is not None:
+            self.__tx_fetch_end_event.wait(1)
+            if self.__tx_fetch_end_event.is_set():
+                self.__tx_fetch_end_event.clear()
+
+        self.__waiting_tx_fetch_priority = new_priority
+
+        while self.__cur_tx_fetch_prioriry is not None:
+            self.__tx_fetch_end_event.wait(1)
+            if self.__tx_fetch_end_event.is_set():
+                self.__tx_fetch_end_event.clear()
+
+        self.__waiting_tx_fetch_priority = None
+        self.__cur_tx_fetch_prioriry = new_priority
+
+    def fetch_all_accounts_txs(self, check_break_process_fun: Callable, priority: int = DEFAULT_TX_FETCH_PRIORITY):
+        log.debug('Starting fetching transactions for all accounts.')
+
+        self._wait_for_tx_fetch_terminate(priority)
+        try:
+            self.validate_hd_tree()
+            self.addr_ids_created.clear()
+            self.increase_ext_call_level()
+            try:
+                for idx in range(MAX_BIP44_ACCOUNTS):
+                    if check_break_process_fun and check_break_process_fun():
+                        break
+
+                    db_cursor = self.db_intf.get_cursor()
+                    try:
+                        account_address_index = 0x80000000 + idx
+                        account = self._get_account_by_index(account_address_index, db_cursor)
+                        for change in (0, 1):
+                            if check_break_process_fun and check_break_process_fun():
+                                break
+
+                            change_level_node = account.get_child_entry(change)
+                            change_level_node.read_from_db(db_cursor, create=True)
+                            change_level_node.evaluate_address_if_null(db_cursor, self.dash_network)
+                            self._fetch_child_addrs_txs(change_level_node, account, check_break_process_fun)
+                        self._update_addr_balances(account)
+                        account.read_from_db(db_cursor)
+                        account.evaluate_address_if_null(db_cursor, self.dash_network)
+                        self._process_addresses_created(db_cursor)
+                        if not account.received:
+                            break
+                    finally:
+                        if db_cursor.connection.total_changes > 0:
+                            self.db_intf.commit()
+                        self.db_intf.release_cursor()
+            finally:
+                self.decrease_ext_call_level()
+        finally:
+            self.__cur_tx_fetch_prioriry = None
+            self.__tx_fetch_end_event.set()
+        log.debug('Finished fetching transactions for all accounts.')
+
+    # def fetch_account_txs(self, account_index: int, check_break_process_fun: Callable):
+    #     log.debug(f'fetch_account_txs account index: {account_index}')
+    #     tm_begin = time.time()
+    #
+    #     self.increase_ext_call_level()
+    #     try:
+    #         if account_index < 0:
+    #             raise Exception('Invalid account number')
+    #
+    #         account_entry = self._get_account_id_by_index(account_index)
+    #         account = self.accounts_by_id.get(account_entry.id)
+    #
+    #         for change in (0, 1):
+    #             if check_break_process_fun and check_break_process_fun():
+    #                 break
+    #
+    #             change_level_entry = account_entry.get_child(change)
+    #             self._fetch_child_addrs_txs(change_level_entry, account, check_break_process_fun)
+    #         self._update_addr_balances(account)
+    #     finally:
+    #         self.decrease_ext_call_level()
+    #
+    #     log.debug(f'fetch_account_txs exec time: {time.time() - tm_begin}s')
+
+    def fetch_account_txs_xpub(self, account: Union[Bip44AccountType, str], change: int,
+                               check_break_process_fun: Callable, priority: int = DEFAULT_TX_FETCH_PRIORITY):
+        """
+        Dedicated for scanning external xpub accounts (not managed by the current hardware wallet) to find the
+        first not used ("fresh") addres to be used as a transaction destination.
+        :param account: the account xpub or Bip44AccountType object
+        :param change: 0 or 1
+        """
+
+        self._wait_for_tx_fetch_terminate(priority)
+        try:
+            tm_begin = time.time()
+            self.validate_hd_tree()
+            self.addr_ids_created.clear()
+            self.increase_ext_call_level()
+            db_cursor = self.db_intf.get_cursor()
+            try:
+                if isinstance(account, str):
+                    acc = self._get_key_entry_by_xpub(account)
+                else:
+                    # use the cached account object since it probably has its child keys already loaded
+                    acc = self.account_by_id.get(account.id)
+                    if not acc:
+                        acc = account
+                change_level_node = acc.get_child_entry(change)
+                change_level_node.read_from_db(db_cursor, create=True)
+                change_level_node.evaluate_address_if_null(db_cursor, self.dash_network)
+                self._fetch_child_addrs_txs(change_level_node, acc, check_break_process_fun)
+                self._update_addr_balances(acc)
+                self._process_addresses_created(db_cursor)
+            finally:
+                self.decrease_ext_call_level()
+                self.db_intf.release_cursor()
+        finally:
+            self.__cur_tx_fetch_prioriry = None
+            self.__tx_fetch_end_event.set()
+
+        log.debug(f'fetch_account_xpub_txs exec time: {time.time() - tm_begin}s')
+
+    def find_xpub_first_unused_address(self, account: Union[Bip44AccountType, str], change: int) -> \
+            Optional[Bip44AddressType]:
+
+        self.fetch_account_txs_xpub(account, change, check_break_process_fun=None, priority=DEFAULT_TX_FETCH_PRIORITY+1)
+        db_cursor = self.db_intf.get_cursor()
+        try:
+            if isinstance(account, str):
+                acc = self._get_key_entry_by_xpub(account)
+            else:
+                # use the cached account object since it probably has its child keys already loaded
+                acc = self.account_by_id.get(account.id)
+                if not acc:
+                    acc = account
+            change_level_node = acc.get_child_entry(change)
+            change_level_node.read_from_db(db_cursor, create=True)
+            change_level_node.evaluate_address_if_null(db_cursor, self.dash_network)
+
+            for addr in self._list_child_addresses(change_level_node, 0, MAX_ADDRESSES_TO_SCAN, account):
+                self._check_terminate_tx_fetch()
+                if not addr.received:
+                    return addr
+        finally:
+            self.decrease_ext_call_level()
+            self.db_intf.release_cursor()
+        return None
+
     def purge_transaction(self, tx_id: int, db_cursor=None):
         log.info('Purging timed-out unconfirmed transaction (td_id: %s).', tx_id)
         if not db_cursor:
@@ -1118,14 +1199,15 @@ class Bip44Wallet(QObject):
         :param account_id: database id of the account's record
         """
         def parse_addrs_str_gen(addrs_str: str) -> Generator[Union[Bip44AddressType, str], None, None]:
+            """addrs_str: address:address_id:tx_index:amount """
             if addrs_str:
                 for addr_str in addrs_str.split(','):
                     elems = addr_str.split(':')
-                    if len(elems) == 1:
-                        id = elems[0]
-                        addr_str = ''
-                    else:
-                        addr_str, id = elems
+                    id = None
+                    if len(elems):
+                        id = elems.pop(0)
+                    if len(elems):
+                        addr_str = elems.pop(0)
                     if id:
                         id = int(id)
                         a = self.addresses_by_id.get(id)
@@ -1141,7 +1223,8 @@ class Bip44Wallet(QObject):
             sql_text = """
                 select -1 type,
                        group_concat(DISTINCT a.id) src_addr_ids,
-                       (select group_concat(DISTINCT a.address||':'||ifnull(o.address_id,'')) from tx_output o where o.tx_id=t.id) rcp_addresses,
+                       (select group_concat(DISTINCT ifnull(o.address_id,'')||':'||a.address||':'||output_index||':'||o.satoshis) 
+                        from tx_output o where o.tx_id=t.id) rcp_addresses,
                        sum(i.satoshis),
                        t.id,
                        t.tx_hash,
@@ -1155,8 +1238,8 @@ class Bip44Wallet(QObject):
                 group by t.id
                 union
                 select 1 type,
-                       group_concat(DISTINCT i.src_address||':'||ifnull(src_address_id,'')),
-                       o.address||':'||ifnull(o.address_id,''),
+                       group_concat(DISTINCT ifnull(src_address_id,'')||':'||i.src_address),
+                       ifnull(o.address_id,'')||':'||o.address||':'||o.output_index||':'||o.satoshis,
                        o.satoshis,
                        t.id,
                        t.tx_hash,
@@ -1301,6 +1384,7 @@ class Bip44Wallet(QObject):
                 for a in acc.addresses:
                     if a.id in self.addresses_by_id:
                         del self.addresses_by_id[a.id]
+                        del self.addresses_by_address[a.address]
 
                 del self.account_by_id[id]
             acc = self.account_by_bip32_path.get(acc.bip32_path)

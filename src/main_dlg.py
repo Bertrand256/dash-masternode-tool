@@ -378,7 +378,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot(bool)
     def on_action_command_console_triggered(self, checked):
         if not self.cmd_console_dlg:
-            self.cmd_console_dlg = CmdConsoleDlg(None, self.app_config)
+            self.cmd_console_dlg = CmdConsoleDlg(self, self.app_config)
         self.cmd_console_dlg.exec_()
 
     def load_remote_params(self):
@@ -643,6 +643,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_action_check_network_connection_triggered(self):
+        self.connect_dash_network()
+
+    def connect_dash_network(self):
         def connection_test_finished():
 
             self.action_check_network_connection.setEnabled(True)
