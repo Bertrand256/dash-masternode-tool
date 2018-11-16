@@ -149,7 +149,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                                         val = get_vout_value(v)
                                         break
                                 if val is None:
-                                    logging.error(f'Couldn\'t find output {txindex} in source transaction {txid}')
+                                    log.error(f'Couldn\'t find output {txindex} in source transaction {txid}')
                                 else:
                                     inputs_total += val
 
@@ -243,7 +243,7 @@ td.lbl{{text-align: right;vertical-align: top}} p.lbl{{margin: 0 5px 0 0; font-w
             else:
                 raise Exception('Error: could\'t parse tha raw transaction.')
         except Exception as e:
-            logging.exception("Unhandled exception occurred.")
+            log.exception("Unhandled exception occurred.")
             raise
 
     @pyqtSlot(bool)
@@ -255,19 +255,20 @@ td.lbl{{text-align: right;vertical-align: top}} p.lbl{{margin: 0 5px 0 0; font-w
     @pyqtSlot(bool)
     def on_btn_broadcast_clicked(self):
         try:
-            # txid = self.dashd_intf.sendrawtransaction(self.raw_transaction, self.use_instant_send)
-            # if txid != self.tx_id:
-            #     logging.warning('TXID returned by sendrawtransaction differs from the original txid')
-            #     self.tx_id = txid
-            txid = self.decoded_transaction.get('txid') # todo: testing
-            logging.info('Transaction sent, txid: ' + txid)
+            log.debug('Broadcasting raw transaction: ' + self.raw_transaction)
+            txid = self.dashd_intf.sendrawtransaction(self.raw_transaction, self.use_instant_send)
+            if txid != self.tx_id:
+                log.warning('TXID returned by sendrawtransaction differs from the original txid')
+                self.tx_id = txid
+            # txid = self.decoded_transaction.get('txid') # todo: testing
+            log.info('Transaction sent, txid: ' + txid)
             self.transaction_sent = True
             self.btn_broadcast.setEnabled(False)
             self.prepare_tx_view()
             if self.after_send_tx_callback:
                 self.after_send_tx_callback(self.decoded_transaction)
         except Exception as e:
-            logging.exception(f'Exception occurred while broadcasting transaction. '
+            log.exception(f'Exception occurred while broadcasting transaction. '
                               f'Transaction size: {self.tx_size} bytes.')
             self.errorMsg('An error occurred while sending transation: '+ str(e))
 

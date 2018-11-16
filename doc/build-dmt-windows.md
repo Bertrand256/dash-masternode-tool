@@ -68,6 +68,15 @@ The final step of the DMT build process compresses the executable file created d
 
 * The installation process will complete after a few minutes.
 
+### Install *cmake*
+
+* Download the installer from: https://cmake.org/files/v3.12/cmake-3.12.4-win64-x64.msi
+
+* Run the installer
+
+* On the *Install options* page choose *Add CMake to the system PATH for all users*
+
+
 ### Install the required Python libraries/addons
 
 Open the Windows command prompt (*cmd.exe*)  and run the following commands:

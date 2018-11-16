@@ -10,6 +10,7 @@ import typing
 import bitcoin
 from bip32utils import Base58
 import base58
+import blspy
 
 
 # Bitcoin opcodes used in the application
@@ -139,6 +140,20 @@ def generate_privkey(dash_network: str, compressed: bool = False):
 def privkey_to_pubkey(privkey):
     pub = bitcoin.privkey_to_pubkey(privkey)
     return pub
+
+
+def generate_bls_privkey():
+    for i in range(1, 1000):
+        privkey = bitcoin.random_key()
+        pk_bytes = bytes.fromhex(privkey)
+        num_pk = bitcoin.decode_privkey(privkey, 'hex')
+        if 0 < num_pk < bitcoin.N:
+            try:
+                pk = blspy.PrivateKey.from_bytes(pk_bytes)
+                return pk
+            except Exception as e:
+                pass
+    raise Exception("Could not generate BLS private key")
 
 
 def num_to_varint(a):

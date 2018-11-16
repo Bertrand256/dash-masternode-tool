@@ -26,6 +26,7 @@ from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle, QInputDialog, QApplication
 from PyQt5.QtWidgets import QMessageBox
 
+import reg_masternode_dlg
 from cmd_console_dlg import CmdConsoleDlg
 from common import CancelException
 from config_dlg import ConfigDlg
@@ -1889,3 +1890,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def on_action_about_qt_triggered(self, enabled):
         QApplication.aboutQt()
 
+    @pyqtSlot(bool)
+    def on_btnMigrateToDMN_clicked(self, enabled):
+        if self.curMasternode:
+            ui = reg_masternode_dlg.RegMasternodeDlg(self, self.app_config, self.curMasternode)
+            ui.exec_()
+        else:
+            WndUtils.errorMsg('No masternode selected')
