@@ -591,7 +591,7 @@ class TransactionTableModel(ExtSortFilterTableModel):
                             if tx.block_height == UNCONFIRMED_TX_BLOCK_HEIGHT:
                                 return 'Unconfirmed'
                             else:
-                                return app_utils.to_string(self.__current_block_height - tx.block_height)
+                                return app_utils.to_string(self.__current_block_height - tx.block_height + 1)
                     else:
                         return app_utils.to_string(tx.__getattribute__(col.name))
                 elif role == Qt.ForegroundRole:
@@ -664,8 +664,8 @@ class TransactionTableModel(ExtSortFilterTableModel):
                     return False
                 elif col_name == 'confirmations':
                     if self.__current_block_height is not None:
-                        left_value = self.__current_block_height - left_tx.block_height
-                        right_value = self.__current_block_height - right_tx.block_height
+                        left_value = self.__current_block_height - left_tx.block_height + 1
+                        right_value = self.__current_block_height - right_tx.block_height + 1
                     else:
                         return False
                 else:

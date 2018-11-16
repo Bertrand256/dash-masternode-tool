@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_main_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.9.2
+# Created by: PyQt5 UI code generator 5.11.3
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -99,6 +99,9 @@ class Ui_MainWindow(object):
         self.btnEditMn.setMaximumSize(QtCore.QSize(100, 16777215))
         self.btnEditMn.setObjectName("btnEditMn")
         self.horizontalLayout_4.addWidget(self.btnEditMn)
+        self.btnMigrateToDMN = QtWidgets.QPushButton(self.groupBox_3)
+        self.btnMigrateToDMN.setObjectName("btnMigrateToDMN")
+        self.horizontalLayout_4.addWidget(self.btnMigrateToDMN)
         spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout_4.addItem(spacerItem)
         self.horizontalLayout_4.setStretch(0, 3)
@@ -461,6 +464,7 @@ class Ui_MainWindow(object):
         self.btnDeleteMn.setText(_translate("MainWindow", "Delete"))
         self.btnEditMn.setToolTip(_translate("MainWindow", "Enable editing"))
         self.btnEditMn.setText(_translate("MainWindow", "Edit"))
+        self.btnMigrateToDMN.setText(_translate("MainWindow", "Migrate to DMN"))
         self.edtMnIp.setToolTip(_translate("MainWindow", "The Masternode\'s IP address for incoming communication with other nodes"))
         self.label_11.setText(_translate("MainWindow", "port:"))
         self.edtMnPort.setToolTip(_translate("MainWindow", "The Masternode\'s TCP port number for incoming communication with other nodes"))
