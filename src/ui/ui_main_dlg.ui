@@ -80,7 +80,7 @@
           <number>4</number>
          </property>
          <item row="0" column="1">
-          <layout class="QHBoxLayout" name="horizontalLayout_4" stretch="3,0,0,0,0,0">
+          <layout class="QHBoxLayout" name="horizontalLayout_4" stretch="3,0,0,0,0,0,0">
            <property name="spacing">
             <number>8</number>
            </property>
@@ -185,6 +185,13 @@
              </property>
              <property name="text">
               <string>Edit</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnMigrateToDMN">
+             <property name="text">
+              <string>Migrate to DMN</string>
              </property>
             </widget>
            </item>
