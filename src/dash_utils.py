@@ -87,12 +87,17 @@ def validate_bip32_path(path: str) -> bool:
 
 
 def pubkey_to_address(pub_key, dash_network: str):
-    """Convert public key to Dash address."""
+    """Convert public key to a Dash address."""
     pubkey_bin = bytes.fromhex(pub_key)
     pub_hash = bitcoin.bin_hash160(pubkey_bin)
     data = bytes([get_chain_params(dash_network).PREFIX_PUBKEY_ADDRESS]) + pub_hash
     checksum = bitcoin.bin_dbl_sha256(data)[0:4]
     return base58.b58encode(data + checksum)
+
+
+def wif_privkey_to_address(privkey: str, dash_network: str):
+    pubkey = wif_privkey_to_pubkey(privkey)
+    return pubkey_to_address(pubkey, dash_network)
 
 
 def validate_address(address: str, dash_network: typing.Optional[str]) -> bool:
@@ -120,7 +125,7 @@ def validate_address(address: str, dash_network: typing.Optional[str]) -> bool:
     return False
 
 
-def generate_privkey(dash_network: str, compressed: bool = False):
+def generate_wif_privkey(dash_network: str, compressed: bool = False):
     """
     Based on Andreas Antonopolous work from 'Mastering Bitcoin'.
     """
@@ -137,12 +142,43 @@ def generate_privkey(dash_network: str, compressed: bool = False):
     return base58.b58encode(data + checksum)
 
 
-def privkey_to_pubkey(privkey):
+def validate_wif_privkey(privkey: str, dash_network: str):
+    try:
+        data = base58.b58decode(privkey)
+        if len(data) not in (37, 38):
+            raise Exception('Invalid private key length')
+
+        if data[0] != get_chain_params(dash_network).PREFIX_SECRET_KEY:
+            raise Exception('Invalid private key prefix.')
+
+        checksum = data[-4:]
+        data = data[:-4]
+
+        if len(data) == 34:
+            compressed = data[-1]
+        else:
+            compressed = 0
+        if compressed not in (0, 1):
+            raise Exception('Invalid the compressed byte value: ' + str(compressed))
+
+        checksum_cur = bitcoin.bin_dbl_sha256(data)[0:4]
+        if checksum != checksum_cur:
+            raise Exception('Invalid private key checksum')
+    except Exception as e:
+        logging.warning(str(e))
+        return False
+    return True
+
+
+def wif_privkey_to_pubkey(privkey):
     pub = bitcoin.privkey_to_pubkey(privkey)
     return pub
 
 
-def generate_bls_privkey():
+def generate_bls_privkey() -> str:
+    """
+    :return: Generated BLS private key as a hex string.
+    """
     for i in range(1, 1000):
         privkey = bitcoin.random_key()
         pk_bytes = bytes.fromhex(privkey)
@@ -150,10 +186,22 @@ def generate_bls_privkey():
         if 0 < num_pk < bitcoin.N:
             try:
                 pk = blspy.PrivateKey.from_bytes(pk_bytes)
-                return pk
+                pk_bin = pk.serialize()
+                return pk_bin.hex()
             except Exception as e:
                 pass
     raise Exception("Could not generate BLS private key")
+
+
+def bls_privkey_to_pubkey(privkey: str) -> str:
+    """
+    :param privkey: BLS privkey as a hex string
+    :return: BLS pubkey as a hex string.
+    """
+    pk = blspy.PrivateKey.from_bytes(bytes.fromhex(privkey))
+    pubkey = pk.get_public_key()
+    pubkey_bin = pubkey.serialize()
+    return pubkey_bin.hex()
 
 
 def num_to_varint(a):
@@ -241,18 +289,6 @@ def wif_privkey_to_uncompressed(wif_key: str):
         return base58.b58encode(data + checksum)
     else:
         return wif_key
-
-
-def privkey_valid(privkey):
-    try:
-        pk = bitcoin.decode_privkey(privkey, 'wif')
-        pkbin = bytes.fromhex(bitcoin.encode_privkey(pk, 'hex'))
-        if len(pkbin) == 32 or (len(pkbin) == 33 and pkbin[-1] == 1):
-            return True
-        else:
-            return False
-    except Exception as e:
-        return False
 
 
 def from_string_to_bytes(a):

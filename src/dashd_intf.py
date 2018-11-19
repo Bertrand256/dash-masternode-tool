@@ -17,7 +17,7 @@ from PyQt5.QtCore import QThread
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from paramiko import AuthenticationException, PasswordRequiredException, SSHException
 from paramiko.ssh_exception import NoValidConnectionsError
-from typing import List, Dict
+from typing import List, Dict, Union
 import app_cache
 import app_defs
 import app_utils
@@ -1236,9 +1236,34 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
+    def protx(self, *args):
+        if self.open():
+            return self.proxy.protx(*args)
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def spork(self, *args):
+        if self.open():
+            return self.proxy.spork(*args)
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
     def rpc_call(self, command, *args):
         if self.open():
             c = self.proxy.__getattr__(command)
             return c(*args)
         else:
             raise Exception('Not connected')
+
+    def get_spork_value(self, spork: Union[int, str]):
+        if isinstance(spork, int):
+            name = 'SPORK_' + str(spork)
+        else:
+            name = spork
+        sporks = self.spork('show')
+        for spk in sporks:
+            if spk.find(name) >= 0:
+                return sporks[spk]
+        return None
