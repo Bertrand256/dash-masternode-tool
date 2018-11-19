@@ -300,7 +300,13 @@ def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_c
 def sign_message(hw_session: HwSessionInfo, bip32path, message):
     client = hw_session.hw_client
     address_n = client.expand_path(clean_bip32_path(bip32path))
-    return client.sign_message(hw_session.app_config.hw_coin_name, address_n, message)
+    try:
+        return client.sign_message(hw_session.app_config.hw_coin_name, address_n, message)
+    except CallException as e:
+        if e.args and len(e.args) >= 2 and e.args[1].lower().find('cancelled') >= 0:
+            raise HardwareWalletCancelException('Cancelled')
+        else:
+            raise
 
 
 def change_pin(hw_session: HwSessionInfo, remove=False):

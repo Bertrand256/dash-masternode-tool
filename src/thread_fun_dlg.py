@@ -7,7 +7,7 @@ from collections import Callable
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt, QEventLoop, QPoint
 from PyQt5.QtCore import QThread
-from PyQt5.QtWidgets import QDialog
+from PyQt5.QtWidgets import QDialog, QLabel
 from typing import Optional
 
 from ui import ui_thread_fun_dlg
@@ -128,6 +128,11 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
                                         dlg_config_signal=self.dlg_config_signal,
                                         show_dialog_signal=self.show_window_signal)
             self.work.finished.connect(self.threadFinished)
+
+            # the user method controlled by the worker thread may need to access the widget
+            # displaying a feedback for its non-standard purposes, so we expose it through
+            # control object which is passed to that method
+            self.work.ctrl_obj.set_msg_label(self.lblText)
 
         self.worker_result = None
         self.worker_exception = None
@@ -252,6 +257,13 @@ class CtrlObject(object):
         self.dlg_config_fun: Callable[[bool, bool, str, int],None] = None
         self.show_dialog_fun: Callable[[bool], None] = None
         self.finish: bool = False
+        self.__msg_label = None
+
+    def get_msg_label_control(self) -> QLabel:
+        return self.__msg_label
+
+    def set_msg_label(self, label: QLabel):
+        self.__msg_label = label
 
 
 class WorkerDlgThread(QThread):
@@ -283,6 +295,7 @@ class WorkerDlgThread(QThread):
         # prepare control object passed to a thread function
         self.ctrl_obj = CtrlObject()
         self.ctrl_obj.display_msg_fun = self.display_msg
+        self.ctrl_obj.msg_link_activated_callback = None
         self.ctrl_obj.set_progress_value_fun = self.set_progress_value
         self.ctrl_obj.dlg_config_fun = self.dlg_config
         self.ctrl_obj.show_dialog_fun = self.show_dialog
