@@ -39,7 +39,8 @@ class BreakFetchTransactionsException(Exception):
 class Bip44Wallet(QObject):
     blockheight_changed = QtCore.pyqtSignal(int)
 
-    def __init__(self, coin_name: str, hw_session: HwSessionInfo, db_intf: DBCache, dashd_intf: DashdInterface, dash_network: str):
+    def __init__(self, coin_name: str, hw_session: HwSessionInfo, db_intf: DBCache, dashd_intf: DashdInterface,
+                 dash_network: str):
         QObject.__init__(self)
         self.db = None
         self.hw_session = hw_session
@@ -84,6 +85,8 @@ class Bip44Wallet(QObject):
         self.on_account_data_changed_callback: Callable[[Bip44AccountType], None] = None
         self.on_account_address_added_callback: Callable[[Bip44AccountType, Bip44AddressType], None] = None
         self.on_address_data_changed_callback: Callable[[Bip44AccountType, Bip44AddressType], None] = None
+        self.on_address_loaded_callback: Callable[[Bip44AddressType], None] = None
+        self.on_fetch_account_txs_feedback: Callable[[str], None] = None
 
     def reset_tx_diffs(self):
         self.txs_added.clear()
@@ -171,19 +174,17 @@ class Bip44Wallet(QObject):
                             if row and row[0]:
                                 addr_info['path'] = bip32_path_string_append_elem(row[0], address_index)
                     addr = self._get_address_from_dict(addr_info)
+                    self._address_loaded(addr)
                 elif create:
                     db_cursor.execute('insert into address(address) values(?)', (address,))
                     addr = Bip44AddressType(tree_id=None)
                     addr.address = address
                     addr.id = db_cursor.lastrowid
-                    self.addresses_by_id[addr.id] = addr
-                    self.addresses_by_address[addr.address] = addr
                     self.db_intf.commit()
                     self.addr_ids_created[addr.id] = addr.id
+                    self._address_loaded(addr)
                 else:
                     return None
-                self.addresses_by_id[addr.id] = addr
-                self.addresses_by_address[addr.address] = addr
             finally:
                 self.db_intf.release_cursor()
         return addr
@@ -203,6 +204,12 @@ class Bip44Wallet(QObject):
     def _get_bip44_entry_by_xpub(self, xpub) -> Bip44Entry:
         raise Exception('ToDo')
 
+    def _address_loaded(self, addr: Bip44AddressType):
+        self.addresses_by_id[addr.id] = addr
+        self.addresses_by_address[addr.address] = addr
+        if self.on_address_loaded_callback:
+            self.on_address_loaded_callback(addr)
+
     def _get_address_from_dict(self, address_dict) -> Bip44AddressType:
         addr = Bip44AddressType(address_dict.get('tree_id'))
 
@@ -220,8 +227,6 @@ class Bip44Wallet(QObject):
         addr.balance = address_dict.get('balance', 0)
         addr.received = address_dict.get('received', 0)
         addr.last_scan_block_height = address_dict.get('last_scan_block_height', 0)
-        self.addresses_by_id[addr.id] = addr
-        self.addresses_by_address[addr.address] = addr
         return addr
 
     def _fill_temp_ids_table(self, ids: List[int], db_cursor):
@@ -272,7 +277,7 @@ class Bip44Wallet(QObject):
                         addr_info['path'] = bip32_path
                         addr_info['tree_id'] = parent_key_entry.tree_id
 
-                    return self._get_address_from_dict(addr_info)
+                    addr = self._get_address_from_dict(addr_info)
                 else:
                     h = address_to_hash(address)
                     db_cursor.execute('select label from labels.address_label where key=?', (h,))
@@ -299,10 +304,13 @@ class Bip44Wallet(QObject):
                         'tree_id': parent_key_entry.tree_id
                     }
                     self.addr_ids_created[addr_id] = addr_id
-                    return self._get_address_from_dict(addr_info)
+                    addr = self._get_address_from_dict(addr_info)
             else:
                 addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
-            return self._get_address_from_dict(addr_info)
+                addr = self._get_address_from_dict(addr_info)
+
+            self._address_loaded(addr)
+            return addr
         except Exception:
             raise
         finally:
@@ -440,6 +448,7 @@ class Bip44Wallet(QObject):
                     if pp:
                         addr.bip32_path = pp + '/' + str(addr.address_index)
                 account.add_address(addr)
+                self._address_loaded(addr)
             else:
                 addr.update_from_args(balance=add_row[4], received=add_row[5])
 
@@ -456,6 +465,15 @@ class Bip44Wallet(QObject):
                 self.db_intf.commit()
 
     def _fetch_child_addrs_txs(self, key_entry: Bip44Entry, account: Bip44AccountType, check_break_process_fun: Callable = None):
+        total_addr_count = 0
+
+        def feedback():
+            if self.on_fetch_account_txs_feedback:
+                change = ' (the change)' if key_entry.address_index == 1 else ''
+                self.on_fetch_account_txs_feedback(
+                    f'Fetching transactions for <b>{account.get_account_name()}</b>{change}, '
+                    f'{total_addr_count} addresses so far...')
+
         cur_block_height = self.get_block_height()
 
         if not self.purge_unconf_txs_called:
@@ -475,7 +493,9 @@ class Bip44Wallet(QObject):
 
                 if check_break_process_fun and check_break_process_fun():
                     break
+                total_addr_count += len(addresses)
                 self._check_terminate_tx_fetch()
+                feedback()
 
                 self._process_addresses_txs(addresses, cur_block_height)
 
@@ -512,6 +532,7 @@ class Bip44Wallet(QObject):
                     break
 
         if len(addresses):
+            feedback()
             self._process_addresses_txs(addresses, cur_block_height)
 
     def fetch_addresses_txs(self, addr_info_list: List[Bip44AddressType], check_break_process_fun: Callable):
@@ -948,6 +969,36 @@ class Bip44Wallet(QObject):
             self.decrease_ext_call_level()
             self.db_intf.release_cursor()
         return None
+
+    def scan_wallet_for_address(self, addr: str, check_break_process_fun: Callable,
+                                feedback_fun: Callable[[str], None]) -> Optional[Bip44AddressType]:
+        """
+        Scans for a specific address. If necessary, the method fetches transactions to reveal the all used addresses.
+        :param addr: the address being searched.
+        """
+        addr_found: Bip44AddressType = None
+
+        def new_address_fetched(new_addr: Bip44AddressType):
+            nonlocal addr, addr_found
+            if addr == new_addr.address:
+                addr_found = new_addr
+
+        def check_finish():
+            nonlocal addr_found
+            if addr_found or check_break_process_fun():
+                raise BreakFetchTransactionsException()
+
+        old_add_loaded_feedback = self.on_address_loaded_callback
+        try:
+            self.on_address_loaded_callback = new_address_fetched
+            self.on_fetch_account_txs_feedback = feedback_fun
+            self.fetch_all_accounts_txs(check_finish)
+        except BreakFetchTransactionsException:
+            if not addr_found:
+                return None
+        finally:
+            self.on_address_loaded_callback = old_add_loaded_feedback
+        return addr_found
 
     def purge_transaction(self, tx_id: int, db_cursor=None):
         log.info('Purging timed-out unconfirmed transaction (td_id: %s).', tx_id)

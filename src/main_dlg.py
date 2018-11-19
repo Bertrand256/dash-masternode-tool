@@ -1306,7 +1306,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if retval == QMessageBox.No:
                 return
 
-        wif = dash_utils.generate_privkey(self.config.dash_network, compressed=compressed)
+        wif = dash_utils.generate_wif_privkey(self.config.dash_network, compressed=compressed)
         self.curMasternode.privateKey = wif
         self.edtMnPrivateKey.setText(wif)
         self.curMnModified()
@@ -1893,7 +1893,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot(bool)
     def on_btnMigrateToDMN_clicked(self, enabled):
         if self.curMasternode:
-            ui = reg_masternode_dlg.RegMasternodeDlg(self, self.app_config, self.curMasternode)
+            ui = reg_masternode_dlg.RegMasternodeDlg(self, self.app_config, self.dashd_intf, self.curMasternode)
             ui.exec_()
         else:
             WndUtils.errorMsg('No masternode selected')
