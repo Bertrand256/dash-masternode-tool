@@ -158,7 +158,7 @@ class AppConfig(object):
         if not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir)
 
-        cache_file_name = os.path.join(self.cache_dir, 'dmt_cache.json')
+        cache_file_name = os.path.join(self.cache_dir, 'dmt_cache_v2.json')
         app_cache.init(cache_file_name, self.app_version)
         self.app_last_version = app_cache.get_value('app_version', '', str)
         self.app_config_file_name = ''

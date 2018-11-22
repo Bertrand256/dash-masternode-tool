@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>837</width>
-    <height>502</height>
+    <width>867</width>
+    <height>499</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -83,6 +83,18 @@
           <layout class="QHBoxLayout" name="horizontalLayout_4" stretch="3,0,0,0,0,0,0">
            <property name="spacing">
             <number>8</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
            </property>
            <item>
             <widget class="QComboBox" name="cboMasternodes">
@@ -380,7 +392,7 @@
          <item row="4" column="1">
           <layout class="QHBoxLayout" name="layCollateral" stretch="1,0,0">
            <property name="spacing">
-            <number>0</number>
+            <number>1</number>
            </property>
            <property name="topMargin">
             <number>0</number>
@@ -842,7 +854,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>837</width>
+     <width>867</width>
      <height>22</height>
     </rect>
    </property>

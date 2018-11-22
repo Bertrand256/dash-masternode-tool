@@ -118,18 +118,32 @@ class WndUtils:
         :param buttons: list of dialog button definitions; look at doc od whd_thread_fun.Ui_ThreadFunDialog class
         :return: value returned from worker_fun
         """
-        ui = ThreadFunDlg(worker_fun, worker_fun_args, close_after_finish,
-                          buttons=buttons, title=title, text=text, center_by_window=center_by_window,
-                          show_window_delay_ms=show_window_delay_ms)
-        # ui.exec_()
-        ui.wait_for_worker_completion()
-        ret = ui.getResult()
-        ret_exception = ui.worker_exception
-        del ui
-        QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)  # wait until dialog hides
-        if ret_exception:
-            # if there was an exception in the worker function, pass it to the caller
-            raise ret_exception
+        def call(worker_fun, worker_fun_args, close_after_finish, buttons, title, text, center_by_window,
+                 show_window_delay_ms):
+
+            ui = ThreadFunDlg(worker_fun, worker_fun_args, close_after_finish,
+                              buttons=buttons, title=title, text=text, center_by_window=center_by_window,
+                              show_window_delay_ms=show_window_delay_ms)
+            ui.wait_for_worker_completion()
+            ret = ui.getResult()
+            ret_exception = ui.worker_exception
+            del ui
+            QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)  # wait until dialog hides
+            if ret_exception:
+                # if there was an exception in the worker function, pass it to the caller
+                raise ret_exception
+            return ret
+
+        if threading.current_thread() != threading.main_thread():
+            # dialog can be created only from the main thread; it the method is called otherwise, synchronize
+            # with the main thread first
+            ret = thread_wnd_utils.call_in_main_thread(
+                call, worker_fun, worker_fun_args, close_after_finish=close_after_finish, buttons=buttons, title=title,
+                text=text, center_by_window=center_by_window, show_window_delay_ms=show_window_delay_ms)
+        else:
+            ret = call(worker_fun, worker_fun_args, close_after_finish, buttons, title, text, center_by_window,
+                       show_window_delay_ms)
+
         return ret
 
     @staticmethod
@@ -176,8 +190,8 @@ class WndUtils:
         return thread
 
     @staticmethod
-    def call_in_main_thread(fun_to_call, *args):
-        return thread_wnd_utils.call_in_main_thread(fun_to_call, *args)
+    def call_in_main_thread(fun_to_call, *args, **kwargs):
+        return thread_wnd_utils.call_in_main_thread(fun_to_call, *args, **kwargs)
 
     def setIcon(self, widget, ico):
         if isinstance(ico, str):
@@ -307,7 +321,7 @@ class ThreadWndUtils(QObject):
     """
 
     # signal for calling specified function in the main thread
-    fun_call_signal = QtCore.pyqtSignal(object, object, object)
+    fun_call_signal = QtCore.pyqtSignal(object, object, object, object)
 
     def __init__(self):
         QObject.__init__(self)
@@ -315,7 +329,7 @@ class ThreadWndUtils(QObject):
         self.fun_call_ret_value = None
         self.fun_call_exception = None
 
-    def fun_call_signalled(self, fun_to_call, args, mutex):
+    def fun_call_signalled(self, fun_to_call, args, kwargs, mutex):
         """
         Function-event executed in the main thread as a result of emiting signal fun_call_signal from BG threads.
         :param fun_to_call: ref to a function which is to be called
@@ -325,14 +339,13 @@ class ThreadWndUtils(QObject):
         :return: return value from fun_to_call
         """
         try:
-            self.fun_call_ret_value = fun_to_call(*args)
+            self.fun_call_ret_value = fun_to_call(*args, **kwargs)
         except Exception as e:
-            logging.exception('ThreadWndUtils.funCallSignal error: %s' % str(e))
             self.fun_call_exception = e
         finally:
             mutex.unlock()
 
-    def call_in_main_thread(self, fun_to_call, *args):
+    def call_in_main_thread(self, fun_to_call, *args, **kwargs):
         """
         This method is called from BG threads. Its purpose is to run 'fun_to_call' from main thread (used for dialogs)
         and return values ruturned from it.
@@ -376,7 +389,7 @@ class ThreadWndUtils(QObject):
                     self.fun_call_ret_value = None
 
                     # emit signal to call the function fun in the main thread
-                    self.fun_call_signal.emit(fun_to_call, args, mutex)
+                    self.fun_call_signal.emit(fun_to_call, args, kwargs, mutex)
 
                     # wait for the function to finish; lock will be successful only when the first lock
                     # made a few lines above is released in the fun_call_signalled method
@@ -397,7 +410,7 @@ class ThreadWndUtils(QObject):
                     # if there was an exception in the fun, pass it to the calling code
                     exception_to_rethrow = self.fun_call_exception
             else:
-                return fun_to_call(*args)
+                return fun_to_call(*args, **kwargs)
         except DeadlockException:
             raise
         except Exception as e:

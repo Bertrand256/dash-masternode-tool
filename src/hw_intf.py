@@ -4,6 +4,7 @@
 # Created on: 2017-03
 import hashlib
 import sqlite3
+import threading
 from typing import Optional, Tuple, List, ByteString, Callable, Dict
 import sys
 import dash_utils
@@ -132,17 +133,17 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
     """
     def get_session_info_trezor(cli, hw_session: HwSessionInfo):
         def call_get_public_node(ctrl, cli, path_n):
-            cli.show_popup_fun = ctrl.show_dialog_fun
             pk = cli.get_public_node(path_n).node.public_key
-            cli.show_popup_fun = None
             return pk
 
         path = dash_utils.get_default_bip32_base_path(hw_session.app_config.dash_network)
         path_n = dash_utils.bip32_path_string_to_n(path)
         # show message for Trezor T device while waiting for the user to choose the passphrase input method
+
         pub = WndUtils.run_thread_dialog(call_get_public_node, (cli, path_n,), title='Confirm',
                                          text='<b>Complete the action on your Trezor device</b>',
-                                         show_window_delay_ms=-1)
+                                         show_window_delay_ms=1000)
+
         hw_session.set_base_info(path, pub)
 
     control_trezor_keepkey_libs(hw_type)

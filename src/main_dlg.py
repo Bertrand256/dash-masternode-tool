@@ -121,11 +121,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.setStatus2Text('<b>HW status:</b> idle', 'black')
 
         # set stylesheet for editboxes, supporting different colors for read-only and edting mode
-        styleSheet = """
-          QLineEdit{background-color: white}
-          QLineEdit:read-only{background-color: lightgray}
-        """
-        self.setStyleSheet(styleSheet)
+        self.styleSheet = "QLineEdit{background-color: white} QLineEdit:read-only{background-color: lightgray}"
+        self.setStyleSheet(self.styleSheet)
         self.setIcon(self.btnHwAddressToBip32, QStyle.SP_ArrowRight)
         self.setIcon(self.btnHwBip32ToAddress, QStyle.SP_ArrowLeft)
         self.setIcon(self.action_save_config_file, 'save.png')
@@ -1151,7 +1148,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.action_disconnect_hw.setEnabled(True if self.hw_client else False)
             self.btnRefreshMnStatus.setEnabled(self.curMasternode is not None)
             self.btnBroadcastMn.setEnabled(self.curMasternode is not None)
-
         if threading.current_thread() != threading.main_thread():
             self.call_in_main_thread(update_fun)
         else:
