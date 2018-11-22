@@ -45,7 +45,10 @@ class MyTrezorTextUIMixin(TextUIMixin):
         # if not self.is_popup_message_visible():
         #     self.show_popup_message('Confirmation', 'Complete the action on your Trezor device')
         if self.show_popup_fun:
-            self.show_popup_fun(True)
+            try:
+                self.show_popup_fun(True)
+            except Exception as e:
+                log.exception('Exception occurred')
         return trezor_proto.ButtonAck()
 
     def callback_PassphraseRequest(self, msg):
@@ -281,7 +284,7 @@ class MyTxApiInsight(TxApiInsight):
             except:
                 pass
         try:
-            j = self.dashd_inf.getrawtransaction(resourceid, 1)
+            j = self.dashd_inf.getrawtransaction(resourceid, 1, skip_cache=True)
         except Exception as e:
             raise
         if cache_file:
@@ -307,6 +310,7 @@ class MyTxApiInsight(TxApiInsight):
                 i.prev_hash = b"\0" * 32
                 i.prev_index = 0xffffffff  # signed int -1
                 i.script_sig = binascii.unhexlify(vin['coinbase'])
+                # i.script_sig = binascii.unhexlify('03a60603164d696e656420627920416e74506f6f6c43205b612f890200000000000000ac020000')  # todo: test
                 i.sequence = vin['sequence']
 
             else:

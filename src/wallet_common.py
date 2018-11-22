@@ -387,7 +387,7 @@ class Bip44AccountType(AttrsProtected, Bip44Entry):
         self.received: Optional[int] = 0
         self.addresses: List[Bip44AddressType] = []
         self.status: int = 0  # 0: default, 1: force show (used when received = 0), 2: force hide (used when received > 0)
-        self.view_fresh_addresses_count = 0  # how many unused addresses will be shown in GUI
+        self.view_fresh_addresses_count = 1  # how many unused addresses will be shown in GUI
         self.db_fields.extend(('balance', 'received', 'status'))
         self.set_attr_protection()
 

@@ -465,19 +465,21 @@ class Masternode(AttrsProtected):
         super().__setattr__(name, value)
 
 
-def json_cache_wrapper(func, intf, cache_file_ident):
+def json_cache_wrapper(func, intf, cache_file_ident, skip_cache=False):
     """
     Wrapper for saving/restoring rpc-call results inside cache files.
     """
     def json_call_wrapper(*args, **kwargs):
-        cache_file = intf.config.cache_dir + '/insight_dash_' + cache_file_ident + '.json'
+        nonlocal skip_cache, cache_file_ident, intf, func
 
-        try:  # looking into cache first
-            j = simplejson.load(open(cache_file))
-            log.debug('Loaded data from existing cache file: ' + cache_file)
-            return j
-        except:
-            pass
+        cache_file = intf.config.cache_dir + '/insight_dash_' + cache_file_ident + '.json'
+        if not skip_cache:
+            try:  # looking into cache first
+                j = simplejson.load(open(cache_file))
+                log.debug('Loaded data from existing cache file: ' + cache_file)
+                return j
+            except:
+                pass
 
         # if not found in cache, call the original function
         j = func(*args, **kwargs)
@@ -505,6 +507,7 @@ class DashdInterface(WndUtils):
         self.connections = []
         self.cur_conn_index = 0
         self.cur_conn_def = None
+        self.conf_switch_locked = False
 
         # below is the connection with which particular RPC call has started; if connection is switched because of
         # problems with some nodes, switching stops if we close round and return to the starting connection
@@ -642,6 +645,9 @@ class DashdInterface(WndUtils):
         with current connection config.
         :return: True if successfully switched or False if there was no another config
         """
+        if self.conf_switch_locked:
+            return False
+
         if self.cur_conn_def:
             self.config.conn_cfg_failure(self.cur_conn_def)  # mark connection as defective
         if self.cur_conn_index < len(self.connections)-1:
@@ -662,6 +668,12 @@ class DashdInterface(WndUtils):
         else:
             log.warning('Failed to connect: no another connection configurations.')
             return False
+
+    def enable_conf_switching(self):
+        self.conf_switch_locked = True
+
+    def disable_conf_switching(self):
+        self.conf_switch_locked = False
 
     def mark_cur_conn_cfg_is_ok(self):
         if self.cur_conn_def:
@@ -1076,28 +1088,31 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
-    def getrawtransaction(self, txid, verbose):
+    def getrawtransaction(self, txid, verbose, skip_cache=False):
         if self.open():
             if TX_SEND_SIMULATION_MODE:
                 tx = self.test_txs_by_txid.get(txid)
                 if tx:
                     return tx
 
-            return json_cache_wrapper(self.proxy.getrawtransaction, self, 'tx-' + str(verbose) + '-' + txid)(txid, verbose)
+            return json_cache_wrapper(self.proxy.getrawtransaction, self, 'tx-' + str(verbose) + '-' + txid,
+                                      skip_cache=skip_cache)(txid, verbose)
         else:
             raise Exception('Not connected')
 
     @control_rpc_call
-    def getblockhash(self, blockid):
+    def getblockhash(self, blockid, skip_cache=False):
         if self.open():
-            return json_cache_wrapper(self.proxy.getblockhash, self, 'blockhash-' + str(blockid))(blockid)
+            return json_cache_wrapper(self.proxy.getblockhash, self, 'blockhash-' + str(blockid),
+                                      skip_cache=skip_cache)(blockid)
         else:
             raise Exception('Not connected')
 
     @control_rpc_call
-    def getblockheader(self, blockhash):
+    def getblockheader(self, blockhash, skip_cache=False):
         if self.open():
-            return json_cache_wrapper(self.proxy.getblockheader, self, 'blockheader-' + str(blockhash))(blockhash)
+            return json_cache_wrapper(self.proxy.getblockheader, self, 'blockheader-' + str(blockhash),
+                                      skip_cache=skip_cache)(blockhash)
         else:
             raise Exception('Not connected')
 
@@ -1263,6 +1278,17 @@ class DashdInterface(WndUtils):
         else:
             name = spork
         sporks = self.spork('show')
+        for spk in sporks:
+            if spk.find(name) >= 0:
+                return sporks[spk]
+        return None
+
+    def get_spork_active(self, spork: Union[int, str]):
+        if isinstance(spork, int):
+            name = 'SPORK_' + str(spork)
+        else:
+            name = spork
+        sporks = self.spork('active')
         for spk in sporks:
             if spk.find(name) >= 0:
                 return sporks[spk]
