@@ -20,39 +20,16 @@ with open(os.path.join(base_dir, 'version.txt')) as fptr:
             break
 
 add_files = [
- ('img/arrow-bottom.png','/img'),
- ('img/arrow-down.png','/img'),
- ('img/arrow-right.ico','/img'),
- ('img/arrow-top.png','/img'),
- ('img/arrow-up.png','/img'),
- ('img/autorenew@16px.png','/img'),
- ('img/check.png','/img'),
- ('img/delete@16px.png','/img'),
- ('img/dmt.icns','/img'),
- ('img/dmt.ico','/img'),
- ('img/dmt.png','/img'),
- ('img/eject@16px.png','/img'),
- ('img/eye@16px.png','/img'),
- ('img/gear.png','/img'),
- ('img/hw.png','/img'),
- ('img/hw-disconnect.png','/img'),
- ('img/hw-test.png','/img'),
- ('img/info.png','/img'),
- ('img/label@16px.png','/img'),
- ('img/link-check.png','/img'),
- ('img/money-bag.png','/img'),
- ('img/money-transfer-1.png','/img'),
- ('img/money-transfer-2.png','/img'),
- ('img/recover.png','/img'),
- ('img/save.png','/img'),
- ('img/settings@16px.png','/img'),
- ('img/sign.png','/img'),
- ('img/sign@32px.png','/img'),
- ('img/thumbs-up-down.png','/img'),
- ('img/uncheck.png','/img'),
- ('img/wallet.png','/img'),
  ('version.txt', '.')
 ]
+
+for f in os.listdir(os.path.join(base_dir, 'img')):
+    f_full = os.path.join(base_dir, 'img', f)
+    if os.path.isfile(f_full):
+        add_files.append(('img/' + f, '/img'))
+        print('adding ' + str(('img/' + f, '/img')))
+    else:
+        print('Name is not a file, skipping: ' + f)
 
 lib_path = next(p for p in sys.path if 'site-packages' in p)
 #if os_type == 'win32':

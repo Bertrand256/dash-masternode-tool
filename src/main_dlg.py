@@ -893,6 +893,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
         paths_found = []
         user_cancelled = False
+        raise Exception('Temporarily not available')  # todo: implement a new method based on bip44 wallet
+
 
         def scan_for_bip32_thread(ctrl, addresses):
             """

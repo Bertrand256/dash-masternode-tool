@@ -801,22 +801,12 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
                     addr_item.set_address(addresses[idx])
             self.display_totals()
 
-    def set_change_value_label(self):
-        if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT:
-            self.lbl_change_amount.setText('value')
-            self.lbl_change_amount.setToolTip('Unused amount - will be sent back to the change address')
-        else:
-            self.lbl_change_amount.setText('pct. value')
-            self.lbl_change_amount.setToolTip('Unused amount (as percent of the total value of all inputs) - will '
-                                              'be sent back to the change address')
-
     def on_cbo_output_unit_change(self, index):
         if index == 0:
             self.values_unit = OUTPUT_VALUE_UNIT_AMOUNT
         else:
             self.values_unit = OUTPUT_VALUE_UNIT_PERCENT
 
-        self.set_change_value_label()
         for addr_item in self.recipients:
             addr_item.set_output_value_unit(self.values_unit)
         self.update_change_and_fee()

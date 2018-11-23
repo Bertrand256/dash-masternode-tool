@@ -347,6 +347,9 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
     def update_step_tab_ui(self):
         self.btnContinue.setEnabled(False)
+        self.edtManualProtxSubmit.hide()
+        self.edtManualProtxPrepareResult.hide()
+        self.edtManualProtxPrepare.hide()
 
         if self.current_step == STEP_MN_DATA:
             self.stackedWidget.setCurrentIndex(0)
@@ -367,6 +370,9 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             self.upd_node_type_info()
 
         elif self.current_step == STEP_MANUAL_OWN_NODE:
+            self.edtManualProtxSubmit.show()
+            self.edtManualProtxPrepareResult.show()
+            self.edtManualProtxPrepare.show()
             self.stackedWidget.setCurrentIndex(3)
             self.upd_node_type_info()
             self.btnContinue.setEnabled(True)
@@ -711,12 +717,13 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
                 log.debug('register_prepare returned: ' + call_ret_str)
                 set_text(self.lblProtxTransaction1,
-                         '<b>1. Preparing a ProRegTx transaction on a remote node.</b> <span style="color:green">Success.</span>')
+                         '<b>1. Preparing a ProRegTx transaction on a remote node.</b> <span style="color:green">'
+                         'Success.</span>')
             except Exception as e:
                 set_text(
                     self.lblProtxTransaction1,
                     '<b>1. Preparing a ProRegTx transaction on a remote node.</b> <span style="color:red">Failed '
-                    'with the following error: {str(e)}</span>')
+                    f'with the following error: {str(e)}</span>')
                 return
 
             # diable config switching since the protx transaction has input associated with the specific node/wallet
@@ -745,8 +752,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             # submitting signed transaction
             set_text(self.lblProtxTransaction4, '<b>3. Submitting the signed protx transaction to the remote node...</b>')
             try:
-                # self.dmn_reg_tx_hash = self.dashd_intf.protx('register_submit', protx_tx, payload_sig_str)
-                self.dmn_reg_tx_hash = 'dfb396d84373b305f7186984a969f92469d66c58b02fb3269a2ac8b67247dfe3'
+                self.dmn_reg_tx_hash = self.dashd_intf.protx('register_submit', protx_tx, payload_sig_str)
+                # self.dmn_reg_tx_hash = 'dfb396d84373b305f7186984a969f92469d66c58b02fb3269a2ac8b67247dfe3'
                 log.debug('protx register_submit returned: ' + str(self.dmn_reg_tx_hash))
                 set_text(self.lblProtxTransaction4,
                          '<b>3. Submitting the signed protx transaction to the remote node.</b> <span style="'
