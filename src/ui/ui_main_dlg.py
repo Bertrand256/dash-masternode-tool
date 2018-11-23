@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_main_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.11.3
+# Created by: PyQt5 UI code generator 5.9.2
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -170,7 +170,7 @@ class Ui_MainWindow(object):
         self.gridLayout_2.addLayout(self.horizontalLayout_7, 5, 1, 1, 1)
         self.layCollateral = QtWidgets.QHBoxLayout()
         self.layCollateral.setContentsMargins(-1, 0, -1, 0)
-        self.layCollateral.setSpacing(0)
+        self.layCollateral.setSpacing(1)
         self.layCollateral.setObjectName("layCollateral")
         self.edtMnCollateralAddress = QtWidgets.QLineEdit(self.groupBox_3)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)

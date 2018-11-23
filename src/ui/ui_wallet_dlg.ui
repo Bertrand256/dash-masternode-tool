@@ -57,6 +57,36 @@
          </widget>
         </item>
         <item>
+         <widget class="QToolButton" name="btnSetHwIdentityLabel">
+          <property name="toolTip">
+           <string>Set/change hw identity label</string>
+          </property>
+          <property name="text">
+           <string>...</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnPurgeHwIdentity">
+          <property name="toolTip">
+           <string>Purge this identity from cache</string>
+          </property>
+          <property name="text">
+           <string>...</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnFetchTransactions">
+          <property name="toolTip">
+           <string>Force fetch transactions</string>
+          </property>
+          <property name="text">
+           <string>...</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QWidget" name="wdgSpinner" native="true">
           <property name="minimumSize">
            <size>
@@ -162,11 +192,6 @@
                 <height>16777215</height>
                </size>
               </property>
-              <property name="font">
-               <font>
-                <pointsize>14</pointsize>
-               </font>
-              </property>
               <item>
                <property name="text">
                 <string>View As: Wallet Account</string>
@@ -177,6 +202,25 @@
                 <string>View As: Masternode Address</string>
                </property>
               </item>
+             </widget>
+            </item>
+            <item>
+             <widget class="QToolButton" name="btnViewModeOptions">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Fixed" vsizetype="Maximum">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="toolTip">
+               <string>Options</string>
+              </property>
+              <property name="text">
+               <string>...</string>
+              </property>
+              <property name="checkable">
+               <bool>true</bool>
+              </property>
              </widget>
             </item>
             <item>
@@ -200,7 +244,7 @@
           <item>
            <widget class="QStackedWidget" name="swAddressSource">
             <property name="currentIndex">
-             <number>1</number>
+             <number>0</number>
             </property>
             <widget class="QWidget" name="pageAccountsListView">
              <layout class="QVBoxLayout" name="verticalLayout_8">
@@ -290,7 +334,7 @@
           <item>
            <widget class="QTabWidget" name="detailsTab">
             <property name="currentIndex">
-             <number>1</number>
+             <number>0</number>
             </property>
             <widget class="QWidget" name="tabSend">
              <attribute name="title">
@@ -487,13 +531,58 @@
                <number>6</number>
               </property>
               <item>
-               <layout class="QVBoxLayout" name="verticalLayout_12">
+               <layout class="QHBoxLayout" name="horizontalLayout_2">
                 <item>
                  <widget class="QToolButton" name="btnTxesViewColumns">
+                  <property name="maximumSize">
+                   <size>
+                    <width>16777215</width>
+                    <height>22</height>
+                   </size>
+                  </property>
                   <property name="text">
                    <string>Columns...</string>
                   </property>
                  </widget>
+                </item>
+                <item>
+                 <widget class="QToolButton" name="btnTxesTabFilter">
+                  <property name="maximumSize">
+                   <size>
+                    <width>16777215</width>
+                    <height>22</height>
+                   </size>
+                  </property>
+                  <property name="text">
+                   <string>.</string>
+                  </property>
+                  <property name="checkable">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLabel" name="lblTxesTabFilterButton">
+                  <property name="toolTip">
+                   <string>Filter conditions</string>
+                  </property>
+                  <property name="text">
+                   <string/>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacer_4">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
                 </item>
                </layout>
               </item>
