@@ -13,7 +13,7 @@ PROJECT_URL = 'https://github.com/Bertrand256/dash-masternode-tool'
 FEE_DUFF_PER_BYTE = 1
 MIN_TX_FEE = 1000
 SCREENSHOT_MODE = False
-DEBUG_MODE = True
+DEBUG_MODE = False
 DEFAULT_LOG_FORMAT = '%(asctime)s %(levelname)s|%(name)s|%(threadName)s|%(filename)s|%(funcName)s|%(message)s'
 KnownLoggerType = collections.namedtuple('KnownLoggerType', 'name external')
 

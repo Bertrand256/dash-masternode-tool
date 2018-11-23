@@ -22,6 +22,11 @@ from wallet_common import Bip44AccountType, Bip44AddressType, UtxoType, TxType
 
 log = logging.getLogger('dmt.wallet_dlg')
 
+FILTER_OR = 0
+FILTER_AND = 1
+FILTER_OPER_GTEQ = 1
+FILTER_OPER_LTEQ = 2
+FILTER_OPER_EQ = 3
 
 class MnAddressItem(object):
     def __init__(self):
@@ -534,6 +539,19 @@ class TransactionTableModel(ExtSortFilterTableModel):
         self.tx_explorer_url = tx_explorer_url
         self.__current_block_height = None
         self.__data_modified = False
+
+        # filter:
+        self.filter_type = FILTER_OR
+        self.filter_incoming = False
+        self.filter_outgoing = False
+        self.filter_coinbase = False
+        self.filter_recipient = None
+        self.filter_sender = None
+        self.filter_amount_oper = None
+        self.filter_amount_value = None
+        self.filter_date_oper = None
+        self.filter_date_value = None
+
 
     def set_view(self, table_view: QTableView):
         super().set_view(table_view)

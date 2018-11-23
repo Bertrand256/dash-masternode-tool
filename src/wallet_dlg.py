@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-04
+import datetime
 import os
 
 import base64
@@ -30,6 +31,7 @@ from app_config import MasternodeConfig
 from app_defs import HWType, DEBUG_MODE
 from bip44_wallet import Bip44Wallet, Bip44Entry, BreakFetchTransactionsException
 from ui.ui_wallet_dlg_options1 import Ui_WdgOptions1
+from ui.ui_wdg_wallet_txes_filter import Ui_WdgWalletTxesFilter
 from wallet_common import UtxoType, Bip44AccountType, Bip44AddressType, TxOutputType, TxType
 from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
@@ -37,7 +39,8 @@ from hw_common import HardwareWalletCancelException, HwSessionInfo
 from hw_intf import prepare_transfer_tx, get_address
 from ext_item_model import ExtSortFilterTableModel, TableModelColumn
 from thread_fun_dlg import WorkerThread, CtrlObject
-from wallet_data_models import UtxoTableModel, MnAddressTableModel, AccountListModel, MnAddressItem, TransactionTableModel
+from wallet_data_models import UtxoTableModel, MnAddressTableModel, AccountListModel, MnAddressItem, \
+    TransactionTableModel, FILTER_AND, FILTER_OR, FILTER_OPER_EQ, FILTER_OPER_GTEQ, FILTER_OPER_LTEQ
 from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, HyperlinkItemDelegate, \
     LineEditTableCellDelegate
 from ui import ui_wallet_dlg
@@ -230,22 +233,28 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.mnListView.selectionModel().selectionChanged.connect(self.on_viewMasternodes_selectionChanged)
         self.mnListView.setItemDelegateForColumn(0, WalletMnItemDelegate(self.mnListView))
 
+        # setup the options widget of the accounts list panel
         l = self.pageAccountsListView.layout()
         self.wdg_accounts_view_options = QtWidgets.QWidget()
-        ui = Ui_WdgOptions1()
-        ui.setupUi(self.wdg_accounts_view_options)
-        ui.btnApply.clicked.connect(self.on_btnAccountsViewOptionsApply_clicked)
+        self.ui_accounts_view_options = Ui_WdgOptions1()
+        self.ui_accounts_view_options.setupUi(self.wdg_accounts_view_options)
+        self.ui_accounts_view_options.btnApply.clicked.connect(self.on_btnAccountsViewOptionsApply_clicked)
         l.insertWidget(0, self.wdg_accounts_view_options)
         self.wdg_accounts_view_options.hide()
 
-        img_path = os.path.join(self.app_config.app_path if self.app_config.app_path else '', 'img')
-        if sys.platform == 'win32':
-            h = self.pnl_input.height()
-            img_size_str = f'height="{h}" width="{h}"'
-        else:
-            img_size_str = ''
-        self.lblViewModeOptions.setText(f'<a href="#view-mode-options"><img {img_size_str} '
-                                        f'src="{img_path}/settings@16px.png"></a>')
+        # setup the filter widget of the transactions tab
+        l  = self.tabTransactions.layout()
+        self.wdg_txes_filter = QtWidgets.QWidget()
+        self.ui_txes_filter = Ui_WdgWalletTxesFilter()
+        self.ui_txes_filter.setupUi(self.wdg_txes_filter)
+        l.insertWidget(1, self.wdg_txes_filter)
+        self.ui_txes_filter.btnApply.clicked.connect(self.apply_txes_filter)
+
+        self.setIcon(self.btnSetHwIdentityLabel, 'label@16px.png')
+        self.setIcon(self.btnPurgeHwIdentity, 'delete@16px.png')
+        self.setIcon(self.btnFetchTransactions, 'autorenew@16px.png')
+        self.setIcon(self.btnViewModeOptions, 'settings@16px.png')
+        self.setIcon(self.btnTxesTabFilter, 'filter@16px.png')
 
         # context menu actions:
         self.act_show_address_on_hw = QAction('Show address on hardware wallet', self)
@@ -259,21 +268,23 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.accountsListView.addAction(self.act_set_entry_label)
 
         # todo: for testing only:
-        self.act_delete_account_data = QAction('Clear account data in cache', self)
-        self.act_delete_account_data.triggered.connect(self.on_delete_account_triggered)
-        self.accountsListView.addAction(self.act_delete_account_data)
-
-        self.act_delete_address_data = QAction('Clear address data in cache', self)
-        self.act_delete_address_data.triggered.connect(self.on_delete_address_triggered)
-        self.accountsListView.addAction(self.act_delete_address_data)
-
-        self.act_delete_address_data1 = QAction('Clear address data in cache', self)
-        self.act_delete_address_data1.triggered.connect(self.on_delete_address_triggered)
-        self.mnListView.addAction(self.act_delete_address_data1)
+        # self.act_delete_account_data = QAction('Clear account data in cache', self)
+        # self.act_delete_account_data.triggered.connect(self.on_delete_account_triggered)
+        # self.accountsListView.addAction(self.act_delete_account_data)
+        #
+        # self.act_delete_address_data = QAction('Clear address data in cache', self)
+        # self.act_delete_address_data.triggered.connect(self.on_delete_address_triggered)
+        # self.accountsListView.addAction(self.act_delete_address_data)
+        #
+        # self.act_delete_address_data1 = QAction('Clear address data in cache', self)
+        # self.act_delete_address_data1.triggered.connect(self.on_delete_address_triggered)
+        # self.mnListView.addAction(self.act_delete_address_data1)
         # todo: end testing
 
         self.update_ui_show_individual_addresses()
         self.update_ui_view_mode_options()
+        self.prepare_txes_filter()
+        self.show_hide_txes_filter()
 
         self.update_context_actions()
         self.start_threads()
@@ -331,7 +342,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             except Exception:
                 log.exception('Cannot restore data from cache.')
 
-        self.accounts_view_show_individual_addresses = app_cache.get_value(CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES, False,
+        self.accounts_view_show_individual_addresses = app_cache.get_value(CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES, True,
                                                                            bool)
         self.accounts_view_show_zero_balance_addesses = app_cache.get_value(CACHE_ITEM_SHOW_ZERO_BALANCE_ADDRESSES,
                                                                             False, bool)
@@ -659,12 +670,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         if self.hw_selected_address_id is not None:
             if self.hw_session.hw_type in (HWType.trezor, HWType.keepkey):
                 visible = True
-        self.act_delete_address_data.setVisible(visible)
+        # self.act_delete_address_data.setVisible(visible)
         self.act_show_address_on_hw.setVisible(visible)
-        if self.hw_selected_account_id is not None:
-            self.act_delete_account_data.setVisible(True)
-        else:
-            self.act_delete_account_data.setVisible(False)
+        # if self.hw_selected_account_id is not None:
+        #     self.act_delete_account_data.setVisible(True)
+        # else:
+        #     self.act_delete_account_data.setVisible(False)
 
     def show_address_on_hw(self, addr: Bip44AddressType):
         _a = hw_intf.get_address(self.hw_session, addr.bip32_path, True,
@@ -804,6 +815,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         if not self.hw_connected():
             t = f'<table><tr><td>Hardware wallet <span>not connected</span></td>' \
                 f'<td> (<a href="hw-connect">connect</a>)</td></tr></table>'
+            self.btnSetHwIdentityLabel.hide()
+            self.btnPurgeHwIdentity.hide()
+            self.btnFetchTransactions.hide()
         else:
             ht = HWType.get_desc(self.hw_session.hw_type)
             id, label = self.bip44_wallet.get_hd_identity_info()
@@ -812,23 +826,17 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             else:
                 label = f'<td> as <i>Identity #{str(id)}</i></td>'
             t = f'<table><tr><td>Connected to {ht}</td><td> (<a href="hw-disconnect">disconnect</a>)</td>' \
-                f'{label}<td><a href="hd-identity-label"><img {img_size_str} src="{img_path}/label@16px.png"></img></a></td>' \
-                f'<td><a href="hd-identity-delete"><img {img_size_str} src="{img_path}/delete@16px.png"></img></a></td>' \
-                f'<td><a href="tx-fetch"><img {img_size_str} src="{img_path}/autorenew@16px.png"></img></a></td></tr></table>'
+                f'{label}</tr></table>'
+            self.btnSetHwIdentityLabel.show()
+            self.btnPurgeHwIdentity.show()
+            self.btnFetchTransactions.show()
         self.lblHW.setText(t)
 
     def on_lblHW_linkHovered(self, link):
-        if link == 'hd-identity-label':
-            self.lblHW.setToolTip('Set/change hw identity label')
-        elif link == 'hw-disconnect':
+        if link == 'hw-disconnect':
             self.lblHW.setToolTip('Disconnect hardware wallet')
         elif link == 'hw-connect':
             self.lblHW.setToolTip('Connect to hardware wallet')
-        elif link == 'hd-identity-delete':
-            self.lblHW.setToolTip('Purge this identity from cache')
-        elif link == 'tx-fetch':
-            self.lblHW.setToolTip('Force fetch transactions')
-        else:
             self.lblHW.setToolTip('')
 
     def on_lblHW_linkActivated(self, link):
@@ -843,6 +851,18 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         elif link == 'tx-fetch':
             self.fetch_transactions()
         self.update_hw_info()
+
+    @pyqtSlot(bool)
+    def on_btnSetHwIdentityLabel_clicked(self):
+        self.set_hd_identity_label()
+
+    @pyqtSlot(bool)
+    def on_btnPurgeHwIdentity_clicked(self):
+        self.delete_hd_identity()
+
+    @pyqtSlot(bool)
+    def on_btnFetchTransactions_clicked(self):
+        self.fetch_transactions()
 
     def set_hd_identity_label(self):
         if self.hw_connected():
@@ -945,16 +965,16 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             if self.hw_selected_account_id is not None and self.cur_hd_tree_id:
                 if self.hw_selected_address_id is None:
                     # list utxos of the whole bip44 account
-                    list_txs = self.bip44_wallet.list_txs_for_account(self.hw_selected_account_id, only_new)
+                    list_txs = self.bip44_wallet.list_txs(self.hw_selected_account_id, None, only_new)
                 else:
                     # list utxos of the specific address
-                    list_txs = self.bip44_wallet.list_txs_for_addresses([self.hw_selected_address_id], only_new)
+                    list_txs = self.bip44_wallet.list_txs(None, [self.hw_selected_address_id], only_new)
         elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
             address_ids = []
             for mni in self.selected_mns:
                 if mni.address:
                     address_ids.append(mni.address.id)
-            list_txs = self.bip44_wallet.list_txs_for_addresses(address_ids)
+            list_txs = self.bip44_wallet.list_txs(None, address_ids, only_new)
         else:
             raise Exception('Invalid utxo_src_mode')
         return list_txs
@@ -1356,43 +1376,34 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.accountsListView.setRootIsDecorated(True)
 
     def update_ui_view_mode_options(self):
-        if self.wdg_accounts_view_options.isVisible():
-            self.lblViewModeOptions.hide()
+        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+            self.lblViewModeOptions.show()
         else:
-            if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
-                self.lblViewModeOptions.show()
-            else:
-                self.lblViewModeOptions.hide()
+            self.lblViewModeOptions.hide()
 
-    def on_lblViewModeOptions_linkActivated(self, link):
-        c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowAddresses')
-        if c:
-            c.setChecked(self.accounts_view_show_individual_addresses)
-        c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowZeroBalanceAddresses')
-        if c:
-            c.setChecked(self.accounts_view_show_zero_balance_addesses)
-        c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowNotUsedAddresses')
-        if c:
-            c.setChecked(self.accounts_view_show_not_used_addresses)
-        self.wdg_accounts_view_options.show()
-        self.update_ui_view_mode_options()
+    @pyqtSlot(bool)
+    def on_btnViewModeOptions_clicked(self, checked):
+        if checked:
+            self.wdg_accounts_view_options.show()
+            self.ui_accounts_view_options.chbShowAddresses.setChecked(self.accounts_view_show_individual_addresses)
+            self.ui_accounts_view_options.chbShowZeroBalanceAddresses.setChecked(self.accounts_view_show_zero_balance_addesses)
+            self.ui_accounts_view_options.chbShowNotUsedAddresses.setChecked(self.accounts_view_show_not_used_addresses)
+            self.update_ui_view_mode_options()
+        else:
+            self.wdg_accounts_view_options.hide()
 
     def on_btnAccountsViewOptionsApply_clicked(self):
-        c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowAddresses')
-        if c:
-            self.accounts_view_show_individual_addresses = c.isChecked()
-        c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowZeroBalanceAddresses')
-        if c:
-            self.accounts_view_show_zero_balance_addesses = c.isChecked()
-        c = self.wdg_accounts_view_options.findChild(QCheckBox, 'chbShowNotUsedAddresses')
-        if c:
-            self.accounts_view_show_not_used_addresses = c.isChecked()
+        self.accounts_view_show_individual_addresses = self.ui_accounts_view_options.chbShowAddresses.isChecked()
+        self.accounts_view_show_zero_balance_addesses = self.ui_accounts_view_options.chbShowZeroBalanceAddresses.isChecked()
+        self.accounts_view_show_not_used_addresses = self.ui_accounts_view_options.chbShowNotUsedAddresses.isChecked()
+
         with self.account_list_model:
             self.account_list_model.show_zero_balance_addresses = self.accounts_view_show_zero_balance_addesses
             self.account_list_model.show_not_used_addresses = self.accounts_view_show_not_used_addresses
             self.account_list_model.invalidateFilter()
         self.update_ui_show_individual_addresses()
         self.wdg_accounts_view_options.hide()
+        self.btnViewModeOptions.setChecked(False)
         self.update_ui_view_mode_options()
 
     def on_detailsTab_currentChanged(self, index):
@@ -1400,3 +1411,51 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def save_tx_comment(self, a):
         pass
+
+    def prepare_txes_filter(self):
+        self.ui_txes_filter.edtDate.setDate(datetime.datetime.now())
+        pass
+
+    def apply_txes_filter(self):
+        def text_to_oper(text):
+            if text == '>=':
+                o = FILTER_OPER_GTEQ
+            elif text == '<=':
+                o = FILTER_OPER_LTEQ
+            elif text == '=':
+                o = FILTER_OPER_EQ
+            else:
+                o = None
+            return o
+
+        m = self.tx_table_model
+        ui = self.ui_txes_filter
+        m.filter_type = FILTER_OR if ui.rbFilterTypeOr.isChecked() else FILTER_AND
+        m.filter_incoming = ui.chbTypeIncoming.isChecked()
+        m.filter_outgoing = ui.chbTypeOutgoing.isChecked()
+        m.filter_coinbase = ui.chbTypeCoinbase.isChecked()
+        m.filter_amount_oper = None
+        if ui.edtAmountValue.text():
+            try:
+                m.filter_amount_value = float(ui.edtAmountValue.text())
+                m.filter_amount_oper = text_to_oper(ui.cboAmountOper.currentText())
+            except Exception as e:
+                self.errorMsg('Invalid amount value')
+                ui.edtAmountValue.setFocus()
+
+        self.errorMsg('Not implemented yet')
+
+
+    def show_hide_txes_filter(self, show=None):
+        if show is None:
+            show = self.btnTxesTabFilter.isChecked()
+        if show:
+            self.wdg_txes_filter.show()
+            self.btnTxesTabFilter.setToolTip('Hide filter')
+        else:
+            self.wdg_txes_filter.hide()
+            self.btnTxesTabFilter.setToolTip('Show filter')
+
+    @pyqtSlot(bool)
+    def on_btnTxesTabFilter_clicked(self, checked):
+        self.show_hide_txes_filter(checked)
