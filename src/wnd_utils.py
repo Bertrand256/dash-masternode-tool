@@ -9,6 +9,8 @@ import threading
 import traceback
 from functools import partial
 from typing import Callable, Optional, NewType, Any, Tuple, Dict, List
+
+import app_defs
 import app_utils
 import thread_utils
 import time
@@ -16,7 +18,7 @@ from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEvent, QPointF, QSize, QModelIndex, QRect, \
     QRectF
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap, QTextDocument, QCursor, \
-    QAbstractTextDocumentLayout, QFontMetrics
+    QAbstractTextDocumentLayout, QFontMetrics, QTransform
 from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit, \
     QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView, QAction
 import math
@@ -193,16 +195,28 @@ class WndUtils:
     def call_in_main_thread(fun_to_call, *args, **kwargs):
         return thread_wnd_utils.call_in_main_thread(fun_to_call, *args, **kwargs)
 
-    def setIcon(self, widget, ico):
+    def setIcon(self, widget, ico, rotate=0):
         if isinstance(ico, str):
             icon = QIcon()
-            if self.app_config:
-                path = self.app_config.get_app_img_dir()
+            if app_defs.APP_IMAGE_DIR:
+                path = app_defs.APP_IMAGE_DIR
             else:
                 path = 'img'
-            icon.addPixmap(QPixmap(os.path.join(path, ico)))
+            logging.info('Image dir: ' + path)
+
+            path = os.path.join(path, ico)
+            if not os.path.isfile(path):
+                logging.warning(f'File {path} does not exist or is not a file')
+
+            pixmap = QPixmap(path)
+            if rotate:
+                transf = QTransform().rotate(rotate)
+                pixmap = QPixmap(pixmap.transformed(transf))
+
+            icon.addPixmap(pixmap)
         else:
             icon = self.style().standardIcon(ico)
+
         widget.setIcon(icon)
 
     @staticmethod

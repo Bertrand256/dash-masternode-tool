@@ -24,6 +24,7 @@ from PyQt5.QtCore import QLocale
 from PyQt5.QtWidgets import QMessageBox
 from cryptography.fernet import Fernet
 
+import app_defs
 import hw_intf
 from app_defs import APP_NAME_SHORT, APP_NAME_LONG, HWType, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT, get_known_loggers
 from app_utils import encrypt, decrypt
@@ -115,6 +116,8 @@ class AppConfig(object):
     def init(self, app_path):
         """ Initialize configuration after openning the application. """
         self.app_path = app_path
+        app_defs.APP_PATH = app_path
+        app_defs.APP_IMAGE_DIR = self.get_app_img_dir()
 
         try:
             with open(os.path.join(app_path, 'version.txt')) as fptr:
