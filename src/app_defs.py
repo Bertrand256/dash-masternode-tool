@@ -16,6 +16,9 @@ SCREENSHOT_MODE = False
 DEBUG_MODE = False
 DEFAULT_LOG_FORMAT = '%(asctime)s %(levelname)s|%(name)s|%(threadName)s|%(filename)s|%(funcName)s|%(message)s'
 KnownLoggerType = collections.namedtuple('KnownLoggerType', 'name external')
+APP_PATH = ''
+APP_IMAGE_DIR = ''
+
 
 class HWType:
     trezor = 'TREZOR'
