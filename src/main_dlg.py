@@ -85,7 +85,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.connecting_to_dashd = False
         self.curMasternode = None
         self.editing_enabled = False
-        self.app_path = app_path
         self.recent_config_files = []
 
         # load most recently used config files from the data cache
