@@ -7,6 +7,8 @@ import binascii
 import base64
 import logging
 import typing
+from random import randint
+
 import bitcoin
 from bip32utils import Base58
 import base58
@@ -179,17 +181,28 @@ def generate_bls_privkey() -> str:
     """
     :return: Generated BLS private key as a hex string.
     """
-    for i in range(1, 1000):
+    max_iterations = 2
+    for i in range(0, max_iterations):
         privkey = bitcoin.random_key()
         pk_bytes = bytes.fromhex(privkey)
         num_pk = bitcoin.decode_privkey(privkey, 'hex')
         if 0 < num_pk < bitcoin.N:
+            if pk_bytes[0] >= 0x74:
+                if i == max_iterations - 1: # BLS restriction: the first byte is less than 0x74
+                    # after 'limit' iterations we couldn't get the first byte "compatible" with BLS so
+                    # the last resort is to change it to a random value < 0x73
+                    tmp_pk_bytes = bytearray(pk_bytes)
+                    tmp_pk_bytes[0] = randint(0, 0x73)
+                    pk_bytes = bytes(tmp_pk_bytes)
+                else:
+                    continue
+
             try:
                 pk = blspy.PrivateKey.from_bytes(pk_bytes)
                 pk_bin = pk.serialize()
                 return pk_bin.hex()
             except Exception as e:
-                pass
+                logging.exception(str(e))
     raise Exception("Could not generate BLS private key")
 
 
