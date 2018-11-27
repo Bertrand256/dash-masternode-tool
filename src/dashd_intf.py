@@ -27,9 +27,8 @@ from wnd_utils import WndUtils
 import socketserver
 import select
 from PyQt5.QtWidgets import QMessageBox
-from psw_cache import SshPassCache, UserCancelledConnection
-from common import AttrsProtected
-
+from psw_cache import SshPassCache
+from common import AttrsProtected, CancelException
 
 log = logging.getLogger('dmt.dashd_intf')
 
@@ -696,7 +695,7 @@ class DashdInterface(WndUtils):
                     else:
                         if not self.switch_to_next_config():
                             return False
-                except UserCancelledConnection:
+                except CancelException:
                     return False
                 except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout,
                         NoValidConnectionsError) as e:

@@ -10,9 +10,13 @@ import copy
 import json
 import threading
 import time
+import logging
 from PyQt5.QtWidgets import QSplitter, QDialog
 from PyQt5.QtCore import Qt
 from wnd_utils import WndUtils
+
+
+log = logging.getLogger('dmt.app_cache')
 
 
 class AppCache(object):
@@ -47,7 +51,7 @@ class AppCache(object):
             json.dump(self.__data, open(self.cache_file_name, 'w'))
             self.last_data_change_time = 0
         except Exception as e:
-            log('Error writing cache: ' + str(e))
+            log.error('Error writing cache: ' + str(e))
 
     def load_data(self):
         try:
@@ -91,10 +95,6 @@ class AppCache(object):
 cache = None
 
 
-def log(info):
-    print(info)
-
-
 def init(cache_file_name, app_version):
     global cache
     if not cache:
@@ -114,7 +114,7 @@ def set_value(symbol, value):
     if cache:
         cache.set_value(symbol, value)
     else:
-        log('AppCache not initialized')
+        log.warning('AppCache not initialized')
 
 
 def get_value(symbol, default_value, type):
@@ -122,7 +122,7 @@ def get_value(symbol, default_value, type):
     if cache:
         return cache.get_value(symbol, default_value, type)
     else:
-        log('AppCache not initialized')
+        log.warning('AppCache not initialized')
 
     return None
 
@@ -132,7 +132,7 @@ def save_data():
     if cache:
         cache.data_changed()  # it forces saving data inside a thread
     else:
-        log('AppCache not initialized')
+        log.warning('AppCache not initialized')
 
 
 def save_window_size(window):
@@ -141,8 +141,9 @@ def save_window_size(window):
         symbol = window.__class__.__name__ + '_'
         cache.set_value(symbol + '_Width', window.size().width())
         cache.set_value(symbol + '_Height', window.size().height())
+        log.warning('Saved window size')
     else:
-        log('AppCache not initialized')
+        log.warning('AppCache not initialized')
 
 
 def restore_window_size(window):
@@ -154,7 +155,8 @@ def restore_window_size(window):
         if w and h:
             window.resize(w, h)
     else:
-        log('AppCache not initialized')
+        log.warning('AppCache not initialized')
+
 
 def restore_splitter_sizes(window: QDialog, splitter: QSplitter):
     global cache
@@ -169,6 +171,7 @@ def restore_splitter_sizes(window: QDialog, splitter: QSplitter):
                 else:
                     sizes[0], sizes[1] = round(splitter.parent().width() / 2), round(splitter.parent().width() / 2)
         splitter.setSizes(sizes)
+
 
 def save_splitter_sizes(window: QDialog, splitter: QSplitter):
     global cache

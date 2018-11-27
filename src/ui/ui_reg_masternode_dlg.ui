@@ -6,12 +6,12 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>754</width>
-    <height>558</height>
+    <width>792</width>
+    <height>559</height>
    </rect>
   </property>
   <property name="sizePolicy">
-   <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+   <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
     <horstretch>0</horstretch>
     <verstretch>0</verstretch>
    </sizepolicy>
@@ -29,17 +29,17 @@
    <item>
     <widget class="QStackedWidget" name="stackedWidget">
      <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
        <horstretch>0</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
      </property>
      <property name="currentIndex">
-      <number>2</number>
+      <number>0</number>
      </property>
-     <widget class="QWidget" name="page1">
+     <widget class="QWidget" name="page0">
       <property name="sizePolicy">
-       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+       <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
         <horstretch>0</horstretch>
         <verstretch>0</verstretch>
        </sizepolicy>
@@ -53,6 +53,12 @@
        </property>
        <item row="14" column="1">
         <widget class="QLabel" name="lblOwnerMsg">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
          <property name="text">
           <string>...</string>
          </property>
@@ -69,6 +75,12 @@
        </item>
        <item row="21" column="1">
         <widget class="QLabel" name="lblVotingMsg">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
          <property name="text">
           <string>...</string>
          </property>
@@ -106,9 +118,15 @@
          </item>
          <item>
           <widget class="QLineEdit" name="edtPort">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
            <property name="maximumSize">
             <size>
-             <width>50</width>
+             <width>100</width>
              <height>16777215</height>
             </size>
            </property>
@@ -285,7 +303,7 @@
        <item row="5" column="1">
         <widget class="QLabel" name="lblIPMsg">
          <property name="sizePolicy">
-          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <sizepolicy hsizetype="Ignored" vsizetype="Minimum">
            <horstretch>0</horstretch>
            <verstretch>0</verstretch>
           </sizepolicy>
@@ -410,7 +428,7 @@
        <item row="11" column="1">
         <widget class="QLabel" name="lblOperatorRewardMsg">
          <property name="sizePolicy">
-          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
            <horstretch>0</horstretch>
            <verstretch>0</verstretch>
           </sizepolicy>
@@ -466,7 +484,7 @@
        <item row="1" column="1">
         <widget class="QLabel" name="lblCollateralTxMsg">
          <property name="sizePolicy">
-          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <sizepolicy hsizetype="Ignored" vsizetype="Minimum">
            <horstretch>0</horstretch>
            <verstretch>0</verstretch>
           </sizepolicy>
@@ -494,7 +512,7 @@
        <item row="8" column="1">
         <widget class="QLabel" name="lblPayoutMsg">
          <property name="sizePolicy">
-          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <sizepolicy hsizetype="Ignored" vsizetype="Minimum">
            <horstretch>0</horstretch>
            <verstretch>0</verstretch>
           </sizepolicy>
@@ -522,7 +540,7 @@
           </font>
          </property>
          <property name="text">
-          <string>IP/Port</string>
+          <string>IP</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -530,7 +548,7 @@
         </widget>
        </item>
        <item row="19" column="0">
-        <widget class="QLabel" name="label_12">
+        <widget class="QLabel" name="lblVotingKey">
          <property name="font">
           <font>
            <weight>75</weight>
@@ -547,6 +565,12 @@
        </item>
        <item row="17" column="1">
         <widget class="QLabel" name="lblOperatorMsg">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
          <property name="text">
           <string>...</string>
          </property>
@@ -576,7 +600,13 @@
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="page2">
+     <widget class="QWidget" name="page1">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
       <layout class="QVBoxLayout" name="verticalLayout_2">
        <item>
         <widget class="QLabel" name="label_4">
@@ -648,7 +678,13 @@
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="page3">
+     <widget class="QWidget" name="page2">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
       <layout class="QVBoxLayout" name="verticalLayout_4" stretch="0,0,0,0,0,0">
        <item>
         <widget class="QLabel" name="lblProtxTransaction1">
@@ -730,7 +766,13 @@
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="page4">
+     <widget class="QWidget" name="page3">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
       <layout class="QVBoxLayout" name="verticalLayout_5">
        <property name="spacing">
         <number>12</number>
@@ -738,7 +780,7 @@
        <item>
         <widget class="QLabel" name="label_10">
          <property name="text">
-          <string>&lt;span style=&quot;color:red&quot;&gt;&lt;b&gt;Important:&lt;/b&gt;&lt;/span&gt; to complete the steps below you will a Dash Qt wallet with sufficient funds to cover transaction fees. The operations will be performed using its Debug console, which you will find in the Tools menu.</string>
+          <string>&lt;span style=&quot;color:red&quot;&gt;&lt;b&gt;Important:&lt;/b&gt;&lt;/span&gt; A Dash Core wallet with sufficient funds to cover transaction fees is required to complete the steps below. The operations are performed from the Debug console in the Tools menu.</string>
          </property>
          <property name="wordWrap">
           <bool>true</bool>
@@ -756,11 +798,34 @@
         </widget>
        </item>
        <item>
-        <widget class="QPlainTextEdit" name="edtManualProtxPrepare">
-         <property name="readOnly">
-          <bool>true</bool>
-         </property>
-        </widget>
+        <layout class="QHBoxLayout" name="layManualStep1">
+         <item>
+          <widget class="QPlainTextEdit" name="edtManualProtxPrepare">
+           <property name="tabChangesFocus">
+            <bool>true</bool>
+           </property>
+           <property name="readOnly">
+            <bool>true</bool>
+           </property>
+           <property name="textInteractionFlags">
+            <set>Qt::TextSelectableByMouse</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QToolButton" name="btnManualStep1Copy">
+           <property name="focusPolicy">
+            <enum>Qt::NoFocus</enum>
+           </property>
+           <property name="toolTip">
+            <string>Copy text to clipboard</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
        <item>
         <widget class="QLabel" name="label_14">
@@ -770,7 +835,25 @@
         </widget>
        </item>
        <item>
-        <widget class="QPlainTextEdit" name="edtManualProtxPrepareResult"/>
+        <layout class="QHBoxLayout" name="layManualStep2">
+         <item>
+          <widget class="QPlainTextEdit" name="edtManualProtxPrepareResult">
+           <property name="tabChangesFocus">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QToolButton" name="btnManualStep2Paste">
+           <property name="toolTip">
+            <string>Paste text from clipboard</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_2">
@@ -807,11 +890,28 @@
         </widget>
        </item>
        <item>
-        <widget class="QPlainTextEdit" name="edtManualProtxSubmit">
-         <property name="readOnly">
-          <bool>true</bool>
-         </property>
-        </widget>
+        <layout class="QHBoxLayout" name="layManualStep3">
+         <item>
+          <widget class="QPlainTextEdit" name="edtManualProtxSubmit">
+           <property name="tabChangesFocus">
+            <bool>true</bool>
+           </property>
+           <property name="readOnly">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QToolButton" name="btnManualStep3Copy">
+           <property name="toolTip">
+            <string>Copy text to clipboard</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
        <item>
         <widget class="QLabel" name="label_11">
@@ -821,24 +921,31 @@
         </widget>
        </item>
        <item>
-        <widget class="QLineEdit" name="edtManualTxHash"/>
-       </item>
-       <item>
-        <spacer name="verticalSpacer_4">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>40</height>
-          </size>
-         </property>
-        </spacer>
+        <layout class="QHBoxLayout" name="layManualStep4">
+         <item>
+          <widget class="QLineEdit" name="edtManualTxHash"/>
+         </item>
+         <item>
+          <widget class="QToolButton" name="btnManualStep4Paste">
+           <property name="toolTip">
+            <string>Paste text from clipboard</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="page5">
+     <widget class="QWidget" name="page4">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
       <layout class="QVBoxLayout" name="verticalLayout_6">
        <item>
         <widget class="QLabel" name="lblProtxSummary1">
@@ -900,6 +1007,13 @@
        </widget>
       </item>
       <item>
+       <widget class="QLabel" name="lblFieldHints">
+        <property name="text">
+         <string>Hide field descriptions</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <spacer name="horizontalSpacer_2">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
@@ -945,22 +1059,29 @@
   </layout>
  </widget>
  <tabstops>
-  <tabstop>edtCollateralTx</tabstop>
-  <tabstop>edtCollateralIndex</tabstop>
-  <tabstop>edtIP</tabstop>
-  <tabstop>edtPort</tabstop>
-  <tabstop>edtPayoutAddress</tabstop>
-  <tabstop>chbWholeMNReward</tabstop>
-  <tabstop>edtOperatorReward</tabstop>
+  <tabstop>edtManualProtxPrepare</tabstop>
+  <tabstop>btnManualSignProtx</tabstop>
+  <tabstop>btnClose</tabstop>
   <tabstop>edtOwnerKey</tabstop>
-  <tabstop>edtOperatorKey</tabstop>
   <tabstop>edtVotingKey</tabstop>
+  <tabstop>edtOperatorReward</tabstop>
   <tabstop>btnContinue</tabstop>
   <tabstop>btnBack</tabstop>
   <tabstop>btnGenerateOwnerKey</tabstop>
   <tabstop>btnCancel</tabstop>
   <tabstop>btnGenerateOperatorKey</tabstop>
   <tabstop>btnGenerateVotingKey</tabstop>
+  <tabstop>chbWholeMNReward</tabstop>
+  <tabstop>rbDMTDashNodeType</tabstop>
+  <tabstop>rbOwnDashNodeType</tabstop>
+  <tabstop>edtCollateralTx</tabstop>
+  <tabstop>edtCollateralIndex</tabstop>
+  <tabstop>edtIP</tabstop>
+  <tabstop>edtPort</tabstop>
+  <tabstop>edtPayoutAddress</tabstop>
+  <tabstop>edtProtxSummary</tabstop>
+  <tabstop>edtOperatorKey</tabstop>
+  <tabstop>btnManualStep1Copy</tabstop>
  </tabstops>
  <resources/>
  <connections/>

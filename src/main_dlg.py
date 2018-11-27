@@ -27,6 +27,7 @@ from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle
 from PyQt5.QtWidgets import QMessageBox
 
 import reg_masternode_dlg
+from bip44_wallet import find_wallet_address, Bip44Wallet
 from cmd_console_dlg import CmdConsoleDlg
 from common import CancelException
 from config_dlg import ConfigDlg
@@ -1354,17 +1355,20 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if not self.hw_client:
                 return
             if self.curMasternode and self.curMasternode.collateralAddress:
-                paths, user_cancelled = self.scan_hw_for_bip32_paths([self.curMasternode.collateralAddress])
-                if not user_cancelled:
-                    if not paths or len(paths) == 0:
+                bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.hw_session,
+                                           self.app_config.db_intf, self.dashd_intf, self.app_config.dash_network)
+
+                try:
+                    addr = find_wallet_address(self.curMasternode.collateralAddress, bip44_wallet)
+                    if not addr or not addr.bip32_path:
                         self.errorMsg("Couldn't find Dash address in your hardware wallet. If you are using HW passphrase, "
                                       "make sure, that you entered the correct one.")
                     else:
-                        self.edtMnCollateralBip32Path.setText(paths.get(self.curMasternode.collateralAddress, ''))
-                        self.curMasternode.collateralBip32Path = paths.get(self.curMasternode.collateralAddress, '')
+                        self.edtMnCollateralBip32Path.setText(addr.bip32_path)
+                        self.curMasternode.collateralBip32Path = addr.bip32_path
                         self.curMnModified()
-                else:
-                    logging.info('Cancelled')
+                except CancelException:
+                    pass
 
         except HardwareWalletCancelException:
             if self.hw_client:

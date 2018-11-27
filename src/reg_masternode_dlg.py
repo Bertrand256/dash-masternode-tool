@@ -10,13 +10,15 @@ from functools import partial
 from typing import List, Union
 import ipaddress
 
-from PyQt5.QtCore import pyqtSlot, Qt, QTimerEvent
-from PyQt5.QtWidgets import QDialog
+from PyQt5 import QtWidgets
+from PyQt5.QtCore import pyqtSlot, Qt, QTimerEvent, QTimer
+from PyQt5.QtWidgets import QDialog, QApplication
 from bitcoinrpc.authproxy import EncodeDecimal
 
+import app_cache
 import hw_intf
 from app_config import MasternodeConfig, AppConfig
-from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException
+from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException, find_wallet_address
 from dash_utils import generate_bls_privkey, generate_wif_privkey, validate_address, wif_privkey_to_address, \
     validate_wif_privkey, bls_privkey_to_pubkey
 from dashd_intf import DashdInterface
@@ -35,6 +37,8 @@ STEP_SUMMARY = 5
 
 NODE_TYPE_PUBLIC_RPC = 1
 NODE_TYPE_OWN = 2
+
+CACHE_ITEM_SHOW_FIELD_HINTS = 'RegMasternodeDlg_ShowFieldHints'
 
 
 log = logging.getLogger('dmt.reg_masternode')
@@ -79,6 +83,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.manual_signed_message: bool = False
         self.last_manual_prepare_string: str = None
         self.wait_for_confirmation_timer_id = None
+        self.show_field_hinds = True
         self.summary_info = []
         if self.masternode:
             self.dmn_collateral_tx_address_path = self.masternode.collateralBip32Path
@@ -89,7 +94,12 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
     def setupUi(self):
         ui_reg_masternode_dlg.Ui_RegMasternodeDlg.setupUi(self, self)
+        self.closeEvent = self.closeEvent
+        self.restore_cache_settings()
         self.edtCollateralTx.setText(self.masternode.collateralTx)
+        if self.masternode.collateralTx:
+            sz = self.edtCollateralTx.fontMetrics().size(0, self.masternode.collateralTx + '000')
+            self.edtCollateralTx.setMinimumWidth(sz.width())
         self.edtCollateralIndex.setText(self.masternode.collateralTxIndex)
         self.edtIP.setText(self.masternode.ip)
         self.edtPort.setText(self.masternode.port)
@@ -101,18 +111,61 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.generate_keys()
         self.determine_spork_15_active()
         self.btnClose.hide()
+        if not self.deterministic_mns_spork_active:
+            # hide controls related to the voting key - if spork 15 is not active, voting key has to be the same
+            # as the owner key
+            self.lblVotingMsg.hide()
+            self.lblVotingKey.hide()
+            self.edtVotingKey.hide()
+            self.btnGenerateVotingKey.hide()
+        self.setIcon(self.btnManualStep1Copy, 'content-copy@16px.png')
+        self.setIcon(self.btnManualStep2Paste, 'content-paste@16px.png')
+        self.setIcon(self.btnManualStep3Copy, 'content-copy@16px.png')
+        self.setIcon(self.btnManualStep4Paste, 'content-paste@16px.png')
+        self.layManualStep1.setAlignment(self.btnManualStep1Copy, Qt.AlignTop)
+        self.layManualStep2.setAlignment(self.btnManualStep2Paste, Qt.AlignTop)
+        self.layManualStep3.setAlignment(self.btnManualStep3Copy, Qt.AlignTop)
+        self.layManualStep4.setAlignment(self.btnManualStep4Paste, Qt.AlignTop)
         self.update_ctrl_state()
         self.update_step_tab_ui()
+        self.update_show_hints_label()
+        self.minimize_dialog_height()
+
+    def closeEvent(self, event):
+        self.finishing = True
+        self.save_cache_settings()
+
+    def restore_cache_settings(self):
+        app_cache.restore_window_size(self)
+        self.show_field_hinds = app_cache.get_value(CACHE_ITEM_SHOW_FIELD_HINTS, True, bool)
+
+    def save_cache_settings(self):
+        app_cache.save_window_size(self)
+        app_cache.set_value(CACHE_ITEM_SHOW_FIELD_HINTS, self.show_field_hinds)
+
+    def minimize_dialog_height(self):
+        def set():
+            # QtWidgets.qApp.processEvents()
+            self.adjustSize()
+            # s = self.size()
+            # self.resize(s.width(), 100)
+
+        self.tm_resize_dlg = QTimer(self)
+        self.tm_resize_dlg.setSingleShot(True)
+        self.tm_resize_dlg.singleShot(100, set)
 
     def generate_keys(self):
         """ Generate new operator and voting keys if were not provided before."""
+        log.debug('Generation owner key')
         self.owner_pkey_generated =  generate_wif_privkey(self.app_config.dash_network, compressed=True)
         self.edtOwnerKey.setText(self.owner_pkey_generated)
 
+        log.debug('Generation bls key')
         self.operator_pkey_generated = generate_bls_privkey()
         self.edtOperatorKey.setText(self.operator_pkey_generated)
 
         if self.deterministic_mns_spork_active:
+            log.debug('Generation voting key')
             self.voting_pkey_generated = generate_wif_privkey(self.app_config.dash_network, compressed=True)
         else:
             self.voting_pkey_generated = self.edtOwnerKey.text().strip()
@@ -186,24 +239,28 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             below the control; the argument is set to True if before moving to the next step there are some errors
             found in the data provided by the user.
         """
-        if self.edtIP.text().strip():
-            msg = 'You can leave the IP address and port fields empty if you want to delegate the operator ' \
-                  'role to a hosting service and you don\'t know the IP address and port in advance ' \
-                  '(<a href=\"https\">read more</a>).'
-            style = 'info'
-        else:
-            msg = 'If don\'t set the IP address and port fields, the masternode operator will ' \
-                  'have to issue a ProUpServTx transaction using Dash wallet (<a href=\"https\">read more</a>).'
-            style = 'warning'
+        msg = ''
+        style = ''
+        if self.show_field_hinds:
+            if self.edtIP.text().strip():
+                msg = 'You can leave the IP address and port fields empty if you want to delegate the operator ' \
+                      'role to a hosting service and you don\'t know the IP address and port in advance ' \
+                      '(<a href=\"https\">read more</a>).'
+                style = 'info'
+            else:
+                msg = 'If don\'t set the IP address and port fields, the masternode operator will ' \
+                      'have to issue a ProUpServTx transaction using Dash wallet (<a href=\"https\">read more</a>).'
+                style = 'warning'
         self.set_ctrl_message(self.lblIPMsg, msg, style)
 
     def upd_payout_addr_info(self, show_invalid_data_msg: bool):
         msg = ''
         style = ''
         if self.edtPayoutAddress.text().strip():
-            msg = 'The owner\'s payout address can be set to any valid Dash address - it no longer ' \
-                  'has to be the same as the collateral address.'
-            style = 'info'
+            if self.show_field_hinds:
+                msg = 'The owner\'s payout address can be set to any valid Dash address - it no longer ' \
+                      'has to be the same as the collateral address.'
+                style = 'info'
         else:
             if show_invalid_data_msg:
                 msg = 'You have to set a valid payout address.'
@@ -211,23 +268,27 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.set_ctrl_message(self.lblPayoutMsg, msg, style)
 
     def upd_oper_reward_info(self, show_invalid_data_msg: bool):
-        if self.chbWholeMNReward.isChecked():
-            msg = 'Here you can specify how much of the masternode earnings will go to the ' \
-                  'masternode operator.'
-            style = 'info'
-        else:
-            msg = 'The masternode operator will have to specify his reward payee address in a ProUpServTx ' \
-                  'transaction, otherwise the full reward will go to the masternode owner.'
-            style = 'warning'
+        msg = ''
+        style = ''
+        if self.show_field_hinds:
+            if self.chbWholeMNReward.isChecked():
+                msg = 'Here you can specify how much of the masternode earnings will go to the ' \
+                      'masternode operator.'
+                style = 'info'
+            else:
+                msg = 'The masternode operator will have to specify his reward payee address in a ProUpServTx ' \
+                      'transaction, otherwise the full reward will go to the masternode owner.'
+                style = 'warning'
         self.set_ctrl_message(self.lblOperatorRewardMsg, msg, style)
 
     def upd_owner_key_info(self, show_invalid_data_msg: bool):
         msg = ''
         style = ''
         if self.edtOwnerKey.text().strip():
-            if self.masternode and self.edtOwnerKey.text().strip() == self.owner_pkey_generated:
-                msg = 'This is a newly generated owner key. You can generate a new one (by clicking ' \
-                      'the button on the right) or you can enter your own one.'
+            if self.show_field_hinds:
+                if self.masternode and self.edtOwnerKey.text().strip() == self.owner_pkey_generated:
+                    msg = 'This is a newly generated owner key. You can generate a new one (by clicking ' \
+                          'the button on the right) or you can enter your own one.'
             style = 'info'
         else:
             if show_invalid_data_msg:
@@ -239,12 +300,11 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         msg = ''
         style = ''
         if self.edtOperatorKey.text().strip():
-            if not self.operator_pkey_old and self.edtOperatorKey.text().strip() == self.operator_pkey_generated:
-                msg = 'This is a newly generated operator BLS private key. You can generate a new one (by clicking ' \
-                      'the button on the right) or you can enter your own one.'
-            else:
-                msg = ''
-            style = 'info'
+            if self.show_field_hinds:
+                if not self.operator_pkey_old and self.edtOperatorKey.text().strip() == self.operator_pkey_generated:
+                    msg = 'This is a newly generated operator BLS private key. You can generate a new one (by clicking ' \
+                          'the button on the right) or you can enter your own one.'
+                style = 'info'
         else:
             if show_invalid_data_msg:
                 msg = 'The operator key value is required.'
@@ -255,23 +315,24 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         msg = ''
         style = ''
         if self.edtVotingKey.text().strip():
-            msg = ''
-
-            if not self.deterministic_mns_spork_active and \
-                    self.edtVotingKey.text().strip() != self.edtOwnerKey.text().strip():
-                msg = 'Note: SPORK 15 isn\'t active yet, which means that the voting key must be equal to the' \
-                      ' owner key.'
-                style = 'warning'
-            else:
-                if not self.voting_pkey_old and self.edtVotingKey.text().strip() == self.voting_pkey_generated:
-                    style = 'info'
-                    msg = 'This is a newly generated private key for voting. You can generate a new one ' \
-                          '(by pressing the button on the right) or you can enter your own one.'
+            if self.show_field_hinds:
+                if not self.deterministic_mns_spork_active and \
+                        self.edtVotingKey.text().strip() != self.edtOwnerKey.text().strip():
+                    msg = 'Note: SPORK 15 isn\'t active yet, which means that the voting key must be equal to the' \
+                          ' owner key.'
+                    style = 'warning'
+                else:
+                    if not self.voting_pkey_old and self.edtVotingKey.text().strip() == self.voting_pkey_generated:
+                        style = 'info'
+                        msg = 'This is a newly generated private key for voting. You can generate a new one ' \
+                              '(by pressing the button on the right) or you can enter your own one.'
         else:
             if show_invalid_data_msg:
                 msg = 'The voting key value is required.'
                 style = 'error'
-        self.set_ctrl_message(self.lblVotingMsg, msg, style)
+        # we hide the voting key controls if the spork 15 is not activated
+        if self.deterministic_mns_spork_active:
+            self.set_ctrl_message(self.lblVotingMsg, msg, style)
 
     def get_dash_node_type(self):
         if self.rbDMTDashNodeType.isChecked():
@@ -292,12 +353,12 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                   '<br><br>' \
                   '<b>Note 1:</b> this operation will involve signing transaction data with your <span style="color:red">owner key on the remote node</span>, ' \
                   'so use this method only if you trust the operator of that node (nodes <i>alice(luna, suzy).dash-masternode-tool.org</i> are maintained by the author of this application).<br><br>' \
-                  '<b>Note 2:</b> if the operation fails (eg due to the running out of funds), choose the manual method ' \
+                  '<b>Note 2:</b> if the operation fails (e.g. due to a lack of funds), choose the manual method ' \
                   'using your own Dash wallet.'
 
         elif nt == NODE_TYPE_OWN:
-            msg = 'To complete the next steps you need a Dash wallet application (v0.13) that has sufficient funds ' \
-                  'to cover transaction fees.'
+            msg = 'A Dash Core wallet (v0.13) with sufficient funds to cover transaction fees is required to ' \
+                  'complete the next steps.'
         self.lblDashNodeTypeMessage.setText(msg)
 
 
@@ -346,10 +407,12 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                     fptr.write(f'{lbl}:\t{val}\n')
 
     def update_step_tab_ui(self):
+        def show_hide_tabs(tab_idx_to_show: int):
+            self.edtManualProtxPrepare.setVisible(tab_idx_to_show == 3)
+            self.edtManualProtxPrepareResult.setVisible(tab_idx_to_show == 3)
+            self.edtManualProtxSubmit.setVisible(tab_idx_to_show == 3)
+
         self.btnContinue.setEnabled(False)
-        self.edtManualProtxSubmit.hide()
-        self.edtManualProtxPrepareResult.hide()
-        self.edtManualProtxPrepare.hide()
 
         if self.current_step == STEP_MN_DATA:
             self.stackedWidget.setCurrentIndex(0)
@@ -370,9 +433,6 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             self.upd_node_type_info()
 
         elif self.current_step == STEP_MANUAL_OWN_NODE:
-            self.edtManualProtxSubmit.show()
-            self.edtManualProtxPrepareResult.show()
-            self.edtManualProtxPrepare.show()
             self.stackedWidget.setCurrentIndex(3)
             self.upd_node_type_info()
             self.btnContinue.setEnabled(True)
@@ -413,6 +473,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         else:
             raise Exception('Invalid step')
 
+        show_hide_tabs(self.stackedWidget.currentIndex())
         self.btnBack.setEnabled(len(self.step_stack) > 0)
         self.btnContinue.repaint()
         self.btnCancel.repaint()
@@ -484,9 +545,11 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
         self.btnContinue.setEnabled(False)
         self.btnContinue.repaint()
+
         ret = WndUtils.run_thread_dialog(self.get_collateral_tx_address_thread, (), True)
-        self.btnContinue.setEnabled(True)
-        self.btnContinue.repaint()
+        if ret:
+            self.btnContinue.setEnabled(True)
+            self.btnContinue.repaint()
         return ret
 
     def get_collateral_tx_address_thread(self, ctrl: CtrlObject):
@@ -660,8 +723,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
     def sign_protx_message_with_hw(self, msg_to_sign) -> str:
         sig = WndUtils.call_in_main_thread(
             hw_intf.hw_sign_message, self.main_dlg.hw_session, self.dmn_collateral_tx_address_path,
-            msg_to_sign, 'Click the confirmation button on your hardware wallet to sign a protx payload '
-                         'message.')
+            msg_to_sign, 'Click the confirmation button on your hardware wallet to sign the ProTx payload message.')
 
         if sig.address != self.dmn_collateral_tx_address:
             log.error(f'Protx payload signature address mismatch. Is: {sig.address}, should be: '
@@ -819,6 +881,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             self.edtManualTxHash.clear()
             self.dmn_reg_tx_hash = ''
             self.manual_signed_message = False
+        self.edtManualProtxPrepareResult.setFocus()
 
     def timerEvent(self, event: QTimerEvent):
         """ Timer controlling the confirmation of the proreg transaction. """
@@ -838,3 +901,31 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         except Exception:
             pass
         return False
+
+    def update_show_hints_label(self):
+        if self.show_field_hinds:
+            lbl = '<a href="hide">Hide field descriptions</a>'
+        else:
+            lbl = '<a href="show">Show field descriptions</a>'
+        self.lblFieldHints.setText(lbl)
+
+    @pyqtSlot(str)
+    def on_lblFieldHints_linkActivated(self, link):
+        if link == 'show':
+            self.show_field_hinds = True
+        else:
+            self.show_field_hinds = False
+        self.update_show_hints_label()
+        self.update_fields_info(True)
+        self.minimize_dialog_height()
+
+    @pyqtSlot(bool)
+    def on_btnManualStep1Copy_clicked(self, checked):
+        text = self.edtManualProtxPrepare.toPlainText()
+        cl = QApplication.clipboard()
+        cl.setText(text)
+
+    @pyqtSlot(bool)
+    def on_btnManualStep2Paste_clicked(self, checked):
+        cl = QApplication.clipboard()
+        self.edtManualProtxPrepareResult.setPlainText(cl.text())
