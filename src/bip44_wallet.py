@@ -6,17 +6,22 @@ import threading
 import time
 import datetime
 import logging
+from functools import partial
+
 from PyQt5 import QtCore
 from typing import List, Dict, Tuple, Optional, Any, Generator, NamedTuple, Callable, ByteString, Union
-from PyQt5.QtCore import QObject
+from PyQt5.QtCore import QObject, Qt
 import app_utils
 import hw_intf
+from common import CancelException
 from dash_utils import bip32_path_string_to_n, pubkey_to_address, bip32_path_n_to_string, bip32_path_string_append_elem
 from dashd_intf import DashdInterface
 from hw_common import HwSessionInfo
 from db_intf import DBCache
+from thread_fun_dlg import CtrlObject
 from wallet_common import Bip44AccountType, Bip44AddressType, UtxoType, TxOutputType, xpub_to_hash, Bip44Entry, \
     address_to_hash, TxType
+from wnd_utils import WndUtils
 
 TX_QUERY_ADDR_CHUNK_SIZE = 10
 ADDRESS_SCAN_GAP_LIMIT = 20
@@ -1547,4 +1552,51 @@ class Bip44Wallet(QObject):
         finally:
             self.db_intf.commit()
             self.db_intf.release_cursor()
+
+
+#########################################################
+## Util functions
+#########################################################
+def get_tx_address_thread(ctrl: CtrlObject, address: str, bip44_wallet: Bip44Wallet):
+    break_scanning = False
+    msg = 'Looking for a BIP32 path of the Dash address related to the masternode collateral.<br>' \
+          'This can take a while (<a href="break">break</a>)....'
+    ctrl.dlg_config_fun(dlg_title="Looking for address", show_progress_bar=False)
+    ctrl.display_msg_fun(msg)
+
+    def check_break_scanning():
+        nonlocal break_scanning
+        if break_scanning:
+            # stop the scanning process if the dialog finishes or the address/bip32path has been found
+            raise BreakFetchTransactionsException()
+
+    def fetch_txes_feeback(org_message: str, msg: str):
+        ctrl.display_msg_fun(org_message + '<br><br>' + msg)
+
+    def on_msg_link_activated(link: str):
+        nonlocal break_scanning
+        if link == 'break':
+            break_scanning = True
+
+    lbl = ctrl.get_msg_label_control()
+    if lbl:
+        def set():
+            lbl.setOpenExternalLinks(False)
+            lbl.setTextInteractionFlags(lbl.textInteractionFlags() & ~Qt.TextSelectableByMouse)
+            lbl.linkActivated.connect(on_msg_link_activated)
+            lbl.repaint()
+        WndUtils.call_in_main_thread(set)
+
+    # fetch the transactions that involved the addresses stored in the wallet - during this
+    # all the used addresses are revealed
+    addr = bip44_wallet.scan_wallet_for_address(address, check_break_scanning, partial(fetch_txes_feeback, msg))
+    if not addr and break_scanning:
+        raise CancelException
+    return addr
+
+
+def find_wallet_address(address: str, bip44_wallet: Bip44Wallet) -> Optional[Bip44AddressType]:
+    ret = WndUtils.run_thread_dialog(get_tx_address_thread, (address, bip44_wallet), True)
+    return ret
+
 

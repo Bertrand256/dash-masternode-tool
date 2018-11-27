@@ -202,7 +202,6 @@ class WndUtils:
                 path = app_defs.APP_IMAGE_DIR
             else:
                 path = 'img'
-            logging.info('Image dir: ' + path)
 
             path = os.path.join(path, ico)
             if not os.path.isfile(path):

@@ -6,11 +6,9 @@ import threading
 
 from PyQt5.QtWidgets import QInputDialog, QMessageBox
 from PyQt5.QtWidgets import QLineEdit
+
+from common import CancelException
 from wnd_utils import WndUtils
-
-
-class UserCancelledConnection(Exception):
-    pass
 
 
 class SshPassCache(object):
@@ -36,7 +34,7 @@ class SshPassCache(object):
             password, ok = query_psw(message)
 
         if not ok:
-            raise UserCancelledConnection
+            raise CancelException
         return password
 
     @staticmethod
