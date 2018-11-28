@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_RegMasternodeDlg(object):
     def setupUi(self, RegMasternodeDlg):
         RegMasternodeDlg.setObjectName("RegMasternodeDlg")
-        RegMasternodeDlg.resize(792, 559)
+        RegMasternodeDlg.resize(792, 546)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -405,6 +405,11 @@ class Ui_RegMasternodeDlg(object):
         self.layManualStep1 = QtWidgets.QHBoxLayout()
         self.layManualStep1.setObjectName("layManualStep1")
         self.edtManualProtxPrepare = QtWidgets.QPlainTextEdit(self.page3)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.edtManualProtxPrepare.sizePolicy().hasHeightForWidth())
+        self.edtManualProtxPrepare.setSizePolicy(sizePolicy)
         self.edtManualProtxPrepare.setTabChangesFocus(True)
         self.edtManualProtxPrepare.setReadOnly(True)
         self.edtManualProtxPrepare.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
@@ -422,6 +427,11 @@ class Ui_RegMasternodeDlg(object):
         self.layManualStep2 = QtWidgets.QHBoxLayout()
         self.layManualStep2.setObjectName("layManualStep2")
         self.edtManualProtxPrepareResult = QtWidgets.QPlainTextEdit(self.page3)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.edtManualProtxPrepareResult.sizePolicy().hasHeightForWidth())
+        self.edtManualProtxPrepareResult.setSizePolicy(sizePolicy)
         self.edtManualProtxPrepareResult.setTabChangesFocus(True)
         self.edtManualProtxPrepareResult.setObjectName("edtManualProtxPrepareResult")
         self.layManualStep2.addWidget(self.edtManualProtxPrepareResult)
@@ -445,6 +455,11 @@ class Ui_RegMasternodeDlg(object):
         self.layManualStep3 = QtWidgets.QHBoxLayout()
         self.layManualStep3.setObjectName("layManualStep3")
         self.edtManualProtxSubmit = QtWidgets.QPlainTextEdit(self.page3)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.edtManualProtxSubmit.sizePolicy().hasHeightForWidth())
+        self.edtManualProtxSubmit.setSizePolicy(sizePolicy)
         self.edtManualProtxSubmit.setTabChangesFocus(True)
         self.edtManualProtxSubmit.setReadOnly(True)
         self.edtManualProtxSubmit.setObjectName("edtManualProtxSubmit")
@@ -524,9 +539,8 @@ class Ui_RegMasternodeDlg(object):
         self.verticalLayout.addWidget(self.frame)
 
         self.retranslateUi(RegMasternodeDlg)
-        self.stackedWidget.setCurrentIndex(0)
+        self.stackedWidget.setCurrentIndex(1)
         QtCore.QMetaObject.connectSlotsByName(RegMasternodeDlg)
-        RegMasternodeDlg.setTabOrder(self.edtManualProtxPrepare, self.btnManualSignProtx)
         RegMasternodeDlg.setTabOrder(self.btnManualSignProtx, self.btnClose)
         RegMasternodeDlg.setTabOrder(self.btnClose, self.edtOwnerKey)
         RegMasternodeDlg.setTabOrder(self.edtOwnerKey, self.edtVotingKey)
@@ -547,7 +561,6 @@ class Ui_RegMasternodeDlg(object):
         RegMasternodeDlg.setTabOrder(self.edtPort, self.edtPayoutAddress)
         RegMasternodeDlg.setTabOrder(self.edtPayoutAddress, self.edtProtxSummary)
         RegMasternodeDlg.setTabOrder(self.edtProtxSummary, self.edtOperatorKey)
-        RegMasternodeDlg.setTabOrder(self.edtOperatorKey, self.btnManualStep1Copy)
 
     def retranslateUi(self, RegMasternodeDlg):
         _translate = QtCore.QCoreApplication.translate

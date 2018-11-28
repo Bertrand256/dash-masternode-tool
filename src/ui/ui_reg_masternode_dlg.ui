@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>792</width>
-    <height>559</height>
+    <height>546</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -35,7 +35,7 @@
       </sizepolicy>
      </property>
      <property name="currentIndex">
-      <number>0</number>
+      <number>1</number>
      </property>
      <widget class="QWidget" name="page0">
       <property name="sizePolicy">
@@ -801,6 +801,12 @@
         <layout class="QHBoxLayout" name="layManualStep1">
          <item>
           <widget class="QPlainTextEdit" name="edtManualProtxPrepare">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
            <property name="tabChangesFocus">
             <bool>true</bool>
            </property>
@@ -838,6 +844,12 @@
         <layout class="QHBoxLayout" name="layManualStep2">
          <item>
           <widget class="QPlainTextEdit" name="edtManualProtxPrepareResult">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
            <property name="tabChangesFocus">
             <bool>true</bool>
            </property>
@@ -893,6 +905,12 @@
         <layout class="QHBoxLayout" name="layManualStep3">
          <item>
           <widget class="QPlainTextEdit" name="edtManualProtxSubmit">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
            <property name="tabChangesFocus">
             <bool>true</bool>
            </property>
@@ -1059,7 +1077,6 @@
   </layout>
  </widget>
  <tabstops>
-  <tabstop>edtManualProtxPrepare</tabstop>
   <tabstop>btnManualSignProtx</tabstop>
   <tabstop>btnClose</tabstop>
   <tabstop>edtOwnerKey</tabstop>
@@ -1081,7 +1098,6 @@
   <tabstop>edtPayoutAddress</tabstop>
   <tabstop>edtProtxSummary</tabstop>
   <tabstop>edtOperatorKey</tabstop>
-  <tabstop>btnManualStep1Copy</tabstop>
  </tabstops>
  <resources/>
  <connections/>
