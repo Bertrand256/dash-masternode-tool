@@ -122,10 +122,10 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.setIcon(self.btnManualStep2Paste, 'content-paste@16px.png')
         self.setIcon(self.btnManualStep3Copy, 'content-copy@16px.png')
         self.setIcon(self.btnManualStep4Paste, 'content-paste@16px.png')
-        self.layManualStep1.setAlignment(self.btnManualStep1Copy, Qt.AlignTop)
-        self.layManualStep2.setAlignment(self.btnManualStep2Paste, Qt.AlignTop)
-        self.layManualStep3.setAlignment(self.btnManualStep3Copy, Qt.AlignTop)
-        self.layManualStep4.setAlignment(self.btnManualStep4Paste, Qt.AlignTop)
+        # self.layManualStep1.setAlignment(self.btnManualStep1Copy, Qt.AlignTop)
+        # self.layManualStep2.setAlignment(self.btnManualStep2Paste, Qt.AlignTop)
+        # self.layManualStep3.setAlignment(self.btnManualStep3Copy, Qt.AlignTop)
+        # self.layManualStep4.setAlignment(self.btnManualStep4Paste, Qt.AlignTop)
         self.update_ctrl_state()
         self.update_step_tab_ui()
         self.update_show_hints_label()
@@ -411,6 +411,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             self.edtManualProtxPrepare.setVisible(tab_idx_to_show == 3)
             self.edtManualProtxPrepareResult.setVisible(tab_idx_to_show == 3)
             self.edtManualProtxSubmit.setVisible(tab_idx_to_show == 3)
+            pass
 
         self.btnContinue.setEnabled(False)
 
@@ -474,6 +475,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             raise Exception('Invalid step')
 
         show_hide_tabs(self.stackedWidget.currentIndex())
+        self.lblFieldHints.setVisible(self.stackedWidget.currentIndex() == 0)
         self.btnBack.setEnabled(len(self.step_stack) > 0)
         self.btnContinue.repaint()
         self.btnCancel.repaint()
@@ -547,9 +549,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.btnContinue.repaint()
 
         ret = WndUtils.run_thread_dialog(self.get_collateral_tx_address_thread, (), True)
-        if ret:
-            self.btnContinue.setEnabled(True)
-            self.btnContinue.repaint()
+        self.btnContinue.setEnabled(True)
+        self.btnContinue.repaint()
         return ret
 
     def get_collateral_tx_address_thread(self, ctrl: CtrlObject):
@@ -718,7 +719,13 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
     @pyqtSlot(bool)
     def on_rbDMTDashNodeType_toggled(self, active):
-        self.upd_node_type_info()
+        if active:
+            self.upd_node_type_info()
+
+    @pyqtSlot(bool)
+    def on_rbOwnDashNodeType_toggled(self, active):
+        if active:
+            self.upd_node_type_info()
 
     def sign_protx_message_with_hw(self, msg_to_sign) -> str:
         sig = WndUtils.call_in_main_thread(

@@ -4,6 +4,7 @@
 # Created on: 2017-03
 import argparse
 import base64
+import codecs
 import datetime
 import json
 import os
@@ -602,8 +603,7 @@ class AppConfig(object):
             write_file_encrypted(file_name, hw_session, mem_data)
             self.config_file_encrypted = True
         else:
-            with open(file_name, 'w') as f_ptr:
-                config.write(f_ptr)
+            config.write(codecs.open(file_name, 'w', 'utf-8'))
             self.config_file_encrypted = False
 
         self.modified = False
