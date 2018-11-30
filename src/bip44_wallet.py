@@ -93,6 +93,26 @@ class Bip44Wallet(QObject):
         self.on_address_loaded_callback: Callable[[Bip44AddressType], None] = None
         self.on_fetch_account_txs_feedback: Callable[[str], None] = None
 
+    def signal_account_added(self, account: Bip44AccountType):
+        if self.on_account_added_callback and self.__tree_id == account.tree_id and self.__tree_id is not None:
+            self.on_account_added_callback(account)
+
+    def signal_account_data_changed(self, account: Bip44AccountType):
+        if self.on_account_data_changed_callback and self.__tree_id == account.tree_id and self.__tree_id is not None:
+            self.on_account_data_changed_callback(account)
+
+    def signal_account_address_added(self, account: Bip44AccountType, address: Bip44AddressType):
+        if self.on_account_address_added_callback and self.__tree_id == account.tree_id and self.__tree_id is not None:
+            self.on_account_address_added_callback(account, address)
+
+    def signal_address_data_changed(self, account: Bip44AccountType, address: Bip44AddressType):
+        if self.on_address_data_changed_callback and self.__tree_id == account.tree_id and self.__tree_id is not None:
+            self.on_address_data_changed_callback(account, address)
+
+    def signal_address_loaded(self, address: Bip44AddressType):
+        if self.on_address_loaded_callback:
+            self.on_address_loaded_callback(address)
+
     def reset_tx_diffs(self):
         self.txs_added.clear()
         self.txs_removed.clear()
@@ -212,8 +232,7 @@ class Bip44Wallet(QObject):
     def _address_loaded(self, addr: Bip44AddressType):
         self.addresses_by_id[addr.id] = addr
         self.addresses_by_address[addr.address] = addr
-        if self.on_address_loaded_callback:
-            self.on_address_loaded_callback(addr)
+        self.signal_address_loaded(addr)
 
     def _get_address_from_dict(self, address_dict) -> Bip44AddressType:
         addr = Bip44AddressType(address_dict.get('tree_id'))
@@ -337,8 +356,7 @@ class Bip44Wallet(QObject):
                 if account:
                     is_new, updated, addr_index, addr = account.add_address(addr_info)
                     if is_new:
-                        if self.on_account_address_added_callback:
-                            self.on_account_address_added_callback(account, addr)
+                        self.signal_account_address_added(account, addr)
 
                 count += 1
                 yield addr_info
@@ -401,8 +419,7 @@ class Bip44Wallet(QObject):
                 self.account_by_bip32_path[account.bip32_path] = account
 
             self._read_account_addresses(account, db_cursor)
-            if self.on_account_added_callback:
-                self.on_account_added_callback(account)
+            self.signal_account_added(account)
 
             log.debug('get_account_base_address_by_index exec time: %s', time.time() - tm_begin)
         else:
@@ -428,8 +445,7 @@ class Bip44Wallet(QObject):
                 account.evaluate_address_if_null(db_cursor, self.dash_network)
 
             self._read_account_addresses(account, db_cursor)
-            if self.on_account_added_callback:
-                self.on_account_added_callback(account)
+            self.signal_account_added(account)
         else:
             if force_reload:
                 account.read_from_db(db_cursor)
@@ -441,7 +457,8 @@ class Bip44Wallet(QObject):
 
     def _read_account_addresses(self, account: Bip44AccountType, db_cursor):
         db_cursor.execute('select a.id, a.address_index, a.address, ac.path parent_path, a.balance, '
-                          'a.received, ac.is_change, a.label from address a join address ac on a.parent_id=ac.id '
+                          'a.received, ac.is_change, a.label, a.tree_id from address a '
+                          'join address ac on a.parent_id=ac.id '
                           'where ac.parent_id=? order by ac.address_index, a.address_index', (account.id,))
         for add_row in db_cursor.fetchall():
             addr = account.address_by_id(add_row[0])
@@ -452,6 +469,8 @@ class Bip44Wallet(QObject):
                     pp = addr_info.get('parent_path')
                     if pp:
                         addr.bip32_path = pp + '/' + str(addr.address_index)
+                if not addr.tree_id:
+                    addr.tree_id = account.tree_id
                 account.add_address(addr)
                 self._address_loaded(addr)
             else:
@@ -1104,7 +1123,7 @@ class Bip44Wallet(QObject):
                     if address:
                         address.balance = real_balance
                         address.received = real_received
-                        self.on_address_data_changed_callback(account, address)
+                        self.signal_address_data_changed(account, address)
 
             # update balance/received at the account level
             for addr_id in account_ids:
@@ -1115,8 +1134,7 @@ class Bip44Wallet(QObject):
                     (addr_id,))
 
                 account = self._get_account_by_id(addr_id, db_cursor, force_reload=True)
-                if self.on_account_data_changed_callback:
-                    self.on_account_data_changed_callback(account)
+                self.signal_account_data_changed(account)
 
             if account is not None and account.id not in account_ids:
                 # update balance/received of the account if it was inconsistent with its the balance of its child
@@ -1134,8 +1152,7 @@ class Bip44Wallet(QObject):
                                       (real_balance, real_received, id))
 
                     account = self._get_account_by_id(id, db_cursor, force_reload=True)
-                    if self.on_account_data_changed_callback:
-                        self.on_account_data_changed_callback(account)
+                    self.signal_account_data_changed(account)
 
         finally:
             if db_cursor.connection.total_changes > 0:
@@ -1264,7 +1281,7 @@ class Bip44Wallet(QObject):
         sql_text = """
             select -1 type,
                    group_concat(DISTINCT a.id) src_addr_ids,
-                   (select group_concat(DISTINCT ifnull(o.address_id,'')||':'||a.address||':'||output_index||':'||o.satoshis) 
+                   (select group_concat(DISTINCT ifnull(o.address_id,'')||':'||o.address||':'||output_index||':'||o.satoshis) 
                     from tx_output o where o.tx_id=t.id) rcp_addresses,
                    sum(i.satoshis),
                    t.id,
@@ -1487,14 +1504,12 @@ class Bip44Wallet(QObject):
             addr_loc = self.addresses_by_id.get(entry.id)
             if addr_loc:
                 addr_loc.label = label
-            if self.on_account_address_added_callback:
-                self.on_account_address_added_callback(entry.bip44_account, entry)
+            self.signal_account_address_added(entry.bip44_account, entry)
         elif isinstance(entry, Bip44AccountType):
             acc_loc = self.account_by_id.get(entry.id)
             if acc_loc:
                 acc_loc.label = label
-            if self.on_account_data_changed_callback:
-                self.on_account_data_changed_callback(entry)
+            self.signal_account_data_changed(entry)
 
     def set_label_for_transaction(self, tx: TxType, label: str):
         db_cursor = self.db_intf.get_cursor()

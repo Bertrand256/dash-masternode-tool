@@ -103,7 +103,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.bip44_wallet.on_account_address_added_callback = self.on_bip44_account_address_added
         self.bip44_wallet.on_address_data_changed_callback = self.on_bip44_account_address_changed
 
-        self.utxo_table_model = UtxoTableModel(self, self.masternodes)
+        self.utxo_table_model = UtxoTableModel(self, self.masternodes, main_ui.config.get_block_explorer_tx())
         self.mn_model = MnAddressTableModel(self, self.masternodes, self.bip44_wallet)
         self.tx_table_model = TransactionTableModel(self, main_ui.config.get_block_explorer_tx())
 
@@ -114,6 +114,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.display_thread_ref: Optional[WorkerThread] = None
         self.last_txs_fetch_time = 0
         self.allow_fetch_transactions = True
+        self.enable_synch_with_main_thread = True  # if False threads cannot synchronize with the main thread
         self.update_data_view_thread_ref: Optional[WorkerThread] = None
         self.initial_mn_sel = initial_mn_sel
 
@@ -292,6 +293,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def closeEvent(self, event):
         self.finishing = True
         self.allow_fetch_transactions = False
+        self.enable_synch_with_main_thread = False
         self.stop_threads()
         self.save_cache_settings()
 
@@ -458,7 +460,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.lbl_message.setText(message)
 
         if threading.current_thread() != threading.main_thread():
-            self.call_in_main_thread(set_msg, message)
+            if self.enable_synch_with_main_thread:
+                self.call_in_main_thread(set_msg, message)
         else:
             set_msg(message)
 
@@ -654,6 +657,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         """Selected BIP44 account or address changed. """
         self.display_thread_event.set()
         self.reflect_ui_account_selection()
+        self.update_context_actions()
 
     def on_viewMasternodes_selectionChanged(self):
         with self.mn_model:
@@ -891,6 +895,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def disconnect_hw(self):
         self.allow_fetch_transactions = False
+        self.enable_synch_with_main_thread = False
 
         # clear the utxo model data
         with self.utxo_table_model:
@@ -917,6 +922,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.hw_selected_address_id = None
         self.cur_hd_tree_id = None
         self.cur_utxo_src_hash = None
+        self.enable_synch_with_main_thread = True
+        self.hide_loading_tx_animation()
+        self.set_message('')
 
     def connect_hw(self):
         def connect():
@@ -930,12 +938,19 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.hw_selected_account_id = None
                 self.hw_selected_address_id = None
                 self.cur_utxo_src_hash = None
+                self.enable_synch_with_main_thread = True
                 self.display_thread_event.set()
                 self.fetch_transactions()
                 return True
             return False
         if not self.hw_connected():
-            return WndUtils.call_in_main_thread(connect)
+            if threading.current_thread() != threading.main_thread():
+                if self.enable_synch_with_main_thread:
+                    return WndUtils.call_in_main_thread(connect)
+                else:
+                    return False
+            else:
+                connect()
         else:
             return True
 
@@ -1171,7 +1186,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
             if not check_break_execution_callback():
                 if self.account_list_model.data_modified:
-                    WndUtils.call_in_main_thread(invalidate_accounts_filter)
+                    if self.enable_synch_with_main_thread:
+                        WndUtils.call_in_main_thread(invalidate_accounts_filter)
 
                 list_utxos = self.get_utxo_list_generator(True)
                 if list_utxos:
@@ -1209,7 +1225,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     self.account_list_model.add_account(account)
 
             log.debug('Adding account %s', account.id)
-            WndUtils.call_in_main_thread(fun)
+            if threading.current_thread() != threading.main_thread():
+                if self.enable_synch_with_main_thread:
+                    WndUtils.call_in_main_thread(fun)
+            else:
+                fun()
 
     def on_bip44_account_changed(self, account: Bip44AccountType):
         """
@@ -1223,7 +1243,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     self.account_list_model.account_data_changed(account)
 
             log.debug('Account modified %s', account.id)
-            WndUtils.call_in_main_thread(fun)
+            if threading.current_thread() != threading.main_thread():
+                if self.enable_synch_with_main_thread:
+                    WndUtils.call_in_main_thread(fun)
+            else:
+                fun()
 
     def on_bip44_account_address_added(self, account: Bip44AccountType, address: Bip44AddressType):
         if not self.finishing:
@@ -1231,7 +1255,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
                     self.account_list_model.add_account_address(account, address)
 
-            WndUtils.call_in_main_thread(fun)
+            if threading.current_thread() != threading.main_thread():
+                if self.enable_synch_with_main_thread:
+                    WndUtils.call_in_main_thread(fun)
+            else:
+                fun()
 
     def on_bip44_account_address_changed(self, account: Bip44AccountType, address: Bip44AddressType):
         if not self.finishing and account:
@@ -1239,7 +1267,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.account_list_model.address_data_changed(account, address)
                 self.mn_model.address_data_changed(address)
 
-            WndUtils.call_in_main_thread(fun)
+            if threading.current_thread() != threading.main_thread():
+                if self.enable_synch_with_main_thread:
+                    WndUtils.call_in_main_thread(fun)
+            else:
+                fun()
 
     def on_edtSourceBip32Path_returnPressed(self):
         self.on_btnLoadTransactions_clicked()
@@ -1279,7 +1311,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.wdg_loading_txs_animation = SpinnerWidget(self.wdgSpinner, size, '', 11)
                 self.wdg_loading_txs_animation.show()
 
-            WndUtils.call_in_main_thread(show)
+            if threading.current_thread() != threading.main_thread():
+                if self.enable_synch_with_main_thread:
+                    WndUtils.call_in_main_thread(show)
+            else:
+                show()
 
     def hide_loading_tx_animation(self):
         if self.wdg_loading_txs_animation:
@@ -1288,7 +1324,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 del self.wdg_loading_txs_animation
                 self.wdg_loading_txs_animation = None
 
-            WndUtils.call_in_main_thread(hide)
+            if threading.current_thread() != threading.main_thread():
+                if self.enable_synch_with_main_thread:
+                    WndUtils.call_in_main_thread(hide)
+            else:
+                hide()
 
     def update_details_tab(self):
         def set_text(text):
