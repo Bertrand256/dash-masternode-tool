@@ -333,7 +333,7 @@ class AccountListModel(ExtSortFilterTableModel):
 
 
 class UtxoTableModel(ExtSortFilterTableModel):
-    def __init__(self, parent, masternode_list: List[MasternodeConfig]):
+    def __init__(self, parent, masternode_list: List[MasternodeConfig], tx_explorer_url: str):
         ExtSortFilterTableModel.__init__(self, parent, [
             TableModelColumn('satoshis', 'Amount (Dash)', True, 100),
             TableModelColumn('confirmations', 'Confirmations', True, 100),
@@ -346,8 +346,7 @@ class UtxoTableModel(ExtSortFilterTableModel):
         ], True, True)
         if DEBUG_MODE:
             self.insert_column(len(self._columns), TableModelColumn('id', 'DB id', True, 40))
-        # self.sorting_column_name = 'confirmations'
-        # self.sorting_order = Qt.AscendingOrder
+        self.tx_explorer_url = tx_explorer_url
         self.hide_collateral_utxos = True
         self.utxos: List[UtxoType] = []
         self.utxo_by_id: Dict[int, UtxoType] = {}
@@ -368,6 +367,15 @@ class UtxoTableModel(ExtSortFilterTableModel):
 
     def flags(self, index):
         return Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable
+
+    def set_view(self, table_view: QTableView):
+        super().set_view(table_view)
+        link_delagate = wnd_utils.HyperlinkItemDelegate(table_view)
+        link_delagate.linkActivated.connect(self.hyperlink_activated)
+        table_view.setItemDelegateForColumn(self.col_index_by_name('txid'), link_delagate)
+
+    def hyperlink_activated(self, link):
+        QDesktopServices.openUrl(QUrl(link))
 
     def data(self, index, role=None):
         if index.isValid():
@@ -395,6 +403,13 @@ class UtxoTableModel(ExtSortFilterTableModel):
                                     return utxo.address_obj.label
                                 else:
                                     return utxo.address
+                            elif col.name == 'txid':
+                                if self.tx_explorer_url:
+                                    url = self.tx_explorer_url.replace('%TXID%', utxo.txid)
+                                    url = f'<a href="{url}">{utxo.txid}</a>'
+                                    return url
+                                else:
+                                    return utxo.txid
                             else:
                                 return app_utils.to_string(utxo.__getattribute__(field_name))
                     elif role == Qt.ForegroundRole:
@@ -551,7 +566,6 @@ class TransactionTableModel(ExtSortFilterTableModel):
         self.filter_amount_value = None
         self.filter_date_oper = None
         self.filter_date_value = None
-
 
     def set_view(self, table_view: QTableView):
         super().set_view(table_view)

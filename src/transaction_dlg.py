@@ -180,7 +180,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                                 if tx_out.address_ref:
                                     if tx_out.address_ref.is_change:
                                         address_info = f' (the change {tx_out.address_ref.bip32_path})'
-                                    else:
+                                    elif tx_out.address_ref.tree_id:
                                         address_info = f' (yours)'
 
                             if row_idx == 0:
