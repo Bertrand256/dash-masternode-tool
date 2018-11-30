@@ -245,11 +245,13 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             if self.edtIP.text().strip():
                 msg = 'You can leave the IP address and port fields empty if you want to delegate the operator ' \
                       'role to a hosting service and you don\'t know the IP address and port in advance ' \
-                      '(<a href=\"https\">read more</a>).'
+                      '(<a href=\"https://docs.dash.org/en/latest/masternodes/maintenance.html#proupservtx\">' \
+                      'read more</a>).'
                 style = 'info'
             else:
                 msg = 'If don\'t set the IP address and port fields, the masternode operator will ' \
-                      'have to issue a ProUpServTx transaction using Dash wallet (<a href=\"https\">read more</a>).'
+                      'have to issue a ProUpServTx transaction using Dash wallet (<a href=\"https://docs.dash.org/en/' \
+                      'latest/masternodes/maintenance.html#proupservtx\">read more</a>).'
                 style = 'warning'
         self.set_ctrl_message(self.lblIPMsg, msg, style)
 

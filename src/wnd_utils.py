@@ -18,9 +18,9 @@ from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEvent, QPointF, QSize, QModelIndex, QRect, \
     QRectF
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap, QTextDocument, QCursor, \
-    QAbstractTextDocumentLayout, QFontMetrics, QTransform
+    QAbstractTextDocumentLayout, QFontMetrics, QTransform, QKeySequence
 from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit, \
-    QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView, QAction
+    QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView, QAction, QMenu, QApplication
 import math
 import message_dlg
 from thread_fun_dlg import ThreadFunDlg, WorkerThread, CtrlObject
@@ -601,6 +601,13 @@ class HyperlinkItemDelegate(QStyledItemDelegate):
         self.doc_not_hovered = QTextDocument(self)
         self.doc_not_hovered.setDocumentMargin(0)
         self.last_hovered_pos = QPoint(0, 0)
+        self.ctx_mnu = QMenu()
+        self.last_link = None
+        self.last_text = None
+        self.action_copy_link = self.ctx_mnu.addAction("Copy Link Location")
+        self.action_copy_link.triggered.connect(self.on_action_copy_link_triggered)
+        self.action_copy_text = self.ctx_mnu.addAction("Copy text")
+        self.action_copy_text.triggered.connect(self.on_action_copy_text_triggered)
 
     def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
 
@@ -645,7 +652,22 @@ class HyperlinkItemDelegate(QStyledItemDelegate):
         else:
             self.parent().setCursor(Qt.PointingHandCursor)
             if event.type() == QEvent.MouseButtonRelease:
-                self.linkActivated.emit(anchor)
-                return True
+                if event.button() == Qt.LeftButton:
+                    self.linkActivated.emit(anchor)
+                    return True
+                elif event.button() == Qt.RightButton:
+                    self.last_text = self.doc_hovered_item.toRawText()
+                    self.last_link = anchor
+
+                    p = QPoint(event.pos().x(), event.pos().y() + min(32, self.ctx_mnu.height()))
+                    p = option.widget.mapToGlobal(p)
+                    self.ctx_mnu.exec(p)
         return False
 
+    def on_action_copy_link_triggered(self):
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.last_link)
+
+    def on_action_copy_text_triggered(self):
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.last_text)
