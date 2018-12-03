@@ -3,6 +3,7 @@
 # Author: Bertrand256
 # Created on: 2018-09
 import bisect
+import datetime
 import hashlib
 import logging
 from PyQt5.QtCore import Qt, QVariant, QModelIndex, QAbstractItemModel, QUrl
@@ -563,7 +564,7 @@ class TransactionTableModel(ExtSortFilterTableModel):
         self.filter_recipient = None
         self.filter_sender = None
         self.filter_amount_oper = None
-        self.filter_amount_value = None
+        self.filter_amount_value = None  # in satoshis
         self.filter_date_oper = None
         self.filter_date_value = None
 
@@ -719,5 +720,96 @@ class TransactionTableModel(ExtSortFilterTableModel):
         return False
 
     def filterAcceptsRow(self, source_row, source_parent):
+        any_cond_met = False
+        any_cond_not_met = False
+        was_any_condition = False
+
+        def check_cond(cond) -> Optional[bool]:
+            """:return True if the item should be shown without checking other conditions
+                       False if the item will not be shown without checking other conditions
+                       None check next conditions
+            """
+            nonlocal any_cond_met, any_cond_not_met, was_any_condition
+            if cond is False:
+                any_cond_not_met = False
+                was_any_condition = True
+                if self.filter_type == FILTER_AND:
+                    return False
+            elif cond is True:
+                any_cond_met = True
+                was_any_condition = True
+                if self.filter_type == FILTER_OR:
+                    return True
+            return None
+
         will_show = True
+
+        if 0 <= source_row < len(self.txes):
+            tx = self.txes[source_row]
+
+            if self.filter_incoming or self.filter_outgoing or self.filter_coinbase:
+                cond_met = (self.filter_incoming and tx.direction == 1 and tx.is_coinbase == 0) or \
+                           (self.filter_coinbase and tx.direction == 1 and tx.is_coinbase == 1) or \
+                           (self.filter_outgoing and tx.direction == -1)
+
+                r = check_cond(cond_met)
+                if r is False:
+                    return False
+                elif r is True:
+                    return True
+
+            if self.filter_amount_oper:
+                sat_val = abs(tx.satoshis)
+                cond_met = (self.filter_amount_oper == FILTER_OPER_EQ and sat_val == self.filter_amount_value) or \
+                           (self.filter_amount_oper == FILTER_OPER_GTEQ and sat_val >= self.filter_amount_value) or \
+                           (self.filter_amount_oper == FILTER_OPER_LTEQ and sat_val <= self.filter_amount_value)
+                r = check_cond(cond_met)
+                if r is False:
+                    return False
+                elif r is True:
+                    return True
+
+            if self.filter_date_oper:
+                dt = datetime.datetime.fromtimestamp(tx.block_timestamp)
+                dt = dt.replace(hour=0, minute=0, second=0)
+                ts = int(dt.timestamp())
+                cond_met = (self.filter_date_oper == FILTER_OPER_EQ and ts == self.filter_date_value) or \
+                           (self.filter_date_oper == FILTER_OPER_GTEQ and ts >= self.filter_date_value) or \
+                           (self.filter_date_oper == FILTER_OPER_LTEQ and ts <= self.filter_date_value)
+                r = check_cond(cond_met)
+                if r is False:
+                    return False
+                elif r is True:
+                    return True
+
+            if self.filter_recipient:
+                cond_met = False
+                for addr in tx.recipient_addrs:
+                    if (isinstance(addr, Bip44AddressType) and addr.address == self.filter_recipient) or \
+                       (addr == self.filter_recipient):
+                        cond_met = True
+                        break
+                r = check_cond(cond_met)
+                if r is False:
+                    return False
+                elif r is True:
+                    return True
+
+            if self.filter_sender:
+                cond_met = False
+                for addr in tx.sender_addrs:
+                    if (isinstance(addr, Bip44AddressType) and addr.address == self.filter_sender) or \
+                       (addr == self.filter_sender):
+                        cond_met = True
+                        break
+                r = check_cond(cond_met)
+                if r is False:
+                    return False
+                elif r is True:
+                    return True
+
+            if was_any_condition:
+                if (self.filter_type == FILTER_OR and not any_cond_met) or \
+                   (self.filter_type == FILTER_AND and any_cond_not_met):
+                    will_show = False
         return will_show
