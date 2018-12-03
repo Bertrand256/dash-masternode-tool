@@ -376,7 +376,7 @@ def control_rpc_call(func):
             log.debug('Trying to acquire http_lock')
             self.http_lock.acquire()
             log.debug('Acquired http_lock')
-            for try_nr in range(1, 5):
+            for try_nr in range(1, 2):
                 try:
                     try:
                         log.debug('Beginning call of "' + str(func) + '"')

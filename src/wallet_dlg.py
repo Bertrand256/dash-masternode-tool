@@ -1475,15 +1475,35 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         m.filter_outgoing = ui.chbTypeOutgoing.isChecked()
         m.filter_coinbase = ui.chbTypeCoinbase.isChecked()
         m.filter_amount_oper = None
-        if ui.edtAmountValue.text():
+        m.filter_date_oper = None
+        m.filter_recipient = None
+        m.filter_sender = None
+        if ui.cboAmountOper.currentText():
             try:
-                m.filter_amount_value = float(ui.edtAmountValue.text())
+                m.filter_amount_value = int(float(ui.edtAmountValue.text()) * 1e8)
                 m.filter_amount_oper = text_to_oper(ui.cboAmountOper.currentText())
             except Exception as e:
                 self.errorMsg('Invalid amount value')
                 ui.edtAmountValue.setFocus()
+                return
 
-        self.errorMsg('Not implemented yet')
+        if ui.cboDateOper.currentText():
+            try:
+                dt = ui.edtDate.date()
+                m.filter_date_value = int(datetime.datetime(*dt.getDate()).timestamp())
+                m.filter_date_oper = text_to_oper(ui.cboDateOper.currentText())
+            except Exception as e:
+                self.errorMsg('Invalid amount value')
+                ui.edtAmountValue.setFocus()
+                return
+
+        if ui.edtRecipientAddress.text():
+            m.filter_recipient = ui.edtRecipientAddress.text().strip()
+
+        if ui.edtSenderAddress.text():
+            m.filter_sender = ui.edtSenderAddress.text().strip()
+
+        m.invalidateFilter()
 
 
     def show_hide_txes_filter(self, show=None):
