@@ -18,7 +18,7 @@ from configparser import ConfigParser
 from random import randint
 from shutil import copyfile
 import logging
-from typing import Optional
+from typing import Optional, Callable
 import bitcoin
 from logging.handlers import RotatingFileHandler
 from PyQt5.QtCore import QLocale
@@ -26,6 +26,7 @@ from PyQt5.QtWidgets import QMessageBox
 from cryptography.fernet import Fernet
 
 import app_defs
+import dash_utils
 import hw_intf
 from app_defs import APP_NAME_SHORT, APP_NAME_LONG, HWType, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT, get_known_loggers
 from app_utils import encrypt, decrypt
@@ -39,14 +40,20 @@ from hw_common import HwSessionInfo
 from wnd_utils import WndUtils
 
 
-CURRENT_CFG_FILE_VERSION = 3
+CURRENT_CFG_FILE_VERSION = 4
 CACHE_ITEM_LOGGERS_LOGLEVEL = 'LoggersLogLevel'
 CACHE_ITEM_LOG_FORMAT = 'LogFormat'
+
+
+DMN_ROLE_OWNER = 1
+DMN_ROLE_OPERATOR = 2
+DMN_ROLE_VOTING = 3
 
 
 class AppConfig(object):
     def __init__(self):
         self.initialized = False
+        self.__deterministic_mns_enabled = None
         self.app_path = ''  # will be passed in the init method
         self.app_version = ''
         QLocale.setDefault(app_utils.get_default_locale())
@@ -270,6 +277,31 @@ class AppConfig(object):
         self.defective_net_configs.clear()
         self.masternodes.clear()
 
+    def simple_decrypt(self, str_to_decrypt: str, string_can_be_unencrypted: bool, validator: Callable = None) -> str:
+        """"
+        :param string_can_be_unencrypted: passed True when importing data from the old config format where some
+            data wasn't encrypted yet; we want to avoid clogging a log file with errors when actually
+            there is no error
+        """
+        decrypted = ''
+        try:
+            if str_to_decrypt:
+                decrypted = decrypt(str_to_decrypt, APP_NAME_LONG, iterations=5)
+            else:
+                decrypted = ''
+        except Exception as e:
+            if string_can_be_unencrypted:
+                if validator:
+                    if not validator(str_to_decrypt):
+                        logging.exception('Unencrypted data validation failed')
+                    else:
+                        return str_to_decrypt
+            logging.exception('String decryption error: ' + str(e))
+        return decrypted
+
+    def simple_encrypt(self, str_to_encrypt: str) -> str:
+        return encrypt(str_to_encrypt, APP_NAME_LONG, iterations=5)
+
     def read_from_file(self, hw_session: HwSessionInfo, file_name: Optional[str] = None,
                        create_config_file: bool = False):
         if not file_name:
@@ -283,9 +315,7 @@ class AppConfig(object):
         else:
             correct_public_nodes = False
         configuration_corrected = False
-        ini_version = CURRENT_CFG_FILE_VERSION
         errors_while_reading = False
-        config_file_encrypted = False
         hw_type_sav = self.hw_type
 
         if os.path.exists(file_name):
@@ -390,47 +420,67 @@ class AppConfig(object):
                     conn_cfg_section_name = 'CONNECTION'
 
                 for section in config.sections():
-                    if re.match('MN\d', section):
-                        mn = MasternodeConfig()
-                        mn.name = config.get(section, 'name', fallback='')
-                        mn.ip = config.get(section, 'ip', fallback='')
-                        mn.port = config.get(section, 'port', fallback='')
-                        mn.privateKey = config.get(section, 'private_key', fallback='').strip()
-                        mn.collateralBip32Path = config.get(section, 'collateral_bip32_path', fallback='').strip()
-                        mn.collateralAddress = config.get(section, 'collateral_address', fallback='').strip()
-                        mn.collateralTx = config.get(section, 'collateral_tx', fallback='').strip()
-                        mn.collateralTxIndex = config.get(section, 'collateral_tx_index', fallback='').strip()
-                        mn.use_default_protocol_version = self.value_to_bool(
-                            config.get(section, 'use_default_protocol_version', fallback='1'))
-                        mn.protocol_version = config.get(section, 'protocol_version', fallback='').strip()
-                        self.masternodes.append(mn)
-                    elif re.match(conn_cfg_section_name+'\d', section):
-                        # read network configuration from new config file format
-                        cfg = DashNetworkConnectionCfg('rpc')
-                        cfg.enabled = self.value_to_bool(config.get(section, 'enabled', fallback='1'))
-                        cfg.host = config.get(section, 'host', fallback='').strip()
-                        cfg.port = config.get(section, 'port', fallback='').strip()
-                        cfg.use_ssl = self.value_to_bool(config.get(section, 'use_ssl', fallback='0').strip())
-                        cfg.username = config.get(section, 'username', fallback='').strip()
-                        cfg.set_encrypted_password(config.get(section, 'password', fallback=''),
-                                                   config_version=ini_version)
-                        cfg.use_ssh_tunnel = self.value_to_bool(config.get(section, 'use_ssh_tunnel', fallback='0'))
-                        cfg.ssh_conn_cfg.host = config.get(section, 'ssh_host', fallback='').strip()
-                        cfg.ssh_conn_cfg.port = config.get(section, 'ssh_port', fallback='').strip()
-                        cfg.ssh_conn_cfg.username = config.get(section, 'ssh_username', fallback='').strip()
-                        cfg.testnet = self.value_to_bool(config.get(section, 'testnet', fallback='0'))
-                        self.dash_net_configs.append(cfg)
-                        if correct_public_nodes:
-                            if cfg.host.lower() == 'alice.dash-dmt.eu':
-                                cfg.host = 'alice.dash-masternode-tool.org'
-                                cfg.port = '443'
-                                configuration_corrected = True
-                            elif cfg.host.lower() == 'luna.dash-dmt.eu':
-                                cfg.host = 'luna.dash-masternode-tool.org'
-                                cfg.port = '443'
-                                configuration_corrected = True
+                    try:
+                        if re.match('MN\d', section):
+                            mn = MasternodeConfig()
+                            mn.name = config.get(section, 'name', fallback='')
+                            mn.ip = config.get(section, 'ip', fallback='')
+                            mn.port = config.get(section, 'port', fallback='')
+                            mn.privateKey = self.simple_decrypt(
+                                config.get(section, 'private_key', fallback='').strip(), ini_version < 4,
+                                lambda x: dash_utils.validate_wif_privkey(x, self.dash_network) )
+                            mn.collateralBip32Path = config.get(section, 'collateral_bip32_path', fallback='').strip()
+                            mn.collateralAddress = config.get(section, 'collateral_address', fallback='').strip()
+                            mn.collateralTx = config.get(section, 'collateral_tx', fallback='').strip()
+                            mn.collateralTxIndex = config.get(section, 'collateral_tx_index', fallback='').strip()
+                            mn.use_default_protocol_version = self.value_to_bool(
+                                config.get(section, 'use_default_protocol_version', fallback='1'))
+                            mn.protocol_version = config.get(section, 'protocol_version', fallback='').strip()
+                            mn.is_deterministic = self.value_to_bool(
+                                config.get(section, 'is_deterministic', fallback='0'))
+                            mn.dmn_user_role = int(config.get(section, 'dmn_user_role',
+                                                              fallback=f'{DMN_ROLE_OWNER}').strip())
+                            mn.dmn_tx_hash = config.get(section, 'dmn_tx_hash', fallback='').strip()
+                            mn.dmn_owner_private_key = self.simple_decrypt(
+                                config.get(section, 'dmn_owner_private_key', fallback='').strip(), False)
+                            mn.dmn_operator_private_key = self.simple_decrypt(
+                                config.get(section, 'dmn_operator_private_key', fallback='').strip(), False)
+                            mn.dmn_voting_private_key = self.simple_decrypt(
+                                config.get(section, 'dmn_voting_private_key', fallback='').strip(), False)
+                            self.masternodes.append(mn)
+                        elif re.match(conn_cfg_section_name+'\d', section):
+                            # read network configuration from new config file format
+                            cfg = DashNetworkConnectionCfg('rpc')
+                            cfg.enabled = self.value_to_bool(config.get(section, 'enabled', fallback='1'))
+                            cfg.host = config.get(section, 'host', fallback='').strip()
+                            cfg.port = config.get(section, 'port', fallback='').strip()
+                            cfg.use_ssl = self.value_to_bool(config.get(section, 'use_ssl', fallback='0').strip())
+                            cfg.username = config.get(section, 'username', fallback='').strip()
+                            cfg.set_encrypted_password(config.get(section, 'password', fallback=''),
+                                                       config_version=ini_version)
+                            cfg.use_ssh_tunnel = self.value_to_bool(config.get(section, 'use_ssh_tunnel', fallback='0'))
+                            cfg.ssh_conn_cfg.host = config.get(section, 'ssh_host', fallback='').strip()
+                            cfg.ssh_conn_cfg.port = config.get(section, 'ssh_port', fallback='').strip()
+                            cfg.ssh_conn_cfg.username = config.get(section, 'ssh_username', fallback='').strip()
+                            cfg.testnet = self.value_to_bool(config.get(section, 'testnet', fallback='0'))
+                            self.dash_net_configs.append(cfg)
+                            if correct_public_nodes:
+                                if cfg.host.lower() == 'alice.dash-dmt.eu':
+                                    cfg.host = 'alice.dash-masternode-tool.org'
+                                    cfg.port = '443'
+                                    configuration_corrected = True
+                                elif cfg.host.lower() == 'luna.dash-dmt.eu':
+                                    cfg.host = 'luna.dash-masternode-tool.org'
+                                    cfg.port = '443'
+                                    configuration_corrected = True
+                    except Exception as e:
+                        logging.exception(str(e))
 
                 # set the new config file name
+                if ini_version < 4:
+                    file_part, ext_part = os.path.splitext(file_name)
+                    file_name = file_part + f'-v{CURRENT_CFG_FILE_VERSION}' + ext_part
+
                 self.app_config_file_name = file_name
                 app_cache.set_value('AppConfig_ConfigFileName', self.app_config_file_name)
                 self.config_file_encrypted = config_file_encrypted
@@ -556,13 +606,21 @@ class AppConfig(object):
             config.set(section, 'name', mn.name)
             config.set(section, 'ip', mn.ip)
             config.set(section, 'port', str(mn.port))
-            config.set(section, 'private_key', mn.privateKey)
+            # the private key encryption method used below is a very basic one, just to not have them stored
+            # in plain text; more serious encryption is used when enabling the 'Encrypt config file' option
+            config.set(section, 'private_key', self.simple_encrypt(mn.privateKey))
             config.set(section, 'collateral_bip32_path', mn.collateralBip32Path)
             config.set(section, 'collateral_address', mn.collateralAddress)
             config.set(section, 'collateral_tx', mn.collateralTx)
             config.set(section, 'collateral_tx_index', str(mn.collateralTxIndex))
             config.set(section, 'use_default_protocol_version', '1' if mn.use_default_protocol_version else '0')
             config.set(section, 'protocol_version', str(mn.protocol_version))
+            config.set(section, 'is_deterministic', '1' if mn.is_deterministic else '0')
+            config.set(section, 'dmn_user_role', str(mn.dmn_user_role))
+            config.set(section, 'dmn_tx_hash', mn.dmn_tx_hash)
+            config.set(section, 'dmn_owner_private_key', self.simple_encrypt(mn.dmn_owner_private_key))
+            config.set(section, 'dmn_operator_private_key', self.simple_encrypt(mn.dmn_operator_private_key))
+            config.set(section, 'dmn_voting_private_key', self.simple_encrypt(mn.dmn_voting_private_key))
             mn.modified = False
 
         # save dash network connections
@@ -976,6 +1034,16 @@ class AppConfig(object):
     def get_app_img_dir(self):
         return os.path.join(self.app_path, '', 'img')
 
+    @property
+    def deterministic_mns_enabled(self):
+        if self.__deterministic_mns_enabled is None:
+            if self.is_testnet():
+                return True
+            else:
+                return False
+        else:
+            return self.__deterministic_mns_enabled
+
 
 class MasternodeConfig:
     def __init__(self):
@@ -989,6 +1057,12 @@ class MasternodeConfig:
         self.__collateralTxIndex = ''
         self.use_default_protocol_version = True
         self.__protocol_version = ''
+        self.is_deterministic = False
+        self.__dmn_user_role = DMN_ROLE_OWNER
+        self.__dmn_tx_hash = ''
+        self.__dmn_owner_private_key = ''
+        self.__dmn_operator_private_key = ''
+        self.__dmn_voting_private_key = ''
         self.new = False
         self.modified = False
         self.lock_modified_change = False
@@ -997,7 +1071,7 @@ class MasternodeConfig:
         if not self.lock_modified_change:
             self.modified = True
 
-    def copy_from(self, src_mn):
+    def copy_from(self, src_mn: 'MasternodeConfig'):
         self.ip = src_mn.ip
         self.port = src_mn.port
         self.privateKey = src_mn.privateKey
@@ -1007,6 +1081,12 @@ class MasternodeConfig:
         self.collateralTxIndex = src_mn.collateralTxIndex
         self.use_default_protocol_version = src_mn.use_default_protocol_version
         self.protocol_version = src_mn.protocol_version
+        self.is_deterministic = src_mn.is_deterministic
+        self.dmn_user_role = src_mn.dmn_user_role
+        self.dmn_tx_hash = src_mn.dmn_tx_hash
+        self.dmn_owner_private_key = src_mn.dmn_owner_private_key
+        self.dmn_operator_private_key = src_mn.dmn_operator_private_key
+        self.dmn_voting_private_key = src_mn.dmn_voting_private_key
         self.new = True
         self.modified = True
         self.lock_modified_change = False
@@ -1122,6 +1202,56 @@ class MasternodeConfig:
             self.__protocol_version = new_protocol_version.strip()
         else:
             self.__protocol_version = new_protocol_version
+
+    @property
+    def dmn_user_role(self):
+        return self.__dmn_user_role
+
+    @dmn_user_role.setter
+    def dmn_user_role(self, role):
+        if role not in (DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING):
+            raise Exception('Invalid dmn user role')
+        self.__dmn_user_role = role
+
+    @property
+    def dmn_tx_hash(self):
+        return self.__dmn_tx_hash
+
+    @dmn_tx_hash.setter
+    def dmn_tx_hash(self, tx_hash: str):
+        if tx_hash is None:
+            tx_hash = ''
+        self.__dmn_tx_hash = tx_hash.strip()
+
+    @property
+    def dmn_owner_private_key(self):
+        return self.__dmn_owner_private_key
+
+    @dmn_owner_private_key.setter
+    def dmn_owner_private_key(self, dmn_owner_private_key: str):
+        if dmn_owner_private_key is None:
+            dmn_owner_private_key = ''
+        self.__dmn_owner_private_key = dmn_owner_private_key.strip()
+
+    @property
+    def dmn_operator_private_key(self):
+        return self.__dmn_operator_private_key
+
+    @dmn_operator_private_key.setter
+    def dmn_operator_private_key(self, dmn_operator_private_key: str):
+        if dmn_operator_private_key is None:
+            dmn_operator_private_key = ''
+        self.__dmn_operator_private_key = dmn_operator_private_key.strip()
+
+    @property
+    def dmn_voting_private_key(self):
+        return self.__dmn_voting_private_key
+
+    @dmn_voting_private_key.setter
+    def dmn_voting_private_key(self, dmn_voting_private_key: str):
+        if dmn_voting_private_key is None:
+            dmn_voting_private_key = ''
+        self.__dmn_voting_private_key = dmn_voting_private_key.strip()
 
 
 class SSHConnectionCfg(object):
@@ -1313,7 +1443,10 @@ class DashNetworkConnectionCfg(object):
                 # for strong encryption user can encrypt the whole ini file with hardware wallet
                 iterations = 5
             int(password, 16)
-            p = decrypt(password, APP_NAME_LONG, iterations=iterations)
+            try:
+                p = decrypt(password, APP_NAME_LONG, iterations=iterations)
+            except Exception:
+                p = ''
             password = p
         except Exception as e:
             logging.warning('Password decryption error: ' + str(e))

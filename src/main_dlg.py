@@ -23,7 +23,8 @@ from PyQt5 import QtWidgets
 from PyQt5.QtCore import QSize, pyqtSlot, QEventLoop, QMutex, QWaitCondition, QUrl, Qt
 from PyQt5.QtGui import QFont, QIcon, QDesktopServices
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle, QInputDialog, QApplication
+from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle, QInputDialog, QApplication, \
+    QHBoxLayout
 from PyQt5.QtWidgets import QMessageBox
 
 import reg_masternode_dlg
@@ -40,6 +41,7 @@ import hw_pin_dlg
 import wallet_dlg
 import app_utils
 from initialize_hw_dlg import HwInitializeDlg
+from masternode_details import WdgMasternodeDetails
 from proposals_dlg import ProposalsDlg
 from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT
 from app_defs import PROJECT_URL, HWType, get_note_url
@@ -105,7 +107,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         app_cache.restore_window_size(self)
         self.inside_setup_ui = True
         self.dashd_intf.window = self
-        self.btnHwBip32ToAddress.setEnabled(False)
         self.closeEvent = self.closeEvent
         self.lblStatus1 = QtWidgets.QLabel(self)
         self.lblStatus1.setAutoFillBackground(False)
@@ -123,8 +124,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         # set stylesheet for editboxes, supporting different colors for read-only and edting mode
         self.styleSheet = "QLineEdit{background-color: white} QLineEdit:read-only{background-color: lightgray}"
         self.setStyleSheet(self.styleSheet)
-        self.setIcon(self.btnHwAddressToBip32, QStyle.SP_ArrowRight)
-        self.setIcon(self.btnHwBip32ToAddress, QStyle.SP_ArrowLeft)
         self.setIcon(self.action_save_config_file, 'save.png')
         self.setIcon(self.action_check_network_connection, "link-check.png")
         self.setIcon(self.action_open_settings_window, "gear.png")
@@ -153,6 +152,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         # add masternodes' info to the combobox
         self.curMasternode = None
+
+        self.wdg_masternode = WdgMasternodeDetails(self, self.app_config)
+        l = self.frmMasternodeDetails.layout()
+        l.insertWidget(0, self.wdg_masternode)
+        self.wdg_masternode.name_modified.connect(self.on_mn_name_modified)
+        self.wdg_masternode.data_changed.connect(self.on_mn_data_changed)
+        self.btnMigrateToDMN.hide()
+
+        self.deterministic_mns = {}
 
         # after loading whole configuration, reset 'modified' variable
         try:
@@ -211,10 +219,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             self.curMasternode = None
 
+        self.wdg_masternode.set_masternode(self.curMasternode)
         self.action_open_log_file.setText = 'Open log file (%s)' % self.config.log_file
         self.update_edit_controls_state()
-        if self.remote_app_params:
-            self.update_ui_default_protocol()
 
     def load_configuration_from_file(self, file_name) -> None:
         """
@@ -344,6 +351,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.update_config_files_mru_menu_items()
         self.display_window_title()
         self.editing_enabled = self.config.is_modified()
+        self.wdg_masternode.set_edit_mode(self.editing_enabled )
         self.update_edit_controls_state()
 
     @pyqtSlot(bool)
@@ -437,8 +445,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                             self.setMessage("You have the latest version of %s." % APP_NAME_SHORT, 'green')
                 elif force_check:
                     self.setMessage("Could not read the remote version number.", 'orange')
-
-                self.call_in_main_thread(self.update_ui_default_protocol)
         except Exception:
             logging.exception('Exception occurred')
 
@@ -446,49 +452,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.curMasternode and set_mn_list_index:
             self.cboMasternodes.setCurrentIndex(self.config.masternodes.index(self.curMasternode))
 
-        edtMnName_state = self.edtMnName.blockSignals(True)
-        edtMnIp_state = self.edtMnIp.blockSignals(True)
-        edtMnPort_state = self.edtMnPort.blockSignals(True)
-        edtMnPrivateKey_state = self.edtMnPrivateKey.blockSignals(True)
-        edtMnCollateralBip32Path_state = self.edtMnCollateralBip32Path.blockSignals(True)
-        edtMnCollateralAddress_state = self.edtMnCollateralAddress.blockSignals(True)
-        edtMnCollateralTx_state = self.edtMnCollateralTx.blockSignals(True)
-        edtMnCollateralTxIndex_state = self.edtMnCollateralTxIndex.blockSignals(True)
-        chbUseDefaultProtocolVersion_state = self.chbUseDefaultProtocolVersion.blockSignals(True)
-        edtMnProtocolVersion_state = self.edtMnProtocolVersion.blockSignals(True)
-
         try:
             if self.curMasternode:
                 self.curMasternode.lock_modified_change = True
 
-            self.edtMnName.setText(self.curMasternode.name if self.curMasternode else '')
-            self.edtMnIp.setText(self.curMasternode.ip if self.curMasternode else '')
-            self.edtMnPort.setText(str(self.curMasternode.port) if self.curMasternode else '')
-            self.edtMnPrivateKey.setText(self.curMasternode.privateKey if self.curMasternode else '')
-            self.edtMnCollateralBip32Path.setText(self.curMasternode.collateralBip32Path
-                                                  if self.curMasternode else '')
-            self.edtMnCollateralAddress.setText(self.curMasternode.collateralAddress if self.curMasternode else '')
-            self.edtMnCollateralTx.setText(self.curMasternode.collateralTx if self.curMasternode else '')
-            self.edtMnCollateralTxIndex.setText(self.curMasternode.collateralTxIndex if self.curMasternode else '')
             use_default_protocol = True
             if self.curMasternode:
                 use_default_protocol = self.curMasternode.use_default_protocol_version if self.curMasternode else True
-            self.chbUseDefaultProtocolVersion.setChecked(use_default_protocol)
-            self.edtMnProtocolVersion.setText(self.curMasternode.protocol_version if self.curMasternode and
-                                                                                     not use_default_protocol else '')
-            self.edtMnProtocolVersion.setEnabled(not use_default_protocol)
             self.lblMnStatus.setText('')
         finally:
-            self.edtMnName.blockSignals(edtMnName_state)
-            self.edtMnIp.blockSignals(edtMnIp_state)
-            self.edtMnPort.blockSignals(edtMnPort_state)
-            self.edtMnPrivateKey.blockSignals(edtMnPrivateKey_state)
-            self.edtMnCollateralBip32Path.blockSignals(edtMnCollateralBip32Path_state)
-            self.edtMnCollateralAddress.blockSignals(edtMnCollateralAddress_state)
-            self.edtMnCollateralTx.blockSignals(edtMnCollateralTx_state)
-            self.edtMnCollateralTxIndex.blockSignals(edtMnCollateralTxIndex_state)
-            self.chbUseDefaultProtocolVersion.blockSignals(chbUseDefaultProtocolVersion_state)
-            self.edtMnProtocolVersion.blockSignals(edtMnProtocolVersion_state)
 
             if self.curMasternode:
                 self.curMasternode.lock_modified_change = False
@@ -506,8 +478,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.disconnect_hardware_wallet()
             self.display_window_title()
             self.update_edit_controls_state()
-            if self.remote_app_params:
-                self.update_ui_default_protocol()
         del dlg
 
     @pyqtSlot(bool)
@@ -883,6 +853,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot(bool)
     def on_btnEditMn_clicked(self):
         self.editing_enabled = True
+        self.wdg_masternode.set_edit_mode(self.editing_enabled )
         self.update_edit_controls_state()
 
     def scan_hw_for_bip32_paths(self, addresses) -> Tuple[Dict[str, str], bool]:
@@ -1128,19 +1099,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def update_edit_controls_state(self):
         def update_fun():
             editing = (self.editing_enabled and self.curMasternode is not None)
-            self.edtMnIp.setReadOnly(not editing)
-            self.edtMnName.setReadOnly(not editing)
-            self.edtMnPort.setReadOnly(not editing)
-            self.chbUseDefaultProtocolVersion.setEnabled(editing)
-            self.edtMnProtocolVersion.setEnabled(editing and not self.curMasternode.use_default_protocol_version)
-            self.edtMnPrivateKey.setReadOnly(not editing)
-            self.edtMnCollateralBip32Path.setReadOnly(not editing)
-            self.edtMnCollateralAddress.setReadOnly(not editing)
-            self.edtMnCollateralTx.setReadOnly(not editing)
-            self.edtMnCollateralTxIndex.setReadOnly(not editing)
-            self.btnGenerateMNPrivateKey.setEnabled(editing)
-            self.btnHwBip32ToAddress.setEnabled(editing)
-            self.btnHwAddressToBip32.setEnabled(editing)
             self.action_gen_mn_priv_key_uncompressed.setEnabled(editing)
             self.action_gen_mn_priv_key_compressed.setEnabled(editing)
             self.btnDeleteMn.setEnabled(self.curMasternode is not None)
@@ -1154,15 +1112,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.call_in_main_thread(update_fun)
         else:
             update_fun()
-
-    def update_ui_default_protocol(self):
-        """Update placeholder text of the protocol edit control. """
-        prot = None
-        if self.remote_app_params:
-            dp = self.remote_app_params.get('defaultDashdProtocol')
-            if dp:
-                prot = str(dp.get(self.config.dash_network.lower()))
-        self.edtMnProtocolVersion.setPlaceholderText(prot)
 
     def newMasternodeConfig(self, copy_values_from_current: bool = False):
         new_mn = MasternodeConfig()
@@ -1198,6 +1147,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             # if masternodes combo was not empty before adding new mn, we have to manually set combobox
             # position to a new masternode position
             self.cboMasternodes.setCurrentIndex(self.config.masternodes.index(self.curMasternode))
+        self.wdg_masternode.set_masternode(self.curMasternode)
+        self.wdg_masternode.set_edit_mode(self.editing_enabled )
 
     def curMnModified(self):
         if self.curMasternode:
@@ -1210,177 +1161,79 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.curMasternode = self.config.masternodes[self.cboMasternodes.currentIndex()]
         else:
             self.curMasternode = None
+        self.wdg_masternode.set_masternode(self.curMasternode)
         self.display_masternode_config(False)
         self.update_edit_controls_state()
         if not self.inside_setup_ui:
             app_cache.set_value('MainWindow_CurMasternodeIndex', self.cboMasternodes.currentIndex())
 
-    @pyqtSlot(str)
-    def on_edtMnName_textEdited(self):
+    def on_mn_name_modified(self, new_name):
         if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.name = self.edtMnName.text()
             self.cboMasternodes.setItemText(self.cboMasternodes.currentIndex(), self.curMasternode.name)
 
-    @pyqtSlot(str)
-    def on_edtMnIp_textEdited(self):
-        if self.curMasternode:
+    def on_mn_data_changed(self, masternode: MasternodeConfig):
+        if self.curMasternode == masternode:
             self.curMnModified()
-            self.curMasternode.ip = self.edtMnIp.text()
 
-    @pyqtSlot(str)
-    def on_edtMnPort_textEdited(self):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.port = self.edtMnPort.text()
+    # todo: remove
+    # @pyqtSlot(bool)
+    # def on_btnHwBip32ToAddress_clicked(self):
+    #     """
+    #     Convert BIP32 path to Dash address.
+    #     :return:
+    #     """
+    #     try:
+    #         self.connect_hardware_wallet()
+    #         if not self.hw_client:
+    #             return
+    #         if self.curMasternode and self.curMasternode.collateralBip32Path:
+    #             dash_addr = hw_intf.get_address(self.hw_session, self.curMasternode.collateralBip32Path)
+    #             self.curMasternode.collateralAddress = dash_addr
+    #             self.curMnModified()
+    #     except HardwareWalletCancelException:
+    #         if self.hw_client:
+    #             self.hw_client.init_device()
+    #     except Exception as e:
+    #         self.errorMsg(str(e))
 
-    @pyqtSlot(bool)
-    def on_chbUseDefaultProtocolVersion_toggled(self, use_default):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.use_default_protocol_version = use_default
-            self.edtMnProtocolVersion.setEnabled(not use_default)
-            if use_default:
-                self.curMasternode.protocol_version = ''
-                self.edtMnProtocolVersion.setText('')
-
-    @pyqtSlot(str)
-    def on_edtMnProtocolVersion_textEdited(self, version):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.protocol_version = version
-
-    @pyqtSlot(str)
-    def on_edtMnPrivateKey_textEdited(self):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.privateKey = self.edtMnPrivateKey.text()
-
-    @pyqtSlot(str)
-    def on_edtMnCollateralBip32Path_textChanged(self):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.collateralBip32Path = self.edtMnCollateralBip32Path.text()
-            if self.curMasternode.collateralBip32Path:
-                self.btnHwBip32ToAddress.setEnabled(True)
-            else:
-                self.btnHwBip32ToAddress.setEnabled(False)
-
-    @pyqtSlot(str)
-    def on_edtMnCollateralAddress_textChanged(self):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.collateralAddress = self.edtMnCollateralAddress.text().strip()
-            self.update_edit_controls_state()
-            if self.curMasternode.collateralAddress:
-                self.btnHwAddressToBip32.setEnabled(True)
-            else:
-                self.btnHwAddressToBip32.setEnabled(False)
-
-    @pyqtSlot(str)
-    def on_edtMnCollateralTx_textEdited(self, text):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.collateralTx = text
-        else:
-            logging.warning('curMasternode == None')
-
-    @pyqtSlot(str)
-    def on_edtMnCollateralTxIndex_textEdited(self, text):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.collateralTxIndex = text
-        else:
-            logging.warning('curMasternode == None')
-
-    def generate_mn_priv_key(self, compressed: bool):
-        if self.edtMnPrivateKey.text():
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Warning)
-            msg.setText('This will overwrite current private key value. Do you really want to proceed?')
-            msg.setStandardButtons(QMessageBox.Ok | QMessageBox.No)
-            msg.setDefaultButton(QMessageBox.No)
-            retval = msg.exec_()
-            if retval == QMessageBox.No:
-                return
-
-        wif = dash_utils.generate_wif_privkey(self.config.dash_network, compressed=compressed)
-        self.curMasternode.privateKey = wif
-        self.edtMnPrivateKey.setText(wif)
-        self.curMnModified()
-
-    @pyqtSlot(bool)
-    def on_btnGenerateMNPrivateKey_clicked(self):
-        self.generate_mn_priv_key(compressed=False)
-
-    @pyqtSlot(bool)
-    def on_action_gen_mn_priv_key_uncompressed_triggered(self, checked):
-        self.generate_mn_priv_key(compressed=False)
-
-    @pyqtSlot(bool)
-    def on_action_gen_mn_priv_key_compressed_triggered(self, checked):
-        self.generate_mn_priv_key(compressed=True)
-
-    @pyqtSlot(bool)
-    def on_btnHwBip32ToAddress_clicked(self):
-        """
-        Convert BIP32 path to Dash address.
-        :return: 
-        """
-        try:
-            self.connect_hardware_wallet()
-            if not self.hw_client:
-                return
-            if self.curMasternode and self.curMasternode.collateralBip32Path:
-                dash_addr = hw_intf.get_address(self.hw_session, self.curMasternode.collateralBip32Path)
-                self.edtMnCollateralAddress.setText(dash_addr)
-                self.curMasternode.collateralAddress = dash_addr
-                self.curMnModified()
-        except HardwareWalletCancelException:
-            if self.hw_client:
-                self.hw_client.init_device()
-        except Exception as e:
-            self.errorMsg(str(e))
-
-    @pyqtSlot(bool)
-    def on_btnHwAddressToBip32_clicked(self):
-        """
-        Converts Dash address to BIP32 path, using hardware wallet.
-        :return: 
-        """
-
-        try:
-            self.disconnect_hardware_wallet()  # forcing to enter the passphrase again
-            self.connect_hardware_wallet()
-            if not self.hw_client:
-                return
-            if self.curMasternode and self.curMasternode.collateralAddress:
-                bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.hw_session,
-                                           self.app_config.db_intf, self.dashd_intf, self.app_config.dash_network)
-
-                try:
-                    addr = find_wallet_address(self.curMasternode.collateralAddress, bip44_wallet)
-                    if not addr or not addr.bip32_path:
-                        self.errorMsg("Couldn't find Dash address in your hardware wallet. If you are using HW passphrase, "
-                                      "make sure, that you entered the correct one.")
-                    else:
-                        self.edtMnCollateralBip32Path.setText(addr.bip32_path)
-                        self.curMasternode.collateralBip32Path = addr.bip32_path
-                        self.curMnModified()
-                except CancelException:
-                    pass
-
-        except HardwareWalletCancelException:
-            if self.hw_client:
-                self.hw_client.init_device()
-        except Exception as e:
-            self.errorMsg(str(e))
+    # todo: remove
+    # @pyqtSlot(bool)
+    # def on_btnHwAddressToBip32_clicked(self):
+    #     """
+    #     Converts Dash address to BIP32 path, using hardware wallet.
+    #     :return:
+    #     """
+    #
+    #     try:
+    #         self.disconnect_hardware_wallet()  # forcing to enter the passphrase again
+    #         self.connect_hardware_wallet()
+    #         if not self.hw_client:
+    #             return
+    #         if self.curMasternode and self.curMasternode.collateralAddress:
+    #             bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.hw_session,
+    #                                        self.app_config.db_intf, self.dashd_intf, self.app_config.dash_network)
+    #
+    #             try:
+    #                 addr = find_wallet_address(self.curMasternode.collateralAddress, bip44_wallet)
+    #                 if not addr or not addr.bip32_path:
+    #                     self.errorMsg("Couldn't find Dash address in your hardware wallet. If you are using HW passphrase, "
+    #                                   "make sure, that you entered the correct one.")
+    #                 else:
+    #                     self.edtMnCollateralBip32Path.setText(addr.bip32_path)
+    #                     self.curMasternode.collateralBip32Path = addr.bip32_path
+    #                     self.curMnModified()
+    #             except CancelException:
+    #                 pass
+    #
+    #     except HardwareWalletCancelException:
+    #         if self.hw_client:
+    #             self.hw_client.init_device()
+    #     except Exception as e:
+    #         self.errorMsg(str(e))
 
     def read_remote_app_params(self):
         if not self.remote_app_params:
             self.remote_app_params = self.load_remote_params()
-            if self.remote_app_params:
-                self.update_ui_default_protocol()
 
     def get_default_protocol(self) -> int:
         self.read_remote_app_params()
@@ -1458,7 +1311,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 int(self.curMasternode.collateralTx, 16)
             except ValueError:
                 self.errorMsg('Invalid collateral transaction id (should be hexadecimal string).')
-                self.edtMnCollateralTx.setFocus()
                 return
 
             if not re.match('\d{1,4}', self.curMasternode.collateralTxIndex):
@@ -1516,7 +1368,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if not cfg_collateral_address:
                 # if mn config's collateral address is empty, assign that from hardware wallet
                 self.curMasternode.collateralAddress = hw_collateral_address
-                self.edtMnCollateralAddress.setText(cfg_collateral_address)
+                self.wdg_masternode.masternode_data_to_ui()
                 self.update_edit_controls_state()
             elif hw_collateral_address != cfg_collateral_address:
                 # verify config's collateral addres with hardware wallet
@@ -1738,6 +1590,34 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     except Exception:
                         pass
 
+                if self.app_config.deterministic_mns_enabled and self.curMasternode not in self.deterministic_mns:
+                    dmn_tx = self.get_deterministic_status(self.curMasternode)
+                    if dmn_tx:
+                        self.deterministic_mns[self.curMasternode] = self.curMasternode
+                        if not self.curMasternode.is_deterministic:
+                            if self.queryDlg(
+                                    'Information on the Dash network says that this masternode should be of '
+                                    'deterministic type. Do you want to update this in configuration?',
+                                             buttons=QMessageBox.Yes | QMessageBox.No,
+                                             default_button=QMessageBox.Yes,
+                                             icon=QMessageBox.Information) == QMessageBox.Yes:
+                                self.curMasternode.dmn_tx_hash = dmn_tx.get('proTxHash')
+                                self.wdg_masternode.masternode_data_to_ui()
+                                self.wdg_masternode.set_deterministic(True)
+                                self.wdg_masternode.set_modified()
+                        else:
+                            dmn_hash = dmn_tx.get('proTxHash')
+                            if dmn_hash and self.curMasternode.dmn_tx_hash != dmn_hash:
+                                if self.queryDlg(
+                                        'Information on the Dash network says that this masternode has different pro tx'
+                                        ' hash. Do you want to update this in configuration?',
+                                        buttons=QMessageBox.Yes | QMessageBox.No,
+                                        default_button=QMessageBox.Yes,
+                                        icon=QMessageBox.Information) == QMessageBox.Yes:
+                                    self.curMasternode.dmn_tx_hash = dmn_tx.get('proTxHash')
+                                    self.wdg_masternode.masternode_data_to_ui()
+                                    self.wdg_masternode.set_modified()
+
                 status = '<style>td {white-space:nowrap;padding-right:8px}' \
                          '.title {text-align:right;font-weight:bold}' \
                          '.ago {font-style:normal}' \
@@ -1757,6 +1637,19 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             status = '<span style="color:red">Problem with connection to dashd.</span>'
         return status
+
+    def get_deterministic_status(self, masternode: MasternodeConfig):
+        try:
+            txes = self.dashd_intf.protx('list', 'registered')
+            for tx in txes:
+                protx = self.dashd_intf.protx('info', tx)
+                state = protx.get('state')
+                if state:
+                    if state.get('addr') == masternode.ip + ':' + masternode.port:
+                        return protx
+        except Exception as e:
+            pass
+        return None
 
     @pyqtSlot(bool)
     def on_btnRefreshMnStatus_clicked(self):
@@ -1859,28 +1752,27 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         ui = HwInitializeDlg(self)
         ui.exec_()
 
-    @pyqtSlot(bool)
-    def on_btnFindCollateral_clicked(self):
-        """
-        Open dialog with list of utxos of collateral dash address.
-        :return: 
-        """
-        if self.curMasternode and self.curMasternode.collateralAddress:
-            ui = FindCollateralTxDlg(self, self.dashd_intf, self.curMasternode.collateralAddress,
-                                     not self.editing_enabled)
-            if ui.exec_():
-                if self.editing_enabled:
-                    tx, txidx = ui.getSelection()
-                    if tx:
-                        if self.curMasternode.collateralTx != tx or self.curMasternode.collateralTxIndex != str(txidx):
-                            self.curMasternode.collateralTx = tx
-                            self.curMasternode.collateralTxIndex = str(txidx)
-                            self.edtMnCollateralTx.setText(tx)
-                            self.edtMnCollateralTxIndex.setText(str(txidx))
-                            self.curMnModified()
-                            self.update_edit_controls_state()
-        else:
-            self.errorMsg('Enter the masternode collateral address.')
+    # remove
+    # @pyqtSlot(bool)
+    # def on_btnFindCollateral_clicked(self):
+    #     """
+    #     Open dialog with list of utxos of collateral dash address.
+    #     :return:
+    #     """
+    #     if self.curMasternode and self.curMasternode.collateralAddress:
+    #         ui = FindCollateralTxDlg(self, self.dashd_intf, self.curMasternode.collateralAddress,
+    #                                  not self.editing_enabled)
+    #         if ui.exec_():
+    #             if self.editing_enabled:
+    #                 tx, txidx = ui.getSelection()
+    #                 if tx:
+    #                     if self.curMasternode.collateralTx != tx or self.curMasternode.collateralTxIndex != str(txidx):
+    #                         self.curMasternode.collateralTx = tx
+    #                         self.curMasternode.collateralTxIndex = str(txidx)
+    #                         self.curMnModified()
+    #                         self.update_edit_controls_state()
+    #     else:
+    #         self.errorMsg('Enter the masternode collateral address.')
 
     @pyqtSlot(bool)
     def on_action_open_proposals_window_triggered(self):
