@@ -134,7 +134,7 @@ def decrypt(input_str, key, iterations=100000):
         h = fer.decrypt(input_str)
         h = h.decode('utf-8')
     except:
-        return ''
+        raise
     return h
 
 
