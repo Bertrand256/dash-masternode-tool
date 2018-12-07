@@ -1253,6 +1253,12 @@ class MasternodeConfig:
             dmn_voting_private_key = ''
         self.__dmn_voting_private_key = dmn_voting_private_key.strip()
 
+    def get_voting_key(self):
+        if self.is_deterministic:
+            return self.dmn_voting_private_key
+        else:
+            return self.privateKey
+
 
 class SSHConnectionCfg(object):
     def __init__(self):

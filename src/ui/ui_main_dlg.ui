@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>867</width>
+    <width>906</width>
     <height>499</height>
    </rect>
   </property>
@@ -218,9 +218,9 @@
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="btnMigrateToDMN">
+          <widget class="QPushButton" name="btnCancelEditingMn">
            <property name="text">
-            <string>Migrate to DMN</string>
+            <string>Cancel editing</string>
            </property>
           </widget>
          </item>
@@ -326,6 +326,22 @@
        </item>
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_2">
+         <property name="spacing">
+          <number>8</number>
+         </property>
+         <item>
+          <spacer name="horizontalSpacer_2">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
          <item>
           <widget class="QPushButton" name="btnBroadcastMn">
            <property name="sizePolicy">
@@ -357,6 +373,26 @@
            </property>
           </widget>
          </item>
+         <item>
+          <widget class="QPushButton" name="btnMigrateToDMN">
+           <property name="text">
+            <string>Send ProRegTx</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_3">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
         </layout>
        </item>
        <item>
@@ -383,7 +419,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>867</width>
+     <width>906</width>
      <height>22</height>
     </rect>
    </property>
