@@ -29,6 +29,7 @@ FILTER_OPER_GTEQ = 1
 FILTER_OPER_LTEQ = 2
 FILTER_OPER_EQ = 3
 
+
 class MnAddressItem(object):
     def __init__(self):
         self.masternode: MasternodeConfig = None
@@ -342,7 +343,7 @@ class UtxoTableModel(ExtSortFilterTableModel):
             TableModelColumn('time_str', 'TX Date/Time', True, 140),
             TableModelColumn('address', 'Address', True, 140),
             TableModelColumn('masternode', 'Masternode', False, 40),
-            TableModelColumn('txid', 'TX ID', True, 220),
+            TableModelColumn('txid', 'TX Hash', True, 220),
             TableModelColumn('output_index', 'TX Idx', True, 40)
         ], True, True)
         if DEBUG_MODE:
@@ -544,7 +545,7 @@ class TransactionTableModel(ExtSortFilterTableModel):
             TableModelColumn('confirmations', 'Confirmations', True, 100),
             TableModelColumn('senders', 'Sender', True, 100),
             TableModelColumn('recipient', 'Recipient', True, 100),
-            TableModelColumn('tx_hash', 'TX ID', False, 100),
+            TableModelColumn('tx_hash', 'TX Hash', False, 100),
             TableModelColumn('is_coinbase', 'Coinbase TX', True, 100),
             TableModelColumn('label', 'Comment', True, 100)
         ], True, True)
