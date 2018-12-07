@@ -7,7 +7,7 @@ import json
 import logging
 import time
 from functools import partial
-from typing import List, Union
+from typing import List, Union, Callable
 import ipaddress
 
 from PyQt5 import QtWidgets
@@ -45,7 +45,8 @@ log = logging.getLogger('dmt.reg_masternode')
 
 
 class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUtils):
-    def __init__(self, main_dlg, config: AppConfig, dashd_intf: DashdInterface, masternode: MasternodeConfig):
+    def __init__(self, main_dlg, config: AppConfig, dashd_intf: DashdInterface, masternode: MasternodeConfig,
+                 on_proregtx_success_callback: Callable):
         QDialog.__init__(self, main_dlg)
         ui_reg_masternode_dlg.Ui_RegMasternodeDlg.__init__(self)
         WndUtils.__init__(self, main_dlg.config)
@@ -53,6 +54,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.masternode = masternode
         self.app_config = config
         self.dashd_intf = dashd_intf
+        self.on_proregtx_success_callback = on_proregtx_success_callback
         self.style = '<style>.info{color:darkblue} .warning{color:red} .error{background-color:red;color:white}</style>'
         self.operator_reward_saved = None
         self.owner_pkey_old: str = None
@@ -701,6 +703,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             self.lblProtxSummary1.setText('<b><span style="color:green">Congratultions! The transaction for your DIP-3 '
                                           'masternode has been submitted and is currently awaiting confirmations.'
                                           '</b></span>')
+            if self.on_proregtx_success_callback:
+                self.on_proregtx_success_callback(self.masternode)
             if not self.check_tx_confirmation():
                 self.wait_for_confirmation_timer_id = self.startTimer(5000)
 

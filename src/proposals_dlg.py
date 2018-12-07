@@ -321,9 +321,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         for idx, mn in enumerate(self.main_wnd.config.masternodes):
             mn_ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
             if mn_ident not in mn_idents:
-                if dash_utils.validate_wif_privkey(mn.privateKey, self.app_config.dash_network):
-                    if mn.privateKey not in pkeys:
-                        pkeys.append(mn.privateKey)
+                if dash_utils.validate_wif_privkey(mn.get_voting_key(), self.app_config.dash_network):
+                    if mn.get_voting_key() not in pkeys:
+                        pkeys.append(mn.get_voting_key())
                         mn_idents.append(mn_ident)
                         self.masternodes_cfg.append(mn)
                 else:
@@ -2523,7 +2523,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                     logging.info('Vote message to sign: ' + serialize_for_sig)
                     step = 2
-                    vote_sig = dash_utils.ecdsa_sign(serialize_for_sig, mn_info.masternode_config.privateKey,
+                    vote_sig = dash_utils.ecdsa_sign(serialize_for_sig, mn_info.masternode_config.get_voting_key(),
                                                      self.app_config.dash_network)
 
                     step = 3
@@ -2557,10 +2557,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         msg = "Error while broadcasting vote message: " + str(e)
                         # write some info to the log file for analysis in case of problems
                         logging.info('masternode_pub_key: %s' %
-                                     str(dash_utils.wif_privkey_to_pubkey(mn_info.masternode_config.privateKey)))
+                                     str(dash_utils.wif_privkey_to_pubkey(mn_info.masternode_config.get_voting_key())))
                         logging.info('masternode_pub_key_hash: %s' %
                                      str(dash_utils.pubkey_to_address(dash_utils.wif_privkey_to_pubkey(
-                                         mn_info.masternode_config.privateKey), self.app_config.dash_network)))
+                                         mn_info.masternode_config.get_voting_key()), self.app_config.dash_network)))
                         logging.info('masternode_tx_hash: %s' % str(mn_info.masternode_config.collateralTx))
                         logging.info('masternode_tx_index: %s' % str(mn_info.masternode_config.collateralTxIndex))
                         logging.info('governance_hash: %s' % prop_hash)

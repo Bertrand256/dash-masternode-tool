@@ -117,7 +117,7 @@ This section describes the steps taken by the application while starting the mas
 
 The steps are as follows:
 
-1. Verification that all the required fields are filled with correct values. These fields are: `IP`, `port`, `MN private key`, `Collateral`, `Collateral TX ID` and `TX index`.
+1. Verification that all the required fields are filled with correct values. These fields are: `IP`, `port`, `MN private key`, `Collateral`, `Collateral TX hash` and `TX index`.
   An example message in case of errors:  
   ![Invalid collateral transaction id](doc/img/startmn-fields-validation-error.png)
 

@@ -1190,9 +1190,11 @@ class Bip44Wallet(QObject):
         utxo.get_cur_block_height_fun = self.get_block_height_nofetch
         return utxo
 
-    def list_utxos_for_account(self, account_id: int, only_new = False) -> Generator[UtxoType, None, None]:
+    def list_utxos_for_account(self, account_id: Optional[int], only_new = False, filter_by_satoshis: int = None) -> \
+            Generator[UtxoType, None, None]:
         """
-        :param account_id: database id of the account's record
+        :param account_id: database id of the account's record or None if listing for all accounts of the current
+          hd tree if.
         """
         tm_begin = time.time()
         self.validate_hd_tree()
@@ -1202,7 +1204,19 @@ class Bip44Wallet(QObject):
                        "tx.tx_hash, o.output_index, o.satoshis, o.address_id from tx_output o " \
                        "join address a on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca " \
                        "on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null " \
-                       "or spent_input_index is null) and aca.id=?"
+                       "or spent_input_index is null)"
+
+            params = []
+            if account_id:
+                sql_text += ' and aca.id=?'
+                params.append(account_id)
+            else:
+                sql_text += ' and aca.tree_id=?'
+                params.append(self.__tree_id)
+
+            if filter_by_satoshis:
+                sql_text += ' and o.satoshis=?'
+                params.append(filter_by_satoshis)
 
             if only_new:
                 # limit returned utxos only to those existing in the self.utxos_added list
@@ -1211,7 +1225,7 @@ class Bip44Wallet(QObject):
             sql_text += " order by tx.block_height desc"
 
             t = time.time()
-            db_cursor.execute(sql_text, (account_id,))
+            db_cursor.execute(sql_text, params)
             log.debug('SQL exec time: %s', time.time() - t)
 
             for id, block_height, coinbase, block_timestamp, tx_hash, \

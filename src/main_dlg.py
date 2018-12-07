@@ -32,7 +32,7 @@ from bip44_wallet import find_wallet_address, Bip44Wallet
 from cmd_console_dlg import CmdConsoleDlg
 from common import CancelException
 from config_dlg import ConfigDlg
-from find_coll_tx_dlg import FindCollateralTxDlg
+from find_coll_tx_dlg import ListCollateralTxsDlg
 import about_dlg
 import app_cache
 import dash_utils
@@ -153,12 +153,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         # add masternodes' info to the combobox
         self.curMasternode = None
 
-        self.wdg_masternode = WdgMasternodeDetails(self, self.app_config)
+        self.wdg_masternode = WdgMasternodeDetails(self, self.app_config, self.dashd_intf)
         l = self.frmMasternodeDetails.layout()
         l.insertWidget(0, self.wdg_masternode)
         self.wdg_masternode.name_modified.connect(self.on_mn_name_modified)
         self.wdg_masternode.data_changed.connect(self.on_mn_data_changed)
-        self.btnMigrateToDMN.hide()
 
         self.deterministic_mns = {}
 
@@ -221,14 +220,18 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         self.wdg_masternode.set_masternode(self.curMasternode)
         self.action_open_log_file.setText = 'Open log file (%s)' % self.config.log_file
+        if self.app_config.deterministic_mns_enabled:
+            self.btnMigrateToDMN.show()
+        else:
+            self.btnMigrateToDMN.hide()
         self.update_edit_controls_state()
 
-    def load_configuration_from_file(self, file_name) -> None:
+    def load_configuration_from_file(self, file_name: str, ask_save_changes = True) -> None:
         """
         Load configuration from a file.
         :param file_name: A name of the configuration file to be loaded into the application.
         """
-        if self.config.is_modified():
+        if self.config.is_modified() and ask_save_changes:
             ret = self.queryDlg('Current configuration has been modified. Save?',
                                 buttons=QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
                                 default_button=QMessageBox.Yes, icon=QMessageBox.Warning)
@@ -451,19 +454,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def display_masternode_config(self, set_mn_list_index):
         if self.curMasternode and set_mn_list_index:
             self.cboMasternodes.setCurrentIndex(self.config.masternodes.index(self.curMasternode))
-
-        try:
-            if self.curMasternode:
-                self.curMasternode.lock_modified_change = True
-
-            use_default_protocol = True
-            if self.curMasternode:
-                use_default_protocol = self.curMasternode.use_default_protocol_version if self.curMasternode else True
-            self.lblMnStatus.setText('')
-        finally:
-
-            if self.curMasternode:
-                self.curMasternode.lock_modified_change = False
+        self.lblMnStatus.setText('')
 
     @pyqtSlot(bool)
     def on_action_open_settings_window_triggered(self):
@@ -622,6 +613,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.action_transfer_funds_for_any_address.setEnabled(True)
 
             if self.dashd_connection_ok:
+                self.show_connection_successful()
                 if self.is_dashd_syncing:
                     self.infoMsg('Connection successful, but Dash daemon is synchronizing.')
                 else:
@@ -855,6 +847,28 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.editing_enabled = True
         self.wdg_masternode.set_edit_mode(self.editing_enabled )
         self.update_edit_controls_state()
+
+    @pyqtSlot(bool)
+    def on_btnCancelEditingMn_clicked(self, checked):
+        if self.config.is_modified():
+            if WndUtils.queryDlg('Configuration modified. Discard changes?',
+                                 buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                 default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
+                # reload the configuration (we don't keep the old values)
+                sel_mn_idx = self.app_config.masternodes.index(self.curMasternode)
+                # reload the configuration from file
+                self.load_configuration_from_file(self.config.app_config_file_name, ask_save_changes=False)
+                self.editing_enabled = False
+                if sel_mn_idx >= 0 and sel_mn_idx < len(self.config.masternodes):
+                    self.curMasternode = self.config.masternodes[sel_mn_idx]
+                    self.display_masternode_config(sel_mn_idx)
+                self.wdg_masternode.set_edit_mode(self.editing_enabled)
+                self.update_edit_controls_state()
+            return
+        else:
+            self.editing_enabled = False
+            self.wdg_masternode.set_edit_mode(self.editing_enabled)
+            self.update_edit_controls_state()
 
     def scan_hw_for_bip32_paths(self, addresses) -> Tuple[Dict[str, str], bool]:
         """
@@ -1103,6 +1117,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.action_gen_mn_priv_key_compressed.setEnabled(editing)
             self.btnDeleteMn.setEnabled(self.curMasternode is not None)
             self.btnEditMn.setEnabled(not self.editing_enabled and self.curMasternode is not None)
+            self.btnCancelEditingMn.setEnabled(self.editing_enabled and self.curMasternode is not None)
             self.btnDuplicateMn.setEnabled(self.curMasternode is not None)
             self.action_save_config_file.setEnabled(self.config.is_modified())
             self.action_disconnect_hw.setEnabled(True if self.hw_client else False)
@@ -1382,7 +1397,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
             # check if there is 1000 Dash collateral
             msg_verification_problem = 'You can continue without verification step if you are sure, that ' \
-                                       'TX ID/Index are correct.'
+                                       'TX hash/index are correct.'
             try:
                 utxos = self.dashd_intf.getaddressutxos([hw_collateral_address])
                 found = False
@@ -1537,7 +1552,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             collateral_id = self.curMasternode.collateralTx + '-' + self.curMasternode.collateralTxIndex
 
             if not self.curMasternode.collateralTx:
-                return '<span style="color:red">Enter the collateral TX ID</span>'
+                return '<span style="color:red">Enter the collateral TX hash</span>'
 
             if not self.curMasternode.collateralTxIndex:
                 return '<span style="color:red">Enter the collateral TX index</span>'
@@ -1557,8 +1572,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         lastseen_ago_str = 'a few seconds ago'
                 else:
                     lastseen_str = 'never'
+                    lastseen_ago_str = ''
 
-                if mn_info.lastpaidtime > 0:
+                if mn_info.lastpaidtime > time.time() - 3600 * 24 * 365:
+                    # fresh dmns have lastpaidtime set to some day in the year 2014
                     lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
                     lastpaid_str = app_utils.to_string(lastpaid)
                     lastpaid_ago = int(time.time()) - int(mn_info.lastpaidtime)
@@ -1785,8 +1802,31 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_btnMigrateToDMN_clicked(self, enabled):
+        reg_dlg = None
+        def on_proregtx_finished(masternode: MasternodeConfig):
+            nonlocal reg_dlg
+            try:
+                if self.curMasternode.dmn_tx_hash != reg_dlg.dmn_reg_tx_hash or \
+                        self.curMasternode.dmn_owner_private_key != reg_dlg.dmn_owner_privkey or \
+                        self.curMasternode.dmn_operator_private_key != reg_dlg.dmn_operator_privkey or \
+                        self.curMasternode.dmn_voting_private_key != reg_dlg.dmn_voting_privkey or \
+                        not self.curMasternode.is_deterministic:
+
+                    self.curMasternode.dmn_tx_hash = reg_dlg.dmn_reg_tx_hash
+                    self.curMasternode.dmn_owner_private_key = reg_dlg.dmn_owner_privkey
+                    self.curMasternode.dmn_operator_private_key = reg_dlg.dmn_operator_privkey
+                    self.curMasternode.dmn_voting_private_key = reg_dlg.dmn_voting_privkey
+                    self.curMasternode.is_deterministic = True
+
+                    if self.curMasternode == masternode:
+                        self.wdg_masternode.masternode_data_to_ui()
+                    self.wdg_masternode.set_modified()
+            except Exception as e:
+                logging.exception(str(e))
+
         if self.curMasternode:
-            ui = reg_masternode_dlg.RegMasternodeDlg(self, self.app_config, self.dashd_intf, self.curMasternode)
-            ui.exec_()
+            reg_dlg = reg_masternode_dlg.RegMasternodeDlg(self, self.app_config, self.dashd_intf, self.curMasternode,
+                                                     on_proregtx_success_callback=on_proregtx_finished)
+            reg_dlg.exec_()
         else:
             WndUtils.errorMsg('No masternode selected')
