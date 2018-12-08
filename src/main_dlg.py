@@ -1194,62 +1194,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.curMasternode == masternode:
             self.curMnModified()
 
-    # todo: remove
-    # @pyqtSlot(bool)
-    # def on_btnHwBip32ToAddress_clicked(self):
-    #     """
-    #     Convert BIP32 path to Dash address.
-    #     :return:
-    #     """
-    #     try:
-    #         self.connect_hardware_wallet()
-    #         if not self.hw_client:
-    #             return
-    #         if self.curMasternode and self.curMasternode.collateralBip32Path:
-    #             dash_addr = hw_intf.get_address(self.hw_session, self.curMasternode.collateralBip32Path)
-    #             self.curMasternode.collateralAddress = dash_addr
-    #             self.curMnModified()
-    #     except HardwareWalletCancelException:
-    #         if self.hw_client:
-    #             self.hw_client.init_device()
-    #     except Exception as e:
-    #         self.errorMsg(str(e))
-
-    # todo: remove
-    # @pyqtSlot(bool)
-    # def on_btnHwAddressToBip32_clicked(self):
-    #     """
-    #     Converts Dash address to BIP32 path, using hardware wallet.
-    #     :return:
-    #     """
-    #
-    #     try:
-    #         self.disconnect_hardware_wallet()  # forcing to enter the passphrase again
-    #         self.connect_hardware_wallet()
-    #         if not self.hw_client:
-    #             return
-    #         if self.curMasternode and self.curMasternode.collateralAddress:
-    #             bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.hw_session,
-    #                                        self.app_config.db_intf, self.dashd_intf, self.app_config.dash_network)
-    #
-    #             try:
-    #                 addr = find_wallet_address(self.curMasternode.collateralAddress, bip44_wallet)
-    #                 if not addr or not addr.bip32_path:
-    #                     self.errorMsg("Couldn't find Dash address in your hardware wallet. If you are using HW passphrase, "
-    #                                   "make sure, that you entered the correct one.")
-    #                 else:
-    #                     self.edtMnCollateralBip32Path.setText(addr.bip32_path)
-    #                     self.curMasternode.collateralBip32Path = addr.bip32_path
-    #                     self.curMnModified()
-    #             except CancelException:
-    #                 pass
-    #
-    #     except HardwareWalletCancelException:
-    #         if self.hw_client:
-    #             self.hw_client.init_device()
-    #     except Exception as e:
-    #         self.errorMsg(str(e))
-
     def read_remote_app_params(self):
         if not self.remote_app_params:
             self.remote_app_params = self.load_remote_params()
