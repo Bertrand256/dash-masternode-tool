@@ -91,7 +91,7 @@ class Bip44Wallet(QObject):
         self.on_account_address_added_callback: Callable[[Bip44AccountType, Bip44AddressType], None] = None
         self.on_address_data_changed_callback: Callable[[Bip44AccountType, Bip44AddressType], None] = None
         self.on_address_loaded_callback: Callable[[Bip44AddressType], None] = None
-        self.on_fetch_account_txs_feedback: Callable[[str], None] = None
+        self.on_fetch_account_txs_feedback: Callable[[int], None] = None  # args: number of txses fetched each call
 
     def signal_account_added(self, account: Bip44AccountType):
         if self.on_account_added_callback and self.__tree_id == account.tree_id and self.__tree_id is not None:
@@ -491,13 +491,6 @@ class Bip44Wallet(QObject):
     def _fetch_child_addrs_txs(self, key_entry: Bip44Entry, account: Bip44AccountType, check_break_process_fun: Callable = None):
         total_addr_count = 0
 
-        def feedback():
-            if self.on_fetch_account_txs_feedback:
-                change = ' (the change)' if key_entry.address_index == 1 else ''
-                self.on_fetch_account_txs_feedback(
-                    f'Fetching transactions for <b>{account.get_account_name()}</b>{change}, '
-                    f'{total_addr_count} addresses so far...')
-
         cur_block_height = self.get_block_height()
 
         if not self.purge_unconf_txs_called:
@@ -519,9 +512,8 @@ class Bip44Wallet(QObject):
                     break
                 total_addr_count += len(addresses)
                 self._check_terminate_tx_fetch()
-                feedback()
 
-                self._process_addresses_txs(addresses, cur_block_height)
+                self._process_addresses_txs(addresses, cur_block_height, check_break_process_fun)
 
                 if check_break_process_fun and check_break_process_fun():
                     break
@@ -557,7 +549,7 @@ class Bip44Wallet(QObject):
 
         if len(addresses):
             feedback()
-            self._process_addresses_txs(addresses, cur_block_height)
+            self._process_addresses_txs(addresses, cur_block_height, check_break_process_fun)
 
     def fetch_addresses_txs(self, addr_info_list: List[Bip44AddressType], check_break_process_fun: Callable):
         tm_begin = time.time()
@@ -573,14 +565,15 @@ class Bip44Wallet(QObject):
             finally:
                 self.db_intf.release_cursor()
         try:
-            self._process_addresses_txs(addr_info_list, cur_block_height)
+            self._process_addresses_txs(addr_info_list, cur_block_height, check_break_process_fun)
             self._update_addr_balances(account=None, addr_ids=[a.id for a in addr_info_list])
         finally:
             self.decrease_ext_call_level()
 
         log.debug(f'fetch_addresses_txs exec time: {time.time() - tm_begin}s')
 
-    def _process_addresses_txs(self, addr_info_list: List[Bip44AddressType], max_block_height: int):
+    def _process_addresses_txs(self, addr_info_list: List[Bip44AddressType], max_block_height: int,
+                               check_break_process_fun: Callable = None):
 
         tm_begin = time.time()
         addrinfo_by_address = {}
@@ -608,8 +601,17 @@ class Bip44Wallet(QObject):
                                                          'start': last_block_height + 1,
                                                          'end': max_block_height})
 
-                for tx_entry in txids:
+                last_time_checked = time.time()
+                last_nr = 0
+                for nr, tx_entry in enumerate(txids):
                     self._process_tx(db_cursor, tx_entry.get('txid'))
+                    if time.time() - last_time_checked > 1:  # feedback every 1s
+                        if check_break_process_fun and check_break_process_fun():
+                            break
+                        if self.on_fetch_account_txs_feedback:
+                            self.on_fetch_account_txs_feedback(nr - last_nr)
+                            last_time_checked = time.time()
+                            last_nr = nr
 
                 # update the last scan block height info for each of the addresses
                 for addr_info in addr_info_list:
@@ -1588,8 +1590,9 @@ class Bip44Wallet(QObject):
 #########################################################
 def get_tx_address_thread(ctrl: CtrlObject, address: str, bip44_wallet: Bip44Wallet):
     break_scanning = False
+    txes_cnt = 0
     msg = 'Looking for a BIP32 path of the Dash address related to the masternode collateral.<br>' \
-          'This can take a while (<a href="break">break</a>)....'
+          'This may take a while (<a href="break">break</a>)....'
     ctrl.dlg_config_fun(dlg_title="Looking for address", show_progress_bar=False)
     ctrl.display_msg_fun(msg)
 
@@ -1599,8 +1602,10 @@ def get_tx_address_thread(ctrl: CtrlObject, address: str, bip44_wallet: Bip44Wal
             # stop the scanning process if the dialog finishes or the address/bip32path has been found
             raise BreakFetchTransactionsException()
 
-    def fetch_txes_feeback(org_message: str, msg: str):
-        ctrl.display_msg_fun(org_message + '<br><br>' + msg)
+    def fetch_txes_feeback(tx_cnt: int):
+        nonlocal msg, txes_cnt
+        txes_cnt += tx_cnt
+        ctrl.display_msg_fun(msg + '<br><br>' + 'Number of transactions fetched so far: ' + str(txes_cnt))
 
     def on_msg_link_activated(link: str):
         nonlocal break_scanning
@@ -1618,7 +1623,7 @@ def get_tx_address_thread(ctrl: CtrlObject, address: str, bip44_wallet: Bip44Wal
 
     # fetch the transactions that involved the addresses stored in the wallet - during this
     # all the used addresses are revealed
-    addr = bip44_wallet.scan_wallet_for_address(address, check_break_scanning, partial(fetch_txes_feeback, msg))
+    addr = bip44_wallet.scan_wallet_for_address(address, check_break_scanning, fetch_txes_feeback)
     if not addr and break_scanning:
         raise CancelException
     return addr

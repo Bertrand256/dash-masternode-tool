@@ -214,24 +214,11 @@ class MyTxApiInsight(TxApiInsight):
         self.cache_dir = cache_dir
 
     def fetch_json(self, url, resource, resourceid):
-        cache_file = ''
-        if self.cache_dir:
-            cache_file = '%s/%s_%s_%s.json' % (self.cache_dir, self.network, resource, resourceid)
-            try: # looking into cache first
-                j = json.load(open(cache_file))
-                return j
-            except:
-                pass
         try:
             j = self.dashd_inf.getrawtransaction(resourceid, 1)
+            return j
         except Exception as e:
             raise
-        if cache_file:
-            try: # saving into cache
-                json.dump(j, open(cache_file, 'w'))
-            except Exception as e:
-                pass
-        return j
 
 
 def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoType],
@@ -250,7 +237,7 @@ def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_c
         insight_network += '_testnet'
     dash_network = hw_session.app_config.dash_network
 
-    tx_api = MyTxApiInsight(insight_network, '', hw_session.dashd_intf, hw_session.app_config.cache_dir)
+    tx_api = MyTxApiInsight(insight_network, '', hw_session.dashd_intf, hw_session.app_config.tx_cache_dir)
     client = hw_session.hw_client
     client.set_tx_api(tx_api)
     inputs = []
