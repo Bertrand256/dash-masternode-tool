@@ -262,7 +262,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.recipients: List[SendFundsDestinationItem] = []
         self.change_addresses: List[Tuple[str, str]] = []  # List[Tuple[address, bip32 path]]
         self.change_controls_visible = True
-        self.address_widget_width = 150 # todo: remove
+        self.address_widget_width = 150 # todo: check this
         self.inputs_total_amount = 0.0
         self.fee_amount = 0.0
         self.add_to_fee = 0.0

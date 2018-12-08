@@ -1083,9 +1083,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                     self.tx_table_model.clear_txes()
                                     self.tx_table_model.endResetModel()
 
-                                #todo: implement this:
-                                # self.utxo_table_model.set_block_height(self.bip44_wallet.get_block_height())
-
                                 t = time.time()
                                 self.tx_table_model.beginResetModel()
                                 try:
