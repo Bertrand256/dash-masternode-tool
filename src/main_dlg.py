@@ -1614,9 +1614,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             for tx in txes:
                 protx = self.dashd_intf.protx('info', tx)
                 state = protx.get('state')
-                if state:
-                    if state.get('addr') == masternode.ip + ':' + masternode.port:
-                        return protx
+                if (state and state.get('addr') == masternode.ip + ':' + masternode.port) or \
+                        (protx.get('collateralHash') == masternode.collateralTx and
+                         str(protx.get('collateralIndex')) == str(masternode.collateralTxIndex) ):
+                    return protx
         except Exception as e:
             pass
         return None
