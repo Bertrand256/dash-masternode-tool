@@ -653,6 +653,17 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.update_details_tab()
         self.on_utxo_src_hash_changed()
 
+    def reflect_data_account_selection(self):
+        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+            if self.hw_selected_account_id is not None and self.cur_hd_tree_id:
+                if self.hw_selected_address_id is None:
+                    # account selected
+                    with self.account_list_model:
+                        idx = self.account_list_model.account_index_by_id(self.hw_selected_account_id)
+                        if idx is not None:
+                            index = self.account_list_model.index(idx, 0)
+                            self.accountsListView.setCurrentIndex(index)
+
     def on_accountsListView_selectionChanged(self):
         """Selected BIP44 account or address changed. """
         self.display_thread_event.set()
@@ -1020,7 +1031,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                 for a in self.bip44_wallet.list_accounts():
                                     pass
                                 log.debug('Finished listing accounts')
-
+                            WndUtils.call_in_main_thread(self.reflect_data_account_selection)
                             last_hd_tree_id = self.cur_hd_tree_id
 
                 if not hw_error:

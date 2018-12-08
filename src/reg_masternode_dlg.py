@@ -558,6 +558,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         return ret
 
     def get_collateral_tx_address_thread(self, ctrl: CtrlObject):
+        txes_cnt = 0
+        msg = ''
         break_scanning = False
         ctrl.dlg_config_fun(dlg_title="Validating collateral transaction.", show_progress_bar=False)
         ctrl.display_msg_fun('Verifyinig collateral transaction...')
@@ -568,8 +570,10 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 # stop the scanning process if the dialog finishes or the address/bip32path has been found
                 raise BreakFetchTransactionsException()
 
-        def fetch_txes_feeback(org_message: str, msg: str):
-            ctrl.display_msg_fun(org_message + '<br><br>' + msg)
+        def fetch_txes_feeback(tx_cnt: int):
+            nonlocal msg, txes_cnt
+            txes_cnt += tx_cnt
+            ctrl.display_msg_fun(msg + '<br><br>' + 'Number of transactions fetched so far: ' + str(txes_cnt))
 
         def on_msg_link_activated(link: str):
             nonlocal break_scanning
@@ -615,11 +619,11 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
                 msg = '<span style="color:red">The BIP32 path of the collateral address from your mn config is incorret.<br></span>' \
                       f'Trying to find the BIP32 path of the address {self.dmn_collateral_tx_address} in your wallet.' \
-                      f'<br>This can take a while (<a href="break">break</a>)...'
+                      f'<br>This may take a while (<a href="break">break</a>)...'
                 self.dmn_collateral_tx_address_path = ''
         else:
             msg = 'Looking for a BIP32 path of the Dash address related to the masternode collateral.<br>' \
-                  'This can take a while (<a href="break">break</a>)....'
+                  'This may take a while (<a href="break">break</a>)....'
 
         if not self.dmn_collateral_tx_address_path and not self.finishing:
             lbl = ctrl.get_msg_label_control()
@@ -636,7 +640,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             # fetch the transactions that involved the addresses stored in the wallet - during this
             # all the used addresses are revealed
             addr = self.bip44_wallet.scan_wallet_for_address(self.dmn_collateral_tx_address, check_break_scanning,
-                                                             partial(fetch_txes_feeback, msg))
+                                                             fetch_txes_feeback)
             if not addr:
                 if not break_scanning:
                     WndUtils.errorMsg(f'Couldn\'t find a BIP32 path of the collateral address ({self.dmn_collateral_tx_address}).')
