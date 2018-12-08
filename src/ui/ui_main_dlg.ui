@@ -369,12 +369,15 @@
             <string notr="true"/>
            </property>
            <property name="text">
-            <string>Start Masternode using hardware wallet</string>
+            <string>Start Masternode using hardware wallet (&lt;= v0.12)</string>
            </property>
           </widget>
          </item>
          <item>
           <widget class="QPushButton" name="btnMigrateToDMN">
+           <property name="toolTip">
+            <string>Register new/update existing deterministic (DIP-3) masternode or migrate from non-deterministic to deterministic masternode. </string>
+           </property>
            <property name="text">
             <string>Send ProRegTx</string>
            </property>

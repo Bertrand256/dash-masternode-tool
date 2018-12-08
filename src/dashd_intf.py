@@ -471,7 +471,11 @@ def json_cache_wrapper(func, intf, cache_file_ident, skip_cache=False):
     def json_call_wrapper(*args, **kwargs):
         nonlocal skip_cache, cache_file_ident, intf, func
 
-        cache_file = intf.config.cache_dir + '/insight_dash_' + cache_file_ident + '.json'
+        fname = '/insight_dash_'
+        if intf.app_config.is_testnet():
+            fname += 'testnet_'
+
+        cache_file = intf.config.tx_cache_dir + fname + cache_file_ident + '.json'
         if not skip_cache:
             try:  # looking into cache first
                 j = simplejson.load(open(cache_file))

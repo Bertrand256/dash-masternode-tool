@@ -717,11 +717,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                     if self.config.dash_network == 'TESTNET':
                         # check if Dash testnet is supported by this hardware wallet
-
                         found_testnet_support = False
                         if self.config.hw_type in (HWType.trezor, HWType.keepkey):
                             try:
-                                addr = self.hw_client.get_address('Dash Testnet', [0, 0], False)
+                                path = dash_utils.get_default_bip32_base_path(self.config.dash_network)
+                                path += "/0'/0/0"
+                                path_n = dash_utils.bip32_path_string_to_n(path)
+                                addr = self.hw_client.get_address('Dash Testnet', path_n, False)
                                 if dash_utils.validate_address(addr, self.config.dash_network):
                                     found_testnet_support = True
                             except Exception as e:
@@ -1137,6 +1139,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if copy_values_from_current and cur_masternode_sav:
             mn_template = cur_masternode_sav.name
         else:
+            if self.app_config.is_testnet():
+                new_mn.port = '19999'
             mn_template = 'MN'
         name_found = None
         for nr in range(1, 100):
@@ -1625,9 +1629,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         else:
                             dmn_hash = dmn_tx.get('proTxHash')
                             if dmn_hash and self.curMasternode.dmn_tx_hash != dmn_hash:
-                                if self.queryDlg(
-                                        'Information on the Dash network says that this masternode has different pro tx'
-                                        ' hash. Do you want to update this in configuration?',
+                                if not self.curMasternode.dmn_tx_hash:
+                                    msg = 'Do you want to update the pro tx hash in your masternode configuration ' \
+                                          'from the information stored in the Dash network?'
+                                else:
+                                    msg = 'Information on the Dash network says that this masternode has different ' \
+                                          'pro tx hash. Do you want to update this in configuration?'
+
+                                if self.queryDlg(msg,
                                         buttons=QMessageBox.Yes | QMessageBox.No,
                                         default_button=QMessageBox.Yes,
                                         icon=QMessageBox.Information) == QMessageBox.Yes:

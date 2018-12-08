@@ -6,6 +6,7 @@ import argparse
 import base64
 import codecs
 import datetime
+import glob
 import json
 import os
 import re
@@ -103,6 +104,7 @@ class AppConfig(object):
         self.bip32_recursive_search = True
         self.modified = False
         self.cache_dir = ''
+        self.tx_cache_dir = ''
         self.app_config_file_name = ''
         self.log_dir = ''
         self.log_file = ''
@@ -253,6 +255,17 @@ class AppConfig(object):
             db_cache_file_name = 'dmt_cache_testnet_v2.db'
         else:
             db_cache_file_name = 'dmt_cache_v2.db'
+        self.tx_cache_dir = os.path.join(self.cache_dir, 'tx-' + self.hw_coin_name)
+        if not os.path.exists(self.tx_cache_dir):
+            os.makedirs(self.tx_cache_dir)
+            if self.is_testnet():
+                # move testnet json files to a subdir (don't do this for mainnet files
+                # util there most of users move to dmt v0.9.22
+                try:
+                    for file in glob.glob(os.path.join(self.cache_dir, 'insight_dash_testnet*.json')):
+                        shutil.move(file, self.tx_cache_dir)
+                except Exception as e:
+                    logging.exception(str(e))
 
         new_db_cache_file_name = os.path.join(self.cache_dir, db_cache_file_name)
         if self.db_intf:
