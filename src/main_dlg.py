@@ -1780,7 +1780,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                     if self.curMasternode == masternode:
                         self.wdg_masternode.masternode_data_to_ui()
-                    self.wdg_masternode.set_modified()
+                    if self.config.is_modified():
+                        self.wdg_masternode.set_modified()
+                    else:
+                        self.save_configuration()
             except Exception as e:
                 logging.exception(str(e))
 
