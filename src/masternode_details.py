@@ -151,6 +151,23 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.btnLocateCollateral.setVisible(col_btn_visible and self.edit_mode)
         self.btnLocateCollateral.repaint()
 
+    def get_max_left_label_width(self):
+        return max(self.lblName.width(), self.lblIP.width(), self.lblCollateral.width(),
+                   self.lblCollateralTxHash.width(), self.lblDMNTxHash.width(), self.lblMasternodePrivateKey.width(),
+                   self.lblOwnerPrivateKey.width(), self.lblOperatorPrivateKey.width(),
+                   self.lblVotingPrivateKey.width())
+
+    def set_left_label_width(self, width):
+        self.lblName.setFixedWidth(width)
+        self.lblIP.setFixedWidth(width)
+        self.lblCollateral.setFixedWidth(width)
+        self.lblCollateralTxHash.setFixedWidth(width)
+        self.lblDMNTxHash.setFixedWidth(width)
+        self.lblMasternodePrivateKey.setFixedWidth(width)
+        self.lblOwnerPrivateKey.setFixedWidth(width)
+        self.lblOperatorPrivateKey.setFixedWidth(width)
+        self.lblVotingPrivateKey.setFixedWidth(width)
+
     def set_masternode(self, masternode: MasternodeConfig):
         self.updating_ui = True
         self.masternode = masternode
