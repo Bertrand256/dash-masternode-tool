@@ -194,6 +194,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.save_configuration()
         self.config.close()
 
+    def showEvent(self, QShowEvent):
+        width = max(self.wdg_masternode.get_max_left_label_width(), self.lblMasternodeStatus.width())
+        self.lblMasternodeStatus.setFixedWidth(width)
+        self.wdg_masternode.set_left_label_width(width)
+        self.cboMasternodes.setFixedHeight(self.btnNewMn.height())
+
     def get_hw_client(self):
         return self.hw_client
 
