@@ -72,7 +72,7 @@
       </property>
       <layout class="QVBoxLayout" name="verticalLayout_2">
        <property name="spacing">
-        <number>0</number>
+        <number>12</number>
        </property>
        <item>
         <layout class="QHBoxLayout" name="layMasternodesControl" stretch="0,3,0,0,0,0,0,0">
@@ -151,7 +151,7 @@
            </property>
            <property name="maximumSize">
             <size>
-             <width>100</width>
+             <width>16777215</width>
              <height>16777215</height>
             </size>
            </property>
@@ -205,7 +205,7 @@
            </property>
            <property name="maximumSize">
             <size>
-             <width>100</width>
+             <width>16777215</width>
              <height>16777215</height>
             </size>
            </property>
@@ -265,17 +265,20 @@
           </property>
           <item>
            <layout class="QHBoxLayout" name="horizontalLayout" stretch="0,1,0">
+            <property name="spacing">
+             <number>-1</number>
+            </property>
             <item>
-             <widget class="QLabel" name="label">
+             <widget class="QLabel" name="lblMasternodeStatus">
               <property name="minimumSize">
                <size>
-                <width>140</width>
+                <width>0</width>
                 <height>0</height>
                </size>
               </property>
               <property name="maximumSize">
                <size>
-                <width>140</width>
+                <width>16777215</width>
                 <height>16777215</height>
                </size>
               </property>
@@ -327,7 +330,7 @@
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_2">
          <property name="spacing">
-          <number>8</number>
+          <number>-1</number>
          </property>
          <item>
           <spacer name="horizontalSpacer_2">
@@ -345,7 +348,7 @@
          <item>
           <widget class="QPushButton" name="btnBroadcastMn">
            <property name="sizePolicy">
-            <sizepolicy hsizetype="Maximum" vsizetype="Maximum">
+            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
              <horstretch>0</horstretch>
              <verstretch>0</verstretch>
             </sizepolicy>
