@@ -110,8 +110,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.chbWholeMNReward.setChecked(True)
         self.lblProtxSummary2.linkActivated.connect(self.save_summary_info)
         self.lblCollateralTxMsg.sizePolicy().setHeightForWidth(True)
-        self.generate_keys()
         self.determine_spork_15_active()
+        self.generate_keys()
         self.btnClose.hide()
         if not self.deterministic_mns_spork_active:
             # hide controls related to the voting key - if spork 15 is not active, voting key has to be the same

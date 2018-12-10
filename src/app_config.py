@@ -27,6 +27,7 @@ from PyQt5.QtWidgets import QMessageBox
 from cryptography.fernet import Fernet
 
 import app_defs
+import base58
 import dash_utils
 import hw_intf
 from app_defs import APP_NAME_SHORT, APP_NAME_LONG, HWType, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT, get_known_loggers
@@ -1245,6 +1246,40 @@ class MasternodeConfig:
         if dmn_owner_private_key is None:
             dmn_owner_private_key = ''
         self.__dmn_owner_private_key = dmn_owner_private_key.strip()
+
+    @property
+    def dmn_owner_pubkey_hash(self) -> Optional[str]:
+        if self.__dmn_owner_private_key:
+            try:
+                pubkey = dash_utils.wif_privkey_to_pubkey(self.__dmn_owner_private_key)
+                pubkey_bin = bytes.fromhex(pubkey)
+                pub_hash = bitcoin.bin_hash160(pubkey_bin)
+                return pub_hash[::-1].hex()
+            except Exception as e:
+                logging.warning('Error converting owner private to public key hash: ' + str(e))
+        return None
+
+    @property
+    def dmn_voting_pubkey_hash(self) -> Optional[str]:
+        if self.__dmn_voting_private_key:
+            try:
+                pubkey = dash_utils.wif_privkey_to_pubkey(self.__dmn_voting_private_key)
+                pubkey_bin = bytes.fromhex(pubkey)
+                pub_hash = bitcoin.bin_hash160(pubkey_bin)
+                return pub_hash[::-1].hex()
+            except Exception as e:
+                logging.warning('Error converting voting private to public key hash: ' + str(e))
+        return None
+
+    @property
+    def dmn_operator_pubkey(self) -> Optional[str]:
+        if self.__dmn_operator_private_key:
+            try:
+                pubkey = dash_utils.bls_privkey_to_pubkey(self.__dmn_operator_private_key)
+                return pubkey
+            except Exception as e:
+                logging.warning('Error converting operator private to public key: ' + str(e))
+        return None
 
     @property
     def dmn_operator_private_key(self):
