@@ -478,12 +478,13 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             if len(utxos) == 1 and not self.masternode.collateralAddress and not self.masternode.collateralTx:
                 used = False
                 for mn in self.app_config.masternodes:
-                    if mn.address == mn.collateralAddress or mn.collateralTx + '-' + str(mn.collateralTxIndex) == \
+                    if utxos[0].address == mn.collateralAddress or mn.collateralTx + '-' + str(mn.collateralTxIndex) == \
                        utxos[0].txid + '-' + str(utxos[0].output_index):
                         used = True
                         break
                 if not used:
                     apply_utxo(utxos[0])
+                    return
 
             dlg = ListCollateralTxsDlg(self, self.masternode, self.app_config, False, utxos)
             if dlg.exec_():

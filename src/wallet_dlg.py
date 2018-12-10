@@ -87,6 +87,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         self.main_ui = main_ui
         self.hw_session: HwSessionInfo = self.main_ui.hw_session
+        self.hw_connection_established = False
         self.rawtransactions = {}
         self.masternodes = main_ui.config.masternodes
         self.masternode_addresses: List[Tuple[str, str]] = []  #  Tuple: address, bip32 path
@@ -899,7 +900,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.disconnect_hw()
 
     def hw_connected(self):
-        if self.hw_session.hw_type is not None and self.hw_session.hw_client is not None:
+        if self.hw_session.hw_type is not None and self.hw_session.hw_client is not None and \
+                self.hw_connection_established:
             return True
         else:
             return False
@@ -926,6 +928,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.account_list_model.clear_accounts()
             self.account_list_model.endResetModel()
 
+        self.hw_connection_established = False
         self.main_ui.disconnect_hardware_wallet()
         self.bip44_wallet.clear()
         self.allow_fetch_transactions = True
@@ -943,6 +946,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.app_config.initialize_hw_encryption(self.main_ui.hw_session)
                 self.cur_hd_tree_id, _ = self.bip44_wallet.get_hd_identity_info()
                 log.debug('Connected HW, self.cur_hd_tree_id: %s', self.cur_hd_tree_id)
+                self.hw_connection_established = True
                 self.update_context_actions()
                 self.update_hw_info()
                 self.on_utxo_src_hash_changed()
@@ -953,7 +957,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.display_thread_event.set()
                 self.fetch_transactions()
                 return True
-            return False
+            else:
+                self.hw_connection_established = False
+                return False
         if not self.hw_connected():
             if threading.current_thread() != threading.main_thread():
                 if self.enable_synch_with_main_thread:

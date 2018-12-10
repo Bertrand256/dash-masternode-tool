@@ -160,6 +160,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.wdg_masternode.data_changed.connect(self.on_mn_data_changed)
 
         self.deterministic_mns = {}
+        self.mns_user_refused_updating = {}
 
         # after loading whole configuration, reset 'modified' variable
         try:
@@ -1503,17 +1504,26 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
 
         if self.dashd_connection_ok:
-            collateral_id = self.curMasternode.collateralTx + '-' + self.curMasternode.collateralTxIndex
+            if self.curMasternode.collateralTx and str(self.curMasternode.collateralTxIndex):
+                collateral_id = self.curMasternode.collateralTx + '-' + self.curMasternode.collateralTxIndex
+            else:
+                collateral_id = None
+            if self.curMasternode.ip and self.curMasternode.port:
+                ip_port = self.curMasternode.ip + ':' + str(self.curMasternode.port)
+            else:
+                ip_port = None
 
-            if not self.curMasternode.collateralTx:
-                return '<span style="color:red">Enter the collateral TX hash</span>'
-
-            if not self.curMasternode.collateralTxIndex:
-                return '<span style="color:red">Enter the collateral TX index</span>'
+            if not collateral_id and not ip_port:
+                if not self.curMasternode.collateralTx:
+                    return '<span style="color:red">Enter the collateral TX hash + index or IP + port</span>'
 
             mns_info = self.dashd_intf.get_masternodelist('full', data_max_age=30)  # read new data from the network
                                                                                     # every 30 seconds
-            mn_info = self.dashd_intf.masternodes_by_ident.get(collateral_id)
+            if collateral_id:
+                mn_info = self.dashd_intf.masternodes_by_ident.get(collateral_id)
+            else:
+                mn_info = self.dashd_intf.masternodes_by_ip_port.get(ip_port)
+
             if mn_info:
                 if mn_info.lastseen > 0:
                     lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
@@ -1548,6 +1558,121 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     color = 'red'
                 enabled_mns_count = len(self.dashd_intf.payment_queue)
 
+                update_mn_info = False
+                collateral_address_mismatch = False
+                collateral_tx_mismatch = False
+                ip_port_mismatch = False
+                mn_data_modified = False
+                owner_pubkey_hash_mismatch = False
+                operator_pubkey_mismatch = False
+                voting_pubkey_hash_mismatch = False
+
+                if self.curMasternode not in self.mns_user_refused_updating:
+                    if not self.curMasternode.collateralTx or not self.curMasternode.collateralTxIndex or \
+                            not self.curMasternode.collateralAddress:
+                        msg = 'In the configuration of your masternode some information is missing that is ' \
+                              'available on the network. Do you want to update the configuration?'
+
+                        if self.queryDlg(msg, buttons=QMessageBox.Yes | QMessageBox.No,
+                                         default_button=QMessageBox.Yes,
+                                         icon=QMessageBox.Warning) == QMessageBox.Yes:
+                            update_mn_info = True
+                        else:
+                            self.mns_user_refused_updating[self.curMasternode] = self.curMasternode
+
+                if self.curMasternode.collateralTx + '-' + str(self.curMasternode.collateralTxIndex) != \
+                       mn_info.ident:
+                    elems = mn_info.ident.split('-')
+                    if len(elems) == 2:
+                        if update_mn_info:
+                            self.curMasternode.collateralTx = elems[0]
+                            self.curMasternode.collateralTxIndex = elems[1]
+                            mn_data_modified = True
+                        else:
+                            collateral_tx_mismatch = True
+
+                if not collateral_tx_mismatch:
+                    # check outputs of the collateral transaction
+                    tx_json = self.dashd_intf.getrawtransaction(self.curMasternode.collateralTx, 1)
+                    if tx_json:
+                        vout = tx_json.get('vout')
+                        if vout and int(self.curMasternode.collateralTxIndex) < len(vout):
+                            v = vout[ int(self.curMasternode.collateralTxIndex)]
+                            if v and v.get('scriptPubKey'):
+                                addrs = v.get('scriptPubKey').get('addresses')
+                                if addrs:
+                                    addr = addrs[0]
+                                    if self.curMasternode.collateralAddress != addr:
+                                        if update_mn_info:
+                                            self.curMasternode.collateralAddress = addr
+                                            mn_data_modified = True
+                                        else:
+                                            collateral_address_mismatch = True
+
+                if self.curMasternode.ip + ':' + self.curMasternode.port != mn_info.ip:
+                    elems = mn_info.ip.split(':')
+                    if len(elems) == 2:
+                        if update_mn_info:
+                            self.curMasternode.ip = elems[0]
+                            self.curMasternode.port = elems[1]
+                            mn_data_modified = True
+                        else:
+                            ip_port_mismatch = True
+
+                if self.app_config.deterministic_mns_enabled:
+                    dmn_tx = self.deterministic_mns.get(self.curMasternode)
+                    if dmn_tx and self.curMasternode.dmn_tx_hash and \
+                        dmn_tx.get('proTxHash') != self.curMasternode.dmn_tx_hash:
+                        # dmn tx hash in the configuration has changed
+                        del self.deterministic_mns[self.curMasternode]
+                        dmn_tx = None
+
+                    if not dmn_tx:
+                        dmn_tx = self.get_deterministic_status(self.curMasternode)
+                    if dmn_tx:
+                        self.deterministic_mns[self.curMasternode] = dmn_tx
+                        if not self.curMasternode.is_deterministic:
+                            if update_mn_info:
+                                self.curMasternode.dmn_tx_hash = dmn_tx.get('proTxHash')
+                                self.wdg_masternode.set_deterministic(True)
+                                mn_data_modified = True
+                        else:
+                            dmn_hash = dmn_tx.get('proTxHash')
+                            if dmn_hash and self.curMasternode.dmn_tx_hash != dmn_hash:
+                                if update_mn_info:
+                                    self.curMasternode.dmn_tx_hash = dmn_tx.get('proTxHash')
+                                    mn_data_modified = True
+
+                        state = dmn_tx.get('state')
+                        if state:
+                            owner_pubkey_network = state.get('keyIDOwner')
+                            owner_pubkey_cfg = self.curMasternode.dmn_owner_pubkey_hash
+                            if owner_pubkey_network and owner_pubkey_cfg and owner_pubkey_network != owner_pubkey_cfg:
+                                owner_pubkey_hash_mismatch = True
+                                logging.warning(
+                                    f'Owner public key hash mismatch for masternode: {self.curMasternode.name}, '
+                                    f'Config pubkey hash: {owner_pubkey_cfg}, network pubkey hash: {owner_pubkey_network}')
+
+                            voting_pubkey_network = state.get('keyIDVoting')
+                            voting_pubkey_cfg = self.curMasternode.dmn_voting_pubkey_hash
+                            if voting_pubkey_network and voting_pubkey_cfg and voting_pubkey_network != voting_pubkey_cfg:
+                                voting_pubkey_hash_mismatch = True
+                                logging.warning(
+                                    f'Voting public key hash mismatch for masternode: {self.curMasternode.name}. '
+                                    f'Config pubkey hash: {voting_pubkey_cfg}, network pubkey hash: {voting_pubkey_network}')
+
+                            operator_pubkey_network = state.get('pubKeyOperator')
+                            operator_pubkey_cfg = self.curMasternode.dmn_operator_pubkey
+                            if operator_pubkey_network and operator_pubkey_cfg and operator_pubkey_network != operator_pubkey_cfg:
+                                operator_pubkey_mismatch = True
+                                logging.warning(
+                                    f'Operator public key mismatch for masternode: {self.curMasternode.name}. '
+                                    f'Config pubkey: {operator_pubkey_cfg}, network pubkey: {operator_pubkey_network}')
+
+                if mn_data_modified:
+                    self.wdg_masternode.masternode_data_to_ui()
+                    self.wdg_masternode.set_modified()
+
                 # get balance
                 addr = self.curMasternode.collateralAddress.strip()
                 bal_entry = ''
@@ -1561,43 +1686,34 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     except Exception:
                         pass
 
-                if self.app_config.deterministic_mns_enabled and self.curMasternode not in self.deterministic_mns:
-                    dmn_tx = self.get_deterministic_status(self.curMasternode)
-                    if dmn_tx:
-                        self.deterministic_mns[self.curMasternode] = self.curMasternode
-                        if not self.curMasternode.is_deterministic:
-                            if self.queryDlg(
-                                    'Information on the Dash network says that this masternode should be of '
-                                    'deterministic type. Do you want to update this in configuration?',
-                                             buttons=QMessageBox.Yes | QMessageBox.No,
-                                             default_button=QMessageBox.Yes,
-                                             icon=QMessageBox.Information) == QMessageBox.Yes:
-                                self.curMasternode.dmn_tx_hash = dmn_tx.get('proTxHash')
-                                self.wdg_masternode.masternode_data_to_ui()
-                                self.wdg_masternode.set_deterministic(True)
-                                self.wdg_masternode.set_modified()
-                        else:
-                            dmn_hash = dmn_tx.get('proTxHash')
-                            if dmn_hash and self.curMasternode.dmn_tx_hash != dmn_hash:
-                                if not self.curMasternode.dmn_tx_hash:
-                                    msg = 'Do you want to update the pro tx hash in your masternode configuration ' \
-                                          'from the information stored in the Dash network?'
-                                else:
-                                    msg = 'Information on the Dash network says that this masternode has different ' \
-                                          'pro tx hash. Do you want to update this in configuration?'
+                errors = []
+                if collateral_address_mismatch:
+                    errors.append('<td class="error" colspan="2">Collateral address missing/mismatch</td>')
+                if collateral_tx_mismatch:
+                    errors.append('<td class="error" colspan="2">Collateral TX hash and/or index missing/mismatch</td>')
+                if ip_port_mismatch:
+                    errors.append('<td class="error" colspan="2">Masternode IP and/or port number missing/mismatch</td>')
+                if owner_pubkey_hash_mismatch:
+                    errors.append('<td class="error" colspan="2">Owner public key mismatch</td>')
+                if operator_pubkey_mismatch:
+                    errors.append('<td class="error" colspan="2">Operator public key mismatch</td>')
+                if voting_pubkey_hash_mismatch:
+                    errors.append('<td class="error" colspan="2">Voting public key mismatch</td>')
 
-                                if self.queryDlg(msg,
-                                        buttons=QMessageBox.Yes | QMessageBox.No,
-                                        default_button=QMessageBox.Yes,
-                                        icon=QMessageBox.Information) == QMessageBox.Yes:
-                                    self.curMasternode.dmn_tx_hash = dmn_tx.get('proTxHash')
-                                    self.wdg_masternode.masternode_data_to_ui()
-                                    self.wdg_masternode.set_modified()
+                errors_msg = ''
+                if errors:
+                    for idx, e in enumerate(errors):
+                        if idx == 0:
+                            errors_msg += '<tr><td class="title">Errors:</td>'
+                        else:
+                            errors_msg += '<tr><td></td>'
+                        errors_msg += e + '</tr>'
 
                 status = '<style>td {white-space:nowrap;padding-right:8px}' \
                          '.title {text-align:right;font-weight:bold}' \
                          '.ago {font-style:normal}' \
                          '.value {color:navy}' \
+                         '.error {color:red}' \
                          '</style>' \
                          '<table>' \
                          f'<tr><td class="title">Status:</td><td class="value"><span style="color:{color}">{mn_info.status}</span>' \
@@ -1607,14 +1723,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                          f'{bal_entry}' \
                          f'<tr><td class="title">Active Duration:</td><td class="value" colspan="2">{activeseconds_str}</td></tr>' \
                          f'<tr><td class="title">Queue/Count:</td><td class="value" colspan="2">{str(mn_info.queue_position)}/{enabled_mns_count}</td></tr>' \
-                         '</table>'
+                         + errors_msg + '</table>'
             else:
                 status = '<span style="color:red">Masternode not found.</span>'
         else:
             status = '<span style="color:red">Problem with connection to dashd.</span>'
         return status
 
-    def get_deterministic_status(self, masternode: MasternodeConfig):
+    def get_deterministic_status(self, masternode: MasternodeConfig) -> Optional[Dict]:
         try:
             txes = self.dashd_intf.protx('list', 'registered')
             for tx in txes:
@@ -1728,28 +1844,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
         ui = HwInitializeDlg(self)
         ui.exec_()
-
-    # remove
-    # @pyqtSlot(bool)
-    # def on_btnFindCollateral_clicked(self):
-    #     """
-    #     Open dialog with list of utxos of collateral dash address.
-    #     :return:
-    #     """
-    #     if self.curMasternode and self.curMasternode.collateralAddress:
-    #         ui = FindCollateralTxDlg(self, self.dashd_intf, self.curMasternode.collateralAddress,
-    #                                  not self.editing_enabled)
-    #         if ui.exec_():
-    #             if self.editing_enabled:
-    #                 tx, txidx = ui.getSelection()
-    #                 if tx:
-    #                     if self.curMasternode.collateralTx != tx or self.curMasternode.collateralTxIndex != str(txidx):
-    #                         self.curMasternode.collateralTx = tx
-    #                         self.curMasternode.collateralTxIndex = str(txidx)
-    #                         self.curMnModified()
-    #                         self.update_edit_controls_state()
-    #     else:
-    #         self.errorMsg('Enter the masternode collateral address.')
 
     @pyqtSlot(bool)
     def on_action_open_proposals_window_triggered(self):
