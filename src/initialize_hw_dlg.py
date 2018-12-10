@@ -927,7 +927,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             if self.hw_type == HWType.trezor:
 
                 if self.hw_model == 'T':
-                    msg_text = '<span style="color:red"><b>WARNING: Before you update firmware, please make sure that ' \
+                    msg_text = '<span style="color:red"><b>WARNING: Before updating firmware, please make sure that ' \
                                'you have backup of recovery seed.</b></span><br><br>' \
                                '<span><b>Start your Trezor T in bootloader mode:</b></span>' \
                                '<ol><li>Disconnect TREZOR.</li>' \
@@ -938,7 +938,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                     self.lblUploadFirmwareMessage.setText(msg_text)
 
                 elif self.hw_model == '1':
-                    msg_text = '<span style="color:red"><b>WARNING: Before you update firmware, please make sure that ' \
+                    msg_text = '<span style="color:red"><b>WARNING: Before updating firmware, please make sure that ' \
                                'you have backup of recovery seed.</b></span><br><br>' \
                                '<span><b>Start your Trezor One in bootloader mode:</b></span>' \
                                '<ol><li>Disconnect TREZOR.</li>' \
@@ -951,7 +951,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                     self.errorMsg('Invalid model of the selected device...')
 
             elif self.hw_type == HWType.keepkey:
-                msg_text = '<span style="color:red"><b>WARNING: Before you update firmware, please make sure that ' \
+                msg_text = '<span style="color:red"><b>WARNING: Before updating firmware, please make sure that ' \
                            'you have backup of recovery seed.</b></span><br><br>' \
                            '<span><b>Start your Keepkey in bootloader mode:</b></span>' \
                            '<ol><li>Disconnect Keepkey.</li>' \

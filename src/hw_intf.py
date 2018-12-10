@@ -143,7 +143,7 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
 
         # show message for Trezor T device while waiting for the user to choose the passphrase input method
         pub = WndUtils.run_thread_dialog(call_get_public_node, (cli, path_n), title='Confirm',
-                                         text='<b>Complete the action on your Trezor device</b>',
+                                         text='<b>Complete the action on your hardware wallet device</b>',
                                          show_window_delay_ms=1000)
 
         hw_session.set_base_info(path, pub)
@@ -385,7 +385,7 @@ def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool =
                 adr_pubkey = ledger.get_address_and_pubkey(client, bip32_path)
                 return adr_pubkey.get('address')
             else:
-                raise Exception('Unknown hwardware wallet type: ' + hw_session.app_config.hw_type)
+                raise Exception('Unknown hardware wallet type: ' + hw_session.app_config.hw_type)
         else:
             raise Exception('HW client not open.')
 
@@ -423,7 +423,7 @@ def get_address_and_pubkey(hw_session: HwSessionInfo, bip32_path):
 
             return ledger.get_address_and_pubkey(client, bip32_path)
         else:
-            raise Exception('Unknown hwardware wallet type: ' + hw_session.app_config.hw_type)
+            raise Exception('Unknown hardware wallet type: ' + hw_session.app_config.hw_type)
 
 
 @control_hw_call
@@ -452,7 +452,7 @@ def get_xpub(hw_session: HwSessionInfo, bip32_path):
 
             return ledger.get_xpub(client, bip32_path)
         else:
-            raise Exception('Unknown hwardware wallet type: ' + hw_session.app_config.hw_type)
+            raise Exception('Unknown hardware wallet type: ' + hw_session.app_config.hw_type)
     else:
         raise Exception('HW client not open.')
 

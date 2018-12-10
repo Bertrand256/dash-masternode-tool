@@ -518,6 +518,7 @@ class DashdInterface(WndUtils):
 
         self.masternodes = []  # cached list of all masternodes (Masternode object)
         self.masternodes_by_ident = {}
+        self.masternodes_by_ip_port = {}
         self.payment_queue = []
 
         self.ssh = None
@@ -563,6 +564,7 @@ class DashdInterface(WndUtils):
     def load_data_from_db_cache(self):
         self.masternodes.clear()
         self.masternodes_by_ident.clear()
+        self.masternodes_by_ip_port.clear()
         cur = self.db_intf.get_cursor()
         cur2 = self.db_intf.get_cursor()
         db_modified = False
@@ -601,6 +603,7 @@ class DashdInterface(WndUtils):
                 mn.ip = row[9]
                 self.masternodes.append(mn)
                 self.masternodes_by_ident[mn.ident] = mn
+                self.masternodes_by_ip_port[mn.ip] = mn
 
             tm_diff = time.time() - tm_start
             log.info('DB read time of %d MASTERNODES: %s s, db fix time: %s' %
@@ -1030,6 +1033,7 @@ class DashdInterface(WndUtils):
                                 mn.marker = True
                                 self.masternodes.append(mn)
                                 self.masternodes_by_ident[mn.ident] = mn
+                                self.masternodes_by_ip_port[mn.ip] = mn
 
                                 if self.db_intf.db_active:
                                     cur.execute("INSERT INTO MASTERNODES(ident, status, protocol, payee, last_seen,"
