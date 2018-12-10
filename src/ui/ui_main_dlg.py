@@ -66,7 +66,7 @@ class Ui_MainWindow(object):
         sizePolicy.setHeightForWidth(self.cboMasternodes.sizePolicy().hasHeightForWidth())
         self.cboMasternodes.setSizePolicy(sizePolicy)
         self.cboMasternodes.setMinimumSize(QtCore.QSize(140, 0))
-        self.cboMasternodes.setMaximumSize(QtCore.QSize(150, 16777215))
+        self.cboMasternodes.setMaximumSize(QtCore.QSize(250, 16777215))
         self.cboMasternodes.setEditable(False)
         self.cboMasternodes.setObjectName("cboMasternodes")
         self.layMasternodesControl.addWidget(self.cboMasternodes)

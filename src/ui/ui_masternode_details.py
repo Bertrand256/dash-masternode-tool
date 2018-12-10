@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_WdgMasternodeDetails(object):
     def setupUi(self, WdgMasternodeDetails):
         WdgMasternodeDetails.setObjectName("WdgMasternodeDetails")
-        WdgMasternodeDetails.resize(744, 384)
+        WdgMasternodeDetails.resize(753, 384)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -144,10 +144,11 @@ class Ui_WdgMasternodeDetails(object):
         self.lblCollateralPath.setObjectName("lblCollateralPath")
         self.horizontalLayout_5.addWidget(self.lblCollateralPath)
         self.edtCollateralPath = QtWidgets.QLineEdit(self.widget_2)
-        self.edtCollateralPath.setMaximumSize(QtCore.QSize(120, 16777215))
+        self.edtCollateralPath.setMaximumSize(QtCore.QSize(16777215, 16777215))
         self.edtCollateralPath.setClearButtonEnabled(True)
         self.edtCollateralPath.setObjectName("edtCollateralPath")
         self.horizontalLayout_5.addWidget(self.edtCollateralPath)
+        self.horizontalLayout_5.setStretch(2, 1)
         self.verticalLayout.addLayout(self.horizontalLayout_5)
         self.horizontalLayout_6 = QtWidgets.QHBoxLayout()
         self.horizontalLayout_6.setObjectName("horizontalLayout_6")
