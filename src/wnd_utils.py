@@ -613,11 +613,17 @@ class HyperlinkItemDelegate(QStyledItemDelegate):
 
         self.initStyleOption(option, index)
         mouse_over = option.state & QStyle.State_MouseOver
+        painter.save()
 
+        color = ''
         if option.state & QStyle.State_Selected:
-            color = "color: white"
+            if option.state & QStyle.State_HasFocus:
+                painter.fillRect(option.rect, QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
+                color = "color: white"
+            else:
+                painter.fillRect(option.rect, QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
         else:
-            color = ''
+            painter.setBrush(QBrush(Qt.white))
 
         if mouse_over:
             doc = self.doc_hovered_item
@@ -631,7 +637,6 @@ class HyperlinkItemDelegate(QStyledItemDelegate):
         doc.setDefaultFont(option.font)
         doc.setHtml(option.text)
 
-        painter.save()
         painter.translate(option.rect.topLeft() + QPoint(HTML_LINK_HORZ_MARGIN, 0))
         ctx = QAbstractTextDocumentLayout.PaintContext()
         ctx.palette = option.palette

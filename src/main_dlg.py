@@ -15,7 +15,7 @@ import threading
 import time
 import ssl
 from functools import partial
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, Callable
 import bitcoin
 import logging
 from PyQt5 import QtCore
@@ -65,6 +65,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         ui_main_dlg.Ui_MainWindow.__init__(self)
 
         self.hw_client = None
+        self.finishing = False
         self.config = AppConfig()
         self.config.init(app_path)
         WndUtils.set_app_config(self, self.config)
@@ -185,6 +186,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def closeEvent(self, event):
         app_cache.save_window_size(self)
+        self.finishing = True
         if self.dashd_intf:
             self.dashd_intf.disconnect()
 
@@ -1498,23 +1500,39 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 return (mns_info[0].status, protocol_version)
         return '???', None
 
-    def get_masternode_status_description(self):
+    def get_deterministic_status(self, masternode: MasternodeConfig, check_break_fun: Callable) -> Optional[Dict]:
+        try:
+            txes = self.dashd_intf.protx('list', 'registered')
+            for tx in txes:
+                if check_break_fun and check_break_fun():
+                    return None
+                protx = self.dashd_intf.protx('info', tx)
+                state = protx.get('state')
+                if (state and state.get('addr') == masternode.ip + ':' + masternode.port) or \
+                        (protx.get('collateralHash') == masternode.collateralTx and
+                         str(protx.get('collateralIndex')) == str(masternode.collateralTxIndex) ):
+                    return protx
+        except Exception as e:
+            pass
+        return None
+
+    def get_masternode_status_description_thread(self, ctrl, masternode: MasternodeConfig):
         """
         Get current masternode's extended status.
         """
 
         if self.dashd_connection_ok:
-            if self.curMasternode.collateralTx and str(self.curMasternode.collateralTxIndex):
-                collateral_id = self.curMasternode.collateralTx + '-' + self.curMasternode.collateralTxIndex
+            if masternode.collateralTx and str(masternode.collateralTxIndex):
+                collateral_id = masternode.collateralTx + '-' + masternode.collateralTxIndex
             else:
                 collateral_id = None
-            if self.curMasternode.ip and self.curMasternode.port:
-                ip_port = self.curMasternode.ip + ':' + str(self.curMasternode.port)
+            if masternode.ip and masternode.port:
+                ip_port = masternode.ip + ':' + str(masternode.port)
             else:
                 ip_port = None
 
             if not collateral_id and not ip_port:
-                if not self.curMasternode.collateralTx:
+                if not masternode.collateralTx:
                     return '<span style="color:red">Enter the collateral TX hash + index or IP + port</span>'
 
             mns_info = self.dashd_intf.get_masternodelist('full', data_max_age=30)  # read new data from the network
@@ -1567,9 +1585,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 operator_pubkey_mismatch = False
                 voting_pubkey_hash_mismatch = False
 
-                if self.curMasternode not in self.mns_user_refused_updating:
-                    if not self.curMasternode.collateralTx or not self.curMasternode.collateralTxIndex or \
-                            not self.curMasternode.collateralAddress:
+                if masternode not in self.mns_user_refused_updating:
+                    if not masternode.collateralTx or not masternode.collateralTxIndex or \
+                            not masternode.collateralAddress:
                         msg = 'In the configuration of your masternode some information is missing that is ' \
                               'available on the network. Do you want to update the configuration?'
 
@@ -1578,191 +1596,194 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                          icon=QMessageBox.Warning) == QMessageBox.Yes:
                             update_mn_info = True
                         else:
-                            self.mns_user_refused_updating[self.curMasternode] = self.curMasternode
+                            self.mns_user_refused_updating[masternode] = self.curMasternode
 
-                if self.curMasternode.collateralTx + '-' + str(self.curMasternode.collateralTxIndex) != \
+                if masternode.collateralTx + '-' + str(masternode.collateralTxIndex) != \
                        mn_info.ident:
                     elems = mn_info.ident.split('-')
                     if len(elems) == 2:
                         if update_mn_info:
-                            self.curMasternode.collateralTx = elems[0]
-                            self.curMasternode.collateralTxIndex = elems[1]
+                            masternode.collateralTx = elems[0]
+                            masternode.collateralTxIndex = elems[1]
                             mn_data_modified = True
                         else:
                             collateral_tx_mismatch = True
 
                 if not collateral_tx_mismatch:
                     # check outputs of the collateral transaction
-                    tx_json = self.dashd_intf.getrawtransaction(self.curMasternode.collateralTx, 1)
+                    tx_json = self.dashd_intf.getrawtransaction(masternode.collateralTx, 1)
                     if tx_json:
                         vout = tx_json.get('vout')
-                        if vout and int(self.curMasternode.collateralTxIndex) < len(vout):
-                            v = vout[ int(self.curMasternode.collateralTxIndex)]
+                        if vout and int(masternode.collateralTxIndex) < len(vout):
+                            v = vout[ int(masternode.collateralTxIndex)]
                             if v and v.get('scriptPubKey'):
                                 addrs = v.get('scriptPubKey').get('addresses')
                                 if addrs:
                                     addr = addrs[0]
-                                    if self.curMasternode.collateralAddress != addr:
+                                    if masternode.collateralAddress != addr:
                                         if update_mn_info:
-                                            self.curMasternode.collateralAddress = addr
+                                            masternode.collateralAddress = addr
                                             mn_data_modified = True
                                         else:
                                             collateral_address_mismatch = True
 
-                if self.curMasternode.ip + ':' + self.curMasternode.port != mn_info.ip:
+                if masternode.ip + ':' + masternode.port != mn_info.ip:
                     elems = mn_info.ip.split(':')
                     if len(elems) == 2:
                         if update_mn_info:
-                            self.curMasternode.ip = elems[0]
-                            self.curMasternode.port = elems[1]
+                            masternode.ip = elems[0]
+                            masternode.port = elems[1]
                             mn_data_modified = True
                         else:
                             ip_port_mismatch = True
 
                 if self.app_config.deterministic_mns_enabled:
-                    dmn_tx = self.deterministic_mns.get(self.curMasternode)
-                    if dmn_tx and self.curMasternode.dmn_tx_hash and \
-                        dmn_tx.get('proTxHash') != self.curMasternode.dmn_tx_hash:
+                    dmn_tx = self.deterministic_mns.get(masternode)
+                    if dmn_tx and masternode.dmn_tx_hash and \
+                        dmn_tx.get('proTxHash') != masternode.dmn_tx_hash:
                         # dmn tx hash in the configuration has changed
-                        del self.deterministic_mns[self.curMasternode]
+                        del self.deterministic_mns[masternode]
                         dmn_tx = None
 
                     if not dmn_tx:
-                        dmn_tx = self.get_deterministic_status(self.curMasternode)
+                        def break_scanning():
+                            return self.finishing or self.curMasternode != masternode
+
+                        dmn_tx = self.get_deterministic_status(masternode, check_break_fun=break_scanning)
                     if dmn_tx:
-                        self.deterministic_mns[self.curMasternode] = dmn_tx
-                        if not self.curMasternode.is_deterministic:
+                        self.deterministic_mns[masternode] = dmn_tx
+                        if not masternode.is_deterministic:
                             if update_mn_info:
-                                self.curMasternode.dmn_tx_hash = dmn_tx.get('proTxHash')
+                                masternode.dmn_tx_hash = dmn_tx.get('proTxHash')
                                 self.wdg_masternode.set_deterministic(True)
                                 mn_data_modified = True
                         else:
                             dmn_hash = dmn_tx.get('proTxHash')
-                            if dmn_hash and self.curMasternode.dmn_tx_hash != dmn_hash:
+                            if dmn_hash and masternode.dmn_tx_hash != dmn_hash:
                                 if update_mn_info:
-                                    self.curMasternode.dmn_tx_hash = dmn_tx.get('proTxHash')
+                                    masternode.dmn_tx_hash = dmn_tx.get('proTxHash')
                                     mn_data_modified = True
 
                         state = dmn_tx.get('state')
                         if state:
                             owner_pubkey_network = state.get('keyIDOwner')
-                            owner_pubkey_cfg = self.curMasternode.dmn_owner_pubkey_hash
+                            owner_pubkey_cfg = masternode.dmn_owner_pubkey_hash
                             if owner_pubkey_network and owner_pubkey_cfg and owner_pubkey_network != owner_pubkey_cfg:
                                 owner_pubkey_hash_mismatch = True
                                 logging.warning(
-                                    f'Owner public key hash mismatch for masternode: {self.curMasternode.name}, '
+                                    f'Owner public key hash mismatch for masternode: {masternode.name}, '
                                     f'Config pubkey hash: {owner_pubkey_cfg}, network pubkey hash: {owner_pubkey_network}')
 
                             voting_pubkey_network = state.get('keyIDVoting')
-                            voting_pubkey_cfg = self.curMasternode.dmn_voting_pubkey_hash
+                            voting_pubkey_cfg = masternode.dmn_voting_pubkey_hash
                             if voting_pubkey_network and voting_pubkey_cfg and voting_pubkey_network != voting_pubkey_cfg:
                                 voting_pubkey_hash_mismatch = True
                                 logging.warning(
-                                    f'Voting public key hash mismatch for masternode: {self.curMasternode.name}. '
+                                    f'Voting public key hash mismatch for masternode: {masternode.name}. '
                                     f'Config pubkey hash: {voting_pubkey_cfg}, network pubkey hash: {voting_pubkey_network}')
 
                             operator_pubkey_network = state.get('pubKeyOperator')
-                            operator_pubkey_cfg = self.curMasternode.dmn_operator_pubkey
+                            operator_pubkey_cfg = masternode.dmn_operator_pubkey
                             if operator_pubkey_network and operator_pubkey_cfg and operator_pubkey_network != operator_pubkey_cfg:
                                 operator_pubkey_mismatch = True
                                 logging.warning(
-                                    f'Operator public key mismatch for masternode: {self.curMasternode.name}. '
+                                    f'Operator public key mismatch for masternode: {masternode.name}. '
                                     f'Config pubkey: {operator_pubkey_cfg}, network pubkey: {operator_pubkey_network}')
 
                 if mn_data_modified:
-                    self.wdg_masternode.masternode_data_to_ui()
-                    self.wdg_masternode.set_modified()
+                    def update():
+                        self.wdg_masternode.masternode_data_to_ui()
+                        self.wdg_masternode.set_modified()
+                    if not self.finishing:
+                        self.call_in_main_thread(update)
 
-                # get balance
-                addr = self.curMasternode.collateralAddress.strip()
-                bal_entry = ''
-                if addr:
-                    try:
-                        bal = self.dashd_intf.getaddressbalance([addr])
-                        if bal:
-                            bal = round(bal.get('balance') / 1e8, 5)
-                            bal_entry = f'<tr><td class="title">Balance:</td><td class="value">' \
-                                        f'{app_utils.to_string(bal)}</td><td></td></tr>'
-                    except Exception:
-                        pass
+                if masternode == self.curMasternode:
+                    # get balance
+                    addr = masternode.collateralAddress.strip()
+                    bal_entry = ''
+                    if addr:
+                        try:
+                            bal = self.dashd_intf.getaddressbalance([addr])
+                            if bal:
+                                bal = round(bal.get('balance') / 1e8, 5)
+                                bal_entry = f'<tr><td class="title">Balance:</td><td class="value">' \
+                                            f'{app_utils.to_string(bal)}</td><td></td></tr>'
+                        except Exception:
+                            pass
 
-                errors = []
-                if collateral_address_mismatch:
-                    errors.append('<td class="error" colspan="2">Collateral address missing/mismatch</td>')
-                if collateral_tx_mismatch:
-                    errors.append('<td class="error" colspan="2">Collateral TX hash and/or index missing/mismatch</td>')
-                if ip_port_mismatch:
-                    errors.append('<td class="error" colspan="2">Masternode IP and/or port number missing/mismatch</td>')
-                if owner_pubkey_hash_mismatch:
-                    errors.append('<td class="error" colspan="2">Owner public key mismatch</td>')
-                if operator_pubkey_mismatch:
-                    errors.append('<td class="error" colspan="2">Operator public key mismatch</td>')
-                if voting_pubkey_hash_mismatch:
-                    errors.append('<td class="error" colspan="2">Voting public key mismatch</td>')
+                    errors = []
+                    if collateral_address_mismatch:
+                        errors.append('<td class="error" colspan="2">Collateral address missing/mismatch</td>')
+                    if collateral_tx_mismatch:
+                        errors.append('<td class="error" colspan="2">Collateral TX hash and/or index missing/mismatch</td>')
+                    if ip_port_mismatch:
+                        errors.append('<td class="error" colspan="2">Masternode IP and/or port number missing/mismatch</td>')
+                    if owner_pubkey_hash_mismatch:
+                        errors.append('<td class="error" colspan="2">Owner public key mismatch</td>')
+                    if operator_pubkey_mismatch:
+                        errors.append('<td class="error" colspan="2">Operator public key mismatch</td>')
+                    if voting_pubkey_hash_mismatch:
+                        errors.append('<td class="error" colspan="2">Voting public key mismatch</td>')
 
-                errors_msg = ''
-                if errors:
-                    for idx, e in enumerate(errors):
-                        if idx == 0:
-                            errors_msg += '<tr><td class="title">Errors:</td>'
-                        else:
-                            errors_msg += '<tr><td></td>'
-                        errors_msg += e + '</tr>'
+                    errors_msg = ''
+                    if errors:
+                        for idx, e in enumerate(errors):
+                            if idx == 0:
+                                errors_msg += '<tr><td class="title">Errors:</td>'
+                            else:
+                                errors_msg += '<tr><td></td>'
+                            errors_msg += e + '</tr>'
 
-                status = '<style>td {white-space:nowrap;padding-right:8px}' \
-                         '.title {text-align:right;font-weight:bold}' \
-                         '.ago {font-style:normal}' \
-                         '.value {color:navy}' \
-                         '.error {color:red}' \
-                         '</style>' \
-                         '<table>' \
-                         f'<tr><td class="title">Status:</td><td class="value"><span style="color:{color}">{mn_info.status}</span>' \
-                         f'</td><td>v{str(mn_info.protocol)}</td></tr>' \
-                         f'<tr><td class="title">Last Seen:</td><td class="value">{lastseen_str}</td><td class="ago">{lastseen_ago_str}</td></tr>' \
-                         f'<tr><td class="title">Last Paid:</td><td class="value">{lastpaid_str}</td><td class="ago">{lastpaid_ago_str}</td></tr>' \
-                         f'{bal_entry}' \
-                         f'<tr><td class="title">Active Duration:</td><td class="value" colspan="2">{activeseconds_str}</td></tr>' \
-                         f'<tr><td class="title">Queue/Count:</td><td class="value" colspan="2">{str(mn_info.queue_position)}/{enabled_mns_count}</td></tr>' \
-                         + errors_msg + '</table>'
+                    status = '<style>td {white-space:nowrap;padding-right:8px}' \
+                             '.title {text-align:right;font-weight:bold}' \
+                             '.ago {font-style:normal}' \
+                             '.value {color:navy}' \
+                             '.error {color:red}' \
+                             '</style>' \
+                             '<table>' \
+                             f'<tr><td class="title">Status:</td><td class="value"><span style="color:{color}">{mn_info.status}</span>' \
+                             f'</td><td>v{str(mn_info.protocol)}</td></tr>' \
+                             f'<tr><td class="title">Last Seen:</td><td class="value">{lastseen_str}</td><td class="ago">{lastseen_ago_str}</td></tr>' \
+                             f'<tr><td class="title">Last Paid:</td><td class="value">{lastpaid_str}</td><td class="ago">{lastpaid_ago_str}</td></tr>' \
+                             f'{bal_entry}' \
+                             f'<tr><td class="title">Active Duration:</td><td class="value" colspan="2">{activeseconds_str}</td></tr>' \
+                             f'<tr><td class="title">Queue/Count:</td><td class="value" colspan="2">{str(mn_info.queue_position)}/{enabled_mns_count}</td></tr>' \
+                             + errors_msg + '</table>'
+                else:
+                    status = '<span style="color:red">Masternode not found.</span>'
             else:
                 status = '<span style="color:red">Masternode not found.</span>'
         else:
             status = '<span style="color:red">Problem with connection to dashd.</span>'
-        return status
 
-    def get_deterministic_status(self, masternode: MasternodeConfig) -> Optional[Dict]:
-        try:
-            txes = self.dashd_intf.protx('list', 'registered')
-            for tx in txes:
-                protx = self.dashd_intf.protx('info', tx)
-                state = protx.get('state')
-                if (state and state.get('addr') == masternode.ip + ':' + masternode.port) or \
-                        (protx.get('collateralHash') == masternode.collateralTx and
-                         str(protx.get('collateralIndex')) == str(masternode.collateralTxIndex) ):
-                    return protx
-        except Exception as e:
-            pass
-        return None
+        if not self.finishing:
+            if masternode != self.curMasternode:
+                status = ''
+
+            self.call_in_main_thread(self.lblMnStatus.setText, status)
 
     @pyqtSlot(bool)
     def on_btnRefreshMnStatus_clicked(self):
         def enable_buttons():
             self.btnRefreshMnStatus.setEnabled(True)
             self.btnBroadcastMn.setEnabled(True)
+            self.btnMigrateToDMN.setEnabled(True)
 
         self.lblMnStatus.setText('<b>Retrieving masternode information, please wait...<b>')
         self.btnRefreshMnStatus.setEnabled(False)
         self.btnBroadcastMn.setEnabled(False)
+        self.btnMigrateToDMN.setEnabled(False)
 
-        self.checkDashdConnection(wait_for_check_finish=True, call_on_check_finished=enable_buttons)
+        self.checkDashdConnection(wait_for_check_finish=True)
         if self.dashd_connection_ok:
             try:
-                status = self.get_masternode_status_description()
-                self.lblMnStatus.setText(status)
+                self.run_thread(self, self.get_masternode_status_description_thread, (self.curMasternode,),
+                                on_thread_finish=enable_buttons)
             except:
                 self.lblMnStatus.setText('')
                 raise
         else:
+            enable_buttons()
             self.errorMsg('Dash daemon not connected')
 
     @pyqtSlot(bool)
