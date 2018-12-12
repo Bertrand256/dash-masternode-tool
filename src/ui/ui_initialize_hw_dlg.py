@@ -481,7 +481,7 @@ class Ui_HwInitializeDlg(object):
         self.tabFirmwareWebSources.setHorizontalHeaderItem(4, item)
         item = QtWidgets.QTableWidgetItem()
         self.tabFirmwareWebSources.setHorizontalHeaderItem(5, item)
-        self.tabFirmwareWebSources.horizontalHeader().setVisible(True)
+        self.tabFirmwareWebSources.horizontalHeader().setVisible(False)
         self.tabFirmwareWebSources.verticalHeader().setVisible(False)
         self.verticalLayout_16.addWidget(self.tabFirmwareWebSources)
         self.edtFirmwareNotes = QtWidgets.QTextEdit(self.pgStepHwFirmwareList)
@@ -541,7 +541,7 @@ class Ui_HwInitializeDlg(object):
         self.verticalLayout.addWidget(self.widget)
 
         self.retranslateUi(HwInitializeDlg)
-        self.tabSteps.setCurrentIndex(8)
+        self.tabSteps.setCurrentIndex(2)
         QtCore.QMetaObject.connectSlotsByName(HwInitializeDlg)
 
     def retranslateUi(self, HwInitializeDlg):

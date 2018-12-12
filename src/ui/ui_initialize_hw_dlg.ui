@@ -32,7 +32,7 @@
    <item>
     <widget class="QStackedWidget" name="tabSteps">
      <property name="currentIndex">
-      <number>8</number>
+      <number>2</number>
      </property>
      <widget class="QWidget" name="pgStepDeviceType">
       <layout class="QVBoxLayout" name="verticalLayout_12">
@@ -1136,7 +1136,7 @@ For an official firmware, you can uncheck this option.</string>
           <enum>QAbstractItemView::SelectRows</enum>
          </property>
          <attribute name="horizontalHeaderVisible">
-          <bool>true</bool>
+          <bool>false</bool>
          </attribute>
          <attribute name="verticalHeaderVisible">
           <bool>false</bool>

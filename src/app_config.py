@@ -12,6 +12,7 @@ import os
 import re
 import copy
 import shutil
+import sys
 import threading
 import time
 from io import StringIO, BytesIO
@@ -56,7 +57,7 @@ class AppConfig(object):
     def __init__(self):
         self.initialized = False
         self.__deterministic_mns_enabled = None
-        self.app_path = ''  # will be passed in the init method
+        self.app_dir = ''  # will be passed in the init method
         self.app_version = ''
         QLocale.setDefault(app_utils.get_default_locale())
         self.date_format = app_utils.get_default_locale().dateFormat(QLocale.ShortFormat)
@@ -124,14 +125,14 @@ class AppConfig(object):
         self.fernet = None
         self.log_handler = None
 
-    def init(self, app_path):
+    def init(self, app_dir):
         """ Initialize configuration after openning the application. """
-        self.app_path = app_path
-        app_defs.APP_PATH = app_path
+        self.app_dir = app_dir
+        app_defs.APP_PATH = app_dir
         app_defs.APP_IMAGE_DIR = self.get_app_img_dir()
 
         try:
-            with open(os.path.join(app_path, 'version.txt')) as fptr:
+            with open(os.path.join(app_dir, 'version.txt')) as fptr:
                 lines = fptr.read().splitlines()
                 self.app_version = app_utils.extract_app_version(lines)
         except:
@@ -216,6 +217,7 @@ class AppConfig(object):
         if not self.app_last_version or \
            app_utils.version_str_to_number(self.app_last_version) < app_utils.version_str_to_number(self.app_version):
             app_cache.save_data()
+
         self.initialized = True
 
     def close(self):
@@ -1046,7 +1048,7 @@ class AppConfig(object):
             return None
 
     def get_app_img_dir(self):
-        return os.path.join(self.app_path, '', 'img')
+        return os.path.join(self.app_dir, '', 'img')
 
     @property
     def deterministic_mns_enabled(self):

@@ -792,6 +792,8 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                                                       HWType.get_desc(self.hw_type))
 
         elif self.current_step == STEP_SELECT_ACTION:
+            self.rbActRecoverMnemonicWords.setVisible(self.hw_type != HWType.trezor)
+            self.rbActRecoverHexEntropy.setVisible(self.hw_type != HWType.trezor)
             if self.hw_type == HWType.ledger_nano_s:
                 # turn off options not applicable for ledger walltes
                 self.rbActRecoverWordsSafe.setDisabled(True)

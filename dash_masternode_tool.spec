@@ -1,4 +1,5 @@
 # -*- mode: python -*-
+import glob
 import sys
 import os
 import os.path
@@ -11,6 +12,7 @@ no_bits = platform.architecture()[0].replace('bit','')
 version_str = ''
 base_dir = os.path.dirname(os.path.realpath('__file__'))
 
+
 # look for version string
 with open(os.path.join(base_dir, 'version.txt')) as fptr:
     for line in fptr:
@@ -19,47 +21,45 @@ with open(os.path.join(base_dir, 'version.txt')) as fptr:
             version_str = parts[1].strip("'")
             break
 
-add_files = [
+binary_files = []
+data_files = [
  ('version.txt', '.')
 ]
+
+
+def add_data_file(file: str, dest_dir: str):
+    global data_files
+    data_files.append((file, dest_dir))
+    print(f'Adding data file {file} to dest dir {dest_dir}')
+
+
+def add_binary_file(file: str, dest_dir: str):
+    global bianry_files
+    binary_files.append((file, dest_dir))
+    print(f'Adding binary file {file} to dest dir {dest_dir}')
+
 
 for f in os.listdir(os.path.join(base_dir, 'img')):
     f_full = os.path.join(base_dir, 'img', f)
     if os.path.isfile(f_full):
-        add_files.append(('img/' + f, '/img'))
-        print('adding ' + str(('img/' + f, '/img')))
-    else:
-        print('Name is not a file, skipping: ' + f)
+        add_data_file('img/' + f, '/img')
+
 
 lib_path = next(p for p in sys.path if 'site-packages' in p)
-#if os_type == 'win32':
-#
-#    qt5_path = os.path.join(lib_path, 'PyQt5\\Qt\\bin')
-#    sys.path.append(qt5_path)
-#
-#    # add file vcruntime140.dll manually, due to not including by pyinstaller
-#    found = False
-#    for p in os.environ["PATH"].split(os.pathsep):
-#        file_name = os.path.join(p, "vcruntime140.dll")
-#        if os.path.exists(file_name):
-#            found = True
-#            add_files.append((file_name, ''))
-#            print('Adding file ' + file_name)
-#            break
-#    if not found:
-#        raise Exception('File vcruntime140.dll not found in the system path.')
 
-add_files.append( (os.path.join(lib_path, 'bitcoin/english.txt'),'/bitcoin') )
-add_files.append( (os.path.join(lib_path, 'mnemonic/wordlist/english.txt'),'/mnemonic/wordlist') )
-add_files.append( (os.path.join(lib_path, 'trezorlib/coins.json'),'/trezorlib') )
-add_files.append( (os.path.join(lib_path, 'trezorlib/transport'),'trezorlib/transport') )
-add_files.append( (os.path.join(lib_path, 'trezorlib/protocol_v1.py'),'trezorlib') )
-add_files.append( (os.path.join(lib_path, 'trezorlib/protocol_v2.py'),'trezorlib') )
+add_data_file(os.path.join(lib_path, 'bitcoin/english.txt'), '/bitcoin')
+add_data_file(os.path.join(lib_path, 'mnemonic/wordlist/english.txt'), '/mnemonic/wordlist')
+add_data_file(os.path.join(lib_path, 'trezorlib/coins.json'), '/trezorlib')
+add_data_file(os.path.join(lib_path, 'trezorlib/transport'), 'trezorlib/transport')
+add_data_file(os.path.join(lib_path, 'trezorlib/protocol_v1.py'), 'trezorlib')
+add_data_file(os.path.join(lib_path, 'trezorlib/protocol_v2.py'), 'trezorlib')
+if os_type == 'darwin':
+    add_binary_file('/usr/local/lib/libusb-1.0.dylib', '.')
 
 a = Analysis(['src/dash_masternode_tool.py'],
              pathex=[base_dir],
-             binaries=[],
-             datas=add_files,
+             binaries=binary_files,
+             datas=data_files,
              hiddenimports=['usb1'],
              hookspath=[],
              runtime_hooks=[],

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+import subprocess
 import simplejson
 import base64
 import binascii
@@ -59,7 +60,7 @@ from ui import ui_main_dlg
 class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     update_status_signal = QtCore.pyqtSignal(str, str)  # signal for updating status text from inside thread
 
-    def __init__(self, app_path):
+    def __init__(self, app_dir):
         QMainWindow.__init__(self)
         WndUtils.__init__(self, None)
         ui_main_dlg.Ui_MainWindow.__init__(self)
@@ -67,7 +68,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.hw_client = None
         self.finishing = False
         self.config = AppConfig()
-        self.config.init(app_path)
+        self.config.init(app_dir)
         WndUtils.set_app_config(self, self.config)
 
         self.dashd_intf = DashdInterface(window=None,
@@ -109,6 +110,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.inside_setup_ui = True
         self.dashd_intf.window = self
         self.closeEvent = self.closeEvent
+        self.show_hide_trezor_emulator()
         self.lblStatus1 = QtWidgets.QLabel(self)
         self.lblStatus1.setAutoFillBackground(False)
         self.lblStatus1.setOpenExternalLinks(True)
@@ -131,6 +133,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.setIcon(self.action_open_proposals_window, "thumbs-up-down.png")
         self.setIcon(self.action_test_hw_connection, "hw-test.png")
         self.setIcon(self.action_disconnect_hw, "hw-disconnect.png")
+        self.setIcon(self.action_run_trezor_emulator, "hw-emulator.png")
         self.setIcon(self.action_transfer_funds_for_any_address, "wallet.png")
         self.setIcon(self.action_sign_message_for_cur_mn, "sign@32px.png")
         self.setIcon(self.action_hw_configuration, "hw.png")
@@ -142,6 +145,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.action_open_proposals_window.setIconVisibleInMenu(False)
         self.action_test_hw_connection.setIconVisibleInMenu(False)
         self.action_disconnect_hw.setIconVisibleInMenu(False)
+        self.action_run_trezor_emulator.setIconVisibleInMenu(False)
         self.action_transfer_funds_for_any_address.setIconVisibleInMenu(False)
         self.action_sign_message_for_cur_mn.setIconVisibleInMenu(False)
         self.action_hw_configuration.setIconVisibleInMenu(False)
@@ -292,6 +296,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                         self.on_config_file_mru_action_triggered,
                                         self.config.app_config_file_name,
                                         self.on_config_file_mru_clear_triggered)
+
+    def show_hide_trezor_emulator(self):
+        enabled = False
+        self.action_run_trezor_emulator.setVisible(enabled)
 
     def on_config_file_mru_action_triggered(self, file_name: str) -> None:
         """ Triggered by clicking one of the subitems of the 'Open Recent' menu item. Each subitem is
@@ -1908,3 +1916,4 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             reg_dlg.exec_()
         else:
             WndUtils.errorMsg('No masternode selected')
+
