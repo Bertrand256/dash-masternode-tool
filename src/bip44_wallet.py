@@ -94,19 +94,23 @@ class Bip44Wallet(QObject):
         self.on_fetch_account_txs_feedback: Callable[[int], None] = None  # args: number of txses fetched each call
 
     def signal_account_added(self, account: Bip44AccountType):
-        if self.on_account_added_callback and self.__tree_id == account.tree_id and self.__tree_id is not None:
+        if self.on_account_added_callback and account and self.__tree_id == account.tree_id and \
+                self.__tree_id is not None:
             self.on_account_added_callback(account)
 
     def signal_account_data_changed(self, account: Bip44AccountType):
-        if self.on_account_data_changed_callback and self.__tree_id == account.tree_id and self.__tree_id is not None:
+        if self.on_account_data_changed_callback and account and self.__tree_id == account.tree_id and \
+                self.__tree_id is not None:
             self.on_account_data_changed_callback(account)
 
     def signal_account_address_added(self, account: Bip44AccountType, address: Bip44AddressType):
-        if self.on_account_address_added_callback and self.__tree_id == account.tree_id and self.__tree_id is not None:
+        if self.on_account_address_added_callback and account and self.__tree_id == account.tree_id and \
+                self.__tree_id is not None:
             self.on_account_address_added_callback(account, address)
 
     def signal_address_data_changed(self, account: Bip44AccountType, address: Bip44AddressType):
-        if self.on_address_data_changed_callback and self.__tree_id == account.tree_id and self.__tree_id is not None:
+        if self.on_address_data_changed_callback and account and self.__tree_id == account.tree_id and \
+                self.__tree_id is not None:
             self.on_address_data_changed_callback(account, address)
 
     def signal_address_loaded(self, address: Bip44AddressType):
@@ -434,18 +438,19 @@ class Bip44Wallet(QObject):
         account = self.account_by_id.get(id)
 
         if not account:
-            account = Bip44AccountType(self.get_tree_id(), id, xpub='', address_index=None, bip32_path=None)
-            account.read_from_db(db_cursor)
-            self.account_by_id[id] = account
-            if account.bip32_path:
-                self.account_by_bip32_path[account.bip32_path] = account
+            if self.__tree_ident:
+                account = Bip44AccountType(self.get_tree_id(), id, xpub='', address_index=None, bip32_path=None)
+                account.read_from_db(db_cursor)
+                self.account_by_id[id] = account
+                if account.bip32_path:
+                    self.account_by_bip32_path[account.bip32_path] = account
 
-            if account.bip32_path:
-                account.xpub = hw_intf.get_xpub(self.hw_session, account.bip32_path)
-                account.evaluate_address_if_null(db_cursor, self.dash_network)
+                if account.bip32_path:
+                    account.xpub = hw_intf.get_xpub(self.hw_session, account.bip32_path)
+                    account.evaluate_address_if_null(db_cursor, self.dash_network)
 
-            self._read_account_addresses(account, db_cursor)
-            self.signal_account_added(account)
+                self._read_account_addresses(account, db_cursor)
+                self.signal_account_added(account)
         else:
             if force_reload:
                 account.read_from_db(db_cursor)
@@ -1136,7 +1141,8 @@ class Bip44Wallet(QObject):
                     (addr_id,))
 
                 account = self._get_account_by_id(addr_id, db_cursor, force_reload=True)
-                self.signal_account_data_changed(account)
+                if account:
+                    self.signal_account_data_changed(account)
 
             if account is not None and account.id not in account_ids:
                 # update balance/received of the account if it was inconsistent with its the balance of its child

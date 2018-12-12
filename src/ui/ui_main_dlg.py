@@ -235,6 +235,8 @@ class Ui_MainWindow(object):
         self.action_gen_mn_priv_key_uncompressed.setObjectName("action_gen_mn_priv_key_uncompressed")
         self.action_command_console = QtWidgets.QAction(MainWindow)
         self.action_command_console.setObjectName("action_command_console")
+        self.action_run_trezor_emulator = QtWidgets.QAction(MainWindow)
+        self.action_run_trezor_emulator.setObjectName("action_run_trezor_emulator")
         self.menuTools.addAction(self.action_transfer_funds_for_any_address)
         self.menuTools.addSeparator()
         self.menuTools.addAction(self.action_sign_message_for_cur_mn)
@@ -261,6 +263,8 @@ class Ui_MainWindow(object):
         self.toolBar.addAction(self.action_save_config_file)
         self.toolBar.addSeparator()
         self.toolBar.addAction(self.action_check_network_connection)
+        self.toolBar.addSeparator()
+        self.toolBar.addAction(self.action_run_trezor_emulator)
         self.toolBar.addAction(self.action_test_hw_connection)
         self.toolBar.addAction(self.action_disconnect_hw)
         self.toolBar.addSeparator()
@@ -332,6 +336,8 @@ class Ui_MainWindow(object):
         self.action_gen_mn_priv_key_uncompressed.setShortcut(_translate("MainWindow", "Ctrl+Alt+U"))
         self.action_command_console.setText(_translate("MainWindow", "Command Console"))
         self.action_command_console.setShortcut(_translate("MainWindow", "Meta+Alt+C"))
+        self.action_run_trezor_emulator.setText(_translate("MainWindow", "Run Trezor T emulator"))
+        self.action_run_trezor_emulator.setToolTip(_translate("MainWindow", "Run Trezor T emulator"))
 
 
 if __name__ == "__main__":

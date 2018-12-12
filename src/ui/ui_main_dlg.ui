@@ -487,6 +487,8 @@
    <addaction name="action_save_config_file"/>
    <addaction name="separator"/>
    <addaction name="action_check_network_connection"/>
+   <addaction name="separator"/>
+   <addaction name="action_run_trezor_emulator"/>
    <addaction name="action_test_hw_connection"/>
    <addaction name="action_disconnect_hw"/>
    <addaction name="separator"/>
@@ -642,6 +644,14 @@
    </property>
    <property name="shortcut">
     <string>Meta+Alt+C</string>
+   </property>
+  </action>
+  <action name="action_run_trezor_emulator">
+   <property name="text">
+    <string>Run Trezor T emulator</string>
+   </property>
+   <property name="toolTip">
+    <string>Run Trezor T emulator</string>
    </property>
   </action>
  </widget>

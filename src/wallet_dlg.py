@@ -821,7 +821,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.data_thread_event.set()
 
     def update_hw_info(self):
-        img_path = os.path.join(self.app_config.app_path if self.app_config.app_path else '', 'img')
+        img_path = os.path.join(self.app_config.app_dir if self.app_config.app_dir else '', 'img')
         if sys.platform == 'win32':
             h = self.pnl_input.height()
             img_size_str = f'height="{h}" width="{h}"'

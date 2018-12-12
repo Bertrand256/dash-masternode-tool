@@ -24,19 +24,19 @@ if __name__ == '__main__':
     sys.excepthook = my_excepthook
 
     if getattr(sys, 'frozen', False):
-        app_path = base_path = sys._MEIPASS
+        app_dir = base_path = sys._MEIPASS
     else:
-        app_path = os.path.dirname(__file__)
-        path, tail = os.path.split(app_path)
+        app_dir = os.path.dirname(__file__)
+        path, tail = os.path.split(app_dir)
         if tail == 'src':
-            app_path = path
+            app_dir = path
 
     app = qwi.QApplication(sys.argv)
-    ui = main_dlg.MainWindow(app_path)
+    ui = main_dlg.MainWindow(app_dir)
     ui.show()
 
     try:
-        ico_path = os.path.join(app_path, 'img', 'dmt.ico')
+        ico_path = os.path.join(app_dir, 'img', 'dmt.ico')
         if os.path.exists(ico_path):
             app_icon = QIcon(ico_path)
             app.setWindowIcon(app_icon)
