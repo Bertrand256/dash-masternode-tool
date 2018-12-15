@@ -553,7 +553,6 @@ class Bip44Wallet(QObject):
                     break
 
         if len(addresses):
-            feedback()
             self._process_addresses_txs(addresses, cur_block_height, check_break_process_fun)
 
     def fetch_addresses_txs(self, addr_info_list: List[Bip44AddressType], check_break_process_fun: Callable):
@@ -605,7 +604,13 @@ class Bip44Wallet(QObject):
                 txids = self.dashd_intf.getaddressdeltas({'addresses': addresses,
                                                          'start': last_block_height + 1,
                                                          'end': max_block_height})
+            else:
+                txids = []
 
+            mempool_entries = self.dashd_intf.getaddressmempool(addresses)
+            txids.extend(mempool_entries)
+
+            if txids:
                 last_time_checked = time.time()
                 last_nr = 0
                 for nr, tx_entry in enumerate(txids):

@@ -1095,6 +1095,13 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
+    def getaddressmempool(self, addresses):
+        if self.open():
+            return self.proxy.getaddressmempool({'addresses': addresses})
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
     def getrawtransaction(self, txid, verbose, skip_cache=False):
         if self.open():
             if TX_SEND_SIMULATION_MODE:
