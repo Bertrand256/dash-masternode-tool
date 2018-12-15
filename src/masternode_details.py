@@ -289,23 +289,32 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     @pyqtSlot(str)
     def on_edtCollateralAddress_textEdited(self, text):
         if self.masternode and not self.updating_ui:
+            update_ui = ((not text) != (not self.masternode.collateralAddress))
             self.set_modified()
             self.masternode.collateralAddress = text.strip()
             self.name_modified.emit(text)
+            if update_ui:
+                self.update_ui()
 
     @pyqtSlot(str)
     def on_edtCollateralPath_textEdited(self, text):
         if self.masternode and not self.updating_ui:
+            update_ui = ((not text) != (not self.masternode.collateralBip32Path))
             self.set_modified()
             self.masternode.collateralBip32Path = text.strip()
             self.name_modified.emit(text)
+            if update_ui:
+                self.update_ui()
 
     @pyqtSlot(str)
     def on_edtCollateralTxHash_textEdited(self, text):
         if self.masternode and not self.updating_ui:
+            update_ui = ((not text) != (not self.masternode.collateralTx))
             self.set_modified()
             self.masternode.collateralTx = text.strip()
             self.name_modified.emit(text)
+            if update_ui:
+                self.update_ui()
 
     @pyqtSlot(str)
     def on_edtCollateralTxIndex_textEdited(self, text):
