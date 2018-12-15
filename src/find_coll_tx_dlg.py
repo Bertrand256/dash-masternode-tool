@@ -227,11 +227,10 @@ class ListCollateralTxsDlg(QDialog, ui_find_coll_tx_dlg.Ui_ListCollateralTxsDlg,
             self.lblMessage.setVisible(True)
 
     def get_selected_utxo(self):
-        idx = self.collsTableView.currentIndex()
-        if idx.isValid():
-            row = idx.row()
-            if row >= 0 and row < len(self.utxos):
-                return self.utxos[row]
+        sel_rows = self.collaterals_table_model.selected_rows()
+        if sel_rows:
+            rows = [x for x in sel_rows]
+            return self.utxos[rows[0]]
         return None
 
     def check_accept_selections(self) -> bool:
