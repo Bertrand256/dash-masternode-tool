@@ -40,13 +40,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.main_dlg.setIcon(self.btnShowVotingPrivateKey, 'eye@16px.png')
         self.update_ui()
 
-    # def showEvent(self, QResizeEvent):
-    #     h = self.edtMasternodePrivateKey.height()
-    #     self.btnShowMnPrivateKey.setFixedSize(h, h)
-    #     self.btnShowOwnerPrivateKey.setFixedSize(h, h)
-    #     self.btnShowOperatorPrivateKey.setFixedSize(h, h)
-    #     self.btnShowVotingPrivateKey.setFixedSize(h, h)
-    #
     def update_ui(self):
         if self.masternode:
             is_deterministic = self.masternode.is_deterministic
@@ -97,10 +90,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.rbRoleOperator.setVisible(self.masternode is not None and is_deterministic)
         self.rbRoleVoting.setVisible(self.masternode is not None and is_deterministic)
 
-        self.lblMasternodePrivateKey.setVisible(self.masternode is not None and not is_deterministic)
-        self.edtMasternodePrivateKey.setVisible(self.masternode is not None and not is_deterministic)
-        self.btnGenerateMnPrivateKey.setVisible(self.masternode is not None and not is_deterministic)
-        self.btnShowMnPrivateKey.setVisible(self.masternode is not None and not is_deterministic)
+        self.lblMasternodePrivateKey.setVisible(self.masternode is not None)
+        self.edtMasternodePrivateKey.setVisible(self.masternode is not None)
+        self.btnGenerateMnPrivateKey.setVisible(self.masternode is not None)
+        self.btnShowMnPrivateKey.setVisible(self.masternode is not None)
 
         # self.btnFindCollateral.setVisible(self.masternode is not None)
         self.lblIP.setVisible(self.masternode is not None)

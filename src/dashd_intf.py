@@ -378,7 +378,8 @@ def control_rpc_call(func):
             log.debug('Trying to acquire http_lock')
             self.http_lock.acquire()
             log.debug('Acquired http_lock')
-            for try_nr in range(1, 2):
+            last_conn_reset_time = None
+            for try_nr in range(1, 5):
                 try:
                     try:
                         log.debug('Beginning call of "' + str(func) + '"')
@@ -392,9 +393,12 @@ def control_rpc_call(func):
 
                     except (ConnectionResetError, ConnectionAbortedError, httplib.CannotSendRequest,
                             BrokenPipeError) as e:
-                        log.error('Error while calling of "' + str(func) + ' (1)". Details: ' + str(e))
-                        last_exception = e
-                        self.reset_connection()
+                        log.warning('Error while calling of "' + str(func) + ' (1)". Details: ' + str(e))
+                        if last_conn_reset_time:
+                            raise DashdConnectionError(e)  # switch to another config if possible
+                        else:
+                            last_exception = e
+                            self.reset_connection()  # rettry with the same connection
 
                     except JSONRPCException as e:
                         log.error('Error while calling of "' + str(func) + ' (2)". Details: ' + str(e))
@@ -409,14 +413,13 @@ def control_rpc_call(func):
                             #  -32603: failure to verify vote
                             raise
                         else:
-                            last_exception = e
-                            self.http_conn.close()
+                            raise
 
                     except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout,
                             NoValidConnectionsError) as e:
                         # exceptions raised most likely by not functioning dashd node; try to switch to another node
                         # if there is any in the config
-                        log.error('Error while calling of "' + str(func) + ' (3)". Details: ' + str(e))
+                        log.warning('Error while calling of "' + str(func) + ' (3)". Details: ' + str(e))
                         raise DashdConnectionError(e)
 
                 except DashdConnectionError as e:
