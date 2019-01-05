@@ -245,8 +245,8 @@ def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, seco
 
 
 @process_ledger_exceptions
-def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoType],
-                        tx_outputs: List[wallet_common.TxOutputType], tx_fee, rawtransactions):
+def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoType],
+            tx_outputs: List[wallet_common.TxOutputType], tx_fee, rawtransactions):
     client = hw_session.hw_client
 
     # Each of the UTXOs will become an input in the new transaction. For each of those inputs, create

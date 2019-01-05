@@ -607,8 +607,9 @@ class Bip44Wallet(QObject):
             else:
                 txids = []
 
-            mempool_entries = self.dashd_intf.getaddressmempool(addresses)
-            txids.extend(mempool_entries)
+            # todo: test this
+            # mempool_entries = self.dashd_intf.getaddressmempool(addresses)
+            # txids.extend(mempool_entries)
 
             if txids:
                 last_time_checked = time.time()

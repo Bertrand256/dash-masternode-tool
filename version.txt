@@ -1,4 +1,4 @@
-version_str = '0.9.21-beta5'
-exe_mac = 'https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.21-beta4/DashMasternodeTool_0.9.21-beta5.mac.zip'
-exe_win = 'https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.21-beta4/DashMasternodeTool_0.9.21-beta5.win64.zip'
-exe_linux = 'https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.21-beta4/DashMasternodeTool_0.9.21-beta5.linux.tar.gz'
+version_str = '0.9.21-beta7'
+exe_mac = 'https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.21-beta7/DashMasternodeTool_0.9.21-beta7.mac.zip'
+exe_win = 'https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.21-beta7/DashMasternodeTool_0.9.21-beta7.win64.zip'
+exe_linux = 'https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.21-beta7/DashMasternodeTool_0.9.21-beta7.linux.tar.gz'

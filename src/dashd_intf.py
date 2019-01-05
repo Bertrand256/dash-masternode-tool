@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+import decimal
+import json
+
 import bitcoin
 import os
 import re
@@ -12,9 +15,8 @@ import threading
 import time
 import datetime
 import logging
-import simplejson
 from PyQt5.QtCore import QThread
-from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
+from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException, EncodeDecimal
 from paramiko import AuthenticationException, PasswordRequiredException, SSHException
 from paramiko.ssh_exception import NoValidConnectionsError
 from typing import List, Dict, Union
@@ -478,7 +480,8 @@ def json_cache_wrapper(func, intf, cache_file_ident, skip_cache=False):
         cache_file = intf.config.tx_cache_dir + fname + cache_file_ident + '.json'
         if not skip_cache:
             try:  # looking into cache first
-                j = simplejson.load(open(cache_file))
+                with open(cache_file) as fp:
+                    j = json.load(fp, parse_float=decimal.Decimal)
                 log.debug('Loaded data from existing cache file: ' + cache_file)
                 return j
             except:
@@ -488,7 +491,8 @@ def json_cache_wrapper(func, intf, cache_file_ident, skip_cache=False):
         j = func(*args, **kwargs)
 
         try:
-            simplejson.dump(j, open(cache_file, 'w'))
+            with open(cache_file, 'w') as fp:
+                json.dump(j, fp, default=EncodeDecimal)
         except Exception as e:
             log.exception('Cannot save data to a cache file')
             pass

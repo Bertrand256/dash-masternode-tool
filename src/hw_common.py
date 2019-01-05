@@ -151,7 +151,7 @@ def ask_for_pin_callback(msg, hide_numbers=True):
         return dlg()
 
 
-def ask_for_pass_callback(msg):
+def ask_for_pass_callback():
     def dlg():
         ui = hw_pass_dlg.HardwareWalletPassDlg()
         if ui.exec_():

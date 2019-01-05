@@ -740,7 +740,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 path = dash_utils.get_default_bip32_base_path(self.config.dash_network)
                                 path += "/0'/0/0"
                                 path_n = dash_utils.bip32_path_string_to_n(path)
-                                addr = self.hw_client.get_address('Dash Testnet', path_n, False)
+                                addr = hw_intf.get_address(self.hw_session, path_n, False)
                                 if dash_utils.validate_address(addr, self.config.dash_network):
                                     found_testnet_support = True
                             except Exception as e:
@@ -811,11 +811,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.hw_client:
             try:
                 if self.config.hw_type in (HWType.trezor, HWType.keepkey):
-                    features = self.hw_client.features
-                    # hw_intf.ping(self.hw_session, 'Hello, press the button', button_protection=False,
-                    #       pin_protection=features.pin_protection,
-                    #       passphrase_protection=features.passphrase_protection)
-
                     self.infoMsg('Connection to %s device (%s) successful.' %
                                  (self.getHwName(), hw_intf.get_hw_label(self.hw_client)))
                 elif self.config.hw_type == HWType.ledger_nano_s:

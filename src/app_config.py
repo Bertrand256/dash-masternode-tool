@@ -91,6 +91,8 @@ class AppConfig(object):
         self.block_explorer_addr_mainnet = 'https://insight.dash.org/insight/address/%ADDRESS%'
         self.block_explorer_tx_testnet = 'https://testnet-insight.dashevo.org/insight/tx/%TXID%'
         self.block_explorer_addr_testnet = 'https://testnet-insight.dashevo.org/insight/address/%ADDRESS%'
+        self.tx_api_url_mainnet = 'https://insight.dash.org/insight'
+        self.tx_api_url_testnet = 'https://testnet-insight.dashevo.org/insight'
         self.dash_central_proposal_api = 'https://www.dashcentral.org/api/v1/proposal?hash=%HASH%'
 
         self.check_for_updates = True
@@ -1001,6 +1003,12 @@ class AppConfig(object):
             return self.block_explorer_addr_mainnet
         else:
             return self.block_explorer_addr_testnet
+
+    def get_tx_api_url(self):
+        if self.dash_network == 'MAINNET':
+            return self.tx_api_url_mainnet
+        else:
+            return self.tx_api_url_testnet
 
     def get_hw_type(self):
         return self.hw_type

@@ -36,7 +36,7 @@ from wallet_common import UtxoType, Bip44AccountType, Bip44AddressType, TxOutput
 from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
 from hw_common import HardwareWalletCancelException, HwSessionInfo
-from hw_intf import prepare_transfer_tx, get_address
+from hw_intf import sign_tx, get_address
 from ext_item_model import ExtSortFilterTableModel, TableModelColumn
 from thread_fun_dlg import WorkerThread, CtrlObject
 from wallet_data_models import UtxoTableModel, MnAddressTableModel, AccountListModel, MnAddressItem, \
@@ -597,11 +597,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     use_is = self.wdg_dest_adresses.get_use_instant_send()
 
                     try:
-                        serialized_tx, amount_to_send = prepare_transfer_tx(
+                        serialized_tx, amount_to_send = sign_tx(
                             self.main_ui.hw_session, tx_inputs, tx_outputs, fee, self.rawtransactions)
                     except HardwareWalletCancelException:
                         # user cancelled the operations
-                        hw_intf.cancel_hw_operation(self.main_ui.hw_session.hw_client)
                         return
                     except Exception:
                         log.exception('Exception when preparing the transaction.')

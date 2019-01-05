@@ -221,8 +221,8 @@ class MyTxApiInsight(TxApiInsight):
             raise
 
 
-def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoType],
-                        tx_outputs: List[wallet_common.TxOutputType], tx_fee):
+def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoType],
+            tx_outputs: List[wallet_common.TxOutputType], tx_fee):
     """
     Creates a signed transaction.
     :param hw_session:
