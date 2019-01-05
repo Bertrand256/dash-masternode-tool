@@ -2,7 +2,7 @@
 In this scenario, you will use your own Dash daemon configured to serve JSON-RPC requests on your local network or any network you can access directly. The most convenient way to achieve this is to run a daemon on the same computer as the DMT application itself.
 
 ## Install the Dash Core wallet
-We will use the official Dash Core client as the Dash daemon for this configuration. Install it now if not already installed. Binary installers for macOS, Linux and Windows can be downloaded from the [official site](https://www.dash.org/wallets), while documentation on the installation process is available on the [Dash Wiki](https://dashpay.atlassian.net/wiki/spaces/DOC/pages/1867921).
+We will use the official Dash Core client as the Dash daemon for this configuration. Install it now if not already installed. Binary installers for macOS, Linux and Windows can be downloaded from the [official site](https://www.dash.org/wallets), while documentation on the installation process is available on the [Dash Wiki](https://docs.dash.org/en/stable/wallets/dashcore/installation.html).
 
 ## Enable JSON-RPC and "indexing" in Dash Core
 ###  Set the required parameters in the `dash.conf` file
