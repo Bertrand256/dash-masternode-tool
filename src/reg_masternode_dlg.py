@@ -13,11 +13,12 @@ import ipaddress
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import pyqtSlot, Qt, QTimerEvent, QTimer
 from PyQt5.QtWidgets import QDialog, QApplication
-from bitcoinrpc.authproxy import EncodeDecimal
+from bitcoinrpc.authproxy import EncodeDecimal, JSONRPCException
 
 import app_cache
 import hw_intf
 from app_config import MasternodeConfig, AppConfig
+from app_defs import FEE_DUFF_PER_BYTE
 from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException, find_wallet_address
 from dash_utils import generate_bls_privkey, generate_wif_privkey, validate_address, wif_privkey_to_address, \
     validate_wif_privkey, bls_privkey_to_pubkey
@@ -839,18 +840,33 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         try:
             # preparing protx message
             try:
-                # find a founding address
+                funding_address = ''
                 try:
-                    balances = self.dashd_intf.listaddressbalances()
-                except Exception as e:
-                    raise
+                    # find an address to be used as the source of the transaction fees
+                    min_fee = round(1024 * FEE_DUFF_PER_BYTE / 1e8, 8)
+                    balances = self.dashd_intf.listaddressbalances(min_fee)
+                    bal_list = []
+                    for addr in balances:
+                        bal_list.append({'address': addr, 'amount': balances[addr]})
+                    bal_list.sort(key = lambda x: x['amount'])
+                    if not bal_list:
+                        raise Exception("No address can be found in the node's wallet with sufficient funds to "
+                                        "cover the transaction fees.")
+                    funding_address = bal_list[0]['address']
+                    self.dashd_intf.disable_conf_switching()
+                except JSONRPCException as e:
+                    log.info("Couldn't list the node address balances. We assume you are using a public RPC node and "
+                             "the funding address for the transaction fees will be estimated during the "
+                             "`register_prepare` call")
 
                 set_text(self.lblProtxTransaction1, '<b>1. Preparing a ProRegTx transaction on a remote node...</b>')
-                call_ret = self.dashd_intf.protx(
-                    'register_prepare', self.dmn_collateral_tx, self.dmn_collateral_tx_index,
+                params = ['register_prepare', self.dmn_collateral_tx, self.dmn_collateral_tx_index,
                     self.dmn_ip + ':' + str(self.dmn_tcp_port) if self.dmn_ip else '0',
                     self.dmn_owner_privkey, self.dmn_operator_pubkey,
-                    self.dmn_voting_address, str(round(self.dmn_operator_reward, 2)), self.dmn_owner_payout_addr )
+                    self.dmn_voting_address, str(round(self.dmn_operator_reward, 2)), self.dmn_owner_payout_addr]
+                if funding_address:
+                    params.append(funding_address)
+                call_ret = self.dashd_intf.protx(*params)
 
                 call_ret_str = json.dumps(call_ret, default=EncodeDecimal)
                 msg_to_sign = call_ret.get('signMessage', '')

@@ -1316,9 +1316,9 @@ class DashdInterface(WndUtils):
         return None
 
     @control_rpc_call
-    def listaddressbalances(self):
+    def listaddressbalances(self, minfee):
         if self.open():
-            return self.proxy.listaddressbalances()
+            return self.proxy.listaddressbalances(minfee)
         else:
             raise Exception('Not connected')
 
