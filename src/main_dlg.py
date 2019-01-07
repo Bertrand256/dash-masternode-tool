@@ -1505,11 +1505,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def get_deterministic_status(self, masternode: MasternodeConfig, check_break_fun: Callable) -> Optional[Dict]:
         try:
-            txes = self.dashd_intf.protx('list', 'registered')
-            for tx in txes:
+            txes = self.dashd_intf.protx('list', 'registered', True)
+            for protx in txes:
                 if check_break_fun and check_break_fun():
                     return None
-                protx = self.dashd_intf.protx('info', tx)
                 state = protx.get('state')
                 if (state and state.get('addr') == masternode.ip + ':' + masternode.port) or \
                         (protx.get('collateralHash') == masternode.collateralTx and

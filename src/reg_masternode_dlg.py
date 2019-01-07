@@ -57,9 +57,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.on_proregtx_success_callback = on_proregtx_success_callback
         self.style = '<style>.info{color:darkblue} .warning{color:red} .error{background-color:red;color:white}</style>'
         self.operator_reward_saved = None
-        self.owner_pkey_old: str = None
-        self.operator_pkey_old: str = None
-        self.voting_pkey_old: str = None
+        self.owner_pkey_old: str = self.masternode.dmn_owner_pubkey_hash
         self.owner_pkey_generated: str = None
         self.operator_pkey_generated: str = None
         self.voting_pkey_generated: str = None
@@ -158,25 +156,83 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
     def generate_keys(self):
         """ Generate new operator and voting keys if were not provided before."""
-        log.debug('Generation owner key')
-        self.owner_pkey_generated =  generate_wif_privkey(self.app_config.dash_network, compressed=True)
-        self.edtOwnerKey.setText(self.owner_pkey_generated)
+        gen_owner = False
+        gen_operator = False
+        gen_voting = False
 
-        log.debug('Generation bls key')
-        self.operator_pkey_generated = generate_bls_privkey()
-        self.edtOperatorKey.setText(self.operator_pkey_generated)
+        if self.masternode.dmn_owner_private_key or self.masternode.dmn_operator_private_key \
+                or self.masternode.dmn_voting_private_key:
+
+            # if any of the owner/operator/voting key used in the configuration is the same as the corresponding
+            # key shown in the blockchain, replace that key by a new one
+            found_protx = False
+            protx_state = {}
+            try:
+                for protx in self.dashd_intf.protx('list', 'registered', True):
+                    protx_state = protx.get('state')
+                    if (protx_state and protx_state.get('addr') == self.masternode.ip + ':' + self.masternode.port) or \
+                            (protx.get('collateralHash') == self.masternode.collateralTx and
+                             str(protx.get('collateralIndex')) == str(self.masternode.collateralTxIndex)):
+                        found_protx = True
+                        break
+            except Exception as e:
+                pass
+
+            if found_protx:
+                if self.masternode.dmn_owner_private_key and \
+                        self.masternode.dmn_owner_pubkey_hash == protx_state.get('keyIDOwner'):
+                    gen_owner = True
+
+                if self.masternode.dmn_operator_private_key and \
+                        self.masternode.dmn_operator_pubkey == protx_state.get('pubKeyOperator'):
+                    gen_operator = True
+
+                if self.masternode.dmn_voting_private_key and \
+                        self.masternode.dmn_voting_pubkey_hash == protx_state.get('keyIDVoting'):
+                    gen_voting = True
+
+        if not self.masternode.dmn_owner_private_key:
+            gen_owner = True
+
+        if not self.masternode.dmn_operator_private_key:
+            gen_operator = True
+
+        if not self.masternode.dmn_voting_private_key:
+            gen_voting = True
+
+        if gen_owner:
+            log.debug('Generation owner key')
+            self.owner_pkey_generated =  generate_wif_privkey(self.app_config.dash_network, compressed=True)
+            self.edtOwnerKey.setText(self.owner_pkey_generated)
+        else:
+            self.edtOwnerKey.setText(self.masternode.dmn_owner_private_key)
+
+        if gen_operator:
+            log.debug('Generation bls key')
+            self.operator_pkey_generated = generate_bls_privkey()
+            self.edtOperatorKey.setText(self.operator_pkey_generated)
+        else:
+            self.edtOperatorKey.setText(self.masternode.dmn_operator_private_key)
 
         if self.deterministic_mns_spork_active:
-            log.debug('Generation voting key')
-            self.voting_pkey_generated = generate_wif_privkey(self.app_config.dash_network, compressed=True)
+            if gen_voting:
+                log.debug('Generation voting key')
+                self.voting_pkey_generated = generate_wif_privkey(self.app_config.dash_network, compressed=True)
+            else:
+                self.edtVotingKey.setText(self.masternode.dmn_voting_private_key)
         else:
             self.voting_pkey_generated = self.edtOwnerKey.text().strip()
-        self.edtVotingKey.setText(self.voting_pkey_generated)
+
+        if self.voting_pkey_generated:
+            self.edtVotingKey.setText(self.voting_pkey_generated)
 
     def determine_spork_15_active(self):
-        value = self.dashd_intf.get_spork_active('SPORK_15_DETERMINISTIC_MNS_ENABLED')
-        if value is not None:
-            self.deterministic_mns_spork_active = value
+        spork_block = self.dashd_intf.get_spork_value('SPORK_15_DETERMINISTIC_MNS_ENABLED')
+        if isinstance(spork_block, int):
+            height = self.dashd_intf.getblockcount()
+            self.deterministic_mns_spork_active = height >= spork_block
+        else:
+            self.deterministic_mns_spork_active = False
 
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
@@ -305,7 +361,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         style = ''
         if self.edtOperatorKey.text().strip():
             if self.show_field_hinds:
-                if not self.operator_pkey_old and self.edtOperatorKey.text().strip() == self.operator_pkey_generated:
+                if self.edtOperatorKey.text().strip() == self.operator_pkey_generated:
                     msg = 'This is a newly generated operator BLS private key. You can generate a new one (by clicking ' \
                           'the button on the right) or you can enter your own one.'
                 style = 'info'
@@ -326,7 +382,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                           ' owner key.'
                     style = 'warning'
                 else:
-                    if not self.voting_pkey_old and self.edtVotingKey.text().strip() == self.voting_pkey_generated:
+                    if self.edtVotingKey.text().strip() == self.voting_pkey_generated:
                         style = 'info'
                         msg = 'This is a newly generated private key for voting. You can generate a new one ' \
                               '(by pressing the button on the right) or you can enter your own one.'
@@ -783,6 +839,12 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         try:
             # preparing protx message
             try:
+                # find a founding address
+                try:
+                    balances = self.dashd_intf.listaddressbalances()
+                except Exception as e:
+                    raise
+
                 set_text(self.lblProtxTransaction1, '<b>1. Preparing a ProRegTx transaction on a remote node...</b>')
                 call_ret = self.dashd_intf.protx(
                     'register_prepare', self.dmn_collateral_tx, self.dmn_collateral_tx_index,

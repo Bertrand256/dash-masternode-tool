@@ -1274,9 +1274,6 @@ class DashdInterface(WndUtils):
     @control_rpc_call
     def protx(self, *args):
         if self.open():
-            if len(args) >= 2 and args[0] == 'info':
-                return json_cache_wrapper(self.proxy.protx, self, 'protx-info-' + args[1],
-                                      skip_cache=False)(*args)
             return self.proxy.protx(*args)
         else:
             raise Exception('Not connected')
@@ -1317,3 +1314,11 @@ class DashdInterface(WndUtils):
             if spk.find(name) >= 0:
                 return sporks[spk]
         return None
+
+    @control_rpc_call
+    def listaddressbalances(self):
+        if self.open():
+            return self.proxy.listaddressbalances()
+        else:
+            raise Exception('Not connected')
+

@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_RegMasternodeDlg(object):
     def setupUi(self, RegMasternodeDlg):
         RegMasternodeDlg.setObjectName("RegMasternodeDlg")
-        RegMasternodeDlg.resize(792, 546)
+        RegMasternodeDlg.resize(792, 591)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -539,7 +539,7 @@ class Ui_RegMasternodeDlg(object):
         self.verticalLayout.addWidget(self.frame)
 
         self.retranslateUi(RegMasternodeDlg)
-        self.stackedWidget.setCurrentIndex(1)
+        self.stackedWidget.setCurrentIndex(3)
         QtCore.QMetaObject.connectSlotsByName(RegMasternodeDlg)
         RegMasternodeDlg.setTabOrder(self.btnManualSignProtx, self.btnClose)
         RegMasternodeDlg.setTabOrder(self.btnClose, self.edtOwnerKey)
