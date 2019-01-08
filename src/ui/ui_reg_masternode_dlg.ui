@@ -35,7 +35,7 @@
       </sizepolicy>
      </property>
      <property name="currentIndex">
-      <number>3</number>
+      <number>4</number>
      </property>
      <widget class="QWidget" name="page0">
       <property name="sizePolicy">
@@ -791,9 +791,37 @@
         </widget>
        </item>
        <item>
+        <widget class="QLabel" name="label_12">
+         <property name="text">
+          <string>&lt;b&gt;1. Enter the funding address from your Dash Core wallet:&lt;/b&gt;</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_4">
+         <item>
+          <widget class="QLineEdit" name="edtManualFundingAddress">
+           <property name="toolTip">
+            <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Enter the address from your Dash Core wallet that has sufficient funds to cover transaction fees.&lt;br&gt;&lt;br&gt;You can check the balances of individual addresses by entering the following command in the debug console: &lt;code&gt;listaddressbalances&lt;/code&gt;.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QToolButton" name="btnManualFundingAddressPaste">
+           <property name="toolTip">
+            <string>Paste text from clipboard</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
         <widget class="QLabel" name="label_13">
          <property name="text">
-          <string>&lt;b&gt;1. Execute the following command in the Dash wallet's debug console:&lt;/b&gt;</string>
+          <string>&lt;b&gt;2. Execute the following command in the Dash wallet's debug console:&lt;/b&gt;</string>
          </property>
         </widget>
        </item>
@@ -819,7 +847,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QToolButton" name="btnManualStep1Copy">
+          <widget class="QToolButton" name="btnManualProtxPrepareCopy">
            <property name="focusPolicy">
             <enum>Qt::NoFocus</enum>
            </property>
@@ -836,7 +864,7 @@
        <item>
         <widget class="QLabel" name="label_14">
          <property name="text">
-          <string>&lt;b&gt;2. Paste the result below and click the &amp;lt;Sign message...&amp;gt; button:&lt;/b&gt;</string>
+          <string>&lt;b&gt;3. Paste the result below and click the &amp;lt;Sign message...&amp;gt; button:&lt;/b&gt;</string>
          </property>
         </widget>
        </item>
@@ -856,7 +884,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QToolButton" name="btnManualStep2Paste">
+          <widget class="QToolButton" name="btnManualProtxPrepareResultPaste">
            <property name="toolTip">
             <string>Paste text from clipboard</string>
            </property>
@@ -897,7 +925,7 @@
        <item>
         <widget class="QLabel" name="label_17">
          <property name="text">
-          <string>&lt;b&gt;3. Execute the following command in the Dash wallet's debug console:&lt;/b&gt;</string>
+          <string>&lt;b&gt;4. Execute the following command in the Dash wallet's debug console:&lt;/b&gt;</string>
          </property>
         </widget>
        </item>
@@ -920,7 +948,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QToolButton" name="btnManualStep3Copy">
+          <widget class="QToolButton" name="btnManualProtxSubmitCopy">
            <property name="toolTip">
             <string>Copy text to clipboard</string>
            </property>
@@ -934,7 +962,7 @@
        <item>
         <widget class="QLabel" name="label_11">
          <property name="text">
-          <string>&lt;b&gt;4. Paste the result (tx hash) below and click the &amp;lt;Continue&amp;gt; button:&lt;/b&gt;</string>
+          <string>&lt;b&gt;5. Paste the result (tx hash) below and click the &amp;lt;Continue&amp;gt; button:&lt;/b&gt;</string>
          </property>
         </widget>
        </item>
@@ -944,7 +972,7 @@
           <widget class="QLineEdit" name="edtManualTxHash"/>
          </item>
          <item>
-          <widget class="QToolButton" name="btnManualStep4Paste">
+          <widget class="QToolButton" name="btnManualTxHashPaste">
            <property name="toolTip">
             <string>Paste text from clipboard</string>
            </property>
@@ -1000,6 +1028,27 @@
           <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
          </property>
         </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_5">
+         <item>
+          <widget class="QLineEdit" name="edtSummaryDMNOperatorKey">
+           <property name="readOnly">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QToolButton" name="btnSummaryDMNOperatorKeyCopy">
+           <property name="toolTip">
+            <string>Copy text to clipboard</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
       </layout>
      </widget>
@@ -1077,14 +1126,14 @@
   </layout>
  </widget>
  <tabstops>
+  <tabstop>edtManualFundingAddress</tabstop>
+  <tabstop>edtManualProtxPrepare</tabstop>
+  <tabstop>edtManualProtxPrepareResult</tabstop>
   <tabstop>btnManualSignProtx</tabstop>
-  <tabstop>btnClose</tabstop>
-  <tabstop>edtOwnerKey</tabstop>
-  <tabstop>edtVotingKey</tabstop>
-  <tabstop>edtOperatorReward</tabstop>
+  <tabstop>edtManualProtxSubmit</tabstop>
+  <tabstop>edtManualTxHash</tabstop>
   <tabstop>btnContinue</tabstop>
   <tabstop>btnBack</tabstop>
-  <tabstop>btnGenerateOwnerKey</tabstop>
   <tabstop>btnCancel</tabstop>
   <tabstop>btnGenerateOperatorKey</tabstop>
   <tabstop>btnGenerateVotingKey</tabstop>
@@ -1098,6 +1147,15 @@
   <tabstop>edtPayoutAddress</tabstop>
   <tabstop>edtProtxSummary</tabstop>
   <tabstop>edtOperatorKey</tabstop>
+  <tabstop>btnClose</tabstop>
+  <tabstop>edtOwnerKey</tabstop>
+  <tabstop>btnManualProtxPrepareResultPaste</tabstop>
+  <tabstop>edtOperatorReward</tabstop>
+  <tabstop>btnManualProtxSubmitCopy</tabstop>
+  <tabstop>btnGenerateOwnerKey</tabstop>
+  <tabstop>btnManualTxHashPaste</tabstop>
+  <tabstop>edtVotingKey</tabstop>
+  <tabstop>btnManualFundingAddressPaste</tabstop>
  </tabstops>
  <resources/>
  <connections/>

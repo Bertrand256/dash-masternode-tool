@@ -119,14 +119,18 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             self.lblVotingKey.hide()
             self.edtVotingKey.hide()
             self.btnGenerateVotingKey.hide()
-        self.setIcon(self.btnManualStep1Copy, 'content-copy@16px.png')
-        self.setIcon(self.btnManualStep2Paste, 'content-paste@16px.png')
-        self.setIcon(self.btnManualStep3Copy, 'content-copy@16px.png')
-        self.setIcon(self.btnManualStep4Paste, 'content-paste@16px.png')
-        # self.layManualStep1.setAlignment(self.btnManualStep1Copy, Qt.AlignTop)
-        # self.layManualStep2.setAlignment(self.btnManualStep2Paste, Qt.AlignTop)
-        # self.layManualStep3.setAlignment(self.btnManualStep3Copy, Qt.AlignTop)
-        # self.layManualStep4.setAlignment(self.btnManualStep4Paste, Qt.AlignTop)
+        self.setIcon(self.btnManualFundingAddressPaste, 'content-paste@16px.png')
+        self.setIcon(self.btnManualProtxPrepareCopy, 'content-copy@16px.png')
+        self.setIcon(self.btnManualProtxPrepareResultPaste, 'content-paste@16px.png')
+        self.setIcon(self.btnManualProtxSubmitCopy, 'content-copy@16px.png')
+        self.setIcon(self.btnManualTxHashPaste, 'content-paste@16px.png')
+        self.setIcon(self.btnSummaryDMNOperatorKeyCopy, 'content-copy@16px.png')
+        # self.layManualStep1.setAlignment(self.btnManualProtxPrepareCopy, Qt.AlignTop)
+        # self.layManualStep2.setAlignment(self.btnManualProtxPrepareResultPaste, Qt.AlignTop)
+        # self.layManualStep3.setAlignment(self.btnManualProtxSubmitCopy, Qt.AlignTop)
+        # self.layManualStep4.setAlignment(self.btnManualTxHashPaste, Qt.AlignTop)
+        self.edtSummaryDMNOperatorKey.setStyleSheet("QLineEdit{background-color: white} "
+                                                    "QLineEdit:read-only{background-color: white}")
         self.update_ctrl_state()
         self.update_step_tab_ui()
         self.update_show_hints_label()
@@ -523,9 +527,9 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             self.lblProtxSummary2.show()
             self.lblProtxSummary3.setText(
                 '<b><span style="color:red">One more thing... <span></b>copy the following line to '
-                'the <code>dash.conf</code> file on your masternode server (+ restart <i>dashd</i>) or '
-                'pass it to the masternode operator:<br><br>'
-                f'<code style="background-color:white">masternodeblsprivkey={self.dmn_operator_privkey}')
+                'the <code>dash.conf</code> file on your masternode server (and restart <i>dashd</i>) or '
+                'pass it to the masternode operator:')
+            self.edtSummaryDMNOperatorKey.setText(f'masternodeblsprivkey={self.dmn_operator_privkey}')
             self.btnCancel.hide()
             self.btnBack.hide()
             self.btnContinue.hide()
@@ -619,7 +623,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         msg = ''
         break_scanning = False
         ctrl.dlg_config_fun(dlg_title="Validating collateral transaction.", show_progress_bar=False)
-        ctrl.display_msg_fun('Verifyinig collateral transaction...')
+        ctrl.display_msg_fun('Verifying collateral transaction...')
 
         def check_break_scanning():
             nonlocal break_scanning
@@ -962,11 +966,22 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             return
 
     def start_manual_process(self):
+        self.edtManualFundingAddress.setFocus()
+        self.update_manual_protx_prepare_command()
 
-        cmd = f'protx register_prepare "{self.dmn_collateral_tx}" "{self.dmn_collateral_tx_index}" ' \
-              f'"{self.dmn_ip + ":" + str(self.dmn_tcp_port) if self.dmn_ip else "0"}" ' \
-              f'"{self.dmn_owner_privkey}" "{self.dmn_operator_pubkey}" "{self.dmn_voting_address}" ' \
-              f'"{str(round(self.dmn_operator_reward, 2))}" "{self.dmn_owner_payout_addr}"'
+    def update_manual_protx_prepare_command(self):
+        addr = self.edtManualFundingAddress.text().strip()
+        if addr:
+            valid = validate_address(addr, self.app_config.dash_network)
+            if valid:
+                cmd = f'protx register_prepare "{self.dmn_collateral_tx}" "{self.dmn_collateral_tx_index}" ' \
+                    f'"{self.dmn_ip + ":" + str(self.dmn_tcp_port) if self.dmn_ip else "0"}" ' \
+                    f'"{self.dmn_owner_privkey}" "{self.dmn_operator_pubkey}" "{self.dmn_voting_address}" ' \
+                    f'"{str(round(self.dmn_operator_reward, 2))}" "{self.dmn_owner_payout_addr}" "{addr}"'
+            else:
+                cmd = 'Enter the valid funding address in the exit box above'
+        else:
+            cmd = ''
 
         self.edtManualProtxPrepare.setPlainText(cmd)
         if cmd != self.last_manual_prepare_string:
@@ -976,7 +991,6 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             self.edtManualTxHash.clear()
             self.dmn_reg_tx_hash = ''
             self.manual_signed_message = False
-        self.edtManualProtxPrepareResult.setFocus()
 
     def timerEvent(self, event: QTimerEvent):
         """ Timer controlling the confirmation of the proreg transaction. """
@@ -1014,13 +1028,39 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.update_fields_info(True)
         self.minimize_dialog_height()
 
+    @pyqtSlot(str)
+    def on_edtManualFundingAddress_textChanged(self, text):
+        self.update_manual_protx_prepare_command()
+
     @pyqtSlot(bool)
-    def on_btnManualStep1Copy_clicked(self, checked):
+    def on_btnManualFundingAddressPaste_clicked(self, checked):
+        cl = QApplication.clipboard()
+        self.edtManualFundingAddress.setText(cl.text())
+
+    @pyqtSlot(bool)
+    def on_btnManualProtxPrepareCopy_clicked(self, checked):
         text = self.edtManualProtxPrepare.toPlainText()
         cl = QApplication.clipboard()
         cl.setText(text)
 
     @pyqtSlot(bool)
-    def on_btnManualStep2Paste_clicked(self, checked):
+    def on_btnManualProtxPrepareResultPaste_clicked(self, checked):
         cl = QApplication.clipboard()
         self.edtManualProtxPrepareResult.setPlainText(cl.text())
+
+    @pyqtSlot(bool)
+    def on_btnManualProtxSubmitCopy_clicked(self, checked):
+        text = self.edtManualProtxSubmit.toPlainText()
+        cl = QApplication.clipboard()
+        cl.setText(text)
+
+    @pyqtSlot(bool)
+    def on_btnManualTxHashPaste_clicked(self, checked):
+        cl = QApplication.clipboard()
+        self.edtManualTxHash.setText(cl.text())
+
+    @pyqtSlot(bool)
+    def on_btnSummaryDMNOperatorKeyCopy_clicked(self, checked):
+        text = self.edtSummaryDMNOperatorKey.text()
+        cl = QApplication.clipboard()
+        cl.setText(text)

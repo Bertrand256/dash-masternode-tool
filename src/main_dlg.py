@@ -164,7 +164,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.wdg_masternode.name_modified.connect(self.on_mn_name_modified)
         self.wdg_masternode.data_changed.connect(self.on_mn_data_changed)
 
-        self.deterministic_mns = {}
         self.mns_user_refused_updating = {}
 
         # after loading whole configuration, reset 'modified' variable
@@ -1503,12 +1502,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 return (mns_info[0].status, protocol_version)
         return '???', None
 
-    def get_deterministic_status(self, masternode: MasternodeConfig, check_break_fun: Callable) -> Optional[Dict]:
+    def get_deterministic_status(self, masternode: MasternodeConfig) -> Optional[Dict]:
         try:
             txes = self.dashd_intf.protx('list', 'registered', True)
             for protx in txes:
-                if check_break_fun and check_break_fun():
-                    return None
                 state = protx.get('state')
                 if (state and state.get('addr') == masternode.ip + ':' + masternode.port) or \
                         (protx.get('collateralHash') == masternode.collateralTx and
@@ -1537,32 +1534,88 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if not masternode.collateralTx:
                     return '<span style="color:red">Enter the collateral TX hash + index or IP + port</span>'
 
-            mns_info = self.dashd_intf.get_masternodelist('full', data_max_age=30)  # read new data from the network
+            self.dashd_intf.get_masternodelist('full', data_max_age=30)  # read new data from the network
                                                                                     # every 30 seconds
             if collateral_id:
                 mn_info = self.dashd_intf.masternodes_by_ident.get(collateral_id)
             else:
                 mn_info = self.dashd_intf.masternodes_by_ip_port.get(ip_port)
 
-            if mn_info:
-                if mn_info.lastseen > 0:
-                    lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
-                    lastseen_str = app_utils.to_string(lastseen)
-                    lastseen_ago = int(time.time()) - int(mn_info.lastseen)
-                    if lastseen_ago >= 2:
-                        lastseen_ago_str = app_utils.seconds_to_human(lastseen_ago, out_unit_auto_adjust = True) + \
-                                           ' ago'
-                    else:
-                        lastseen_ago_str = 'a few seconds ago'
-                else:
-                    lastseen_str = 'never'
-                    lastseen_ago_str = ''
+            dmn_tx = self.get_deterministic_status(masternode)
+            if dmn_tx:
+                dmn_tx_state = dmn_tx.get('state')
+            else:
+                dmn_tx_state = {}
 
-                if mn_info.lastpaidtime > time.time() - 3600 * 24 * 365:
-                    # fresh dmns have lastpaidtime set to some day in the year 2014
-                    lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
-                    lastpaid_str = app_utils.to_string(lastpaid)
-                    lastpaid_ago = int(time.time()) - int(mn_info.lastpaidtime)
+            if mn_info:
+                mn_ident = mn_info.ident
+                mn_ip_port = mn_info.ip
+                mn_protocol = mn_info.protocol
+                mn_queue_position = mn_info.queue_position
+            else:
+                mn_protocol = ''
+                mn_queue_position = '?'
+                if dmn_tx_state:
+                    mn_ident = str(dmn_tx.get('collateralHash')) + '-' + str(dmn_tx.get('collateralIndex'))
+                    mn_ip_port = dmn_tx_state.get('addr')
+                else:
+                    mn_ident = None
+                    mn_ip_port = None
+
+            if mn_info or dmn_tx:
+                if mn_info:
+                    if mn_info.lastseen > 0:
+                        lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
+                        lastseen_str = app_utils.to_string(lastseen)
+                        lastseen_ago = int(time.time()) - int(mn_info.lastseen)
+                        if lastseen_ago >= 2:
+                            lastseen_ago_str = app_utils.seconds_to_human(lastseen_ago, out_unit_auto_adjust = True) + \
+                                               ' ago'
+                        else:
+                            lastseen_ago_str = 'a few seconds ago'
+                    else:
+                        lastseen_str = 'never'
+                        lastseen_ago_str = ''
+
+                    if mn_info.activeseconds:
+                        activeseconds_str = app_utils.seconds_to_human(int(mn_info.activeseconds),
+                                                                       out_unit_auto_adjust=True)
+                    else:
+                        activeseconds_str = '?'
+
+                    if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
+                        status_color = 'green'
+                    else:
+                        status_color = 'red'
+                    mn_status = mn_info.status
+                else:
+                    lastseen_str = '?'
+                    lastseen_ago_str = ''
+                    s = dmn_tx_state.get('PoSePenalty', 0)
+                    if s:
+                        mn_status = 'PoSeBan (' + str(s) + ')'
+                        status_color = 'red'
+                    else:
+                        mn_status = 'ENABLED'
+                        status_color = 'green'
+                    activeseconds_str = '?'
+
+                lastpaid_ts = 0
+                if mn_info:
+                    if mn_info.lastpaidtime > time.time() - 3600 * 24 * 365:
+                        # fresh dmns have lastpaidtime set to some day in the year 2014
+                        lastpaid_ts = mn_info.lastpaidtime
+                else:
+                    paid_block = dmn_tx_state.get('lastPaidHeight')
+                    if paid_block:
+                        bh = self.dashd_intf.getblockhash(paid_block)
+                        blk = self.dashd_intf.getblockheader(bh, 1)
+                        lastpaid_ts = blk.get('time')
+
+                if lastpaid_ts:
+                    lastpaid_dt = datetime.datetime.fromtimestamp(float(lastpaid_ts))
+                    lastpaid_str = app_utils.to_string(lastpaid_dt)
+                    lastpaid_ago = int(time.time()) - int(lastpaid_ts)
                     if lastpaid_ago >= 2:
                         lastpaid_ago_str = app_utils.seconds_to_human(lastpaid_ago, out_unit_auto_adjust=True) + ' ago'
                     else:
@@ -1571,11 +1624,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     lastpaid_str = 'never'
                     lastpaid_ago_str = ''
 
-                activeseconds_str = app_utils.seconds_to_human(int(mn_info.activeseconds), out_unit_auto_adjust=True)
-                if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
-                    color = 'green'
-                else:
-                    color = 'red'
                 enabled_mns_count = len(self.dashd_intf.payment_queue)
 
                 update_mn_info = False
@@ -1600,9 +1648,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         else:
                             self.mns_user_refused_updating[masternode] = self.curMasternode
 
-                if masternode.collateralTx + '-' + str(masternode.collateralTxIndex) != \
-                       mn_info.ident:
-                    elems = mn_info.ident.split('-')
+                if masternode.collateralTx + '-' + str(masternode.collateralTxIndex) != mn_ident:
+                    elems = mn_ident.split('-')
                     if len(elems) == 2:
                         if update_mn_info:
                             masternode.collateralTx = elems[0]
@@ -1629,8 +1676,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                         else:
                                             collateral_address_mismatch = True
 
-                if masternode.ip + ':' + masternode.port != mn_info.ip:
-                    elems = mn_info.ip.split(':')
+                if masternode.ip + ':' + masternode.port != mn_ip_port:
+                    elems = mn_ip_port.split(':')
                     if len(elems) == 2:
                         if update_mn_info:
                             masternode.ip = elems[0]
@@ -1640,20 +1687,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                             ip_port_mismatch = True
 
                 if self.app_config.deterministic_mns_enabled:
-                    dmn_tx = self.deterministic_mns.get(masternode)
-                    if dmn_tx and masternode.dmn_tx_hash and \
-                        dmn_tx.get('proTxHash') != masternode.dmn_tx_hash:
-                        # dmn tx hash in the configuration has changed
-                        del self.deterministic_mns[masternode]
-                        dmn_tx = None
-
-                    if not dmn_tx:
-                        def break_scanning():
-                            return self.finishing or self.curMasternode != masternode
-
-                        dmn_tx = self.get_deterministic_status(masternode, check_break_fun=break_scanning)
                     if dmn_tx:
-                        self.deterministic_mns[masternode] = dmn_tx
                         if not masternode.is_deterministic:
                             if update_mn_info:
                                 masternode.dmn_tx_hash = dmn_tx.get('proTxHash')
@@ -1666,9 +1700,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                     masternode.dmn_tx_hash = dmn_tx.get('proTxHash')
                                     mn_data_modified = True
 
-                        state = dmn_tx.get('state')
-                        if state:
-                            owner_pubkey_network = state.get('keyIDOwner')
+                        if dmn_tx_state:
+                            owner_pubkey_network = dmn_tx_state.get('keyIDOwner')
                             owner_pubkey_cfg = masternode.dmn_owner_pubkey_hash
                             if owner_pubkey_network and owner_pubkey_cfg and owner_pubkey_network != owner_pubkey_cfg:
                                 owner_pubkey_hash_mismatch = True
@@ -1676,7 +1709,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                     f'Owner public key hash mismatch for masternode: {masternode.name}, '
                                     f'Config pubkey hash: {owner_pubkey_cfg}, network pubkey hash: {owner_pubkey_network}')
 
-                            voting_pubkey_network = state.get('keyIDVoting')
+                            voting_pubkey_network = dmn_tx_state.get('keyIDVoting')
                             voting_pubkey_cfg = masternode.dmn_voting_pubkey_hash
                             if voting_pubkey_network and voting_pubkey_cfg and voting_pubkey_network != voting_pubkey_cfg:
                                 voting_pubkey_hash_mismatch = True
@@ -1684,7 +1717,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                     f'Voting public key hash mismatch for masternode: {masternode.name}. '
                                     f'Config pubkey hash: {voting_pubkey_cfg}, network pubkey hash: {voting_pubkey_network}')
 
-                            operator_pubkey_network = state.get('pubKeyOperator')
+                            operator_pubkey_network = dmn_tx_state.get('pubKeyOperator')
                             operator_pubkey_cfg = masternode.dmn_operator_pubkey
                             if operator_pubkey_network and operator_pubkey_cfg and operator_pubkey_network != operator_pubkey_cfg:
                                 operator_pubkey_mismatch = True
@@ -1743,13 +1776,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                              '.error {color:red}' \
                              '</style>' \
                              '<table>' \
-                             f'<tr><td class="title">Status:</td><td class="value"><span style="color:{color}">{mn_info.status}</span>' \
-                             f'</td><td>v{str(mn_info.protocol)}</td></tr>' \
+                             f'<tr><td class="title">Status:</td><td class="value"><span style="color:{status_color}">{mn_status}</span>' \
+                             f'</td><td>{"v" + str(mn_protocol) if mn_protocol else ""}</td></tr>' \
                              f'<tr><td class="title">Last Seen:</td><td class="value">{lastseen_str}</td><td class="ago">{lastseen_ago_str}</td></tr>' \
                              f'<tr><td class="title">Last Paid:</td><td class="value">{lastpaid_str}</td><td class="ago">{lastpaid_ago_str}</td></tr>' \
                              f'{bal_entry}' \
                              f'<tr><td class="title">Active Duration:</td><td class="value" colspan="2">{activeseconds_str}</td></tr>' \
-                             f'<tr><td class="title">Queue/Count:</td><td class="value" colspan="2">{str(mn_info.queue_position)}/{enabled_mns_count}</td></tr>' \
+                             f'<tr><td class="title">Queue/Count:</td><td class="value" colspan="2">{str(mn_queue_position)}/{enabled_mns_count}</td></tr>' \
                              + errors_msg + '</table>'
                 else:
                     status = '<span style="color:red">Masternode not found.</span>'
