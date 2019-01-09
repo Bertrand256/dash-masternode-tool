@@ -331,8 +331,6 @@ def json_to_tx(coin, data):
     return t
 
 
-    return t
-
 
 class MyTxApiInsight(TxApi):
 
