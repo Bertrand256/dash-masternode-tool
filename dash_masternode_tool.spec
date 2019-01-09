@@ -51,8 +51,6 @@ add_data_file(os.path.join(lib_path, 'bitcoin/english.txt'), '/bitcoin')
 add_data_file(os.path.join(lib_path, 'mnemonic/wordlist/english.txt'), '/mnemonic/wordlist')
 add_data_file(os.path.join(lib_path, 'trezorlib/coins.json'), '/trezorlib')
 add_data_file(os.path.join(lib_path, 'trezorlib/transport'), 'trezorlib/transport')
-add_data_file(os.path.join(lib_path, 'trezorlib/protocol_v1.py'), 'trezorlib')
-add_data_file(os.path.join(lib_path, 'trezorlib/protocol_v2.py'), 'trezorlib')
 if os_type == 'darwin':
     add_binary_file('/usr/local/lib/libusb-1.0.dylib', '.')
 

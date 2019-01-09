@@ -267,6 +267,19 @@ def is_dash(coin):
     return coin["coin_name"].lower().startswith("dash")
 
 
+def pack_varint(n):
+    if n == 0:
+        return b"\x00"
+    elif n < 253:
+        return struct.pack("<B", n)
+    elif n <= 65535:
+        return struct.pack("<BH", 253, n)
+    elif n <= 4294967295:
+        return struct.pack("<BL", 254, n)
+    else:
+        return struct.pack("<BQ", 255, n)
+
+
 def json_to_tx(coin, data):
     t = messages.TransactionType()
     t.version = data["version"]
@@ -294,28 +307,29 @@ def json_to_tx(coin, data):
             t.extra_data = rawtx[-extra_data_len:]
 
     if is_dash(coin):
-        t.type = data["type"]
-        if t.version == 3 and t.type != 1:
+        dip2_type = data.get("type", 0)
+
+        if t.version == 3 and dip2_type != 0:
             # It's a DIP2 special TX with payload
-            t.extra_data_len = data["extraPayloadSize"]
-            if t.extra_data_len == 0:
-                t.extra_data_len = 1
-                t.extra_data = b"\x00"
-            elif t.extra_data_len < 253:
-                t.extra_data = struct.pack("<B", t.extra_data_len)
-                t.extra_data_len += 1
-            elif t.extra_data_len <= 65535:
-                t.extra_data = struct.pack("<BH", 253, t.extra_data_len)
-                t.extra_data_len += 3
-            else:
-                t.extra_data = struct.pack("<BI", 254, t.extra_data_len)
-                t.extra_data_len += 5
 
-            t.extra_data += bytes.fromhex(data["extraPayload"])
+            if "extraPayloadSize" not in data or "extraPayload" not in data:
+                raise ValueError("Payload data missing in DIP2 transaction")
 
-            # Trezor firmware doesn't understand the split of version and type, so let's mimic the
-            # old serialization format
-            t.version |= t.type << 16
+            if data["extraPayloadSize"] * 2 != len(data["extraPayload"]):
+                raise ValueError(
+                    "extra_data_len (%d) does not match calculated length (%d)"
+                    % (data["extraPayloadSize"], len(data["extraPayload"]) * 2)
+                )
+            t.extra_data = pack_varint(data["extraPayloadSize"]) + bytes.fromhex(
+                data["extraPayload"]
+            )
+
+        # Trezor firmware doesn't understand the split of version and type, so let's mimic the
+        # old serialization format
+        t.version |= dip2_type << 16
+
+    return t
+
 
     return t
 
@@ -355,8 +369,14 @@ class MyTxApiInsight(TxApi):
         return data
 
     def get_tx(self, txhash):
-        data = self.get_tx_data(txhash)
-        return json_to_tx(self.coin_data, data)
+        data = None
+        try:
+            data = self.get_tx_data(txhash)
+            return json_to_tx(self.coin_data, data)
+        except Exception as e:
+            log.error(str(e))
+            log.error('tx data: ' + str(data))
+            raise
 
 
 def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoType],
