@@ -5,6 +5,7 @@
 import binascii
 import hashlib
 import os
+import ssl
 import time
 import urllib, urllib.parse, urllib.request
 from io import BytesIO
@@ -647,7 +648,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             file_name = os.path.basename(urllib.parse.urlparse(url).path)
             local_file_path = os.path.join(self.main_ui.config.cache_dir, file_name)
 
-            response = urllib.request.urlopen(url)
+            response = urllib.request.urlopen(url, context=ssl._create_unverified_context())
             data = response.read()
             try:
                 # save firmware file in cache
@@ -1231,7 +1232,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
         def load_from_url(base_url: str, list_url, device: str = None, official: bool = False, model: str = None):
             ctrl.display_msg_fun(f'<b>Downloading firmware list from:</b><br>{list_url}<br><br>Please wait...')
-            response = urllib.request.urlopen(list_url)
+            response = urllib.request.urlopen(list_url, context=ssl._create_unverified_context())
             contents = response.read()
             fl = simplejson.loads(contents)
             for f in fl:
@@ -1260,7 +1261,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
             url = urllib.parse.urljoin(project_url, 'hardware-wallets/firmware/firmware-sources.json')
             ctrl.display_msg_fun(f'<b>Downloading firmware sources from:</b><br>{url}<br><br>Please wait...')
-            response = urllib.request.urlopen(url)
+            response = urllib.request.urlopen(url, context=ssl._create_unverified_context())
             contents = response.read()
             srcs = simplejson.loads(contents)
             for s in srcs:

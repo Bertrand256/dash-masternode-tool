@@ -12,5 +12,6 @@ simplejson
 cryptography
 bip32utils
 more-itertools
+certifi
 -e git+https://github.com/Bertrand256/btchip-python#egg=btchip-python
 -e git+https://github.com/Bertrand256/bls-signatures.git#egg=blspy

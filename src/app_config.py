@@ -56,7 +56,6 @@ DMN_ROLE_VOTING = 3
 class AppConfig(object):
     def __init__(self):
         self.initialized = False
-        self.__deterministic_mns_enabled = None
         self.app_dir = ''  # will be passed in the init method
         self.app_version = ''
         QLocale.setDefault(app_utils.get_default_locale())
@@ -126,6 +125,9 @@ class AppConfig(object):
         self.hw_encryption_key = None
         self.fernet = None
         self.log_handler = None
+
+        self.__testnet_deterministic_mns_enabled = None
+        self.__mainnet_deterministic_mns_enabled = None
 
     def init(self, app_dir):
         """ Initialize configuration after openning the application. """
@@ -1060,13 +1062,14 @@ class AppConfig(object):
 
     @property
     def deterministic_mns_enabled(self):
-        if self.__deterministic_mns_enabled is None:
-            if self.is_testnet():
-                return True
-            else:
-                return False
+        if self.is_testnet():
+            return self.__testnet_deterministic_mns_enabled is True
         else:
-            return self.__deterministic_mns_enabled
+            return self.__mainnet_deterministic_mns_enabled is True
+
+    def set_deterministic_mns_state(self, mainnet_enabled, testnet_enabled):
+        self.__mainnet_deterministic_mns_enabled = mainnet_enabled
+        self.__testnet_deterministic_mns_enabled = testnet_enabled
 
 
 class MasternodeConfig:

@@ -1336,7 +1336,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         contents = None
                         for url_try in range(0, url_err_retries+1):
                             try:
-                                response = urllib.request.urlopen(cur_url)
+                                response = urllib.request.urlopen(cur_url, context=ssl._create_unverified_context())
                                 contents = response.read()
                                 break
                             except URLError:
@@ -1529,6 +1529,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                     voting_timestamp = int(match.group(3))
                                     voting_time = datetime.datetime.fromtimestamp(voting_timestamp)
                                     voting_result = match.group(4)
+                                    if voting_result:
+                                        voting_result = voting_result.upper()
                                     mn = self.masternodes_by_ident.get(mn_ident)
 
                                     if voting_timestamp > cur_vote_max_date:
@@ -2116,7 +2118,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         ts = int(datetime.datetime(v[0].year, v[0].month, v[0].day, 0, 0, 0).timestamp()) * 1000
                         vd = votes_aggr.get(ts)
                         mn = v[2]
-                        vote = v[1]
+                        vote = v[1].upper()
                         if not vd:
                             # there is no entry for this date yet - add and copy vote counts from the previous
                             # one if any
@@ -2131,6 +2133,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         last_mn_vote = mn_last_votes.get(mn)
                         if last_mn_vote != vote:
                             if last_mn_vote is not None:
+                                last_mn_vote = last_mn_vote.upper()
                                 # subtract votes count for last mn vote type (yes, no, abstain), because
                                 # changing vote by the mn
                                 vd[vote_mapper[last_mn_vote]] -= 1

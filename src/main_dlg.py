@@ -15,7 +15,6 @@ import sys
 import threading
 import time
 import ssl
-from functools import partial
 from typing import Optional, Tuple, Dict, Callable
 import bitcoin
 import logging
@@ -406,16 +405,20 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.cmd_console_dlg = CmdConsoleDlg(self, self.app_config)
         self.cmd_console_dlg.exec_()
 
+
+
+
     def load_remote_params(self):
         try:
             import urllib.request
             response = urllib.request.urlopen(
-                'https://raw.githubusercontent.com/Bertrand256/dash-masternode-tool/master/app-params.json')
+                'https://raw.githubusercontent.com/Bertrand256/dash-masternode-tool/master/app-params.json',
+                context=ssl._create_unverified_context())
             contents = response.read()
             app_remote_params = simplejson.loads(contents)
             return app_remote_params
         except Exception:
-            logging.exception('Error while loading app-params.json')
+            logging.exception('+Error while loading app-params.json')
             return {}
 
     def check_for_updates_thread(self, ctrl, force_check):
@@ -464,6 +467,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                             self.setMessage("You have the latest version of %s." % APP_NAME_SHORT, 'green')
                 elif force_check:
                     self.setMessage("Could not read the remote version number.", 'orange')
+
+                # check whether deterministic masternodes are enabled in the project configuration to show/hide
+                # certain features in gui
+                dmn_mainnet = self.get_spork_state_from_config(15, 'mainnet', True)
+                dmn_testnet = self.get_spork_state_from_config(15, 'mainnet', True)
+                self.app_config.set_deterministic_mns_state(dmn_mainnet, dmn_testnet)
+
         except Exception:
             logging.exception('Exception occurred')
 
@@ -1218,7 +1228,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 prot = dp.get(self.config.dash_network.lower())
         return prot
 
-    def get_spork_state(self, spork_nr: int, default_state: bool):
+    def get_spork_state_from_config(self, spork_nr: int, dash_network: str, default_state: bool):
         state = default_state
         self.read_remote_app_params()
         if self.remote_app_params:
@@ -1228,7 +1238,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     name = spork.get('name', '')
                     active = spork.get('active')
                     if name.find('SPORK_' + str(spork_nr) + '_') == 0:
-                        state = active.get(self.config.dash_network.lower())
+                        state = active.get(dash_network.lower(), state)
         return state
 
     def create_mn_broadcast_msg(self, mn_protocol_version: int,
@@ -1260,7 +1270,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             sig_time,
             mn_protocol_version,
             rpc_node_protocol_version,
-            spork6_active=self.get_spork_state(6, False)
+            spork6_active=self.get_spork_state_from_config(6, self.config.dash_network, False)
         )
 
         signature = mn_broadcast.sign(masternode.collateralBip32Path, hw_intf.hw_sign_message, self.hw_session,
