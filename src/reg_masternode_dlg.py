@@ -19,7 +19,7 @@ import app_cache
 import hw_intf
 from app_config import MasternodeConfig, AppConfig
 from app_defs import FEE_DUFF_PER_BYTE
-from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException, find_wallet_address
+from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException, find_wallet_addresses
 from dash_utils import generate_bls_privkey, generate_wif_privkey, validate_address, wif_privkey_to_address, \
     validate_wif_privkey, bls_privkey_to_pubkey
 from dashd_intf import DashdInterface

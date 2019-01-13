@@ -279,17 +279,25 @@ def wif_to_privkey(wif_key: str, dash_network: str):
     Based on project: https://github.com/chaeplin/dashmnb with some changes related to usage of bitcoin library.
     """
     privkey_encoded = base58.b58decode(wif_key).hex()
-    wif_version = privkey_encoded[:2]
-    wif_prefix = get_chain_params(dash_network).PREFIX_SECRET_KEY
-    checksum = privkey_encoded[-8:]
+    wif_prefix_cur = privkey_encoded[:2]
+    wif_prefix_network = get_chain_params(dash_network).PREFIX_SECRET_KEY
+    wif_prefix_network_str = wif_prefix_network.to_bytes(1, byteorder='big').hex()
+    checksum_stored = privkey_encoded[-8:]
 
     vs = bytes.fromhex(privkey_encoded[:-8])
-    check = binascii.unhexlify(bitcoin.dbl_sha256(vs))[0:4]
+    checksum_actual = binascii.unhexlify(bitcoin.dbl_sha256(vs))[0:4]
+    checksum_actual_str = checksum_actual.hex()
 
-    if wif_version == wif_prefix.to_bytes(1, byteorder='big').hex() and checksum == check.hex():
+    if wif_prefix_cur == wif_prefix_network_str and checksum_stored == checksum_actual_str:
         privkey = privkey_encoded[2:-8]
         return privkey
     else:
+        if wif_prefix_cur != wif_prefix_network_str:
+            logging.warning('Private key and network prefixes differ. PK prefix: %s, network prefix: %s', wif_prefix_cur,
+                            wif_prefix_network_str)
+        if checksum_stored != checksum_actual_str:
+            logging.warning('Invalid private key checksum. PK checksum: %s, required: %s', checksum_stored,
+                            checksum_actual_str)
         return None
 
 

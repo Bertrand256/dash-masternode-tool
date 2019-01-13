@@ -32,7 +32,7 @@ class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):
         self.__mnemonic = Mnemonic('english')
 
     def callback_PassphraseRequest(self, msg):
-        passphrase = self.ask_for_pass_fun(msg)
+        passphrase = self.ask_for_pass_fun()
         if passphrase is None:
             raise HardwareWalletCancelException('Cancelled')
         else:

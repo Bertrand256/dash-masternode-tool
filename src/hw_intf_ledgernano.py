@@ -246,8 +246,9 @@ def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, seco
 
 @process_ledger_exceptions
 def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoType],
-            tx_outputs: List[wallet_common.TxOutputType], tx_fee, rawtransactions):
+            tx_outputs: List[wallet_common.TxOutputType], tx_fee):
     client = hw_session.hw_client
+    rawtransactions = {}
 
     # Each of the UTXOs will become an input in the new transaction. For each of those inputs, create
     # a Ledger's 'trusted input', that will be used by the the device to sign a transaction.
@@ -274,14 +275,28 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
     # reading it multiple times for the same bip32 path
     bip32_to_address = {}
 
+    # read previous transactins
+    for utxo in utxos_to_spend:
+        if utxo.txid not in rawtransactions:
+            tx = hw_session.dashd_intf.getrawtransaction(utxo.txid, 1, skip_cache=False)
+            if tx and tx.get('hex'):
+                tx_raw = tx.get('hex')
+            else:
+                tx_raw = hw_session.dashd_intf.getrawtransaction(utxo.txid, 0, skip_cache=False)
+
+            if tx_raw:
+                rawtransactions[utxo.txid] = tx_raw
+
     amount = 0
     starting = True
     for idx, utxo in enumerate(utxos_to_spend):
         amount += utxo.satoshis
 
-        raw_tx = bytearray.fromhex(rawtransactions[utxo.txid])
+        raw_tx = rawtransactions.get(utxo.txid)
         if not raw_tx:
-            raise Exception("Can't find raw transaction for txid: " + rawtransactions[utxo.txid])
+            raise Exception("Can't find raw transaction for txid: " + utxo.txid)
+        else:
+            raw_tx = bytearray.fromhex(raw_tx)
 
         # parse the raw transaction, so that we can extract the UTXO locking script we refer to
         prev_transaction = bitcoinTransaction(raw_tx)

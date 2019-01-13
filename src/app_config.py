@@ -126,9 +126,6 @@ class AppConfig(object):
         self.fernet = None
         self.log_handler = None
 
-        self.__testnet_deterministic_mns_enabled = None
-        self.__mainnet_deterministic_mns_enabled = None
-
     def init(self, app_dir):
         """ Initialize configuration after openning the application. """
         self.app_dir = app_dir
@@ -1059,17 +1056,6 @@ class AppConfig(object):
 
     def get_app_img_dir(self):
         return os.path.join(self.app_dir, '', 'img')
-
-    @property
-    def deterministic_mns_enabled(self):
-        if self.is_testnet():
-            return self.__testnet_deterministic_mns_enabled is True
-        else:
-            return self.__mainnet_deterministic_mns_enabled is True
-
-    def set_deterministic_mns_state(self, mainnet_enabled, testnet_enabled):
-        self.__mainnet_deterministic_mns_enabled = mainnet_enabled
-        self.__testnet_deterministic_mns_enabled = testnet_enabled
 
 
 class MasternodeConfig:

@@ -141,7 +141,6 @@ def save_window_size(window):
         symbol = window.__class__.__name__ + '_'
         cache.set_value(symbol + '_Width', window.size().width())
         cache.set_value(symbol + '_Height', window.size().height())
-        log.warning('Saved window size')
     else:
         log.warning('AppCache not initialized')
 

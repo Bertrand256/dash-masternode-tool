@@ -28,7 +28,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.dashd_intf = dashd_intf
         self.masternode: MasternodeConfig = None
         self.updating_ui = False
-        self.dip3_mns_enabled = False
         self.edit_mode = False
         self.setupUi()
 
@@ -46,17 +45,24 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         else:
             is_deterministic = False
 
-        if is_deterministic:
-            lbl = '<span>Deterministic masternode</span>'
-            lbl_action = '<a href="change-to-non-dmn">Alter configuration to non-deterministic</a>'
-            color = '#2eb82e'
+        if self.masternode:
+            self.lblTitle.setVisible(True)
+            self.lblAction.setVisible(self.edit_mode is True)
+            if is_deterministic:
+                lbl = '<span>Deterministic masternode</span>'
+                lbl_action = '<a href="change-to-non-dmn">Alter configuration to non-deterministic</a>'
+                color = '#2eb82e'
+            else:
+                lbl = '<span>Non-deterministic masternode</span>'
+                lbl_action = '<a href="change-to-dmn">Alter configuration to deterministic</a>'
+                color = 'navy'
+            self.lblTitle.setText(lbl)
+            self.lblTitle.setStyleSheet(
+                f'QLabel{{background-color:{color};color:white;padding:3px 5px 3px 5px; border-radius:3px}}')
+            self.lblAction.setText(lbl_action)
         else:
-            lbl = '<span>Non-deterministic masternode</span>'
-            lbl_action = '<a href="change-to-dmn">Alter configuration to deterministic</a>'
-            color = 'navy'
-        self.lblTitle.setText(lbl)
-        self.lblTitle.setStyleSheet(f'QLabel{{background-color:{color};color:white;padding:3px 5px 3px 5px; border-radius:3px}}')
-        self.lblAction.setText(lbl_action)
+            self.lblTitle.setVisible(False)
+            self.lblAction.setVisible(False)
 
         self.lblDMNTxHash.setVisible(self.masternode is not None and is_deterministic)
         self.edtDMNTxHash.setVisible(self.masternode is not None and is_deterministic)
@@ -113,9 +119,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.lblCollateralTxIndex.setVisible(self.masternode is not None)
         self.edtCollateralTxIndex.setVisible(self.masternode is not None)
 
-        self.lblTitle.setVisible(self.dip3_mns_enabled is True)
-        self.lblAction.setVisible(self.dip3_mns_enabled is True and self.edit_mode is True)
-
         self.rbRoleVoting.setEnabled(self.edit_mode)
         self.rbRoleOperator.setEnabled(self.edit_mode)
         self.rbRoleOwner.setEnabled(self.edit_mode)
@@ -168,7 +171,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
     def masternode_data_to_ui(self):
         if self.masternode:
-            self.dip3_mns_enabled = self.app_config.deterministic_mns_enabled
             self.rbRoleOwner.setChecked(self.masternode.dmn_user_role == DMN_ROLE_OWNER)
             self.rbRoleOperator.setChecked(self.masternode.dmn_user_role == DMN_ROLE_OPERATOR)
             self.rbRoleVoting.setChecked(self.masternode.dmn_user_role == DMN_ROLE_VOTING)

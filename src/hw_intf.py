@@ -178,7 +178,7 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
             cli = keepkey.connect_keepkey(passphrase_encoding=passphrase_encoding, device_id=device_id)
             if cli and hw_session:
                 try:
-                    get_session_info_trezor(cli, hw_session)
+                    get_session_info_trezor(cli.get_public_node, hw_session)
                 except Exception:
                     # in the case of error close the session
                     disconnect_hw(cli)
@@ -249,8 +249,7 @@ def get_hw_firmware_version(hw_session: HwSessionInfo):
 
 @control_hw_call
 def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType],
-            tx_outputs: List[TxOutputType], tx_fee,
-            rawtransactions):
+            tx_outputs: List[TxOutputType], tx_fee):
     """
     Creates a signed transaction.
     :param main_ui: Main window for configuration data
@@ -279,7 +278,7 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType],
         elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
             import hw_intf_ledgernano as ledger
 
-            return ledger.sign_tx(hw_session, utxos_to_spend, tx_outputs, tx_fee, rawtransactions)
+            return ledger.sign_tx(hw_session, utxos_to_spend, tx_outputs, tx_fee)
 
         else:
             logging.error('Invalid HW type: ' + str(hw_session.app_config.hw_type))

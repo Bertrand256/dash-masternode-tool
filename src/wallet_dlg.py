@@ -88,7 +88,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.main_ui = main_ui
         self.hw_session: HwSessionInfo = self.main_ui.hw_session
         self.hw_connection_established = False
-        self.rawtransactions = {}
         self.masternodes = main_ui.config.masternodes
         self.masternode_addresses: List[Tuple[str, str]] = []  #  Tuple: address, bip32 path
         for idx, mn in enumerate(self.masternodes):
@@ -598,7 +597,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                     try:
                         serialized_tx, amount_to_send = sign_tx(
-                            self.main_ui.hw_session, tx_inputs, tx_outputs, fee, self.rawtransactions)
+                            self.main_ui.hw_session, tx_inputs, tx_outputs, fee)
                     except HardwareWalletCancelException:
                         # user cancelled the operations
                         return

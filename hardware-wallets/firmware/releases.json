@@ -1,22 +1,2 @@
 [
-  {
-    "device": "trezor",
-    "model": "T",
-    "version": [2, 0, 6],
-    "official": false,
-    "testnet": true,
-    "url": "hardware-wallets/firmware/trezor-t/trezor-t-2.0.6-dash-testnet.bin",
-    "fingerprint": "cc07fd24d73a196d6a7e8e424429d841c8a5208f689e55fa88f8e72af0c69588",
-    "changelog": "Dash Testnet support by Bertrand256\nhttps://github.com/Bertrand256/trezor-core/tree/dash-testnet"
-  },
-  {
-    "device": "keepkey",
-    "model": "1",
-    "version": [5, 0, 1],
-    "official": false,
-    "testnet": true,
-    "url": "hardware-wallets/firmware/keepkey/keepkey-5.0.1-dash-testnet.bin",
-    "fingerprint": "bf9fda101ed432be19cfee28eb9b5f4d2f6f84657f58e7c23cfabaf983b8d4c3",
-    "changelog": "Dash Testnet support by Bertrand256\nhttps://github.com/Bertrand256/keepkey-firmware"
-  }
 ]

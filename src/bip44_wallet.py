@@ -1600,7 +1600,9 @@ class Bip44Wallet(QObject):
 #########################################################
 ## Util functions
 #########################################################
-def get_tx_address_thread(ctrl: CtrlObject, address: str, bip44_wallet: Bip44Wallet):
+def get_tx_address_thread(ctrl: CtrlObject, addresses: List[str], bip44_wallet: Bip44Wallet) -> \
+        List[Optional[Bip44AddressType]]:
+    ret_addresses = []
     break_scanning = False
     txes_cnt = 0
     msg = 'Looking for a BIP32 path of the Dash address related to the masternode collateral.<br>' \
@@ -1635,13 +1637,15 @@ def get_tx_address_thread(ctrl: CtrlObject, address: str, bip44_wallet: Bip44Wal
 
     # fetch the transactions that involved the addresses stored in the wallet - during this
     # all the used addresses are revealed
-    addr = bip44_wallet.scan_wallet_for_address(address, check_break_scanning, fetch_txes_feeback)
-    if not addr and break_scanning:
-        raise CancelException
-    return addr
+    for a in addresses:
+        addr = bip44_wallet.scan_wallet_for_address(a, check_break_scanning, fetch_txes_feeback)
+        if not addr and break_scanning:
+            raise CancelException
+        ret_addresses.append(addr)
+    return ret_addresses
 
 
-def find_wallet_address(address: str, bip44_wallet: Bip44Wallet) -> Optional[Bip44AddressType]:
+def find_wallet_addresses(address: Union[str, List[str]], bip44_wallet: Bip44Wallet) -> List[Optional[Bip44AddressType]]:
     ret = WndUtils.run_thread_dialog(get_tx_address_thread, (address, bip44_wallet), True)
     return ret
 

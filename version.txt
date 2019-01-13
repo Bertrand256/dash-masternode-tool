@@ -1,4 +1,1 @@
-version_str = '0.9.21-beta8'
-exe_mac = 'https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.21-beta8/DashMasternodeTool_0.9.21-beta8.mac.zip'
-exe_win = 'https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.21-beta8/DashMasternodeTool_0.9.21-beta8.win64.zip'
-exe_linux = 'https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.21-beta8/DashMasternodeTool_0.9.21-beta8.linux.tar.gz'
+version_str = '0.9.21'

@@ -2,12 +2,8 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
-import subprocess
 import simplejson
-import base64
-import binascii
 import datetime
-import json
 import os
 import platform
 import re
@@ -18,6 +14,7 @@ import ssl
 from typing import Optional, Tuple, Dict, Callable
 import bitcoin
 import logging
+import urllib.request
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import QSize, pyqtSlot, QEventLoop, QMutex, QWaitCondition, QUrl, Qt
@@ -28,7 +25,7 @@ from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle
 from PyQt5.QtWidgets import QMessageBox
 
 import reg_masternode_dlg
-from bip44_wallet import find_wallet_address, Bip44Wallet
+from bip44_wallet import find_wallet_addresses, Bip44Wallet
 from cmd_console_dlg import CmdConsoleDlg
 from common import CancelException
 from config_dlg import ConfigDlg
@@ -176,7 +173,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.update_edit_controls_state()
         self.setMessage("", None)
 
-        self.run_thread(self, self.check_for_updates_thread, (False,))
+        self.run_thread(self, self.get_project_config_params_thread, (False,))
 
         if self.config.app_config_file_name and os.path.exists(self.config.app_config_file_name):
             self.add_item_to_config_files_mru_list(self.config.app_config_file_name)
@@ -230,11 +227,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.curMasternode = None
 
         self.wdg_masternode.set_masternode(self.curMasternode)
-        self.action_open_log_file.setText = 'Open log file (%s)' % self.config.log_file
-        if self.app_config.deterministic_mns_enabled:
-            self.btnMigrateToDMN.show()
-        else:
-            self.btnMigrateToDMN.hide()
+        self.action_open_log_file.setText('Open log file (%s)' % self.config.log_file)
+        self.btnMigrateToDMN.setEnabled(True)
         self.update_edit_controls_state()
 
     def load_configuration_from_file(self, file_name: str, ask_save_changes = True) -> None:
@@ -396,8 +390,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_action_check_for_updates_triggered(self, checked, force_check=True):
-        if self.config.check_for_updates:
-            self.run_thread(self, self.check_for_updates_thread, (force_check,))
+        self.run_thread(self, self.get_project_config_params_thread, (force_check,))
 
     @pyqtSlot(bool)
     def on_action_command_console_triggered(self, checked):
@@ -405,23 +398,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.cmd_console_dlg = CmdConsoleDlg(self, self.app_config)
         self.cmd_console_dlg.exec_()
 
-
-
-
-    def load_remote_params(self):
-        try:
-            import urllib.request
-            response = urllib.request.urlopen(
-                'https://raw.githubusercontent.com/Bertrand256/dash-masternode-tool/master/app-params.json',
-                context=ssl._create_unverified_context())
-            contents = response.read()
-            app_remote_params = simplejson.loads(contents)
-            return app_remote_params
-        except Exception:
-            logging.exception('+Error while loading app-params.json')
-            return {}
-
-    def check_for_updates_thread(self, ctrl, force_check):
+    def get_project_config_params_thread(self, ctrl, force_check):
         """
         Thread function checking whether there is a new version of the application on Github page.
         :param ctrl: thread control structure (not used here) 
@@ -431,55 +408,61 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         :return: None
         """
         try:
-            self.remote_app_params = self.load_remote_params()
+            response = urllib.request.urlopen(
+                'https://raw.githubusercontent.com/Bertrand256/dash-masternode-tool/master/app-params.json',
+                context=ssl._create_unverified_context())
+            contents = response.read()
+            self.remote_app_params = simplejson.loads(contents)
 
             if self.remote_app_params:
-                remote_version_str = self.remote_app_params.get("appCurrentVersion")
-                if remote_version_str:
-                    remote_ver = app_utils.version_str_to_number(remote_version_str)
-                    local_ver = app_utils.version_str_to_number(self.config.app_version)
+                logging.info('Loaded the project configuration params: ' + str(self.remote_app_params))
+                if self.config.check_for_updates:
+                    remote_version_str = self.remote_app_params.get("appCurrentVersion")
+                    if remote_version_str:
+                        remote_ver = app_utils.version_str_to_number(remote_version_str)
+                        local_ver = app_utils.version_str_to_number(self.config.app_version)
 
-                    if remote_ver > local_ver:
-                        if sys.platform == 'win32':
-                            item_name = 'win'
-                            no_bits = platform.architecture()[0].replace('bit', '')
-                            if no_bits == '32':
-                                item_name += '32'
+                        if remote_ver > local_ver:
+                            if sys.platform == 'win32':
+                                item_name = 'win'
+                                no_bits = platform.architecture()[0].replace('bit', '')
+                                if no_bits == '32':
+                                    item_name += '32'
+                                else:
+                                    item_name += '64'
+                            elif sys.platform == 'darwin':
+                                item_name = 'mac'
                             else:
-                                item_name += '64'
-                        elif sys.platform == 'darwin':
-                            item_name = 'mac'
-                        else:
-                            item_name = 'linux'
-                        exe_url = ''
-                        exe_down = self.remote_app_params.get('exeDownloads')
-                        if exe_down:
-                            exe_url = exe_down.get(item_name)
-                        if exe_url:
-                            msg = "New version (" + remote_version_str + ') available: <a href="' + exe_url + '">download</a>.'
-                        else:
-                            msg = "New version (" + remote_version_str + ') available. Go to the project website: <a href="' + \
-                                  PROJECT_URL + '">open</a>.'
+                                item_name = 'linux'
+                            exe_url = ''
+                            exe_down = self.remote_app_params.get('exeDownloads')
+                            if exe_down:
+                                exe_url = exe_down.get(item_name)
+                            if exe_url:
+                                msg = "New version (" + remote_version_str + ') available: <a href="' + exe_url + '">download</a>.'
+                            else:
+                                msg = "New version (" + remote_version_str + ') available. Go to the project website: <a href="' + \
+                                      PROJECT_URL + '">open</a>.'
 
-                        self.setMessage(msg, 'green')
-                    else:
-                        if force_check:
-                            self.setMessage("You have the latest version of %s." % APP_NAME_SHORT, 'green')
-                elif force_check:
-                    self.setMessage("Could not read the remote version number.", 'orange')
-
-                # check whether deterministic masternodes are enabled in the project configuration to show/hide
-                # certain features in gui
-                dmn_mainnet = self.get_spork_state_from_config(15, 'mainnet', True)
-                dmn_testnet = self.get_spork_state_from_config(15, 'mainnet', True)
-                self.app_config.set_deterministic_mns_state(dmn_mainnet, dmn_testnet)
+                            self.setMessage(msg, 'green')
+                        else:
+                            if force_check:
+                                self.setMessage("You have the latest version of %s." % APP_NAME_SHORT, 'green')
+                    elif force_check:
+                        self.setMessage("Could not read the remote version number.", 'orange')
 
         except Exception:
-            logging.exception('Exception occurred')
+            logging.exception('Exception occurred while loading/processing the project remote configuration')
 
     def display_masternode_config(self, set_mn_list_index):
-        if self.curMasternode and set_mn_list_index:
-            self.cboMasternodes.setCurrentIndex(self.config.masternodes.index(self.curMasternode))
+        if self.curMasternode:
+            if set_mn_list_index:
+                self.cboMasternodes.setCurrentIndex(self.config.masternodes.index(self.curMasternode))
+            else:
+                self.wdg_masternode.set_masternode(self.curMasternode)
+            self.update_edit_controls_state()
+        else:
+            self.wdg_masternode.set_masternode(None)
         self.lblMnStatus.setText('')
 
     @pyqtSlot(bool)
@@ -635,6 +618,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
             self.action_check_network_connection.setEnabled(True)
             self.btnBroadcastMn.setEnabled(True)
+            self.btnMigrateToDMN.setEnabled(True)
             self.btnRefreshMnStatus.setEnabled(True)
             self.action_transfer_funds_for_any_address.setEnabled(True)
 
@@ -653,6 +637,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.config.is_config_complete():
             self.action_check_network_connection.setEnabled(False)
             self.btnBroadcastMn.setEnabled(False)
+            self.btnMigrateToDMN.setEnabled(False)
             self.btnRefreshMnStatus.setEnabled(False)
             # disable all actions that utilize dash network
             self.action_transfer_funds_for_any_address.setEnabled(False)
@@ -894,111 +879,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.wdg_masternode.set_edit_mode(self.editing_enabled)
             self.update_edit_controls_state()
 
-    def scan_hw_for_bip32_paths(self, addresses) -> Tuple[Dict[str, str], bool]:
-        """
-        Scans hardware wallet for bip32 paths of all Dash addresses passed in the addresses list.
-        :param addresses: list of Dash addresses to scan
-        :return: Tuple[Dict[str <dash address>, str <bip32 path>], bool <True if user cancelled scanning>]
-        """
-        paths_found = []
-        user_cancelled = False
-        raise Exception('Temporarily not available')  # todo: implement a new method based on bip44 wallet
-
-
-        def scan_for_bip32_thread(ctrl, addresses):
-            """
-            Function run inside a thread which purpose is to scan hawrware wallet
-            for a bip32 paths with given Dash addresses.
-            :param cfg: Thread dialog configuration object.
-            :param addresses: list of Dash addresses to find bip32 path
-            :return: 
-            """
-
-            paths_found = 0
-            paths_checked = 0
-            found_adresses = {}
-            user_cancelled = False
-            ctrl.dlg_config_fun(dlg_title="Scanning hardware wallet...", show_progress_bar=False)
-            if self.hw_client:
-
-                address_n = dash_utils.get_default_bip32_base_path_n(self.config.dash_network) + [None, 0, None]
-                db_cur = self.config.db_intf.get_cursor()
-
-                try:
-                    for addr_to_find_bip32 in addresses:
-                        if not found_adresses.get(addr_to_find_bip32):
-                            # check 10 addresses of account 0 (44'/5'/0'/0), then 10 addreses
-                            # of account 1 (44'/5'/1'/0) and so on until 9th account.
-                            # if not found, then check next 10 addresses of account 0 (44'/5'/0'/0)
-                            # and so on; we assume here, that user rather puts collaterals
-                            # under first addresses of subsequent accounts than under far addresses
-                            # of the first account; if so, following iteration shuld be faster
-                            found = False
-                            if ctrl.finish:
-                                break
-                            for tenth_nr in range(0, 10):
-                                if ctrl.finish:
-                                    break
-                                for account_nr in range(0, 10):
-                                    if ctrl.finish:
-                                        break
-                                    for index in range(0, 10):
-                                        if ctrl.finish:
-                                            break
-                                        address_n[2] = account_nr + 0x80000000
-                                        address_n[4] = (tenth_nr * 10) + index
-
-                                        cur_bip32_path = bip32_path_n_to_string(address_n)
-
-                                        ctrl.display_msg_fun(
-                                            '<b>Scanning hardware wallet for BIP32 paths, please wait...</b><br><br>'
-                                            'Paths scanned: <span style="color:black">%d</span><br>'
-                                            'Keys found: <span style="color:green">%d</span><br>'
-                                            'Current path: <span style="color:blue">%s</span><br>'
-                                            % (paths_checked, paths_found, cur_bip32_path))
-
-                                        # todo: use Bip44Wallet to scan addresses
-                                        # addr_of_cur_path = hw_intf.get_address_ext(
-                                        #     self.hw_session, address_n, db_cur, self.config.hw_encrypt_string,
-                                        #     self.config.hw_decrypt_string)
-
-                                        # paths_checked += 1
-                                        # if addr_to_find_bip32 == addr_of_cur_path:
-                                        #     found_adresses[addr_to_find_bip32] = cur_bip32_path
-                                        #     found = True
-                                        #     paths_found += 1
-                                        #     break
-                                        # elif not found_adresses.get(addr_of_cur_path, None) and \
-                                        #                 addr_of_cur_path in addresses:
-                                        #     # address of current bip32 path is in the search list
-                                        #     found_adresses[addr_of_cur_path] = cur_bip32_path
-
-                                    if found:
-                                        break
-                                if found:
-                                    break
-                finally:
-                    if db_cur.connection.total_changes > 0:
-                        self.config.db_intf.commit()
-                    self.config.db_intf.release_cursor()
-
-                if ctrl.finish:
-                    user_cancelled = True
-            return found_adresses, user_cancelled
-
-        try:
-            self.connect_hardware_wallet()
-            self.config.initialize_hw_encryption(self.hw_session)
-
-            if self.hw_client:
-                paths_found, user_cancelled = self.run_thread_dialog(scan_for_bip32_thread, (addresses,), True,
-                                                                     buttons=[{'std_btn': QtWidgets.QDialogButtonBox.Cancel}],
-                                                                     center_by_window=self)
-        except Exception:
-            logging.exception('Unhandled exception while converting address to bip32 path.')
-            raise
-        return paths_found, user_cancelled
-
     @pyqtSlot(bool)
     def on_action_import_masternode_conf_triggered(self, checked):
         """
@@ -1015,8 +895,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if not self.editing_enabled:
                     self.on_btnEditMn_clicked()
 
+                bip44_wallet = None
                 try:
                     with open(file_name, 'r') as f_ptr:
+                        bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.hw_session,
+                                                   self.app_config.db_intf, self.dashd_intf,
+                                                   self.app_config.dash_network)
+
                         modified = False
                         imported_cnt = 0
                         skipped_cnt = 0
@@ -1099,24 +984,35 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                              default_button=QMessageBox.Yes) == QMessageBox.Yes:
                                 # scan all Dash addresses from imported masternodes for BIP32 path, starting from
                                 # first standard Dash BIP32 path
+                                if not self.connect_hardware_wallet():
+                                    return
 
                                 addresses_to_scan = []
                                 for mn in mns_imported:
                                     if not mn.collateralBip32Path and mn.collateralAddress:
                                         addresses_to_scan.append(mn.collateralAddress)
-                                self.disconnect_hardware_wallet()  # forcing to enter the passphrase again
-                                found_paths, user_cancelled = self.scan_hw_for_bip32_paths(addresses_to_scan)
+
+                                found_paths = {}
+                                try:
+                                    bip44_addrs = find_wallet_addresses(addresses_to_scan, bip44_wallet)
+                                    for a in bip44_addrs:
+                                        if a and a.bip32_path:
+                                            found_paths[a.address] = a.bip32_path
+                                except CancelException:
+                                    pass
 
                                 paths_missing = 0
                                 for mn in mns_imported:
                                     if not mn.collateralBip32Path and mn.collateralAddress:
                                         path = found_paths.get(mn.collateralAddress)
                                         mn.collateralBip32Path = path
+                                        mn.set_modified()
                                         if path:
                                             if self.curMasternode == mn:
                                                 # current mn has been updated - update UI controls
                                                 # to new data
                                                 self.display_masternode_config(False)
+                                                self.wdg_masternode.set_modified()
                                         else:
                                             paths_missing += 1
 
@@ -1128,8 +1024,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                             self.infoMsg('Operation finished with no imported and %s skipped masternodes.'
                                          % str(skipped_cnt))
 
+                        if modified:
+                            self.update_edit_controls_state()
+
                 except Exception as e:
                     self.errorMsg('Reading file failed: ' + str(e))
+
+                finally:
+                    if bip44_wallet:
+                        del bip44_wallet
             else:
                 if file_name:
                     self.errorMsg("File '" + file_name + "' does not exist")
@@ -1147,6 +1050,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.action_disconnect_hw.setEnabled(True if self.hw_client else False)
             self.btnRefreshMnStatus.setEnabled(self.curMasternode is not None)
             self.btnBroadcastMn.setEnabled(self.curMasternode is not None)
+            self.btnMigrateToDMN.setEnabled(self.curMasternode is not None)
         if threading.current_thread() != threading.main_thread():
             self.call_in_main_thread(update_fun)
         else:
@@ -1202,11 +1106,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.curMasternode = self.config.masternodes[self.cboMasternodes.currentIndex()]
         else:
             self.curMasternode = None
-        self.wdg_masternode.set_masternode(self.curMasternode)
         self.display_masternode_config(False)
-        self.update_edit_controls_state()
-        if not self.inside_setup_ui:
-            app_cache.set_value('MainWindow_CurMasternodeIndex', self.cboMasternodes.currentIndex())
 
     def on_mn_name_modified(self, new_name):
         if self.curMasternode:
@@ -1216,12 +1116,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.curMasternode == masternode:
             self.curMnModified()
 
-    def read_remote_app_params(self):
-        if not self.remote_app_params:
-            self.remote_app_params = self.load_remote_params()
-
     def get_default_protocol(self) -> int:
-        self.read_remote_app_params()
         prot = None
         if self.remote_app_params:
             dp = self.remote_app_params.get('defaultDashdProtocol')
@@ -1231,7 +1126,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def get_spork_state_from_config(self, spork_nr: int, dash_network: str, default_state: bool):
         state = default_state
-        self.read_remote_app_params()
         if self.remote_app_params:
             sporks = self.remote_app_params.get('sporks')
             if sporks and isinstance(sporks, list):
@@ -1253,7 +1147,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             sig_time = int(time.time())
         mn_privkey = dash_utils.wif_to_privkey(masternode.privateKey, self.config.dash_network)
         if not mn_privkey:
-            raise Exception(f'Cannot convert masternode private key (masternode: {masternode.name})')
+            raise Exception(f'Invalid masternode private key (masternode: {masternode.name})')
         mn_pubkey = bitcoin.privkey_to_pubkey(masternode.privateKey)
         mn_pubkey = bytes.fromhex(mn_pubkey)
 
@@ -1336,7 +1230,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         try:
             mn_privkey = dash_utils.wif_to_privkey(self.curMasternode.privateKey, self.config.dash_network)
             if not mn_privkey:
-                self.errorMsg('Cannot convert masternode private key')
+                self.errorMsg('Invalid masternode private key')
                 return
 
             self.connect_hardware_wallet()
@@ -1585,14 +1479,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         else:
                             lastseen_ago_str = 'a few seconds ago'
                     else:
-                        lastseen_str = 'never'
+                        lastseen_str = ''
                         lastseen_ago_str = ''
 
                     if mn_info.activeseconds:
                         activeseconds_str = app_utils.seconds_to_human(int(mn_info.activeseconds),
                                                                        out_unit_auto_adjust=True)
                     else:
-                        activeseconds_str = '?'
+                        activeseconds_str = ''
 
                     if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
                         status_color = 'green'
@@ -1600,7 +1494,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         status_color = 'red'
                     mn_status = mn_info.status
                 else:
-                    lastseen_str = '?'
+                    lastseen_str = ''
                     lastseen_ago_str = ''
                     s = dmn_tx_state.get('PoSePenalty', 0)
                     if s:
@@ -1632,7 +1526,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     else:
                         lastpaid_ago_str = 'a few seconds ago'
                 else:
-                    lastpaid_str = 'never'
+                    lastpaid_str = ''
                     lastpaid_ago_str = ''
 
                 enabled_mns_count = len(self.dashd_intf.payment_queue)
@@ -1697,44 +1591,43 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         else:
                             ip_port_mismatch = True
 
-                if self.app_config.deterministic_mns_enabled:
-                    if dmn_tx:
-                        if not masternode.is_deterministic:
+                if dmn_tx:
+                    if not masternode.is_deterministic:
+                        if update_mn_info:
+                            masternode.dmn_tx_hash = dmn_tx.get('proTxHash')
+                            self.wdg_masternode.set_deterministic(True)
+                            mn_data_modified = True
+                    else:
+                        dmn_hash = dmn_tx.get('proTxHash')
+                        if dmn_hash and masternode.dmn_tx_hash != dmn_hash:
                             if update_mn_info:
                                 masternode.dmn_tx_hash = dmn_tx.get('proTxHash')
-                                self.wdg_masternode.set_deterministic(True)
                                 mn_data_modified = True
-                        else:
-                            dmn_hash = dmn_tx.get('proTxHash')
-                            if dmn_hash and masternode.dmn_tx_hash != dmn_hash:
-                                if update_mn_info:
-                                    masternode.dmn_tx_hash = dmn_tx.get('proTxHash')
-                                    mn_data_modified = True
 
-                        if dmn_tx_state:
-                            owner_pubkey_network = dmn_tx_state.get('keyIDOwner')
-                            owner_pubkey_cfg = masternode.dmn_owner_pubkey_hash
-                            if owner_pubkey_network and owner_pubkey_cfg and owner_pubkey_network != owner_pubkey_cfg:
-                                owner_pubkey_hash_mismatch = True
-                                logging.warning(
-                                    f'Owner public key hash mismatch for masternode: {masternode.name}, '
-                                    f'Config pubkey hash: {owner_pubkey_cfg}, network pubkey hash: {owner_pubkey_network}')
+                    if dmn_tx_state:
+                        owner_pubkey_network = dmn_tx_state.get('keyIDOwner')
+                        owner_pubkey_cfg = masternode.dmn_owner_pubkey_hash
+                        if owner_pubkey_network and owner_pubkey_cfg and owner_pubkey_network != owner_pubkey_cfg:
+                            owner_pubkey_hash_mismatch = True
+                            logging.warning(
+                                f'Owner public key hash mismatch for masternode: {masternode.name}, '
+                                f'Config pubkey hash: {owner_pubkey_cfg}, network pubkey hash: {owner_pubkey_network}')
 
-                            voting_pubkey_network = dmn_tx_state.get('keyIDVoting')
-                            voting_pubkey_cfg = masternode.dmn_voting_pubkey_hash
-                            if voting_pubkey_network and voting_pubkey_cfg and voting_pubkey_network != voting_pubkey_cfg:
-                                voting_pubkey_hash_mismatch = True
-                                logging.warning(
-                                    f'Voting public key hash mismatch for masternode: {masternode.name}. '
-                                    f'Config pubkey hash: {voting_pubkey_cfg}, network pubkey hash: {voting_pubkey_network}')
+                        voting_pubkey_network = dmn_tx_state.get('keyIDVoting')
+                        voting_pubkey_cfg = masternode.dmn_voting_pubkey_hash
+                        if voting_pubkey_network and voting_pubkey_cfg and voting_pubkey_network != voting_pubkey_cfg:
+                            voting_pubkey_hash_mismatch = True
+                            logging.warning(
+                                f'Voting public key hash mismatch for masternode: {masternode.name}. '
+                                f'Config pubkey hash: {voting_pubkey_cfg}, network pubkey hash: {voting_pubkey_network}')
 
-                            operator_pubkey_network = dmn_tx_state.get('pubKeyOperator')
-                            operator_pubkey_cfg = masternode.dmn_operator_pubkey
-                            if operator_pubkey_network and operator_pubkey_cfg and operator_pubkey_network != operator_pubkey_cfg:
-                                operator_pubkey_mismatch = True
-                                logging.warning(
-                                    f'Operator public key mismatch for masternode: {masternode.name}. '
-                                    f'Config pubkey: {operator_pubkey_cfg}, network pubkey: {operator_pubkey_network}')
+                        operator_pubkey_network = dmn_tx_state.get('pubKeyOperator')
+                        operator_pubkey_cfg = masternode.dmn_operator_pubkey
+                        if operator_pubkey_network and operator_pubkey_cfg and operator_pubkey_network != operator_pubkey_cfg:
+                            operator_pubkey_mismatch = True
+                            logging.warning(
+                                f'Operator public key mismatch for masternode: {masternode.name}. '
+                                f'Config pubkey: {operator_pubkey_cfg}, network pubkey: {operator_pubkey_network}')
 
                 if mn_data_modified:
                     def update():
