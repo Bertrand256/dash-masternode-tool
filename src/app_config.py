@@ -20,7 +20,7 @@ from configparser import ConfigParser
 from random import randint
 from shutil import copyfile
 import logging
-from typing import Optional, Callable
+from typing import Optional, Callable, Dict
 import bitcoin
 from logging.handlers import RotatingFileHandler
 from PyQt5.QtCore import QLocale
@@ -93,6 +93,10 @@ class AppConfig(object):
         self.tx_api_url_mainnet = 'https://insight.dash.org/insight'
         self.tx_api_url_testnet = 'https://testnet-insight.dashevo.org/insight'
         self.dash_central_proposal_api = 'https://www.dashcentral.org/api/v1/proposal?hash=%HASH%'
+
+        # public RPC connection configurations
+        self.public_conns_mainnet: Dict[str, DashNetworkConnectionCfg] = {}
+        self.public_conns_testnet: Dict[str, DashNetworkConnectionCfg] = {}
 
         self.check_for_updates = True
         self.backup_config_file = True
@@ -548,6 +552,12 @@ class AppConfig(object):
                 added, updated = self.import_connections(cfgs, force_import=force_import, limit_to_network=None)
                 if added or updated:
                     configuration_corrected = True
+
+                for c in cfgs:
+                    if c.mainnet:
+                        self.public_conns_mainnet[c.get_conn_id()] = c
+                    else:
+                        self.public_conns_testnet[c.get_conn_id()] = c
 
             if not errors_while_reading:
                 # if there were errors while reading configuration, don't save the file automatically but
@@ -1056,6 +1066,12 @@ class AppConfig(object):
 
     def get_app_img_dir(self):
         return os.path.join(self.app_dir, '', 'img')
+
+    def is_connection_public(self, conn: 'DashNetworkConnectionCfg'):
+        conns = self.public_conns_mainnet if self.is_mainnet() else self.public_conns_testnet
+        if conn.get_conn_id() in conns:
+            return True
+        return False
 
 
 class MasternodeConfig:

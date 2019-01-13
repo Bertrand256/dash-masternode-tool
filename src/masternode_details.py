@@ -336,9 +336,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 return
 
             try:
-                txes = self.dashd_intf.protx('list', 'registered')
-                for tx in txes:
-                    protx = self.dashd_intf.protx('info', tx)
+                txes = self.dashd_intf.protx('list', 'registered', True)
+                for protx in txes:
                     state = protx.get('state')
                     if state:
                         if (state.get('addr') == self.masternode.ip + ':' + self.masternode.port) or \

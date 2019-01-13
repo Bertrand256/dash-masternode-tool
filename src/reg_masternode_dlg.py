@@ -845,23 +845,24 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             # preparing protx message
             try:
                 funding_address = ''
-                try:
-                    # find an address to be used as the source of the transaction fees
-                    min_fee = round(1024 * FEE_DUFF_PER_BYTE / 1e8, 8)
-                    balances = self.dashd_intf.listaddressbalances(min_fee)
-                    bal_list = []
-                    for addr in balances:
-                        bal_list.append({'address': addr, 'amount': balances[addr]})
-                    bal_list.sort(key = lambda x: x['amount'])
-                    if not bal_list:
-                        raise Exception("No address can be found in the node's wallet with sufficient funds to "
-                                        "cover the transaction fees.")
-                    funding_address = bal_list[0]['address']
-                    self.dashd_intf.disable_conf_switching()
-                except JSONRPCException as e:
-                    log.info("Couldn't list the node address balances. We assume you are using a public RPC node and "
-                             "the funding address for the transaction fees will be estimated during the "
-                             "`register_prepare` call")
+                if not self.dashd_intf.is_current_connection_public():
+                    try:
+                        # find an address to be used as the source of the transaction fees
+                        min_fee = round(1024 * FEE_DUFF_PER_BYTE / 1e8, 8)
+                        balances = self.dashd_intf.listaddressbalances(min_fee)
+                        bal_list = []
+                        for addr in balances:
+                            bal_list.append({'address': addr, 'amount': balances[addr]})
+                        bal_list.sort(key = lambda x: x['amount'])
+                        if not bal_list:
+                            raise Exception("No address can be found in the node's wallet with sufficient funds to "
+                                            "cover the transaction fees.")
+                        funding_address = bal_list[0]['address']
+                        self.dashd_intf.disable_conf_switching()
+                    except JSONRPCException as e:
+                        log.info("Couldn't list the node address balances. We assume you are using a public RPC node and "
+                                 "the funding address for the transaction fees will be estimated during the "
+                                 "`register_prepare` call")
 
                 set_text(self.lblProtxTransaction1, '<b>1. Preparing a ProRegTx transaction on a remote node...</b>')
                 params = ['register_prepare', self.dmn_collateral_tx, self.dmn_collateral_tx_index,

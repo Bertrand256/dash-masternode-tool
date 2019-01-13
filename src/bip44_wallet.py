@@ -579,6 +579,7 @@ class Bip44Wallet(QObject):
     def _process_addresses_txs(self, addr_info_list: List[Bip44AddressType], max_block_height: int,
                                check_break_process_fun: Callable = None):
 
+        log.debug('_process_addresses_txs, addr count: %s', len(addr_info_list))
         tm_begin = time.time()
         addrinfo_by_address = {}
         addresses = []
@@ -612,6 +613,7 @@ class Bip44Wallet(QObject):
             # txids.extend(mempool_entries)
 
             if txids:
+                log.debug('Tx count: %s', len(txids))
                 last_time_checked = time.time()
                 last_nr = 0
                 for nr, tx_entry in enumerate(txids):

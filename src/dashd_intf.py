@@ -568,6 +568,11 @@ class DashdInterface(WndUtils):
         if not for_testing_connections_only:
             self.load_data_from_db_cache()
 
+    def is_current_connection_public(self):
+        if self.cur_conn_def and self.config:
+            return self.config.is_connection_public(self.cur_conn_def)
+        return False
+
     def load_data_from_db_cache(self):
         self.masternodes.clear()
         self.masternodes_by_ident.clear()
