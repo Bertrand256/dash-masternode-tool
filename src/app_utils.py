@@ -38,18 +38,18 @@ def extract_app_version(lines):
 
 
 def version_str_to_number(version_str):
-    elems = version_str.split('.')
+    elems = re.split('\W+', version_str)
+    elems_dest = []
     if elems:
-        # last element of a version string can have a suffix
-        last_elem = elems[len(elems) - 1]
-        if not last_elem.isdigit():
-            res = re.findall(r'^\d+', last_elem)
+        # find last element being a number - strip version suffix
+        for e in elems:
+            res = re.findall(r'^\d+', e)
             if res:
-                elems[len(elems) - 1] = res[0]
+                elems_dest.append(e)
             else:
-                del elems[len(elems) - 1]
+                break
 
-    ver_list = [n.zfill(4) for n in elems]
+    ver_list = [n.zfill(4) for n in elems_dest]
     version_nr_str = ''.join(ver_list)
     version_nr = int(version_nr_str)
     return version_nr
@@ -134,7 +134,7 @@ def decrypt(input_str, key, iterations=100000):
         h = fer.decrypt(input_str)
         h = h.decode('utf-8')
     except:
-        return ''
+        raise
     return h
 
 

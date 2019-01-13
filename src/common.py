@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-07
+import collections
+from typing import Any
+
 
 class AttrsProtected(object):
     """
@@ -18,6 +21,17 @@ class AttrsProtected(object):
         """
         self.__allow_attr_definition = False
 
+    def remove_attr_protection(self):
+        self.__allow_attr_definition = True
+
+    def add_attribute(self, attr_name: str, initial_value: Any = None):
+        old_state = self.__allow_attr_definition
+        try:
+            self.__allow_attr_definition = True
+            super().__setattr__(attr_name, initial_value)
+        finally:
+            self.__allow_attr_definition = old_state
+
     def __setattr__(self, name, value):
         if name == '_AttrsProtected__allow_attr_definition' or self.__allow_attr_definition or hasattr(self, name):
             super().__setattr__(name, value)
@@ -29,3 +43,13 @@ class CancelException(Exception):
     def __init__(self, *args, **kwargs):
         Exception.__init__(self, *args, *kwargs)
 
+
+def namedtuple_defaults(typename, field_names, default_values=()):
+    T = collections.namedtuple(typename, field_names)
+    T.__new__.__defaults__ = (None,) * len(T._fields)
+    if isinstance(default_values, collections.Mapping):
+        prototype = T(**default_values)
+    else:
+        prototype = T(*default_values)
+    T.__new__.__defaults__ = tuple(prototype)
+    return T

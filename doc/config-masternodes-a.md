@@ -59,13 +59,13 @@ Enter the new **collateral address** you obtained in [Step 2](#step-2) in the `C
 
 ### Step 8
 
-Click the `Lookup` button to automatically fill in the `Collateral TX ID` and `TX index` of the 1000 Dash transaction you sent in [Step 3](#step-3). Assuming that the transaction has been processed without any problems, exactly one transaction should appear in the dialog that appears:  
+Click the `Lookup` button to automatically fill in the `Collateral TX hash` and `TX index` of the 1000 Dash transaction you sent in [Step 3](#step-3). Assuming that the transaction has been processed without any problems, exactly one transaction should appear in the dialog that appears:
   ![Collateral transaction ID](img/conf-masternodes-a-5.png)  
 Select the transaction and click `OK`.
 
 ### Step 9
 
-The `Collateral TX ID` and `TX index` fields should now be filled with the relevant data:  
+The `Collateral TX hash` and `TX index` fields should now be filled with the relevant data:
   ![Completed masternode configuration](img/conf-masternodes-a-6.png)  
 Click the `Save configuration` button at the top.
 

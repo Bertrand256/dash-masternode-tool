@@ -1,12 +1,15 @@
+from bitcoin import compress, bin_hash160
 from btchip.btchip import *
 from btchip.btchipComm import getDongle
-import logging
 from btchip.btchipUtils import compress_public_key
+from typing import List
 from hw_common import HardwareWalletCancelException, clean_bip32_path, HwSessionInfo
+import wallet_common
 from wnd_utils import WndUtils
 from dash_utils import *
 from PyQt5.QtWidgets import QMessageBox
 import unicodedata
+from bip32utils import Base58
 
 
 def process_ledger_exceptions(func):
@@ -133,11 +136,36 @@ def get_address_and_pubkey(client, bip32_path):
         bip32_path = bip32_path[2:]
 
     nodedata = client.getWalletPublicKey(bip32_path)
-
     return {
         'address': nodedata.get('address').decode('utf-8'),
         'publicKey': compress_public_key(nodedata.get('publicKey'))
     }
+
+
+@process_ledger_exceptions
+def get_xpub(client, bip32_path):
+    bip32_path = clean_bip32_path(bip32_path)
+    bip32_path.strip()
+    if bip32_path.lower().find('m/') >= 0:
+        bip32_path = bip32_path[2:]
+    path_n = bip32_path_string_to_n(bip32_path)
+    parent_bip32_path = bip32_path_n_to_string(path_n[:-1])
+    depth = len(path_n)
+    index = path_n[-1]
+
+    nodedata = client.getWalletPublicKey(bip32_path)
+    pubkey = compress(nodedata.get('publicKey'))
+    chaincode = nodedata.get('chainCode')
+
+    parent_nodedata = client.getWalletPublicKey(parent_bip32_path)
+    parent_pubkey = compress(parent_nodedata['publicKey'])
+    parent_fingerprint = bin_hash160(parent_pubkey)[:4]
+
+    xpub_raw = bytes.fromhex('0488b21e') + depth.to_bytes(1, 'big') + parent_fingerprint + index.to_bytes(4, 'big') + \
+           chaincode + pubkey
+    xpub = Base58.check_encode(xpub_raw)
+
+    return xpub
 
 
 def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, secondary_pin: str):
@@ -217,7 +245,8 @@ def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, seco
 
 
 @process_ledger_exceptions
-def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend, dest_addresses, tx_fee, rawtransactions):
+def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoType],
+            tx_outputs: List[wallet_common.TxOutputType], tx_fee, rawtransactions):
     client = hw_session.hw_client
 
     # Each of the UTXOs will become an input in the new transaction. For each of those inputs, create
@@ -248,23 +277,23 @@ def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend, dest_addresse
     amount = 0
     starting = True
     for idx, utxo in enumerate(utxos_to_spend):
-        amount += utxo['satoshis']
+        amount += utxo.satoshis
 
-        raw_tx = bytearray.fromhex(rawtransactions[utxo['txid']])
+        raw_tx = bytearray.fromhex(rawtransactions[utxo.txid])
         if not raw_tx:
-            raise Exception("Can't find raw transaction for txid: " + rawtransactions[utxo['txid']])
+            raise Exception("Can't find raw transaction for txid: " + rawtransactions[utxo.txid])
 
         # parse the raw transaction, so that we can extract the UTXO locking script we refer to
         prev_transaction = bitcoinTransaction(raw_tx)
 
-        utxo_tx_index = utxo['outputIndex']
+        utxo_tx_index = utxo.output_index
         if utxo_tx_index < 0 or utxo_tx_index > len(prev_transaction.outputs):
             raise Exception('Incorrent value of outputIndex for UTXO %s' % str(idx))
 
         trusted_input = client.getTrustedInput(prev_transaction, utxo_tx_index)
         trusted_inputs.append(trusted_input)
 
-        bip32_path = utxo['bip32_path']
+        bip32_path = utxo.bip32_path
         bip32_path = clean_bip32_path(bip32_path)
         pubkey = bip32_to_address.get(bip32_path)
         if not pubkey:
@@ -282,11 +311,11 @@ def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend, dest_addresse
               (bip32_path, str(idx)))
 
         arg_inputs.append({
-            'locking_script': prev_transaction.outputs[utxo['outputIndex']].script,
+            'locking_script': prev_transaction.outputs[utxo.output_index].script,
             'pubkey': pubkey,
             'bip32_path': bip32_path,
-            'outputIndex': utxo['outputIndex'],
-            'txid': utxo['txid']
+            'outputIndex': utxo.output_index,
+            'txid': utxo.txid
         })
 
     amount -= int(tx_fee)
@@ -294,10 +323,10 @@ def prepare_transfer_tx(hw_session: HwSessionInfo, utxos_to_spend, dest_addresse
 
     new_transaction = bitcoinTransaction()  # new transaction object to be used for serialization at the last stage
     new_transaction.version = bytearray([0x01, 0x00, 0x00, 0x00])
-    for _addr, _amout, _path in dest_addresses:
+    for out in tx_outputs:
         output = bitcoinOutput()
-        output.script = compose_tx_locking_script(_addr, hw_session.app_config.dash_network)
-        output.amount = int.to_bytes(_amout, 8, byteorder='little')
+        output.script = compose_tx_locking_script(out.address, hw_session.app_config.dash_network)
+        output.amount = int.to_bytes(out.satoshis, 8, byteorder='little')
         new_transaction.outputs.append(output)
 
     # join all outputs - will be used by Ledger for sigining transaction

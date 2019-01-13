@@ -5,7 +5,7 @@
 import sys
 
 import re
-from typing import Optional
+from typing import Optional, Callable, Dict, List
 import simplejson
 import logging
 
@@ -20,10 +20,14 @@ import app_utils
 from app_config import AppConfig
 from dashd_intf import DashdInterface
 from ui.ui_transaction_dlg import Ui_TransactionDlg
+from wallet_common import UtxoType, TxOutputType
 from wnd_utils import WndUtils
 
 
 CACHE_ITEM_DETAILS_WORD_WRAP = 'TransactionDlg_DetailsWordWrap'
+
+
+log = logging.getLogger('dmt.transaction_dlg')
 
 
 class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
@@ -32,8 +36,11 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                  dashd_intf: DashdInterface,
                  raw_transaction: str,
                  use_instant_send: bool,
+                 tx_inputs: List[UtxoType],
+                 tx_outputs: List[TxOutputType],
+                 after_send_tx_callback: Callable[[dict], None],
                  decoded_transaction: Optional[dict] = None,
-                 dependent_transactions: Optional[dict] = None
+                 dependent_transactions: Optional[dict] = None,
                  ):
         QDialog.__init__(self, parent=parent)
         Ui_TransactionDlg.__init__(self)
@@ -44,10 +51,13 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
         self.transaction_sent = False
         self.raw_transaction = raw_transaction
         self.use_instant_send = use_instant_send
+        self.tx_inputs = tx_inputs
+        self.tx_outputs = tx_outputs
         self.tx_id = None  # will be decoded from rawtransaction
         self.tx_size = None  # as above
         self.decoded_transaction: Optional[dict] = decoded_transaction
         self.dependent_transactions = dependent_transactions  # key: txid, value: transaction dict
+        self.after_send_tx_callback: Callable[[Dict], None] = after_send_tx_callback
         self.setupUi()
 
     def setupUi(self):
@@ -80,6 +90,24 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
             if not self.decoded_transaction:
                 try:
                     self.decoded_transaction = self.dashd_intf.decoderawtransaction(self.raw_transaction)
+                    self.decoded_transaction['hex'] = self.raw_transaction
+
+                    # fill up the missing fields for this new (not yet unpublished) transaction which will
+                    # be needed when registering pending transaction in cache
+                    vins = self.decoded_transaction.get('vin')
+                    if vins:
+                        for idx, vin in enumerate(vins):
+                            if idx < len(self.tx_inputs):
+                                inp = self.tx_inputs[idx]
+                                if not vin.get('valueSat'):
+                                    vin['valueSat'] = inp.satoshis
+                                if not vin.get('value'):
+                                    vin['value'] = round(inp.satoshis / 1e8, 8)
+                                if not vin.get('address'):
+                                    vin['address'] = inp.address
+                            else:
+                                log.warning('Input index of the decoded transaction does not exist in the input list')
+
                 except JSONRPCException as e:
                     if re.match('.*400 Bad Request', str(e)) and len(self.raw_transaction):
                         raise Exception('Error while decoding raw transaction: ' + str(e) + '.' +
@@ -121,7 +149,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                                         val = get_vout_value(v)
                                         break
                                 if val is None:
-                                    logging.error(f'Couldn\'t find output {txindex} in source transaction {txid}')
+                                    log.error(f'Couldn\'t find output {txindex} in source transaction {txid}')
                                 else:
                                     inputs_total += val
 
@@ -131,7 +159,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                             else:
                                 tx_size_str = f'{self.tx_size} bytes'
 
-                        # prepare list of recipients
+                        # prepare the list of recipients
                         outputs_total = 0.0
                         recipients = ''
                         for row_idx, vout in enumerate(vout_list):
@@ -145,10 +173,20 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                                     address = ads[0]
                                 else:
                                     address = str(ads)
+
+                            address_info = ''
+                            if row_idx < len(self.tx_outputs):
+                                tx_out = self.tx_outputs[row_idx]
+                                if tx_out.address_ref:
+                                    if tx_out.address_ref.is_change:
+                                        address_info = f' (the change {tx_out.address_ref.bip32_path})'
+                                    elif tx_out.address_ref.tree_id:
+                                        address_info = f' (yours)'
+
                             if row_idx == 0:
-                                recipients = f'<tr><td class="lbl"><p class="lbl">Recipients:</p></td><td>{address}</td><td><p class="val">{app_utils.to_string(val)} Dash</p></td></tr>'
+                                recipients = f'<tr><td class="lbl"><p class="lbl">Recipients:</p></td><td>{address} {address_info}</td><td><p class="val">{app_utils.to_string(val)} Dash</p></td><td></td></tr>'
                             else:
-                                recipients += f'<tr><td></td><td>{address}</td><td><p class="val">{app_utils.to_string(val)} Dash</p></td></tr>'
+                                recipients += f'<tr><td></td><td>{address} {address_info}</td><td><p class="val">{app_utils.to_string(val)} Dash</p></td><td></td></tr>'
 
                         fee = round(inputs_total - outputs_total, 8)
 
@@ -205,7 +243,7 @@ td.lbl{{text-align: right;vertical-align: top}} p.lbl{{margin: 0 5px 0 0; font-w
             else:
                 raise Exception('Error: could\'t parse tha raw transaction.')
         except Exception as e:
-            logging.exception("Unhandled exception occurred.")
+            log.exception("Unhandled exception occurred.")
             raise
 
     @pyqtSlot(bool)
@@ -217,16 +255,19 @@ td.lbl{{text-align: right;vertical-align: top}} p.lbl{{margin: 0 5px 0 0; font-w
     @pyqtSlot(bool)
     def on_btn_broadcast_clicked(self):
         try:
+            log.debug('Broadcasting raw transaction: ' + self.raw_transaction)
             txid = self.dashd_intf.sendrawtransaction(self.raw_transaction, self.use_instant_send)
             if txid != self.tx_id:
-                logging.warning('TXID returned by sendrawtransaction differs from the original txid')
+                log.warning('TXID returned by sendrawtransaction differs from the original txid')
                 self.tx_id = txid
-            logging.info('Transaction sent, txid: ' + txid)
+            log.info('Transaction sent, txid: ' + txid)
             self.transaction_sent = True
             self.btn_broadcast.setEnabled(False)
             self.prepare_tx_view()
+            if self.after_send_tx_callback:
+                self.after_send_tx_callback(self.decoded_transaction)
         except Exception as e:
-            logging.exception(f'Exception occurred while broadcasting transaction. '
+            log.exception(f'Exception occurred while broadcasting transaction. '
                               f'Transaction size: {self.tx_size} bytes.')
             self.errorMsg('An error occurred while sending transation: '+ str(e))
 

@@ -8,6 +8,22 @@
   },
   "defaultDashdProtocol": {
     "mainnet": 70210,
-    "testnet": 70210
-  }
+    "testnet": 70213
+  },
+  "sporks": [
+    {
+      "name": "SPORK_6_NEW_SIGS",
+      "active": {
+        "mainnet": false,
+        "testnet": false
+      }
+    },
+    {
+      "name": "SPORK_15_DETERMINISTIC_MNS_ENABLED",
+      "active": {
+        "mainnet": false,
+        "testnet": true
+      }
+    }
+  ]
 }

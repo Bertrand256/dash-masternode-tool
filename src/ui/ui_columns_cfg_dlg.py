@@ -32,6 +32,10 @@ class Ui_ColumnsConfigDlg(object):
         self.horizontalLayout.addWidget(self.tableWidget)
         self.verticalLayout_2 = QtWidgets.QVBoxLayout()
         self.verticalLayout_2.setObjectName("verticalLayout_2")
+        self.btnMoveBegin = QtWidgets.QToolButton(ColumnsConfigDlg)
+        self.btnMoveBegin.setText("")
+        self.btnMoveBegin.setObjectName("btnMoveBegin")
+        self.verticalLayout_2.addWidget(self.btnMoveBegin)
         self.btnMoveUp = QtWidgets.QToolButton(ColumnsConfigDlg)
         self.btnMoveUp.setText("")
         self.btnMoveUp.setObjectName("btnMoveUp")
@@ -40,6 +44,10 @@ class Ui_ColumnsConfigDlg(object):
         self.btnMoveDown.setText("")
         self.btnMoveDown.setObjectName("btnMoveDown")
         self.verticalLayout_2.addWidget(self.btnMoveDown)
+        self.btnMoveEnd = QtWidgets.QToolButton(ColumnsConfigDlg)
+        self.btnMoveEnd.setText("")
+        self.btnMoveEnd.setObjectName("btnMoveEnd")
+        self.verticalLayout_2.addWidget(self.btnMoveEnd)
         spacerItem = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.verticalLayout_2.addItem(spacerItem)
         self.horizontalLayout.addLayout(self.verticalLayout_2)
@@ -60,8 +68,10 @@ class Ui_ColumnsConfigDlg(object):
         ColumnsConfigDlg.setWindowTitle(_translate("ColumnsConfigDlg", "Dialog"))
         item = self.tableWidget.horizontalHeaderItem(0)
         item.setText(_translate("ColumnsConfigDlg", "Columns"))
+        self.btnMoveBegin.setToolTip(_translate("ColumnsConfigDlg", "Move To Top"))
         self.btnMoveUp.setToolTip(_translate("ColumnsConfigDlg", "Move Up"))
         self.btnMoveDown.setToolTip(_translate("ColumnsConfigDlg", "Move Down"))
+        self.btnMoveEnd.setToolTip(_translate("ColumnsConfigDlg", "Move To Bottom"))
 
 
 if __name__ == "__main__":

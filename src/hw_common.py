@@ -120,11 +120,11 @@ class HwSessionInfo(object):
     def base_public_key(self):
         return self.__base_public_key
 
-    @property
-    def hd_tree_ident(self):
-        coin_name = self.__app_config.hw_coin_name
+    def get_hd_tree_ident(self, coin_name: str):
         if not coin_name:
-            raise Exception('Coin name not set in configuration')
+            raise Exception('Missing coin name')
+        if not self.__hd_tree_ident:
+            raise Exception('Not connected to hardware wallet')
         return self.__hd_tree_ident + bytes(coin_name, 'ascii').hex()
 
 
@@ -151,7 +151,7 @@ def ask_for_pin_callback(msg, hide_numbers=True):
         return dlg()
 
 
-def ask_for_pass_callback(msg):
+def ask_for_pass_callback():
     def dlg():
         ui = hw_pass_dlg.HardwareWalletPassDlg()
         if ui.exec_():

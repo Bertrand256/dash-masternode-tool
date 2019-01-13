@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+import subprocess
 import simplejson
 import base64
 import binascii
@@ -14,8 +15,7 @@ import sys
 import threading
 import time
 import ssl
-from functools import partial
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, Callable
 import bitcoin
 import logging
 from PyQt5 import QtCore
@@ -23,19 +23,25 @@ from PyQt5 import QtWidgets
 from PyQt5.QtCore import QSize, pyqtSlot, QEventLoop, QMutex, QWaitCondition, QUrl, Qt
 from PyQt5.QtGui import QFont, QIcon, QDesktopServices
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle, QInputDialog, QApplication
+from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle, QInputDialog, QApplication, \
+    QHBoxLayout
 from PyQt5.QtWidgets import QMessageBox
+
+import reg_masternode_dlg
+from bip44_wallet import find_wallet_address, Bip44Wallet
+from cmd_console_dlg import CmdConsoleDlg
 from common import CancelException
 from config_dlg import ConfigDlg
-from find_coll_tx_dlg import FindCollateralTxDlg
+from find_coll_tx_dlg import ListCollateralTxsDlg
 import about_dlg
 import app_cache
 import dash_utils
 import hw_pass_dlg
 import hw_pin_dlg
-import send_payout_dlg
+import wallet_dlg
 import app_utils
 from initialize_hw_dlg import HwInitializeDlg
+from masternode_details import WdgMasternodeDetails
 from proposals_dlg import ProposalsDlg
 from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT
 from app_defs import PROJECT_URL, HWType, get_note_url
@@ -53,14 +59,15 @@ from ui import ui_main_dlg
 class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     update_status_signal = QtCore.pyqtSignal(str, str)  # signal for updating status text from inside thread
 
-    def __init__(self, app_path):
+    def __init__(self, app_dir):
         QMainWindow.__init__(self)
         WndUtils.__init__(self, None)
         ui_main_dlg.Ui_MainWindow.__init__(self)
 
         self.hw_client = None
+        self.finishing = False
         self.config = AppConfig()
-        self.config.init(app_path)
+        self.config.init(app_dir)
         WndUtils.set_app_config(self, self.config)
 
         self.dashd_intf = DashdInterface(window=None,
@@ -82,7 +89,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.connecting_to_dashd = False
         self.curMasternode = None
         self.editing_enabled = False
-        self.app_path = app_path
         self.recent_config_files = []
 
         # load most recently used config files from the data cache
@@ -92,6 +98,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if os.path.exists(file_name):
                     self.recent_config_files.append(file_name)
 
+        self.cmd_console_dlg = None
         self.setupUi()
         ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -101,8 +108,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         app_cache.restore_window_size(self)
         self.inside_setup_ui = True
         self.dashd_intf.window = self
-        self.btnHwBip32ToAddress.setEnabled(False)
         self.closeEvent = self.closeEvent
+        self.show_hide_trezor_emulator()
         self.lblStatus1 = QtWidgets.QLabel(self)
         self.lblStatus1.setAutoFillBackground(False)
         self.lblStatus1.setOpenExternalLinks(True)
@@ -117,23 +124,17 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.setStatus2Text('<b>HW status:</b> idle', 'black')
 
         # set stylesheet for editboxes, supporting different colors for read-only and edting mode
-        styleSheet = """
-          QLineEdit{background-color: white}
-          QLineEdit:read-only{background-color: lightgray}
-        """
-        self.setStyleSheet(styleSheet)
-        self.setIcon(self.btnHwAddressToBip32, QStyle.SP_ArrowRight)
-        self.setIcon(self.btnHwBip32ToAddress, QStyle.SP_ArrowLeft)
+        self.styleSheet = "QLineEdit{background-color: white} QLineEdit:read-only{background-color: lightgray}"
+        self.setStyleSheet(self.styleSheet)
         self.setIcon(self.action_save_config_file, 'save.png')
         self.setIcon(self.action_check_network_connection, "link-check.png")
         self.setIcon(self.action_open_settings_window, "gear.png")
         self.setIcon(self.action_open_proposals_window, "thumbs-up-down.png")
         self.setIcon(self.action_test_hw_connection, "hw-test.png")
         self.setIcon(self.action_disconnect_hw, "hw-disconnect.png")
-        self.setIcon(self.action_transfer_funds_for_cur_mn, "money-transfer-1.png")
-        self.setIcon(self.action_transfer_funds_for_all_mns, "money-transfer-2.png")
+        self.setIcon(self.action_run_trezor_emulator, "hw-emulator.png")
         self.setIcon(self.action_transfer_funds_for_any_address, "wallet.png")
-        self.setIcon(self.action_sign_message_for_cur_mn, "sign.png")
+        self.setIcon(self.action_sign_message_for_cur_mn, "sign@32px.png")
         self.setIcon(self.action_hw_configuration, "hw.png")
         self.setIcon(self.action_hw_initialization_recovery, "recover.png")
         # icons will not be visible in menu
@@ -143,8 +144,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.action_open_proposals_window.setIconVisibleInMenu(False)
         self.action_test_hw_connection.setIconVisibleInMenu(False)
         self.action_disconnect_hw.setIconVisibleInMenu(False)
-        self.action_transfer_funds_for_cur_mn.setIconVisibleInMenu(False)
-        self.action_transfer_funds_for_all_mns.setIconVisibleInMenu(False)
+        self.action_run_trezor_emulator.setIconVisibleInMenu(False)
         self.action_transfer_funds_for_any_address.setIconVisibleInMenu(False)
         self.action_sign_message_for_cur_mn.setIconVisibleInMenu(False)
         self.action_hw_configuration.setIconVisibleInMenu(False)
@@ -156,6 +156,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         # add masternodes' info to the combobox
         self.curMasternode = None
+
+        self.wdg_masternode = WdgMasternodeDetails(self, self.app_config, self.dashd_intf)
+        l = self.frmMasternodeDetails.layout()
+        l.insertWidget(0, self.wdg_masternode)
+        self.wdg_masternode.name_modified.connect(self.on_mn_name_modified)
+        self.wdg_masternode.data_changed.connect(self.on_mn_data_changed)
+
+        self.mns_user_refused_updating = {}
 
         # after loading whole configuration, reset 'modified' variable
         try:
@@ -180,6 +188,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def closeEvent(self, event):
         app_cache.save_window_size(self)
+        self.finishing = True
         if self.dashd_intf:
             self.dashd_intf.disconnect()
 
@@ -189,6 +198,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                              default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
                 self.save_configuration()
         self.config.close()
+
+    def showEvent(self, QShowEvent):
+        width = max(self.wdg_masternode.get_max_left_label_width(), self.lblMasternodeStatus.width())
+        self.lblMasternodeStatus.setFixedWidth(width)
+        self.wdg_masternode.set_left_label_width(width)
+        self.cboMasternodes.setFixedHeight(self.btnNewMn.height())
 
     def get_hw_client(self):
         return self.hw_client
@@ -214,17 +229,20 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             self.curMasternode = None
 
+        self.wdg_masternode.set_masternode(self.curMasternode)
         self.action_open_log_file.setText = 'Open log file (%s)' % self.config.log_file
+        if self.app_config.deterministic_mns_enabled:
+            self.btnMigrateToDMN.show()
+        else:
+            self.btnMigrateToDMN.hide()
         self.update_edit_controls_state()
-        if self.remote_app_params:
-            self.update_ui_default_protocol()
 
-    def load_configuration_from_file(self, file_name) -> None:
+    def load_configuration_from_file(self, file_name: str, ask_save_changes = True) -> None:
         """
         Load configuration from a file.
         :param file_name: A name of the configuration file to be loaded into the application.
         """
-        if self.config.is_modified():
+        if self.config.is_modified() and ask_save_changes:
             ret = self.queryDlg('Current configuration has been modified. Save?',
                                 buttons=QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
                                 default_button=QMessageBox.Yes, icon=QMessageBox.Warning)
@@ -276,6 +294,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                         self.on_config_file_mru_action_triggered,
                                         self.config.app_config_file_name,
                                         self.on_config_file_mru_clear_triggered)
+
+    def show_hide_trezor_emulator(self):
+        enabled = False
+        self.action_run_trezor_emulator.setVisible(enabled)
 
     def on_config_file_mru_action_triggered(self, file_name: str) -> None:
         """ Triggered by clicking one of the subitems of the 'Open Recent' menu item. Each subitem is
@@ -347,6 +369,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.update_config_files_mru_menu_items()
         self.display_window_title()
         self.editing_enabled = self.config.is_modified()
+        self.wdg_masternode.set_edit_mode(self.editing_enabled )
         self.update_edit_controls_state()
 
     @pyqtSlot(bool)
@@ -376,16 +399,26 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.config.check_for_updates:
             self.run_thread(self, self.check_for_updates_thread, (force_check,))
 
+    @pyqtSlot(bool)
+    def on_action_command_console_triggered(self, checked):
+        if not self.cmd_console_dlg:
+            self.cmd_console_dlg = CmdConsoleDlg(self, self.app_config)
+        self.cmd_console_dlg.exec_()
+
+
+
+
     def load_remote_params(self):
         try:
             import urllib.request
             response = urllib.request.urlopen(
-                'https://raw.githubusercontent.com/Bertrand256/dash-masternode-tool/master/app-params.json')
+                'https://raw.githubusercontent.com/Bertrand256/dash-masternode-tool/master/app-params.json',
+                context=ssl._create_unverified_context())
             contents = response.read()
             app_remote_params = simplejson.loads(contents)
             return app_remote_params
         except Exception:
-            logging.exception('Error while loading app-params.json')
+            logging.exception('+Error while loading app-params.json')
             return {}
 
     def check_for_updates_thread(self, ctrl, force_check):
@@ -435,60 +468,19 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 elif force_check:
                     self.setMessage("Could not read the remote version number.", 'orange')
 
-                self.call_in_main_thread(self.update_ui_default_protocol)
-        except Exception as e:
-            pass
+                # check whether deterministic masternodes are enabled in the project configuration to show/hide
+                # certain features in gui
+                dmn_mainnet = self.get_spork_state_from_config(15, 'mainnet', True)
+                dmn_testnet = self.get_spork_state_from_config(15, 'mainnet', True)
+                self.app_config.set_deterministic_mns_state(dmn_mainnet, dmn_testnet)
+
+        except Exception:
+            logging.exception('Exception occurred')
 
     def display_masternode_config(self, set_mn_list_index):
         if self.curMasternode and set_mn_list_index:
             self.cboMasternodes.setCurrentIndex(self.config.masternodes.index(self.curMasternode))
-
-        edtMnName_state = self.edtMnName.blockSignals(True)
-        edtMnIp_state = self.edtMnIp.blockSignals(True)
-        edtMnPort_state = self.edtMnPort.blockSignals(True)
-        edtMnPrivateKey_state = self.edtMnPrivateKey.blockSignals(True)
-        edtMnCollateralBip32Path_state = self.edtMnCollateralBip32Path.blockSignals(True)
-        edtMnCollateralAddress_state = self.edtMnCollateralAddress.blockSignals(True)
-        edtMnCollateralTx_state = self.edtMnCollateralTx.blockSignals(True)
-        edtMnCollateralTxIndex_state = self.edtMnCollateralTxIndex.blockSignals(True)
-        chbUseDefaultProtocolVersion_state = self.chbUseDefaultProtocolVersion.blockSignals(True)
-        edtMnProtocolVersion_state = self.edtMnProtocolVersion.blockSignals(True)
-
-        try:
-            if self.curMasternode:
-                self.curMasternode.lock_modified_change = True
-
-            self.edtMnName.setText(self.curMasternode.name if self.curMasternode else '')
-            self.edtMnIp.setText(self.curMasternode.ip if self.curMasternode else '')
-            self.edtMnPort.setText(str(self.curMasternode.port) if self.curMasternode else '')
-            self.edtMnPrivateKey.setText(self.curMasternode.privateKey if self.curMasternode else '')
-            self.edtMnCollateralBip32Path.setText(self.curMasternode.collateralBip32Path
-                                                  if self.curMasternode else '')
-            self.edtMnCollateralAddress.setText(self.curMasternode.collateralAddress if self.curMasternode else '')
-            self.edtMnCollateralTx.setText(self.curMasternode.collateralTx if self.curMasternode else '')
-            self.edtMnCollateralTxIndex.setText(self.curMasternode.collateralTxIndex if self.curMasternode else '')
-            use_default_protocol = True
-            if self.curMasternode:
-                use_default_protocol = self.curMasternode.use_default_protocol_version if self.curMasternode else True
-            self.chbUseDefaultProtocolVersion.setChecked(use_default_protocol)
-            self.edtMnProtocolVersion.setText(self.curMasternode.protocol_version if self.curMasternode and
-                                                                                     not use_default_protocol else '')
-            self.edtMnProtocolVersion.setEnabled(not use_default_protocol)
-            self.lblMnStatus.setText('')
-        finally:
-            self.edtMnName.blockSignals(edtMnName_state)
-            self.edtMnIp.blockSignals(edtMnIp_state)
-            self.edtMnPort.blockSignals(edtMnPort_state)
-            self.edtMnPrivateKey.blockSignals(edtMnPrivateKey_state)
-            self.edtMnCollateralBip32Path.blockSignals(edtMnCollateralBip32Path_state)
-            self.edtMnCollateralAddress.blockSignals(edtMnCollateralAddress_state)
-            self.edtMnCollateralTx.blockSignals(edtMnCollateralTx_state)
-            self.edtMnCollateralTxIndex.blockSignals(edtMnCollateralTxIndex_state)
-            self.chbUseDefaultProtocolVersion.blockSignals(chbUseDefaultProtocolVersion_state)
-            self.edtMnProtocolVersion.blockSignals(edtMnProtocolVersion_state)
-
-            if self.curMasternode:
-                self.curMasternode.lock_modified_change = False
+        self.lblMnStatus.setText('')
 
     @pyqtSlot(bool)
     def on_action_open_settings_window_triggered(self):
@@ -503,8 +495,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.disconnect_hardware_wallet()
             self.display_window_title()
             self.update_edit_controls_state()
-            if self.remote_app_params:
-                self.update_ui_default_protocol()
         del dlg
 
     @pyqtSlot(bool)
@@ -638,16 +628,18 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_action_check_network_connection_triggered(self):
+        self.connect_dash_network()
+
+    def connect_dash_network(self):
         def connection_test_finished():
 
             self.action_check_network_connection.setEnabled(True)
             self.btnBroadcastMn.setEnabled(True)
             self.btnRefreshMnStatus.setEnabled(True)
-            self.action_transfer_funds_for_cur_mn.setEnabled(True)
-            self.action_transfer_funds_for_all_mns.setEnabled(True)
             self.action_transfer_funds_for_any_address.setEnabled(True)
 
             if self.dashd_connection_ok:
+                self.show_connection_successful()
                 if self.is_dashd_syncing:
                     self.infoMsg('Connection successful, but Dash daemon is synchronizing.')
                 else:
@@ -663,8 +655,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.btnBroadcastMn.setEnabled(False)
             self.btnRefreshMnStatus.setEnabled(False)
             # disable all actions that utilize dash network
-            self.action_transfer_funds_for_cur_mn.setEnabled(False)
-            self.action_transfer_funds_for_all_mns.setEnabled(False)
             self.action_transfer_funds_for_any_address.setEnabled(False)
             self.checkDashdConnection(call_on_check_finished=connection_test_finished)
         else:
@@ -753,15 +743,18 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                     if self.config.dash_network == 'TESTNET':
                         # check if Dash testnet is supported by this hardware wallet
-
                         found_testnet_support = False
-                        self.config.hw_coin_name = ''
                         if self.config.hw_type in (HWType.trezor, HWType.keepkey):
-                            for coin in self.hw_client.features.coins:
-                                if coin.coin_name.upper() == 'DASH TESTNET' or coin.coin_shortcut.upper() == 'TDASH':
+                            try:
+                                path = dash_utils.get_default_bip32_base_path(self.config.dash_network)
+                                path += "/0'/0/0"
+                                path_n = dash_utils.bip32_path_string_to_n(path)
+                                addr = hw_intf.get_address(self.hw_session, path_n, False)
+                                if dash_utils.validate_address(addr, self.config.dash_network):
                                     found_testnet_support = True
-                                    self.config.hw_coin_name = coin.coin_name
-                                    break
+                            except Exception as e:
+                                if str(e).find('Invalid coin name') < 0:
+                                    logging.exception('Failed when looking for Dash testnet support')
                         elif self.config.hw_type == HWType.ledger_nano_s:
                             addr = hw_intf.get_address(self.hw_session,
                                                        dash_utils.get_default_bip32_path(self.config.dash_network))
@@ -779,8 +772,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 pass
                             self.setStatus2Text(msg, 'red')
                             return
-                    else:
-                        self.config.hw_coin_name = 'Dash'
 
                     logging.info('Connected to a hardware wallet')
                     self.setStatus2Text('<b>HW status:</b> connected to %s' % hw_intf.get_hw_label(self.hw_client),
@@ -830,11 +821,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.hw_client:
             try:
                 if self.config.hw_type in (HWType.trezor, HWType.keepkey):
-                    features = self.hw_client.features
-                    # hw_intf.ping(self.hw_session, 'Hello, press the button', button_protection=False,
-                    #       pin_protection=features.pin_protection,
-                    #       passphrase_protection=features.passphrase_protection)
-
                     self.infoMsg('Connection to %s device (%s) successful.' %
                                  (self.getHwName(), hw_intf.get_hw_label(self.hw_client)))
                 elif self.config.hw_type == HWType.ledger_nano_s:
@@ -883,7 +869,30 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot(bool)
     def on_btnEditMn_clicked(self):
         self.editing_enabled = True
+        self.wdg_masternode.set_edit_mode(self.editing_enabled )
         self.update_edit_controls_state()
+
+    @pyqtSlot(bool)
+    def on_btnCancelEditingMn_clicked(self, checked):
+        if self.config.is_modified():
+            if WndUtils.queryDlg('Configuration modified. Discard changes?',
+                                 buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                 default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
+                # reload the configuration (we don't keep the old values)
+                sel_mn_idx = self.app_config.masternodes.index(self.curMasternode)
+                # reload the configuration from file
+                self.load_configuration_from_file(self.config.app_config_file_name, ask_save_changes=False)
+                self.editing_enabled = False
+                if sel_mn_idx >= 0 and sel_mn_idx < len(self.config.masternodes):
+                    self.curMasternode = self.config.masternodes[sel_mn_idx]
+                    self.display_masternode_config(sel_mn_idx)
+                self.wdg_masternode.set_edit_mode(self.editing_enabled)
+                self.update_edit_controls_state()
+            return
+        else:
+            self.editing_enabled = False
+            self.wdg_masternode.set_edit_mode(self.editing_enabled)
+            self.update_edit_controls_state()
 
     def scan_hw_for_bip32_paths(self, addresses) -> Tuple[Dict[str, str], bool]:
         """
@@ -893,6 +902,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
         paths_found = []
         user_cancelled = False
+        raise Exception('Temporarily not available')  # todo: implement a new method based on bip44 wallet
+
 
         def scan_for_bip32_thread(ctrl, addresses):
             """
@@ -946,20 +957,21 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                             'Current path: <span style="color:blue">%s</span><br>'
                                             % (paths_checked, paths_found, cur_bip32_path))
 
-                                        addr_of_cur_path = hw_intf.get_address_ext(
-                                            self.hw_session, address_n, db_cur, self.config.hw_encrypt_string,
-                                            self.config.hw_decrypt_string)
+                                        # todo: use Bip44Wallet to scan addresses
+                                        # addr_of_cur_path = hw_intf.get_address_ext(
+                                        #     self.hw_session, address_n, db_cur, self.config.hw_encrypt_string,
+                                        #     self.config.hw_decrypt_string)
 
-                                        paths_checked += 1
-                                        if addr_to_find_bip32 == addr_of_cur_path:
-                                            found_adresses[addr_to_find_bip32] = cur_bip32_path
-                                            found = True
-                                            paths_found += 1
-                                            break
-                                        elif not found_adresses.get(addr_of_cur_path, None) and \
-                                                        addr_of_cur_path in addresses:
-                                            # address of current bip32 path is in the search list
-                                            found_adresses[addr_of_cur_path] = cur_bip32_path
+                                        # paths_checked += 1
+                                        # if addr_to_find_bip32 == addr_of_cur_path:
+                                        #     found_adresses[addr_to_find_bip32] = cur_bip32_path
+                                        #     found = True
+                                        #     paths_found += 1
+                                        #     break
+                                        # elif not found_adresses.get(addr_of_cur_path, None) and \
+                                        #                 addr_of_cur_path in addresses:
+                                        #     # address of current bip32 path is in the search list
+                                        #     found_adresses[addr_of_cur_path] = cur_bip32_path
 
                                     if found:
                                         break
@@ -1125,42 +1137,20 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def update_edit_controls_state(self):
         def update_fun():
             editing = (self.editing_enabled and self.curMasternode is not None)
-            self.edtMnIp.setReadOnly(not editing)
-            self.edtMnName.setReadOnly(not editing)
-            self.edtMnPort.setReadOnly(not editing)
-            self.chbUseDefaultProtocolVersion.setEnabled(editing)
-            self.edtMnProtocolVersion.setEnabled(editing and not self.curMasternode.use_default_protocol_version)
-            self.edtMnPrivateKey.setReadOnly(not editing)
-            self.edtMnCollateralBip32Path.setReadOnly(not editing)
-            self.edtMnCollateralAddress.setReadOnly(not editing)
-            self.edtMnCollateralTx.setReadOnly(not editing)
-            self.edtMnCollateralTxIndex.setReadOnly(not editing)
-            self.btnGenerateMNPrivateKey.setEnabled(editing)
-            self.btnHwBip32ToAddress.setEnabled(editing)
-            self.btnHwAddressToBip32.setEnabled(editing)
             self.action_gen_mn_priv_key_uncompressed.setEnabled(editing)
             self.action_gen_mn_priv_key_compressed.setEnabled(editing)
             self.btnDeleteMn.setEnabled(self.curMasternode is not None)
             self.btnEditMn.setEnabled(not self.editing_enabled and self.curMasternode is not None)
+            self.btnCancelEditingMn.setEnabled(self.editing_enabled and self.curMasternode is not None)
             self.btnDuplicateMn.setEnabled(self.curMasternode is not None)
             self.action_save_config_file.setEnabled(self.config.is_modified())
             self.action_disconnect_hw.setEnabled(True if self.hw_client else False)
             self.btnRefreshMnStatus.setEnabled(self.curMasternode is not None)
             self.btnBroadcastMn.setEnabled(self.curMasternode is not None)
-
         if threading.current_thread() != threading.main_thread():
             self.call_in_main_thread(update_fun)
         else:
             update_fun()
-
-    def update_ui_default_protocol(self):
-        """Update placeholder text of the protocol edit control. """
-        prot = None
-        if self.remote_app_params:
-            dp = self.remote_app_params.get('defaultDashdProtocol')
-            if dp:
-                prot = str(dp.get(self.config.dash_network.lower()))
-        self.edtMnProtocolVersion.setPlaceholderText(prot)
 
     def newMasternodeConfig(self, copy_values_from_current: bool = False):
         new_mn = MasternodeConfig()
@@ -1171,6 +1161,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if copy_values_from_current and cur_masternode_sav:
             mn_template = cur_masternode_sav.name
         else:
+            if self.app_config.is_testnet():
+                new_mn.port = '19999'
             mn_template = 'MN'
         name_found = None
         for nr in range(1, 100):
@@ -1196,6 +1188,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             # if masternodes combo was not empty before adding new mn, we have to manually set combobox
             # position to a new masternode position
             self.cboMasternodes.setCurrentIndex(self.config.masternodes.index(self.curMasternode))
+        self.wdg_masternode.set_masternode(self.curMasternode)
+        self.wdg_masternode.set_edit_mode(self.editing_enabled )
 
     def curMnModified(self):
         if self.curMasternode:
@@ -1208,182 +1202,50 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.curMasternode = self.config.masternodes[self.cboMasternodes.currentIndex()]
         else:
             self.curMasternode = None
+        self.wdg_masternode.set_masternode(self.curMasternode)
         self.display_masternode_config(False)
         self.update_edit_controls_state()
         if not self.inside_setup_ui:
             app_cache.set_value('MainWindow_CurMasternodeIndex', self.cboMasternodes.currentIndex())
 
-    @pyqtSlot(str)
-    def on_edtMnName_textEdited(self):
+    def on_mn_name_modified(self, new_name):
         if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.name = self.edtMnName.text()
             self.cboMasternodes.setItemText(self.cboMasternodes.currentIndex(), self.curMasternode.name)
 
-    @pyqtSlot(str)
-    def on_edtMnIp_textEdited(self):
-        if self.curMasternode:
+    def on_mn_data_changed(self, masternode: MasternodeConfig):
+        if self.curMasternode == masternode:
             self.curMnModified()
-            self.curMasternode.ip = self.edtMnIp.text()
 
-    @pyqtSlot(str)
-    def on_edtMnPort_textEdited(self):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.port = self.edtMnPort.text()
-
-    @pyqtSlot(bool)
-    def on_chbUseDefaultProtocolVersion_toggled(self, use_default):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.use_default_protocol_version = use_default
-            self.edtMnProtocolVersion.setEnabled(not use_default)
-            if use_default:
-                self.curMasternode.protocol_version = ''
-                self.edtMnProtocolVersion.setText('')
-
-    @pyqtSlot(str)
-    def on_edtMnProtocolVersion_textEdited(self, version):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.protocol_version = version
-
-    @pyqtSlot(str)
-    def on_edtMnPrivateKey_textEdited(self):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.privateKey = self.edtMnPrivateKey.text()
-
-    @pyqtSlot(str)
-    def on_edtMnCollateralBip32Path_textChanged(self):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.collateralBip32Path = self.edtMnCollateralBip32Path.text()
-            if self.curMasternode.collateralBip32Path:
-                self.btnHwBip32ToAddress.setEnabled(True)
-            else:
-                self.btnHwBip32ToAddress.setEnabled(False)
-
-    @pyqtSlot(str)
-    def on_edtMnCollateralAddress_textChanged(self):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.collateralAddress = self.edtMnCollateralAddress.text()
-            self.update_edit_controls_state()
-            if self.curMasternode.collateralAddress:
-                self.btnHwAddressToBip32.setEnabled(True)
-            else:
-                self.btnHwAddressToBip32.setEnabled(False)
-
-    @pyqtSlot(str)
-    def on_edtMnCollateralTx_textEdited(self, text):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.collateralTx = text
-        else:
-            logging.warning('curMasternode == None')
-
-    @pyqtSlot(str)
-    def on_edtMnCollateralTxIndex_textEdited(self, text):
-        if self.curMasternode:
-            self.curMnModified()
-            self.curMasternode.collateralTxIndex = text
-        else:
-            logging.warning('curMasternode == None')
-
-    def generate_mn_priv_key(self, compressed: bool):
-        if self.edtMnPrivateKey.text():
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Warning)
-            msg.setText('This will overwrite current private key value. Do you really want to proceed?')
-            msg.setStandardButtons(QMessageBox.Ok | QMessageBox.No)
-            msg.setDefaultButton(QMessageBox.No)
-            retval = msg.exec_()
-            if retval == QMessageBox.No:
-                return
-
-        wif = dash_utils.generate_privkey(self.config.dash_network, compressed=compressed)
-        self.curMasternode.privateKey = wif
-        self.edtMnPrivateKey.setText(wif)
-        self.curMnModified()
-
-    @pyqtSlot(bool)
-    def on_btnGenerateMNPrivateKey_clicked(self):
-        self.generate_mn_priv_key(compressed=False)
-
-    @pyqtSlot(bool)
-    def on_action_gen_mn_priv_key_uncompressed_triggered(self, checked):
-        self.generate_mn_priv_key(compressed=False)
-
-    @pyqtSlot(bool)
-    def on_action_gen_mn_priv_key_compressed_triggered(self, checked):
-        self.generate_mn_priv_key(compressed=True)
-
-    @pyqtSlot(bool)
-    def on_btnHwBip32ToAddress_clicked(self):
-        """
-        Convert BIP32 path to Dash address.
-        :return: 
-        """
-        try:
-            self.connect_hardware_wallet()
-            if not self.hw_client:
-                return
-            if self.curMasternode and self.curMasternode.collateralBip32Path:
-                dash_addr = hw_intf.get_address(self.hw_session, self.curMasternode.collateralBip32Path)
-                self.edtMnCollateralAddress.setText(dash_addr)
-                self.curMasternode.collateralAddress = dash_addr
-                self.curMnModified()
-        except HardwareWalletCancelException:
-            if self.hw_client:
-                self.hw_client.init_device()
-        except Exception as e:
-            self.errorMsg(str(e))
-
-    @pyqtSlot(bool)
-    def on_btnHwAddressToBip32_clicked(self):
-        """
-        Converts Dash address to BIP32 path, using hardware wallet.
-        :return: 
-        """
-
-        try:
-            self.disconnect_hardware_wallet()  # forcing to enter the passphrase again
-            self.connect_hardware_wallet()
-            if not self.hw_client:
-                return
-            if self.curMasternode and self.curMasternode.collateralAddress:
-                paths, user_cancelled = self.scan_hw_for_bip32_paths([self.curMasternode.collateralAddress])
-                if not user_cancelled:
-                    if not paths or len(paths) == 0:
-                        self.errorMsg("Couldn't find Dash address in your hardware wallet. If you are using HW passphrase, "
-                                      "make sure, that you entered the correct one.")
-                    else:
-                        self.edtMnCollateralBip32Path.setText(paths.get(self.curMasternode.collateralAddress, ''))
-                        self.curMasternode.collateralBip32Path = paths.get(self.curMasternode.collateralAddress, '')
-                        self.curMnModified()
-                else:
-                    logging.info('Cancelled')
-
-        except HardwareWalletCancelException:
-            if self.hw_client:
-                self.hw_client.init_device()
-        except Exception as e:
-            self.errorMsg(str(e))
-
-    def get_default_protocol(self) -> int:
-        prot = None
+    def read_remote_app_params(self):
         if not self.remote_app_params:
             self.remote_app_params = self.load_remote_params()
-            if self.remote_app_params:
-                self.update_ui_default_protocol()
+
+    def get_default_protocol(self) -> int:
+        self.read_remote_app_params()
+        prot = None
         if self.remote_app_params:
             dp = self.remote_app_params.get('defaultDashdProtocol')
             if dp:
                 prot = dp.get(self.config.dash_network.lower())
         return prot
 
-    def create_mn_broadcast_msg(self, mn_protocol_version: int, ping_block_hash: str, masternode: MasternodeConfig,
+    def get_spork_state_from_config(self, spork_nr: int, dash_network: str, default_state: bool):
+        state = default_state
+        self.read_remote_app_params()
+        if self.remote_app_params:
+            sporks = self.remote_app_params.get('sporks')
+            if sporks and isinstance(sporks, list):
+                for spork in sporks:
+                    name = spork.get('name', '')
+                    active = spork.get('active')
+                    if name.find('SPORK_' + str(spork_nr) + '_') == 0:
+                        state = active.get(dash_network.lower(), state)
+        return state
+
+    def create_mn_broadcast_msg(self, mn_protocol_version: int,
+                                ping_block_hash: bytes,
+                                rpc_node_protocol_version: int,
+                                masternode: MasternodeConfig,
                                 sig_time: int = None) \
             -> dash_utils.CMasternodeBroadcast:
 
@@ -1399,12 +1261,22 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         collateral_pubkey = addr_pubkey.get('publicKey')
 
         mn_broadcast = dash_utils.CMasternodeBroadcast(
-            masternode.ip, masternode.port, collateral_pubkey, mn_pubkey, masternode.collateralTx,
-            int(masternode.collateralTxIndex), ping_block_hash, sig_time, mn_protocol_version)
+            masternode.ip,
+            masternode.port,
+            collateral_pubkey,
+            mn_pubkey,
+            bytes.fromhex(masternode.collateralTx),
+            int(masternode.collateralTxIndex),
+            ping_block_hash,
+            sig_time,
+            mn_protocol_version,
+            rpc_node_protocol_version,
+            spork6_active=self.get_spork_state_from_config(6, self.config.dash_network, False)
+        )
 
-        signature = mn_broadcast.sign_message(masternode.collateralBip32Path, hw_intf.hw_sign_message, self.hw_session,
-                                              masternode.privateKey, self.config.dash_network)
-        if signature.address != masternode.collateralAddress:
+        signature = mn_broadcast.sign(masternode.collateralBip32Path, hw_intf.hw_sign_message, self.hw_session,
+                                      masternode.privateKey, self.config.dash_network)
+        if signature.address != masternode.collateralAddress.strip():
             raise Exception('%s address signature mismatch.' % self.getHwName())
 
         return mn_broadcast
@@ -1424,7 +1296,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 int(self.curMasternode.collateralTx, 16)
             except ValueError:
                 self.errorMsg('Invalid collateral transaction id (should be hexadecimal string).')
-                self.edtMnCollateralTx.setFocus()
                 return
 
             if not re.match('\d{1,4}', self.curMasternode.collateralTxIndex):
@@ -1444,13 +1315,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 return
         else:
             self.errorMsg("No masternode selected.")
+            return
 
         self.checkDashdConnection(wait_for_check_finish=True)
         if not self.dashd_connection_ok:
             self.errorMsg("Connection to Dash daemon is not established.")
             return
         if self.is_dashd_syncing:
-            self.warnMsg("Dash daemon to which you are connected is synchronizing. You have to wait "
+            self.warnMsg("The Dash daemon you are connected to is currently synchronizing. You need wait "
                          "until it's finished.")
             return
 
@@ -1472,7 +1344,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 return
 
             block_count = self.dashd_intf.getblockcount()
-            block_hash = self.dashd_intf.getblockhash(block_count - 12)
+            block_count_for_mn_ping = block_count - 12
+            block_hash_for_mn_ping = bytes.fromhex(self.dashd_intf.getblockhash(block_count_for_mn_ping))
             addr = hw_intf.get_address_and_pubkey(self.hw_session, self.curMasternode.collateralBip32Path)
             hw_collateral_address = addr.get('address').strip()
             cfg_collateral_address = self.curMasternode.collateralAddress.strip()
@@ -1480,7 +1353,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if not cfg_collateral_address:
                 # if mn config's collateral address is empty, assign that from hardware wallet
                 self.curMasternode.collateralAddress = hw_collateral_address
-                self.edtMnCollateralAddress.setText(cfg_collateral_address)
+                self.wdg_masternode.masternode_data_to_ui()
                 self.update_edit_controls_state()
             elif hw_collateral_address != cfg_collateral_address:
                 # verify config's collateral addres with hardware wallet
@@ -1494,7 +1367,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
             # check if there is 1000 Dash collateral
             msg_verification_problem = 'You can continue without verification step if you are sure, that ' \
-                                       'TX ID/Index are correct.'
+                                       'TX hash/index are correct.'
             try:
                 utxos = self.dashd_intf.getaddressutxos([hw_collateral_address])
                 found = False
@@ -1542,11 +1415,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             sig_time = int(time.time())
 
             info = self.dashd_intf.getinfo(verify_node=True)
-            node_protocol_version = int(info['protocolversion'])
+            rpc_node_protocol_version = int(info['protocolversion'])
             if self.curMasternode.use_default_protocol_version or not self.curMasternode.protocol_version:
                 mn_protocol_version = self.get_default_protocol()
                 if not mn_protocol_version:
-                    mn_protocol_version = node_protocol_version
+                    mn_protocol_version = rpc_node_protocol_version
             else:
                 try:
                     mn_protocol_version = int(self.curMasternode.protocol_version)
@@ -1555,8 +1428,17 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     return
 
             # create a masternode broadcast message
-            mn_broadcast = self.create_mn_broadcast_msg(mn_protocol_version, block_hash, self.curMasternode, sig_time)
-            broadcast_msg = '01' + mn_broadcast.serialize(node_protocol_version, mn_protocol_version)
+            mn_broadcast = self.create_mn_broadcast_msg(mn_protocol_version, block_hash_for_mn_ping,
+                                                        rpc_node_protocol_version, self.curMasternode,
+                                                        sig_time)
+            broadcast_msg = '01' + mn_broadcast.serialize()
+            logging.info('MNB broadcast message: ' + broadcast_msg)
+            logging.info(f'MNB Ping block count: {block_count_for_mn_ping}')
+            logging.info(f'MNB Ping block hash: {block_hash_for_mn_ping.hex()}')
+            logging.info(f'MNB sigTime: {sig_time}')
+            logging.info(f'MNB sigTime datestr: {str(datetime.datetime.fromtimestamp(sig_time))}')
+            logging.info(f'{str(mn_broadcast)}')
+
 
             ret = self.dashd_intf.masternodebroadcast("decode", broadcast_msg)
             if ret['overall'].startswith('Successfully decoded broadcast messages for 1 masternodes'):
@@ -1631,40 +1513,120 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 return (mns_info[0].status, protocol_version)
         return '???', None
 
-    def get_masternode_status_description(self):
+    def get_deterministic_status(self, masternode: MasternodeConfig) -> Optional[Dict]:
+        try:
+            txes = self.dashd_intf.protx('list', 'registered', True)
+            for protx in txes:
+                state = protx.get('state')
+                if (state and state.get('addr') == masternode.ip + ':' + masternode.port) or \
+                        (protx.get('collateralHash') == masternode.collateralTx and
+                         str(protx.get('collateralIndex')) == str(masternode.collateralTxIndex) ):
+                    return protx
+        except Exception as e:
+            pass
+        return None
+
+    def get_masternode_status_description_thread(self, ctrl, masternode: MasternodeConfig):
         """
         Get current masternode's extended status.
         """
 
         if self.dashd_connection_ok:
-            collateral_id = self.curMasternode.collateralTx + '-' + self.curMasternode.collateralTxIndex
+            if masternode.collateralTx and str(masternode.collateralTxIndex):
+                collateral_id = masternode.collateralTx + '-' + masternode.collateralTxIndex
+            else:
+                collateral_id = None
+            if masternode.ip and masternode.port:
+                ip_port = masternode.ip + ':' + str(masternode.port)
+            else:
+                ip_port = None
 
-            if not self.curMasternode.collateralTx:
-                return '<span style="color:red">Enter the collateral TX ID</span>'
+            if not collateral_id and not ip_port:
+                if not masternode.collateralTx:
+                    return '<span style="color:red">Enter the collateral TX hash + index or IP + port</span>'
 
-            if not self.curMasternode.collateralTxIndex:
-                return '<span style="color:red">Enter the collateral TX index</span>'
-
-            mns_info = self.dashd_intf.get_masternodelist('full', data_max_age=30)  # read new data from the network
+            self.dashd_intf.get_masternodelist('full', data_max_age=30)  # read new data from the network
                                                                                     # every 30 seconds
-            mn_info = self.dashd_intf.masternodes_by_ident.get(collateral_id)
-            if mn_info:
-                if mn_info.lastseen > 0:
-                    lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
-                    lastseen_str = app_utils.to_string(lastseen)
-                    lastseen_ago = int(time.time()) - int(mn_info.lastseen)
-                    if lastseen_ago >= 2:
-                        lastseen_ago_str = app_utils.seconds_to_human(lastseen_ago, out_unit_auto_adjust = True) + \
-                                           ' ago'
-                    else:
-                        lastseen_ago_str = 'a few seconds ago'
-                else:
-                    lastseen_str = 'never'
+            if collateral_id:
+                mn_info = self.dashd_intf.masternodes_by_ident.get(collateral_id)
+            else:
+                mn_info = self.dashd_intf.masternodes_by_ip_port.get(ip_port)
 
-                if mn_info.lastpaidtime > 0:
-                    lastpaid = datetime.datetime.fromtimestamp(float(mn_info.lastpaidtime))
-                    lastpaid_str = app_utils.to_string(lastpaid)
-                    lastpaid_ago = int(time.time()) - int(mn_info.lastpaidtime)
+            dmn_tx = self.get_deterministic_status(masternode)
+            if dmn_tx:
+                dmn_tx_state = dmn_tx.get('state')
+            else:
+                dmn_tx_state = {}
+
+            if mn_info:
+                mn_ident = mn_info.ident
+                mn_ip_port = mn_info.ip
+                mn_protocol = mn_info.protocol
+                mn_queue_position = mn_info.queue_position
+            else:
+                mn_protocol = ''
+                mn_queue_position = '?'
+                if dmn_tx_state:
+                    mn_ident = str(dmn_tx.get('collateralHash')) + '-' + str(dmn_tx.get('collateralIndex'))
+                    mn_ip_port = dmn_tx_state.get('addr')
+                else:
+                    mn_ident = None
+                    mn_ip_port = None
+
+            if mn_info or dmn_tx:
+                if mn_info:
+                    if mn_info.lastseen > 0:
+                        lastseen = datetime.datetime.fromtimestamp(float(mn_info.lastseen))
+                        lastseen_str = app_utils.to_string(lastseen)
+                        lastseen_ago = int(time.time()) - int(mn_info.lastseen)
+                        if lastseen_ago >= 2:
+                            lastseen_ago_str = app_utils.seconds_to_human(lastseen_ago, out_unit_auto_adjust = True) + \
+                                               ' ago'
+                        else:
+                            lastseen_ago_str = 'a few seconds ago'
+                    else:
+                        lastseen_str = 'never'
+                        lastseen_ago_str = ''
+
+                    if mn_info.activeseconds:
+                        activeseconds_str = app_utils.seconds_to_human(int(mn_info.activeseconds),
+                                                                       out_unit_auto_adjust=True)
+                    else:
+                        activeseconds_str = '?'
+
+                    if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
+                        status_color = 'green'
+                    else:
+                        status_color = 'red'
+                    mn_status = mn_info.status
+                else:
+                    lastseen_str = '?'
+                    lastseen_ago_str = ''
+                    s = dmn_tx_state.get('PoSePenalty', 0)
+                    if s:
+                        mn_status = 'PoSeBan (' + str(s) + ')'
+                        status_color = 'red'
+                    else:
+                        mn_status = 'ENABLED'
+                        status_color = 'green'
+                    activeseconds_str = '?'
+
+                lastpaid_ts = 0
+                if mn_info:
+                    if mn_info.lastpaidtime > time.time() - 3600 * 24 * 365:
+                        # fresh dmns have lastpaidtime set to some day in the year 2014
+                        lastpaid_ts = mn_info.lastpaidtime
+                else:
+                    paid_block = dmn_tx_state.get('lastPaidHeight')
+                    if paid_block:
+                        bh = self.dashd_intf.getblockhash(paid_block)
+                        blk = self.dashd_intf.getblockheader(bh, 1)
+                        lastpaid_ts = blk.get('time')
+
+                if lastpaid_ts:
+                    lastpaid_dt = datetime.datetime.fromtimestamp(float(lastpaid_ts))
+                    lastpaid_str = app_utils.to_string(lastpaid_dt)
+                    lastpaid_ago = int(time.time()) - int(lastpaid_ts)
                     if lastpaid_ago >= 2:
                         lastpaid_ago_str = app_utils.seconds_to_human(lastpaid_ago, out_unit_auto_adjust=True) + ' ago'
                     else:
@@ -1673,65 +1635,201 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     lastpaid_str = 'never'
                     lastpaid_ago_str = ''
 
-                activeseconds_str = app_utils.seconds_to_human(int(mn_info.activeseconds), out_unit_auto_adjust=True)
-                if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
-                    color = 'green'
-                else:
-                    color = 'red'
                 enabled_mns_count = len(self.dashd_intf.payment_queue)
 
-                # get balance
-                addr = self.curMasternode.collateralAddress.strip()
-                bal_entry = ''
-                if addr:
-                    try:
-                        bal = self.dashd_intf.getaddressbalance([addr])
-                        if bal:
-                            bal = round(bal.get('balance') / 1e8, 5)
-                            bal_entry = f'<tr><td class="title">Balance:</td><td class="value">' \
-                                        f'{app_utils.to_string(bal)}</td><td></td></tr>'
-                    except Exception:
-                        pass
+                update_mn_info = False
+                collateral_address_mismatch = False
+                collateral_tx_mismatch = False
+                ip_port_mismatch = False
+                mn_data_modified = False
+                owner_pubkey_hash_mismatch = False
+                operator_pubkey_mismatch = False
+                voting_pubkey_hash_mismatch = False
 
-                status = '<style>td {white-space:nowrap;padding-right:8px}' \
-                         '.title {text-align:right;font-weight:bold}' \
-                         '.ago {font-style:normal}' \
-                         '.value {color:navy}' \
-                         '</style>' \
-                         '<table>' \
-                         f'<tr><td class="title">Status:</td><td class="value"><span style="color:{color}">{mn_info.status}</span>' \
-                         f'</td><td>v{str(mn_info.protocol)}</td></tr>' \
-                         f'<tr><td class="title">Last Seen:</td><td class="value">{lastseen_str}</td><td class="ago">{lastseen_ago_str}</td></tr>' \
-                         f'<tr><td class="title">Last Paid:</td><td class="value">{lastpaid_str}</td><td class="ago">{lastpaid_ago_str}</td></tr>' \
-                         f'{bal_entry}' \
-                         f'<tr><td class="title">Active Duration:</td><td class="value" colspan="2">{activeseconds_str}</td></tr>' \
-                         f'<tr><td class="title">Queue/Count:</td><td class="value" colspan="2">{str(mn_info.queue_position)}/{enabled_mns_count}</td></tr>' \
-                         '</table>'
+                if masternode not in self.mns_user_refused_updating:
+                    if not masternode.collateralTx or not masternode.collateralTxIndex or \
+                            not masternode.collateralAddress:
+                        msg = 'In the configuration of your masternode some information is missing that is ' \
+                              'available on the network. Do you want to update the configuration?'
+
+                        if self.queryDlg(msg, buttons=QMessageBox.Yes | QMessageBox.No,
+                                         default_button=QMessageBox.Yes,
+                                         icon=QMessageBox.Warning) == QMessageBox.Yes:
+                            update_mn_info = True
+                        else:
+                            self.mns_user_refused_updating[masternode] = self.curMasternode
+
+                if masternode.collateralTx + '-' + str(masternode.collateralTxIndex) != mn_ident:
+                    elems = mn_ident.split('-')
+                    if len(elems) == 2:
+                        if update_mn_info:
+                            masternode.collateralTx = elems[0]
+                            masternode.collateralTxIndex = elems[1]
+                            mn_data_modified = True
+                        else:
+                            collateral_tx_mismatch = True
+
+                if not collateral_tx_mismatch:
+                    # check outputs of the collateral transaction
+                    tx_json = self.dashd_intf.getrawtransaction(masternode.collateralTx, 1)
+                    if tx_json:
+                        vout = tx_json.get('vout')
+                        if vout and int(masternode.collateralTxIndex) < len(vout):
+                            v = vout[ int(masternode.collateralTxIndex)]
+                            if v and v.get('scriptPubKey'):
+                                addrs = v.get('scriptPubKey').get('addresses')
+                                if addrs:
+                                    addr = addrs[0]
+                                    if masternode.collateralAddress != addr:
+                                        if update_mn_info:
+                                            masternode.collateralAddress = addr
+                                            mn_data_modified = True
+                                        else:
+                                            collateral_address_mismatch = True
+
+                if masternode.ip + ':' + masternode.port != mn_ip_port:
+                    elems = mn_ip_port.split(':')
+                    if len(elems) == 2:
+                        if update_mn_info:
+                            masternode.ip = elems[0]
+                            masternode.port = elems[1]
+                            mn_data_modified = True
+                        else:
+                            ip_port_mismatch = True
+
+                if self.app_config.deterministic_mns_enabled:
+                    if dmn_tx:
+                        if not masternode.is_deterministic:
+                            if update_mn_info:
+                                masternode.dmn_tx_hash = dmn_tx.get('proTxHash')
+                                self.wdg_masternode.set_deterministic(True)
+                                mn_data_modified = True
+                        else:
+                            dmn_hash = dmn_tx.get('proTxHash')
+                            if dmn_hash and masternode.dmn_tx_hash != dmn_hash:
+                                if update_mn_info:
+                                    masternode.dmn_tx_hash = dmn_tx.get('proTxHash')
+                                    mn_data_modified = True
+
+                        if dmn_tx_state:
+                            owner_pubkey_network = dmn_tx_state.get('keyIDOwner')
+                            owner_pubkey_cfg = masternode.dmn_owner_pubkey_hash
+                            if owner_pubkey_network and owner_pubkey_cfg and owner_pubkey_network != owner_pubkey_cfg:
+                                owner_pubkey_hash_mismatch = True
+                                logging.warning(
+                                    f'Owner public key hash mismatch for masternode: {masternode.name}, '
+                                    f'Config pubkey hash: {owner_pubkey_cfg}, network pubkey hash: {owner_pubkey_network}')
+
+                            voting_pubkey_network = dmn_tx_state.get('keyIDVoting')
+                            voting_pubkey_cfg = masternode.dmn_voting_pubkey_hash
+                            if voting_pubkey_network and voting_pubkey_cfg and voting_pubkey_network != voting_pubkey_cfg:
+                                voting_pubkey_hash_mismatch = True
+                                logging.warning(
+                                    f'Voting public key hash mismatch for masternode: {masternode.name}. '
+                                    f'Config pubkey hash: {voting_pubkey_cfg}, network pubkey hash: {voting_pubkey_network}')
+
+                            operator_pubkey_network = dmn_tx_state.get('pubKeyOperator')
+                            operator_pubkey_cfg = masternode.dmn_operator_pubkey
+                            if operator_pubkey_network and operator_pubkey_cfg and operator_pubkey_network != operator_pubkey_cfg:
+                                operator_pubkey_mismatch = True
+                                logging.warning(
+                                    f'Operator public key mismatch for masternode: {masternode.name}. '
+                                    f'Config pubkey: {operator_pubkey_cfg}, network pubkey: {operator_pubkey_network}')
+
+                if mn_data_modified:
+                    def update():
+                        self.wdg_masternode.masternode_data_to_ui()
+                        self.wdg_masternode.set_modified()
+                    if not self.finishing:
+                        self.call_in_main_thread(update)
+
+                if masternode == self.curMasternode:
+                    # get balance
+                    addr = masternode.collateralAddress.strip()
+                    bal_entry = ''
+                    if addr:
+                        try:
+                            bal = self.dashd_intf.getaddressbalance([addr])
+                            if bal:
+                                bal = round(bal.get('balance') / 1e8, 5)
+                                bal_entry = f'<tr><td class="title">Balance:</td><td class="value">' \
+                                            f'{app_utils.to_string(bal)}</td><td></td></tr>'
+                        except Exception:
+                            pass
+
+                    errors = []
+                    if collateral_address_mismatch:
+                        errors.append('<td class="error" colspan="2">Collateral address missing/mismatch</td>')
+                    if collateral_tx_mismatch:
+                        errors.append('<td class="error" colspan="2">Collateral TX hash and/or index missing/mismatch</td>')
+                    if ip_port_mismatch:
+                        errors.append('<td class="error" colspan="2">Masternode IP and/or port number missing/mismatch</td>')
+                    if owner_pubkey_hash_mismatch:
+                        errors.append('<td class="error" colspan="2">Owner public key mismatch</td>')
+                    if operator_pubkey_mismatch:
+                        errors.append('<td class="error" colspan="2">Operator public key mismatch</td>')
+                    if voting_pubkey_hash_mismatch:
+                        errors.append('<td class="error" colspan="2">Voting public key mismatch</td>')
+
+                    errors_msg = ''
+                    if errors:
+                        for idx, e in enumerate(errors):
+                            if idx == 0:
+                                errors_msg += '<tr><td class="title">Errors:</td>'
+                            else:
+                                errors_msg += '<tr><td></td>'
+                            errors_msg += e + '</tr>'
+
+                    status = '<style>td {white-space:nowrap;padding-right:8px}' \
+                             '.title {text-align:right;font-weight:bold}' \
+                             '.ago {font-style:normal}' \
+                             '.value {color:navy}' \
+                             '.error {color:red}' \
+                             '</style>' \
+                             '<table>' \
+                             f'<tr><td class="title">Status:</td><td class="value"><span style="color:{status_color}">{mn_status}</span>' \
+                             f'</td><td>{"v" + str(mn_protocol) if mn_protocol else ""}</td></tr>' \
+                             f'<tr><td class="title">Last Seen:</td><td class="value">{lastseen_str}</td><td class="ago">{lastseen_ago_str}</td></tr>' \
+                             f'<tr><td class="title">Last Paid:</td><td class="value">{lastpaid_str}</td><td class="ago">{lastpaid_ago_str}</td></tr>' \
+                             f'{bal_entry}' \
+                             f'<tr><td class="title">Active Duration:</td><td class="value" colspan="2">{activeseconds_str}</td></tr>' \
+                             f'<tr><td class="title">Queue/Count:</td><td class="value" colspan="2">{str(mn_queue_position)}/{enabled_mns_count}</td></tr>' \
+                             + errors_msg + '</table>'
+                else:
+                    status = '<span style="color:red">Masternode not found.</span>'
             else:
                 status = '<span style="color:red">Masternode not found.</span>'
         else:
             status = '<span style="color:red">Problem with connection to dashd.</span>'
-        return status
+
+        if not self.finishing:
+            if masternode != self.curMasternode:
+                status = ''
+
+            self.call_in_main_thread(self.lblMnStatus.setText, status)
 
     @pyqtSlot(bool)
     def on_btnRefreshMnStatus_clicked(self):
         def enable_buttons():
             self.btnRefreshMnStatus.setEnabled(True)
             self.btnBroadcastMn.setEnabled(True)
+            self.btnMigrateToDMN.setEnabled(True)
 
         self.lblMnStatus.setText('<b>Retrieving masternode information, please wait...<b>')
         self.btnRefreshMnStatus.setEnabled(False)
         self.btnBroadcastMn.setEnabled(False)
+        self.btnMigrateToDMN.setEnabled(False)
 
-        self.checkDashdConnection(wait_for_check_finish=True, call_on_check_finished=enable_buttons)
+        self.checkDashdConnection(wait_for_check_finish=True)
         if self.dashd_connection_ok:
             try:
-                status = self.get_masternode_status_description()
-                self.lblMnStatus.setText(status)
+                self.run_thread(self, self.get_masternode_status_description_thread, (self.curMasternode,),
+                                on_thread_finish=enable_buttons)
             except:
                 self.lblMnStatus.setText('')
                 raise
         else:
+            enable_buttons()
             self.errorMsg('Dash daemon not connected')
 
     @pyqtSlot(bool)
@@ -1779,7 +1877,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if not self.dashd_intf.open():
             self.errorMsg('Dash daemon not connected')
         else:
-            ui = send_payout_dlg.WalletDlg(self, initial_mn_sel=initial_mn)
+            ui = wallet_dlg.WalletDlg(self, initial_mn_sel=initial_mn)
             ui.exec_()
 
     @pyqtSlot(bool)
@@ -1815,29 +1913,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         ui.exec_()
 
     @pyqtSlot(bool)
-    def on_btnFindCollateral_clicked(self):
-        """
-        Open dialog with list of utxos of collateral dash address.
-        :return: 
-        """
-        if self.curMasternode and self.curMasternode.collateralAddress:
-            ui = FindCollateralTxDlg(self, self.dashd_intf, self.curMasternode.collateralAddress,
-                                     not self.editing_enabled)
-            if ui.exec_():
-                if self.editing_enabled:
-                    tx, txidx = ui.getSelection()
-                    if tx:
-                        if self.curMasternode.collateralTx != tx or self.curMasternode.collateralTxIndex != str(txidx):
-                            self.curMasternode.collateralTx = tx
-                            self.curMasternode.collateralTxIndex = str(txidx)
-                            self.edtMnCollateralTx.setText(tx)
-                            self.edtMnCollateralTxIndex.setText(str(txidx))
-                            self.curMnModified()
-                            self.update_edit_controls_state()
-        else:
-            self.errorMsg('Enter the masternode collateral address.')
-
-    @pyqtSlot(bool)
     def on_action_open_proposals_window_triggered(self):
         ui = ProposalsDlg(self, self.dashd_intf)
         ui.exec_()
@@ -1845,4 +1920,38 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot(bool)
     def on_action_about_qt_triggered(self, enabled):
         QApplication.aboutQt()
+
+    @pyqtSlot(bool)
+    def on_btnMigrateToDMN_clicked(self, enabled):
+        reg_dlg = None
+        def on_proregtx_finished(masternode: MasternodeConfig):
+            nonlocal reg_dlg
+            try:
+                if self.curMasternode.dmn_tx_hash != reg_dlg.dmn_reg_tx_hash or \
+                        self.curMasternode.dmn_owner_private_key != reg_dlg.dmn_owner_privkey or \
+                        self.curMasternode.dmn_operator_private_key != reg_dlg.dmn_operator_privkey or \
+                        self.curMasternode.dmn_voting_private_key != reg_dlg.dmn_voting_privkey or \
+                        not self.curMasternode.is_deterministic:
+
+                    self.curMasternode.dmn_tx_hash = reg_dlg.dmn_reg_tx_hash
+                    self.curMasternode.dmn_owner_private_key = reg_dlg.dmn_owner_privkey
+                    self.curMasternode.dmn_operator_private_key = reg_dlg.dmn_operator_privkey
+                    self.curMasternode.dmn_voting_private_key = reg_dlg.dmn_voting_privkey
+                    self.curMasternode.is_deterministic = True
+
+                    if self.curMasternode == masternode:
+                        self.wdg_masternode.masternode_data_to_ui()
+                    if self.config.is_modified():
+                        self.wdg_masternode.set_modified()
+                    else:
+                        self.save_configuration()
+            except Exception as e:
+                logging.exception(str(e))
+
+        if self.curMasternode:
+            reg_dlg = reg_masternode_dlg.RegMasternodeDlg(self, self.app_config, self.dashd_intf, self.curMasternode,
+                                                     on_proregtx_success_callback=on_proregtx_finished)
+            reg_dlg.exec_()
+        else:
+            WndUtils.errorMsg('No masternode selected')
 

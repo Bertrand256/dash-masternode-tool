@@ -38,7 +38,7 @@ def prepare_hw_encryption_attrs(hw_session: HwSessionInfo, label: str) -> \
              1: hw passphrase encoding
              2: hw bip32 path usad to encodind
     """
-    # generate a new random password that will be used to encrypt with Trezor method + Fernet
+    # generate a new random password which will be used to encrypt with Trezor method + Fernet
     protocol = 1
     hw_type_bin = {
             HWType.trezor: 1,

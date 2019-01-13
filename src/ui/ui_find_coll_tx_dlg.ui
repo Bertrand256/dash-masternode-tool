@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>FindCollateralTxDlg</class>
- <widget class="QDialog" name="FindCollateralTxDlg">
+ <class>ListCollateralTxsDlg</class>
+ <widget class="QDialog" name="ListCollateralTxsDlg">
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>458</width>
-    <height>237</height>
+    <width>655</width>
+    <height>286</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -33,46 +33,6 @@
     <number>8</number>
    </property>
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayout" stretch="0,1,0">
-     <property name="spacing">
-      <number>-1</number>
-     </property>
-     <property name="topMargin">
-      <number>8</number>
-     </property>
-     <property name="bottomMargin">
-      <number>6</number>
-     </property>
-     <item>
-      <widget class="QLabel" name="label_3">
-       <property name="text">
-        <string>Address:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLineEdit" name="edtAddress">
-       <property name="readOnly">
-        <bool>true</bool>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <spacer name="horizontalSpacer_3">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-    </layout>
-   </item>
-   <item>
     <widget class="QLabel" name="lblMessage">
      <property name="text">
       <string/>
@@ -83,7 +43,7 @@
     </widget>
    </item>
    <item>
-    <widget class="QTableWidget" name="tableWidget">
+    <widget class="QTableView" name="collsTableView">
      <property name="sizeAdjustPolicy">
       <enum>QAbstractScrollArea::AdjustToContentsOnFirstShow</enum>
      </property>
@@ -99,35 +59,15 @@
      <property name="sortingEnabled">
       <bool>false</bool>
      </property>
-     <attribute name="horizontalHeaderShowSortIndicator" stdset="0">
+     <attribute name="verticalHeaderVisible">
       <bool>false</bool>
-     </attribute>
-     <attribute name="horizontalHeaderStretchLastSection">
-      <bool>true</bool>
      </attribute>
      <attribute name="verticalHeaderCascadingSectionResizes">
+      <bool>true</bool>
+     </attribute>
+     <attribute name="verticalHeaderHighlightSections">
       <bool>false</bool>
      </attribute>
-     <column>
-      <property name="text">
-       <string>Transaction ID</string>
-      </property>
-     </column>
-     <column>
-      <property name="text">
-       <string>Index</string>
-      </property>
-     </column>
-     <column>
-      <property name="text">
-       <string>TX date/time</string>
-      </property>
-     </column>
-     <column>
-      <property name="text">
-       <string>Confirmations</string>
-      </property>
-     </column>
     </widget>
    </item>
    <item>

@@ -8,14 +8,19 @@ import os
 import threading
 import traceback
 from functools import partial
-from typing import Callable, Optional, NewType, Any, Tuple, Dict
+from typing import Callable, Optional, NewType, Any, Tuple, Dict, List
+
+import app_defs
 import app_utils
 import thread_utils
 import time
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer
-from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap
-from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit
+from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEvent, QPointF, QSize, QModelIndex, QRect, \
+    QRectF
+from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap, QTextDocument, QCursor, \
+    QAbstractTextDocumentLayout, QFontMetrics, QTransform, QKeySequence
+from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit, \
+    QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView, QAction, QMenu, QApplication
 import math
 import message_dlg
 from thread_fun_dlg import ThreadFunDlg, WorkerThread, CtrlObject
@@ -104,7 +109,8 @@ class WndUtils:
 
     @staticmethod
     def run_thread_dialog(worker_fun: Callable[[CtrlObject, Any], Any], worker_fun_args: Tuple[Any,...],
-                          close_after_finish=True, buttons=None, title='', text=None, center_by_window=None):
+                          close_after_finish=True, buttons=None, title='', text=None, center_by_window=None,
+                          show_window_delay_ms: Optional[int] = 0):
         """
         Executes worker_fun function inside a thread. Function provides a dialog for UI feedback (messages 
         and/or progressbar).
@@ -114,16 +120,32 @@ class WndUtils:
         :param buttons: list of dialog button definitions; look at doc od whd_thread_fun.Ui_ThreadFunDialog class
         :return: value returned from worker_fun
         """
-        ui = ThreadFunDlg(worker_fun, worker_fun_args, close_after_finish,
-                          buttons=buttons, title=title, text=text, center_by_window=center_by_window)
-        ui.exec_()
-        ret = ui.getResult()
-        ret_exception = ui.worker_exception
-        del ui
-        QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)  # wait until dialog hides
-        if ret_exception:
-            # if there was an exception in the worker function, pass it to the caller
-            raise ret_exception
+        def call(worker_fun, worker_fun_args, close_after_finish, buttons, title, text, center_by_window,
+                 show_window_delay_ms):
+
+            ui = ThreadFunDlg(worker_fun, worker_fun_args, close_after_finish,
+                              buttons=buttons, title=title, text=text, center_by_window=center_by_window,
+                              show_window_delay_ms=show_window_delay_ms)
+            ui.wait_for_worker_completion()
+            ret = ui.getResult()
+            ret_exception = ui.worker_exception
+            del ui
+            QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)  # wait until dialog hides
+            if ret_exception:
+                # if there was an exception in the worker function, pass it to the caller
+                raise ret_exception
+            return ret
+
+        if threading.current_thread() != threading.main_thread():
+            # dialog can be created only from the main thread; it the method is called otherwise, synchronize
+            # with the main thread first
+            ret = thread_wnd_utils.call_in_main_thread(
+                call, worker_fun, worker_fun_args, close_after_finish=close_after_finish, buttons=buttons, title=title,
+                text=text, center_by_window=center_by_window, show_window_delay_ms=show_window_delay_ms)
+        else:
+            ret = call(worker_fun, worker_fun_args, close_after_finish, buttons, title, text, center_by_window,
+                       show_window_delay_ms)
+
         return ret
 
     @staticmethod
@@ -170,15 +192,30 @@ class WndUtils:
         return thread
 
     @staticmethod
-    def call_in_main_thread(fun_to_call, *args):
-        return thread_wnd_utils.call_in_main_thread(fun_to_call, *args)
+    def call_in_main_thread(fun_to_call, *args, **kwargs):
+        return thread_wnd_utils.call_in_main_thread(fun_to_call, *args, **kwargs)
 
-    def setIcon(self, widget, ico):
+    def setIcon(self, widget, ico, rotate=0):
         if isinstance(ico, str):
             icon = QIcon()
-            icon.addPixmap(QPixmap(os.path.join(self.app_config.app_path if self.app_config else '', "img/" + ico)))
+            if app_defs.APP_IMAGE_DIR:
+                path = app_defs.APP_IMAGE_DIR
+            else:
+                path = 'img'
+
+            path = os.path.join(path, ico)
+            if not os.path.isfile(path):
+                logging.warning(f'File {path} does not exist or is not a file')
+
+            pixmap = QPixmap(path)
+            if rotate:
+                transf = QTransform().rotate(rotate)
+                pixmap = QPixmap(pixmap.transformed(transf))
+
+            icon.addPixmap(pixmap)
         else:
             icon = self.style().standardIcon(ico)
+
         widget.setIcon(icon)
 
     @staticmethod
@@ -297,7 +334,7 @@ class ThreadWndUtils(QObject):
     """
 
     # signal for calling specified function in the main thread
-    fun_call_signal = QtCore.pyqtSignal(object, object, object)
+    fun_call_signal = QtCore.pyqtSignal(object, object, object, object)
 
     def __init__(self):
         QObject.__init__(self)
@@ -305,7 +342,7 @@ class ThreadWndUtils(QObject):
         self.fun_call_ret_value = None
         self.fun_call_exception = None
 
-    def fun_call_signalled(self, fun_to_call, args, mutex):
+    def fun_call_signalled(self, fun_to_call, args, kwargs, mutex):
         """
         Function-event executed in the main thread as a result of emiting signal fun_call_signal from BG threads.
         :param fun_to_call: ref to a function which is to be called
@@ -315,14 +352,13 @@ class ThreadWndUtils(QObject):
         :return: return value from fun_to_call
         """
         try:
-            self.fun_call_ret_value = fun_to_call(*args)
+            self.fun_call_ret_value = fun_to_call(*args, **kwargs)
         except Exception as e:
-            logging.exception('ThreadWndUtils.funCallSignal error: %s' % str(e))
             self.fun_call_exception = e
         finally:
             mutex.unlock()
 
-    def call_in_main_thread(self, fun_to_call, *args):
+    def call_in_main_thread(self, fun_to_call, *args, **kwargs):
         """
         This method is called from BG threads. Its purpose is to run 'fun_to_call' from main thread (used for dialogs)
         and return values ruturned from it.
@@ -366,7 +402,7 @@ class ThreadWndUtils(QObject):
                     self.fun_call_ret_value = None
 
                     # emit signal to call the function fun in the main thread
-                    self.fun_call_signal.emit(fun_to_call, args, mutex)
+                    self.fun_call_signal.emit(fun_to_call, args, kwargs, mutex)
 
                     # wait for the function to finish; lock will be successful only when the first lock
                     # made a few lines above is released in the fun_call_signalled method
@@ -387,7 +423,7 @@ class ThreadWndUtils(QObject):
                     # if there was an exception in the fun, pass it to the calling code
                     exception_to_rethrow = self.fun_call_exception
             else:
-                return fun_to_call(*args)
+                return fun_to_call(*args, **kwargs)
         except DeadlockException:
             raise
         except Exception as e:
@@ -402,41 +438,67 @@ class ThreadWndUtils(QObject):
 thread_wnd_utils = ThreadWndUtils()
 
 
-class WaitWidget(QWidget):
-    def __init__(self, parent=None):
+class SpinnerWidget(QWidget):
+    def __init__(self, parent: QWidget, spinner_size, message: str = '', font_size=None):
 
         QWidget.__init__(self, parent)
-        palette = QPalette(self.palette())
-        palette.setColor(palette.Background, Qt.transparent)
-        self.setPalette(palette)
+        self.spinner_size = spinner_size
+        self.message = message
+        self.font_size = font_size
         self.timer_id = None
 
+    def sizeHint(self):
+        return self.parent().size()
+
     def paintEvent(self, event):
+        par = self.parent()
+        size = min(self.spinner_size, par.width(), par.height())
+        dot_count = 5
+        dot_size = int(size / dot_count) * 1.5
+
+        r = par.rect()
+        spinner_rect = QRect(r.width()/2 - size/2, r.height()/2 - size/2, size, size)
 
         painter = QPainter()
         painter.begin(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.fillRect(event.rect(), QBrush(QColor(255, 255, 255, 127)))
         painter.setPen(QPen(Qt.NoPen))
 
-        for i in range(6):
-            if self.counter % 6 == i:
+        for i in range(dot_count):
+            if self.counter % dot_count == i:
                 painter.setBrush(QBrush(QColor(0, 0, 0)))
+                d_size = dot_size * 1.1
             else:
                 painter.setBrush(QBrush(QColor(200, 200, 200)))
-            painter.drawEllipse(
-                self.width() / 2 + 30 * math.cos(2 * math.pi * i / 6.0) - 10,
-                self.height() / 2 + 30 * math.sin(2 * math.pi * i / 6.0) - 10,
-                20, 20)
+                d_size = dot_size
+
+            r = size / 2 - dot_size / 2
+            x = r * math.cos(2 * math.pi * i / dot_count)
+            y = r * math.sin(2 * math.pi * i / dot_count)
+            x_center = spinner_rect.left() + spinner_rect.width() / 2 - dot_size / 2
+            y_center = spinner_rect.top() + spinner_rect.height() / 2 - dot_size / 2
+            painter.drawEllipse(x_center + x, y_center + y, d_size, d_size)
+
+        if self.message:
+            painter.setPen(QPen(Qt.black))
+            if self.font_size:
+                f = painter.font()
+                f.setPointSize(self.font_size)
+                painter.setFont(f)
+            spinner_rect.setTop(spinner_rect.bottom() + 3)
+            spinner_rect.setHeight(painter.fontMetrics().height() * 1.5)
+            r = painter.boundingRect(spinner_rect, Qt.AlignHCenter | Qt.AlignTop, self.message)
+            painter.drawText(r.bottomLeft(), self.message)
 
         painter.end()
 
     def showEvent(self, event):
-
         self.timer_id = self.startTimer(200)
         self.counter = 0
 
     def timerEvent(self, event):
+        target_geom = QRect(0, 0, self.parent().width(), self.parent().height())
+        if self.geometry() != target_geom:
+            self.setGeometry(target_geom)
         self.counter += 1
         self.update()
 
@@ -458,3 +520,159 @@ class ReadOnlyTableCellDelegate(QItemDelegate):
         e.setReadOnly(True)
         return e
 
+
+class LineEditTableCellDelegate(QItemDelegate):
+    """
+    Used for enabling read-only and text selectable cells in QTableView widgets.
+    """
+    def __init__(self, parent, img_dir: str):
+        QItemDelegate.__init__(self, parent, )
+        self.img_dir = img_dir
+        self.save_action = QAction('Save', self)
+        self.set_icon(self.save_action, "save@16px.png")
+        self.save_action.triggered.connect(self.on_save_data)
+        self.undo_action = QAction('Revert', self)
+        self.set_icon(self.undo_action, "undo@16px.png")
+        self.undo_action.triggered.connect(self.on_revert_data)
+        self.editor = None
+        self.old_data = ''
+        self.cur_item_index = None
+        self.data_history: Dict[QModelIndex, List[str]] = {}
+
+    def set_icon(self, widget, ico_name):
+        icon = QIcon()
+        icon.addPixmap(QPixmap(os.path.join(self.img_dir, ico_name)))
+        widget.setIcon(icon)
+
+    def on_save_data(self):
+        if self.editor:
+            self.commitData.emit(self.editor)
+            self.closeEditor.emit(self.editor)
+            self.editor = None
+
+    def on_revert_data(self):
+        if self.editor and self.cur_item_index:
+            sd = self.data_history.get(self.cur_item_index)
+            if sd:
+                sd.pop()
+                if sd:
+                    t = sd[-1]
+                else:
+                    t = ''
+                self.editor.setText(t)
+
+    def createEditor(self, parent, option, index):
+        self.cur_item_index = index
+        self.editor = QLineEdit(parent)
+        self.editor.addAction(self.save_action, QLineEdit.TrailingPosition)
+        if self.data_history.get(index):
+            self.editor.addAction(self.undo_action, QLineEdit.TrailingPosition)
+        return self.editor
+
+    def setEditorData(self, editor, index):
+        self.old_data = index.data()
+        editor.setText(self.old_data)
+        sd = self.data_history.get(index)
+        if not sd:
+            sd = []
+            self.data_history[index] = sd
+        if self.old_data:
+            if not sd or sd[-1] != self.old_data:
+                sd.append(self.old_data)
+
+    def setModelData(self, editor, model, index):
+        new_data = editor.text()
+        if new_data != self.old_data:
+            model.setData(index, new_data)
+
+
+HTML_LINK_HORZ_MARGIN = 3
+
+
+class HyperlinkItemDelegate(QStyledItemDelegate):
+    linkActivated = QtCore.pyqtSignal(str)
+
+    def __init__(self, parentView: QTableView):
+        QStyledItemDelegate.__init__(self, parentView)
+
+        parentView.setMouseTracking(True)
+        self.doc_hovered_item = QTextDocument(self)
+        self.doc_hovered_item.setDocumentMargin(0)
+        self.doc_not_hovered = QTextDocument(self)
+        self.doc_not_hovered.setDocumentMargin(0)
+        self.last_hovered_pos = QPoint(0, 0)
+        self.ctx_mnu = QMenu()
+        self.last_link = None
+        self.last_text = None
+        self.action_copy_link = self.ctx_mnu.addAction("Copy Link Location")
+        self.action_copy_link.triggered.connect(self.on_action_copy_link_triggered)
+        self.action_copy_text = self.ctx_mnu.addAction("Copy text")
+        self.action_copy_text.triggered.connect(self.on_action_copy_text_triggered)
+
+    def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
+
+        self.initStyleOption(option, index)
+        mouse_over = option.state & QStyle.State_MouseOver
+        painter.save()
+
+        color = ''
+        if option.state & QStyle.State_Selected:
+            if option.state & QStyle.State_HasFocus:
+                painter.fillRect(option.rect, QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
+                color = "color: white"
+            else:
+                painter.fillRect(option.rect, QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
+        else:
+            painter.setBrush(QBrush(Qt.white))
+
+        if mouse_over:
+            doc = self.doc_hovered_item
+            self.last_hovered_pos = option.rect.topLeft()
+            doc.setDefaultStyleSheet(f"a {{{color}}}")
+        else:
+            doc = self.doc_not_hovered
+            self.parent().unsetCursor()
+            doc.setDefaultStyleSheet(f"a {{text-decoration: none;{color}}}")
+
+        doc.setDefaultFont(option.font)
+        doc.setHtml(option.text)
+
+        painter.translate(option.rect.topLeft() + QPoint(HTML_LINK_HORZ_MARGIN, 0))
+        ctx = QAbstractTextDocumentLayout.PaintContext()
+        ctx.palette = option.palette
+        clip = QRect(0, 0, option.rect.width() - HTML_LINK_HORZ_MARGIN * 2, option.rect.height())
+        painter.setClipRect(clip)
+        doc.documentLayout().draw(painter, ctx)
+        painter.restore()
+
+    def editorEvent(self, event, model, option, index):
+        if event.type() not in [QEvent.MouseMove, QEvent.MouseButtonRelease] \
+            or not (option.state & QStyle.State_Enabled):
+            return False
+
+        pos = QPointF(event.pos() - option.rect.topLeft())
+        anchor = self.doc_hovered_item.documentLayout().anchorAt(pos)
+        if not anchor:
+            self.parent().unsetCursor()
+        else:
+            self.parent().setCursor(Qt.PointingHandCursor)
+            if event.type() == QEvent.MouseButtonRelease:
+                if event.button() == Qt.LeftButton:
+                    self.linkActivated.emit(anchor)
+                    return True
+                elif event.button() == Qt.RightButton:
+                    self.last_text = self.doc_hovered_item.toRawText()
+                    self.last_link = anchor
+
+                    p = QPoint(event.pos().x(), event.pos().y() + min(32, self.ctx_mnu.height()))
+                    p = option.widget.mapToGlobal(p)
+                    self.ctx_mnu.exec(p)
+        return False
+
+    def on_action_copy_link_triggered(self):
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.last_link)
+
+    def on_action_copy_text_triggered(self):
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.last_text)

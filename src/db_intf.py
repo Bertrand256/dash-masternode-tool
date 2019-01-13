@@ -2,10 +2,16 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-10
+import os
+
 import sqlite3
 import logging
 import threading
+from typing import List
 import thread_utils
+
+
+log = logging.getLogger('dmt.db_intf')
 
 
 class DBCache(object):
@@ -21,6 +27,7 @@ class DBCache(object):
 
     def __init__(self):
         self.db_cache_file_name = ''
+        self.db_labels_file_name = ''
         self.db_active = False
         self.lock = thread_utils.EnhRLock(stackinfo_skip_lines=1)
         self.depth = 0
@@ -33,13 +40,18 @@ class DBCache(object):
         if not db_cache_file_name:
             raise Exception('Invalid database cache file name value.')
         self.db_cache_file_name = db_cache_file_name
+        dir, ext = os.path.splitext(db_cache_file_name)
+        self.db_labels_file_name = dir + '_labels' + ext
 
         if not self.db_active:
-            logging.debug('Trying to acquire db cache session')
+            log.debug('Trying to acquire db cache session')
             self.lock.acquire()
             try:
                 if self.db_conn is None:
                     self.db_conn = sqlite3.connect(self.db_cache_file_name)
+                    db_conn2 = sqlite3.connect(self.db_labels_file_name)
+                    db_conn2.close()
+                    self.db_conn.execute(f"attach database '{self.db_labels_file_name}' as labels")
 
                 self.create_structures()
                 self.db_active = True
@@ -48,7 +60,7 @@ class DBCache(object):
                 self.depth = 0
 
             except Exception as e:
-                logging.exception('SQLite initialization error')
+                log.exception('SQLite initialization error')
 
             finally:
                 self.lock.release()
@@ -57,17 +69,18 @@ class DBCache(object):
 
     def close(self):
         if self.depth > 0:
-            logging.error('Database not closed yet. Depth: ' + str(self.depth))
+            log.error('Database not closed yet. Depth: ' + str(self.depth))
         self.db_active = False
 
     def get_cursor(self):
         if self.db_active:
-            logging.debug('Trying to acquire db cache session')
+            log.debug('Trying to acquire db cache session')
             self.lock.acquire()
             self.depth += 1
             if self.db_conn is None:
                 self.db_conn = sqlite3.connect(self.db_cache_file_name)
-            logging.debug('Acquired db cache session (%d)' % self.depth)
+                self.db_conn.execute(f"attach database '{self.db_labels_file_name}' as labels")
+            log.debug('Acquired db cache session (%d)' % self.depth)
             return self.db_conn.cursor()
         else:
             raise Exception('Database cache not active.')
@@ -79,15 +92,17 @@ class DBCache(object):
                 if self.depth == 0:
                     raise Exception('Cursor not acquired by this thread.')
                 self.depth -= 1
-                if self.depth == 0:
-                    self.db_conn.close()
-                    self.db_conn = None
-                self.lock.release()
-                logging.debug('Released db cache session (%d)' % self.depth)
+                try:
+                    if self.depth == 0:
+                        self.db_conn.close()
+                        self.db_conn = None
+                finally:
+                    self.lock.release()
+                log.debug('Released db cache session (%d)' % self.depth)
             finally:
                 self.lock.release()
         else:
-            logging.warning('Cannot release database session if db_active is False.')
+            log.warning('Cannot release database session if db_active is False.')
 
     def commit(self):
         if self.db_active:
@@ -99,7 +114,7 @@ class DBCache(object):
             finally:
                 self.lock.release()
         else:
-            logging.warning('Cannot commit if db_active is False.')
+            log.warning('Cannot commit if db_active is False.')
 
     def rollback(self):
         if self.db_active:
@@ -111,21 +126,23 @@ class DBCache(object):
             finally:
                 self.lock.release()
         else:
-            logging.warning('Cannot commit if db_active is False.')
+            log.warning('Cannot commit if db_active is False.')
 
     def create_structures(self):
         try:
             cur = self.db_conn.cursor()
             # create structires for masternodes data:
-            cur.execute("CREATE TABLE IF NOT EXISTS MASTERNODES(id INTEGER PRIMARY KEY, ident TEXT, status TEXT,"
+            cur.execute("CREATE TABLE IF NOT EXISTS masternodes(id INTEGER PRIMARY KEY, ident TEXT, status TEXT,"
                         " protocol TEXT, payee TEXT, last_seen INTEGER, active_seconds INTEGER,"
                         " last_paid_time INTEGER, last_paid_block INTEGER, ip TEXT,"
                         " dmt_active INTEGER, dmt_create_time TEXT, dmt_deactivation_time TEXT)")
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_MASTERNODES_DMT_ACTIVE ON MASTERNODES(dmt_active)")
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_MASTERNODES_IDENT ON MASTERNODES(ident)")
+
+            cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_DMT_ACTIVE ON masternodes(dmt_active)")
+
+            cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_IDENT ON masternodes(ident)")
 
             # create structures for proposals:
-            cur.execute("CREATE TABLE IF NOT EXISTS PROPOSALS(id INTEGER PRIMARY KEY, name TEXT, payment_start TEXT,"
+            cur.execute("CREATE TABLE IF NOT EXISTS proposals(id INTEGER PRIMARY KEY, name TEXT, payment_start TEXT,"
                         " payment_end TEXT, payment_amount REAL, yes_count INTEGER, absolute_yes_count INTEGER,"
                         " no_count INTEGER, abstain_count INTEGER, creation_time TEXT, url TEXT, payment_address TEXT,"
                         " type INTEGER, hash TEXT,  collateral_hash TEXT, f_blockchain_validity INTEGER,"
@@ -133,6 +150,7 @@ class DBCache(object):
                         " f_cached_endorsed INTEGER, object_type INTEGER, is_valid_reason TEXT, dmt_active INTEGER, "
                         " dmt_create_time TEXT, dmt_deactivation_time TEXT, dmt_voting_last_read_time INTEGER,"
                         " ext_attributes_loaded INTEGER, owner TEXT, title TEXT, ext_attributes_load_time INTEGER)")
+
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_PROPOSALS_HASH ON PROPOSALS(hash)")
 
             # upgrade schema do v 0.9.11:
@@ -154,6 +172,7 @@ class DBCache(object):
                 if prop_owner_exists and prop_title_exists and ext_attributes_loaded_exists and \
                         ext_attributes_load_time_exists:
                     break
+
             if not ext_attributes_loaded_exists:
                 # column for saving information whether additional attributes has been read from external sources
                 # like DashCentral.org (1: yes, 0: no)
@@ -171,20 +190,86 @@ class DBCache(object):
             cur.execute("CREATE TABLE IF NOT EXISTS VOTING_RESULTS(id INTEGER PRIMARY KEY, proposal_id INTEGER,"
                         " masternode_ident TEXT, voting_time TEXT, voting_result TEXT,"
                         "hash TEXT)")
+
             cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_HASH ON VOTING_RESULTS(hash)")
+
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_1 ON VOTING_RESULTS(proposal_id)")
+
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_2 ON VOTING_RESULTS(masternode_ident)")
 
             # Create table for storing live data for example last read time of proposals
             cur.execute("CREATE TABLE IF NOT EXISTS LIVE_CONFIG(symbol text PRIMARY KEY, value TEXT)")
+
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_LIVE_CONFIG_SYMBOL ON LIVE_CONFIG(symbol)")
 
-            cur.execute("CREATE TABLE IF NOT EXISTS ADDRESS_HD_TREE(id INTEGER PRIMARY KEY, ident TEXT)")
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_ADDRESS_TREE_1 ON ADDRESS_HD_TREE(ident)")
+            cur.execute("CREATE TABLE IF NOT EXISTS hd_tree(id INTEGER PRIMARY KEY, ident TEXT, label TEXT)")
 
-            cur.execute("CREATE TABLE IF NOT EXISTS ADDRESS(id INTEGER PRIMARY KEY,"
-                        "tree_id INTEGER, path TEXT, address TEXT)")
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_ADDRESS_1 ON ADDRESS(tree_id, path)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_hd_tree_1 ON hd_tree(ident)")
+
+            if not self.table_columns_exist('address', ['parent_id', 'xpub_hash', 'balance', 'address_index',
+                                                        'last_scan_block_height', 'tree_id']):
+                cur.execute("drop table if exists address")
+
+            cur.execute("CREATE TABLE IF NOT EXISTS address(id INTEGER PRIMARY KEY,"
+                        "xpub_hash TEXT, parent_id INTEGER, address_index INTEGER, address TEXT, path TEXT, "
+                        "tree_id INTEGER, balance INTEGER DEFAULT 0 NOT NULL, received INTEGER DEFAULT 0 NOT NULL, "
+                        "is_change INTEGER, last_scan_block_height INTEGER DEFAULT 0 NOT NULL, label TEXT,"
+                        "status INTEGER DEFAULT 0)")
+
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_address_1 ON address(xpub_hash)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_address_2 ON address(parent_id, address_index)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_address_3 ON address(address)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_address_4 ON address(tree_id)")
+
+            # if tx.block_height == 0, the transaction has not yet been confirmed (it may be the transaction that
+            # has just been sent from dmt wallet or the transaction which appeared in the mempool); in this case
+            # tx.block_timestamp indicates the moment when the transaction was added to the cache (it will be purged
+            # if will not appear on the blockchain after a defined amount of time)
+            cur.execute("CREATE TABLE IF NOT EXISTS tx(id INTEGER PRIMARY KEY, tx_hash TEXT, block_height INTEGER,"
+                        "block_timestamp INTEGER, coinbase INTEGER)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_1 ON tx(tx_hash)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_1 ON tx(block_height)")
+
+            cur.execute("CREATE TABLE IF NOT EXISTS tx_output(id INTEGER PRIMARY KEY, address_id INTEGER, "
+                        "address TEXT, tx_id INTEGER NOT NULL, output_index INTEGER NOT NULL, "
+                        "satoshis INTEGER NOT NULL, spent_tx_id INTEGER, spent_input_index INTEGER, "
+                        "script_type TEXT)")
+
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_output_1 ON tx_output(tx_id, output_index)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_output_2 ON tx_output(address_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_output_3 ON tx_output(address)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_output_4 ON tx_output(spent_tx_id)")
+
+            cur.execute("CREATE TABLE IF NOT EXISTS tx_input(id INTEGER PRIMARY KEY, src_address TEXT, "
+                        "src_address_id INTEGER, tx_id INTEGER NOT NULL, input_index INTEGER NOT NULL, "
+                        "satoshis INTEGER DEFAULT 0, src_tx_hash TEXT, src_tx_id INTEGER, src_tx_output_index INTEGER, "
+                        "coinbase INTEGER DEFAULT 0 NOT NULL)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_input_1 ON tx_input(tx_id, input_index)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_input_2 ON tx_input(src_address_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_input_3 ON tx_input(src_address)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_input_4 ON tx_input(src_tx_hash)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_input_5 ON tx_input(src_tx_id)")
+
+            cur.execute('create table if not exists labels.address_label(id INTEGER PRIMARY KEY, key TEXT, label TEXT, '
+                        'timestamp INTEGER)')
+            cur.execute('create index if not exists labels.address_label_1 on address_label(key)')
+
+            cur.execute('create table if not exists labels.tx_out_label(id INTEGER PRIMARY KEY, key TEXT, label TEXT, '
+                        'timestamp INTEGER)')  # key: tx hash + '-' + output_index
+            cur.execute('create index if not exists labels.tx_out_label_1 on address_label(key)')
+
         except Exception:
-            logging.exception('Exception while initializing database.')
+            log.exception('Exception while initializing database.')
             raise
+
+    def table_columns_exist(self, table_name, column_names: List[str]):
+        cur = self.db_conn.cursor()
+        try:
+            cur.execute(f"PRAGMA table_info({table_name})")
+            cols_existing = [col[1] for col in cur.fetchall()]
+            for c in column_names:
+                if c not in cols_existing:
+                    return False
+        finally:
+            cur.close()
+        return True

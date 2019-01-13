@@ -7,8 +7,12 @@ import binascii
 import base64
 import logging
 import typing
+from random import randint
+
 import bitcoin
+from bip32utils import Base58
 import base58
+import blspy
 
 
 # Bitcoin opcodes used in the application
@@ -17,6 +21,9 @@ OP_HASH160 = b'\xA9'
 OP_EQUALVERIFY = b'\x88'
 OP_CHECKSIG = b'\xAC'
 OP_EQUAL = b'\x87'
+
+DEFAULT_SENTINEL_VERSION = 0x010001  # sentinel version before implementation of nSentinelVersion in CMasternodePing
+DEFAULT_DAEMON_VERSION = 120200  # daemon version before implementation of nDaemonVersion in CMasternodePing
 
 
 class ChainParams(object):
@@ -82,12 +89,17 @@ def validate_bip32_path(path: str) -> bool:
 
 
 def pubkey_to_address(pub_key, dash_network: str):
-    """Convert public key to Dash address."""
+    """Convert public key to a Dash address."""
     pubkey_bin = bytes.fromhex(pub_key)
     pub_hash = bitcoin.bin_hash160(pubkey_bin)
     data = bytes([get_chain_params(dash_network).PREFIX_PUBKEY_ADDRESS]) + pub_hash
     checksum = bitcoin.bin_dbl_sha256(data)[0:4]
     return base58.b58encode(data + checksum)
+
+
+def wif_privkey_to_address(privkey: str, dash_network: str):
+    pubkey = wif_privkey_to_pubkey(privkey)
+    return pubkey_to_address(pubkey, dash_network)
 
 
 def validate_address(address: str, dash_network: typing.Optional[str]) -> bool:
@@ -115,7 +127,7 @@ def validate_address(address: str, dash_network: typing.Optional[str]) -> bool:
     return False
 
 
-def generate_privkey(dash_network: str, compressed: bool = False):
+def generate_wif_privkey(dash_network: str, compressed: bool = False):
     """
     Based on Andreas Antonopolous work from 'Mastering Bitcoin'.
     """
@@ -132,9 +144,77 @@ def generate_privkey(dash_network: str, compressed: bool = False):
     return base58.b58encode(data + checksum)
 
 
-def privkey_to_pubkey(privkey):
+def validate_wif_privkey(privkey: str, dash_network: str):
+    try:
+        data = base58.b58decode(privkey)
+        if len(data) not in (37, 38):
+            raise Exception('Invalid private key length')
+
+        if data[0] != get_chain_params(dash_network).PREFIX_SECRET_KEY:
+            raise Exception('Invalid private key prefix.')
+
+        checksum = data[-4:]
+        data = data[:-4]
+
+        if len(data) == 34:
+            compressed = data[-1]
+        else:
+            compressed = 0
+        if compressed not in (0, 1):
+            raise Exception('Invalid the compressed byte value: ' + str(compressed))
+
+        checksum_cur = bitcoin.bin_dbl_sha256(data)[0:4]
+        if checksum != checksum_cur:
+            raise Exception('Invalid private key checksum')
+    except Exception as e:
+        logging.warning(str(e))
+        return False
+    return True
+
+
+def wif_privkey_to_pubkey(privkey):
     pub = bitcoin.privkey_to_pubkey(privkey)
     return pub
+
+
+def generate_bls_privkey() -> str:
+    """
+    :return: Generated BLS private key as a hex string.
+    """
+    max_iterations = 2
+    for i in range(0, max_iterations):
+        privkey = bitcoin.random_key()
+        pk_bytes = bytes.fromhex(privkey)
+        num_pk = bitcoin.decode_privkey(privkey, 'hex')
+        if 0 < num_pk < bitcoin.N:
+            if pk_bytes[0] >= 0x74:
+                if i == max_iterations - 1: # BLS restriction: the first byte is less than 0x74
+                    # after 'limit' iterations we couldn't get the first byte "compatible" with BLS so
+                    # the last resort is to change it to a random value < 0x73
+                    tmp_pk_bytes = bytearray(pk_bytes)
+                    tmp_pk_bytes[0] = randint(0, 0x73)
+                    pk_bytes = bytes(tmp_pk_bytes)
+                else:
+                    continue
+
+            try:
+                pk = blspy.PrivateKey.from_bytes(pk_bytes)
+                pk_bin = pk.serialize()
+                return pk_bin.hex()
+            except Exception as e:
+                logging.exception(str(e))
+    raise Exception("Could not generate BLS private key")
+
+
+def bls_privkey_to_pubkey(privkey: str) -> str:
+    """
+    :param privkey: BLS privkey as a hex string
+    :return: BLS pubkey as a hex string.
+    """
+    pk = blspy.PrivateKey.from_bytes(bytes.fromhex(privkey))
+    pubkey = pk.get_public_key()
+    pubkey_bin = pubkey.serialize()
+    return pubkey_bin.hex()
 
 
 def num_to_varint(a):
@@ -224,18 +304,6 @@ def wif_privkey_to_uncompressed(wif_key: str):
         return wif_key
 
 
-def privkey_valid(privkey):
-    try:
-        pk = bitcoin.decode_privkey(privkey, 'wif')
-        pkbin = bytes.fromhex(bitcoin.encode_privkey(pk, 'hex'))
-        if len(pkbin) == 32 or (len(pkbin) == 33 and pkbin[-1] == 1):
-            return True
-        else:
-            return False
-    except Exception as e:
-        return False
-
-
 def from_string_to_bytes(a):
     """
     Based on project: https://github.com/chaeplin/dashmnb.
@@ -254,16 +322,27 @@ def electrum_sig_hash(message):
 
 def ecdsa_sign(msg: str, wif_priv_key: str, dash_network: str):
     """Signs a message with the Elliptic Curve algorithm.
-    Note: Dash core uses uncompressed public keys, so if the private key passed as an argument
-    is of compressed format, convert it to an uncompressed
     """
-    # wif_priv_key = wif_privkey_to_uncompressed(wif_priv_key)
 
     v, r, s = bitcoin.ecdsa_raw_sign(electrum_sig_hash(msg), wif_priv_key)
     sig = bitcoin.encode_sig(v, r, s)
     pubkey = bitcoin.privkey_to_pubkey(wif_to_privkey(wif_priv_key, dash_network))
 
     ok = bitcoin.ecdsa_raw_verify(electrum_sig_hash(msg), bitcoin.decode_sig(sig), pubkey)
+    if not ok:
+        raise Exception('Bad signature!')
+    return sig
+
+
+def ecdsa_sign_raw(msg_raw: bytes, wif_priv_key: str, dash_network: str):
+    """Signs raw bytes (a message hash) with the Elliptic Curve algorithm.
+    """
+
+    v, r, s = bitcoin.ecdsa_raw_sign(msg_raw, wif_priv_key)
+    sig = bitcoin.encode_sig(v, r, s)
+    pubkey = bitcoin.privkey_to_pubkey(wif_to_privkey(wif_priv_key, dash_network))
+
+    ok = bitcoin.ecdsa_raw_verify(msg_raw, bitcoin.decode_sig(sig), pubkey)
     if not ok:
         raise Exception('Bad signature!')
     return sig
@@ -302,8 +381,17 @@ def bip32_path_string_to_n(path_str):
     if path_str.startswith('m/'):
         path_str = path_str[2:]
     path_str = path_str.strip('/')
-    elems = [int(elem[:-1]) + 0x80000000 if elem.endswith("'") else int(elem) for elem in path_str.split('/')]
+    if path_str:
+        elems = [int(elem[:-1]) + 0x80000000 if elem.endswith("'") else int(elem) for elem in path_str.split('/')]
+    else:
+        elems = []
     return elems
+
+
+def bip32_path_string_append_elem(path_str: str, elem: int):
+    path_n = bip32_path_string_to_n(path_str)
+    path_n.append(elem)
+    return bip32_path_n_to_string(path_n)
 
 
 def compose_tx_locking_script(dest_address, dash_newtork: str):
@@ -346,12 +434,25 @@ def extract_pkh_from_locking_script(script):
     raise Exception('Non-standard locking script type (should be P2PKH)')
 
 
+def convert_dash_xpub(xpub, dest_prefix: str):
+    if dest_prefix != xpub[0:4]:
+        if dest_prefix == 'xpub':
+            raw = Base58.check_decode(xpub)
+            raw = bytes.fromhex('0488b21e') + raw[4:]
+            xpub = Base58.check_encode(raw)
+        elif dest_prefix == 'drkp':
+            raw = Base58.check_decode(xpub)
+            raw = bytes.fromhex('02fe52cc') + raw[4:]
+            xpub = Base58.check_encode(raw)
+    return xpub
+
+
 class COutPoint(object):
-    def __init__(self, hash: str, index: int):
-        self.hash: bytes = bytes.fromhex(hash)
+    def __init__(self, hash: bytes, index: int):
+        self.hash: bytes = hash
         self.index: int = index
 
-    def serialize(self):
+    def serialize(self) -> str:
         ser_str = self.hash[::-1].hex()
         ser_str += int(self.index).to_bytes(4, byteorder='little').hex()
         return ser_str
@@ -368,34 +469,88 @@ class CTxIn(object):
 
 
 class CMasternodePing(object):
-    def __init__(self, mn_outpoint: COutPoint, block_hash, sig_time):
+    def __init__(self, mn_outpoint: COutPoint, block_hash: bytes, sig_time: int, rpc_node_protocol_version: int):
         self.mn_outpoint: COutPoint = mn_outpoint  # protocol >= 70209
         self.mn_tx_in = CTxIn(mn_outpoint)  # protocol <= 70208
-        self.block_hash: str = block_hash
+        self.block_hash: bytes = block_hash
         self.sig_time: int = sig_time
+        self.rpc_node_protocol_version: int = rpc_node_protocol_version
         self.sig = None
+        self.sig_message = ''
+        self.sentinel_is_current = 0
+        self.sentinel_version = DEFAULT_SENTINEL_VERSION
+        self.daemon_version = DEFAULT_DAEMON_VERSION
+
+    def get_hash(self):
+        self.sig_message = self.mn_outpoint.serialize()
+        self.sig_message += self.block_hash[::-1].hex()
+        self.sig_message += self.sig_time.to_bytes(8, "little").hex()
+        self.sig_message += self.sentinel_is_current.to_bytes(1, "little").hex()
+        self.sig_message += self.sentinel_version.to_bytes(4, "little").hex()
+        self.sig_message += self.daemon_version.to_bytes(4, "little").hex()
+        hash = bitcoin.bin_dbl_sha256(bytes.fromhex(self.sig_message))
+        return hash
 
     def sign_message(self, priv_key, dash_network):
-        s = f'CTxIn(COutPoint({self.mn_outpoint.hash.hex()}, {self.mn_outpoint.index}), scriptSig=){self.block_hash}' \
-            f'{str(self.sig_time)}'
-        r = ecdsa_sign(s, priv_key, dash_network)
+        self.sig_message = f'CTxIn(COutPoint({self.mn_outpoint.hash.hex()}, {self.mn_outpoint.index}), ' \
+                           f'scriptSig=){self.block_hash.hex()}{str(self.sig_time)}'
+        r = ecdsa_sign(self.sig_message, priv_key, dash_network)
         self.sig = base64.b64decode(r)
         return self.sig
 
-    def serialize(self, dest_node_version: int):
-        if dest_node_version <= 70208:
+    def sign(self, priv_key, dash_network, is_spork6_active: bool):
+        if is_spork6_active:
+            hash = self.get_hash()
+            r = ecdsa_sign_raw(hash, priv_key, dash_network)
+            self.sig = base64.b64decode(r)
+        else:
+            self.sig = self.sign_message(priv_key, dash_network)
+        return self.sig
+
+    def serialize(self):
+        if self.rpc_node_protocol_version <= 70208:
             ser_str = self.mn_tx_in.serialize()
         else:
             ser_str = self.mn_outpoint.serialize()
-        ser_str += bytes.fromhex(self.block_hash)[::-1].hex()
+
+        ser_str += self.block_hash[::-1].hex()
         ser_str += self.sig_time.to_bytes(8, byteorder='little').hex()
         ser_str += num_to_varint(len(self.sig)).hex() + self.sig.hex()
+
+        if self.rpc_node_protocol_version >= 70209:
+            ser_str += self.sentinel_is_current.to_bytes(1, "little").hex()
+            ser_str += self.sentinel_version.to_bytes(4, "little").hex()
+            ser_str += self.daemon_version.to_bytes(4, "little").hex()
+        else:
+            ser_str += '0001000100'
+
         return ser_str
+
+    def __str__(self):
+        ret = f'CMasternodePing(\n' \
+              f'  mn_outpoint.hash: {self.mn_outpoint.hash.hex()}\n' \
+              f'  mn_outpoint.index: {self.mn_outpoint.index}\n' \
+              f'  block_hash: {self.block_hash.hex()}\n' \
+              f'  sig_time: {self.sig_time}\n' \
+              f'  sig_message: {self.sig_message}\n' \
+              f'  sig: {self.sig.hex() if self.sig else "None"}\n' \
+              f'  serialized: {self.serialize()}\n)'
+        return ret
 
 
 class CMasternodeBroadcast(object):
-    def __init__(self, mn_ip: str, mn_port: int, pubkey_collateral: bytes, pubkey_masternode: bytes,
-                 collateral_tx: str, collateral_tx_index: int, block_hash: str, sig_time: int, protocol_version: int):
+    def __init__(self, mn_ip: str,
+                 mn_port: int,
+                 pubkey_collateral: bytes,
+                 pubkey_masternode: bytes,
+                 collateral_tx: bytes,
+                 collateral_tx_index: int,
+                 block_hash: bytes,
+                 sig_time: int,
+                 protocol_version: int,
+                 rpc_node_protocol_version: int,
+                 spork6_active: bool):
+
         self.mn_ip: str = mn_ip
         self.mn_port: int = mn_port
         self.pubkey_collateral: bytes = pubkey_collateral
@@ -404,26 +559,33 @@ class CMasternodeBroadcast(object):
         self.sig_time: int = sig_time
         self.protocol_version: int = protocol_version
         self.collateral_outpoint = COutPoint(collateral_tx, int(collateral_tx_index))
-        self.mn_ping: CMasternodePing = CMasternodePing(self.collateral_outpoint, block_hash, sig_time)
+        self.rpc_node_protocol_version = rpc_node_protocol_version
+        self.spork6_active = spork6_active
+        self.mn_ping: CMasternodePing = CMasternodePing(self.collateral_outpoint, block_hash, sig_time,
+                                                        rpc_node_protocol_version)
 
-    def sign_message(self, collateral_bip32_path: str, hw_sign_message_fun: typing.Callable, hw_session,
-                     mn_privkey_wif: str, dash_network: str):
-
-        self.mn_ping.sign_message(mn_privkey_wif, dash_network)
-
+    def get_message_to_sign(self):
         str_for_serialize = self.mn_ip + ':' + str(self.mn_port) + str(self.sig_time) + \
             binascii.unhexlify(bitcoin.hash160(self.pubkey_collateral))[::-1].hex() + \
             binascii.unhexlify(bitcoin.hash160(self.pubkey_masternode))[::-1].hex() + \
             str(self.protocol_version)
+        return str_for_serialize
 
+    def sign(self, collateral_bip32_path: str, hw_sign_message_fun: typing.Callable, hw_session,
+             mn_privkey_wif: str, dash_network: str):
+
+        self.mn_ping.sign(mn_privkey_wif, dash_network, is_spork6_active=self.spork6_active)
+
+        str_for_serialize = self.get_message_to_sign()
         self.sig = hw_sign_message_fun(hw_session, collateral_bip32_path, str_for_serialize)
+
         return self.sig
 
-    def serialize(self, dest_node_version, protocol_version):
+    def serialize(self):
         if not self.sig:
             raise Exception('Message not signed.')
 
-        if dest_node_version <= 70208:
+        if self.rpc_node_protocol_version <= 70208:
             ser_str = self.mn_ping.mn_tx_in.serialize()
         else:
             ser_str = self.mn_ping.mn_outpoint.serialize()
@@ -439,10 +601,14 @@ class CMasternodeBroadcast(object):
         ser_str += num_to_varint(len(self.pubkey_masternode)).hex() + self.pubkey_masternode.hex()
         ser_str += num_to_varint(len(self.sig.signature)).hex() + self.sig.signature.hex()
         ser_str += self.sig_time.to_bytes(8, byteorder='little').hex()
-        ser_str += int(protocol_version).to_bytes(4, byteorder='little').hex()
-        ser_str += self.mn_ping.serialize(dest_node_version)
-
-        if dest_node_version == 70208:
-            ser_str += '0001000100'
+        ser_str += int(self.protocol_version).to_bytes(4, byteorder='little').hex()
+        ser_str += self.mn_ping.serialize()
 
         return ser_str
+
+    def __str__(self):
+        ret = f'\nCMasternodeBroadcast(\n' \
+              f'  pubkey_collateral: {self.pubkey_collateral.hex()}\n' \
+              f'  pubkey_masternode: {self.pubkey_masternode.hex()}\n' \
+              f'{str(self.mn_ping)})'
+        return ret

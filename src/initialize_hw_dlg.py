@@ -5,6 +5,7 @@
 import binascii
 import hashlib
 import os
+import ssl
 import time
 import urllib, urllib.parse, urllib.request
 from io import BytesIO
@@ -647,7 +648,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             file_name = os.path.basename(urllib.parse.urlparse(url).path)
             local_file_path = os.path.join(self.main_ui.config.cache_dir, file_name)
 
-            response = urllib.request.urlopen(url)
+            response = urllib.request.urlopen(url, context=ssl._create_unverified_context())
             data = response.read()
             try:
                 # save firmware file in cache
@@ -792,6 +793,8 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                                                       HWType.get_desc(self.hw_type))
 
         elif self.current_step == STEP_SELECT_ACTION:
+            self.rbActRecoverMnemonicWords.setVisible(self.hw_type != HWType.trezor)
+            self.rbActRecoverHexEntropy.setVisible(self.hw_type != HWType.trezor)
             if self.hw_type == HWType.ledger_nano_s:
                 # turn off options not applicable for ledger walltes
                 self.rbActRecoverWordsSafe.setDisabled(True)
@@ -927,7 +930,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             if self.hw_type == HWType.trezor:
 
                 if self.hw_model == 'T':
-                    msg_text = '<span style="color:red"><b>WARNING: Before you update firmware, please make sure that ' \
+                    msg_text = '<span style="color:red"><b>WARNING: Before updating firmware, please make sure that ' \
                                'you have backup of recovery seed.</b></span><br><br>' \
                                '<span><b>Start your Trezor T in bootloader mode:</b></span>' \
                                '<ol><li>Disconnect TREZOR.</li>' \
@@ -938,7 +941,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                     self.lblUploadFirmwareMessage.setText(msg_text)
 
                 elif self.hw_model == '1':
-                    msg_text = '<span style="color:red"><b>WARNING: Before you update firmware, please make sure that ' \
+                    msg_text = '<span style="color:red"><b>WARNING: Before updating firmware, please make sure that ' \
                                'you have backup of recovery seed.</b></span><br><br>' \
                                '<span><b>Start your Trezor One in bootloader mode:</b></span>' \
                                '<ol><li>Disconnect TREZOR.</li>' \
@@ -951,7 +954,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                     self.errorMsg('Invalid model of the selected device...')
 
             elif self.hw_type == HWType.keepkey:
-                msg_text = '<span style="color:red"><b>WARNING: Before you update firmware, please make sure that ' \
+                msg_text = '<span style="color:red"><b>WARNING: Before updating firmware, please make sure that ' \
                            'you have backup of recovery seed.</b></span><br><br>' \
                            '<span><b>Start your Keepkey in bootloader mode:</b></span>' \
                            '<ol><li>Disconnect Keepkey.</li>' \
@@ -1229,7 +1232,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
         def load_from_url(base_url: str, list_url, device: str = None, official: bool = False, model: str = None):
             ctrl.display_msg_fun(f'<b>Downloading firmware list from:</b><br>{list_url}<br><br>Please wait...')
-            response = urllib.request.urlopen(list_url)
+            response = urllib.request.urlopen(list_url, context=ssl._create_unverified_context())
             contents = response.read()
             fl = simplejson.loads(contents)
             for f in fl:
@@ -1258,7 +1261,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
             url = urllib.parse.urljoin(project_url, 'hardware-wallets/firmware/firmware-sources.json')
             ctrl.display_msg_fun(f'<b>Downloading firmware sources from:</b><br>{url}<br><br>Please wait...')
-            response = urllib.request.urlopen(url)
+            response = urllib.request.urlopen(url, context=ssl._create_unverified_context())
             contents = response.read()
             srcs = simplejson.loads(contents)
             for s in srcs:
