@@ -1,3 +1,12 @@
+## [0.9.21] - 2019-01-13
+
+**Added**
+- Support for Dash v13 - Deterministic Masternode List (protocol 70213)
+
+**Changed**
+- Wallet dialog: major redesign
+
+
 ## [0.9.20] - 2018-06-18
 
 **Added**
