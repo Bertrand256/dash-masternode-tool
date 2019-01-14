@@ -1336,9 +1336,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
             ret = self.dashd_intf.masternodebroadcast("decode", broadcast_msg)
             if ret['overall'].startswith('Successfully decoded broadcast messages for 1 masternodes'):
-                dashd_version = {70208: 'v12.2',
-                                 70209: 'v12.3',
-                                 70210: 'v12.3'}.get(mn_protocol_version, '')
+                dashd_version = {70208: 'v0.12.2',
+                                 70209: 'v0.12.3',
+                                 70210: 'v0.12.3',
+                                 70213: 'v0.13.0'}.get(mn_protocol_version, '')
                 if dashd_version:
                     dashd_version = f', dashd {dashd_version}'
 
