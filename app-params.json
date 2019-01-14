@@ -6,7 +6,7 @@
     "linux": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.21/DashMasternodeTool_0.9.21.linux.tar.gz"
   },
   "defaultDashdProtocol": {
-    "mainnet": 70210,
+    "mainnet": 70213,
     "testnet": 70213
   },
   "sporks": [
