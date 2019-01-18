@@ -1607,7 +1607,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                     if dmn_tx_state:
                         owner_pubkey_network = dmn_tx_state.get('keyIDOwner')
-                        owner_pubkey_cfg = masternode.dmn_owner_pubkey_hash
+                        owner_pubkey_cfg = masternode.get_dmn_owner_pubkey_hash()
                         if owner_pubkey_network and owner_pubkey_cfg and owner_pubkey_network != owner_pubkey_cfg:
                             owner_pubkey_hash_mismatch = True
                             logging.warning(
@@ -1615,7 +1615,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 f'Config pubkey hash: {owner_pubkey_cfg}, network pubkey hash: {owner_pubkey_network}')
 
                         voting_pubkey_network = dmn_tx_state.get('keyIDVoting')
-                        voting_pubkey_cfg = masternode.dmn_voting_pubkey_hash
+                        voting_pubkey_cfg = masternode.get_dmn_voting_pubkey_hash
                         if voting_pubkey_network and voting_pubkey_cfg and voting_pubkey_network != voting_pubkey_cfg:
                             voting_pubkey_hash_mismatch = True
                             logging.warning(

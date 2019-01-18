@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>753</width>
+    <width>712</width>
     <height>384</height>
    </rect>
   </property>
@@ -15,6 +15,12 @@
     <horstretch>0</horstretch>
     <verstretch>0</verstretch>
    </sizepolicy>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>700</width>
+    <height>0</height>
+   </size>
   </property>
   <property name="windowTitle">
    <string>Form</string>
@@ -199,6 +205,12 @@
             <horstretch>0</horstretch>
             <verstretch>0</verstretch>
            </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>170</width>
+            <height>0</height>
+           </size>
           </property>
           <property name="clearButtonEnabled">
            <bool>true</bool>
@@ -458,6 +470,28 @@
          </widget>
         </item>
         <item>
+         <widget class="QToolButton" name="btnCopyMnKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
+          <property name="toolTip">
+           <string>Copy key</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="popupMode">
+           <enum>QToolButton::InstantPopup</enum>
+          </property>
+          <property name="arrowType">
+           <enum>Qt::NoArrow</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QToolButton" name="btnGenerateMnPrivateKey">
           <property name="text">
            <string>Generate new</string>
@@ -469,7 +503,7 @@
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_7">
         <item>
-         <widget class="QLabel" name="lblOwnerPrivateKey">
+         <widget class="QLabel" name="lblOwnerKey">
           <property name="minimumSize">
            <size>
             <width>140</width>
@@ -485,7 +519,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="edtOwnerPrivateKey">
+         <widget class="QLineEdit" name="edtOwnerKey">
           <property name="echoMode">
            <enum>QLineEdit::Password</enum>
           </property>
@@ -514,6 +548,22 @@
          </widget>
         </item>
         <item>
+         <widget class="QToolButton" name="btnCopyOwnerKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="popupMode">
+           <enum>QToolButton::InstantPopup</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QToolButton" name="btnGenerateOwnerPrivateKey">
           <property name="text">
            <string>Generate new</string>
@@ -525,7 +575,7 @@
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_8">
         <item>
-         <widget class="QLabel" name="lblOperatorPrivateKey">
+         <widget class="QLabel" name="lblOperatorKey">
           <property name="minimumSize">
            <size>
             <width>140</width>
@@ -541,7 +591,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="edtOperatorPrivateKey">
+         <widget class="QLineEdit" name="edtOperatorKey">
           <property name="echoMode">
            <enum>QLineEdit::Password</enum>
           </property>
@@ -570,6 +620,22 @@
          </widget>
         </item>
         <item>
+         <widget class="QToolButton" name="btnCopyOperatorKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="popupMode">
+           <enum>QToolButton::InstantPopup</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QToolButton" name="btnGenerateOperatorPrivateKey">
           <property name="text">
            <string>Generate new</string>
@@ -581,7 +647,7 @@
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_9">
         <item>
-         <widget class="QLabel" name="lblVotingPrivateKey">
+         <widget class="QLabel" name="lblVotingKey">
           <property name="minimumSize">
            <size>
             <width>140</width>
@@ -597,7 +663,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="edtVotingPrivateKey">
+         <widget class="QLineEdit" name="edtVotingKey">
           <property name="echoMode">
            <enum>QLineEdit::Password</enum>
           </property>
@@ -626,6 +692,22 @@
          </widget>
         </item>
         <item>
+         <widget class="QToolButton" name="btnCopyVotingKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="popupMode">
+           <enum>QToolButton::InstantPopup</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QToolButton" name="btnGenerateVotingPrivateKey">
           <property name="text">
            <string>Generate new</string>
@@ -649,9 +731,9 @@
   <tabstop>edtCollateralTxIndex</tabstop>
   <tabstop>edtDMNTxHash</tabstop>
   <tabstop>edtMasternodePrivateKey</tabstop>
-  <tabstop>edtOwnerPrivateKey</tabstop>
-  <tabstop>edtOperatorPrivateKey</tabstop>
-  <tabstop>edtVotingPrivateKey</tabstop>
+  <tabstop>edtOwnerKey</tabstop>
+  <tabstop>edtOperatorKey</tabstop>
+  <tabstop>edtVotingKey</tabstop>
   <tabstop>btnGenerateMnPrivateKey</tabstop>
   <tabstop>rbRoleOwner</tabstop>
   <tabstop>rbRoleOperator</tabstop>

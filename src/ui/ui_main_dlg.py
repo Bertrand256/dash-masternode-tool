@@ -297,7 +297,7 @@ class Ui_MainWindow(object):
         self.btnRefreshMnStatus.setToolTip(_translate("MainWindow", "Get Masternode\'s status"))
         self.btnRefreshMnStatus.setText(_translate("MainWindow", "Get status"))
         self.btnBroadcastMn.setToolTip(_translate("MainWindow", "Broadcast information about the Masternode"))
-        self.btnBroadcastMn.setText(_translate("MainWindow", "Start Masternode using hardware wallet (<= v0.12)"))
+        self.btnBroadcastMn.setText(_translate("MainWindow", "Start Masternode using hardware wallet"))
         self.btnMigrateToDMN.setToolTip(_translate("MainWindow", "Register new/update existing deterministic (DIP-3) masternode or migrate from non-deterministic to deterministic masternode. "))
         self.btnMigrateToDMN.setText(_translate("MainWindow", "Send ProRegTx"))
         self.menuTools.setTitle(_translate("MainWindow", "Tools"))

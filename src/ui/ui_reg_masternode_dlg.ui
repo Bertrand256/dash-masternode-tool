@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>792</width>
-    <height>591</height>
+    <width>808</width>
+    <height>665</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -35,7 +35,7 @@
       </sizepolicy>
      </property>
      <property name="currentIndex">
-      <number>4</number>
+      <number>0</number>
      </property>
      <widget class="QWidget" name="page0">
       <property name="sizePolicy">
@@ -331,38 +331,6 @@
          </property>
         </widget>
        </item>
-       <item row="13" column="0">
-        <widget class="QLabel" name="label_7">
-         <property name="font">
-          <font>
-           <weight>75</weight>
-           <bold>true</bold>
-          </font>
-         </property>
-         <property name="text">
-          <string>Owner key</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-         </property>
-        </widget>
-       </item>
-       <item row="16" column="0">
-        <widget class="QLabel" name="label_9">
-         <property name="font">
-          <font>
-           <weight>75</weight>
-           <bold>true</bold>
-          </font>
-         </property>
-         <property name="text">
-          <string>Operator key</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-         </property>
-        </widget>
-       </item>
        <item row="10" column="0">
         <widget class="QLabel" name="label_15">
          <property name="font">
@@ -547,22 +515,6 @@
          </property>
         </widget>
        </item>
-       <item row="19" column="0">
-        <widget class="QLabel" name="lblVotingKey">
-         <property name="font">
-          <font>
-           <weight>75</weight>
-           <bold>true</bold>
-          </font>
-         </property>
-         <property name="text">
-          <string>Voting Key</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-         </property>
-        </widget>
-       </item>
        <item row="17" column="1">
         <widget class="QLabel" name="lblOperatorMsg">
          <property name="sizePolicy">
@@ -597,6 +549,36 @@
           </size>
          </property>
         </spacer>
+       </item>
+       <item row="13" column="0">
+        <widget class="QLabel" name="lblOwnerKey">
+         <property name="text">
+          <string>&lt;b&gt;Owner&lt;/b&gt; &lt;a href=&quot;owner-key&quot;&gt;private key&lt;/a&gt;</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="16" column="0">
+        <widget class="QLabel" name="lblOperatorKey">
+         <property name="text">
+          <string>&lt;b&gt;Operator&lt;/b&gt; &lt;a href=&quot;operator-key&quot;&gt;private key&lt;/a&gt;</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="19" column="0">
+        <widget class="QLabel" name="lblVotingKey">
+         <property name="text">
+          <string>&lt;b&gt;Voting&lt;/b&gt; &lt;a href=&quot;voting-key&quot;&gt;private key&lt;/a&gt;</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+         </property>
+        </widget>
        </item>
       </layout>
      </widget>
@@ -1126,36 +1108,38 @@
   </layout>
  </widget>
  <tabstops>
-  <tabstop>edtManualFundingAddress</tabstop>
-  <tabstop>edtManualProtxPrepare</tabstop>
-  <tabstop>edtManualProtxPrepareResult</tabstop>
-  <tabstop>btnManualSignProtx</tabstop>
-  <tabstop>edtManualProtxSubmit</tabstop>
-  <tabstop>edtManualTxHash</tabstop>
-  <tabstop>btnContinue</tabstop>
-  <tabstop>btnBack</tabstop>
-  <tabstop>btnCancel</tabstop>
-  <tabstop>btnGenerateOperatorKey</tabstop>
-  <tabstop>btnGenerateVotingKey</tabstop>
-  <tabstop>chbWholeMNReward</tabstop>
-  <tabstop>rbDMTDashNodeType</tabstop>
-  <tabstop>rbOwnDashNodeType</tabstop>
   <tabstop>edtCollateralTx</tabstop>
   <tabstop>edtCollateralIndex</tabstop>
   <tabstop>edtIP</tabstop>
   <tabstop>edtPort</tabstop>
   <tabstop>edtPayoutAddress</tabstop>
-  <tabstop>edtProtxSummary</tabstop>
-  <tabstop>edtOperatorKey</tabstop>
-  <tabstop>btnClose</tabstop>
-  <tabstop>edtOwnerKey</tabstop>
-  <tabstop>btnManualProtxPrepareResultPaste</tabstop>
+  <tabstop>chbWholeMNReward</tabstop>
   <tabstop>edtOperatorReward</tabstop>
-  <tabstop>btnManualProtxSubmitCopy</tabstop>
+  <tabstop>edtOwnerKey</tabstop>
   <tabstop>btnGenerateOwnerKey</tabstop>
-  <tabstop>btnManualTxHashPaste</tabstop>
+  <tabstop>edtOperatorKey</tabstop>
+  <tabstop>btnGenerateOperatorKey</tabstop>
   <tabstop>edtVotingKey</tabstop>
+  <tabstop>btnGenerateVotingKey</tabstop>
+  <tabstop>btnContinue</tabstop>
+  <tabstop>edtManualProtxPrepareResult</tabstop>
+  <tabstop>btnManualSignProtx</tabstop>
+  <tabstop>edtManualProtxSubmit</tabstop>
+  <tabstop>edtProtxSummary</tabstop>
+  <tabstop>edtManualFundingAddress</tabstop>
+  <tabstop>btnClose</tabstop>
+  <tabstop>rbOwnDashNodeType</tabstop>
+  <tabstop>btnManualProtxPrepareResultPaste</tabstop>
+  <tabstop>btnBack</tabstop>
+  <tabstop>btnManualProtxSubmitCopy</tabstop>
+  <tabstop>edtManualProtxPrepare</tabstop>
+  <tabstop>btnManualTxHashPaste</tabstop>
+  <tabstop>btnCancel</tabstop>
   <tabstop>btnManualFundingAddressPaste</tabstop>
+  <tabstop>edtSummaryDMNOperatorKey</tabstop>
+  <tabstop>btnSummaryDMNOperatorKeyCopy</tabstop>
+  <tabstop>edtManualTxHash</tabstop>
+  <tabstop>rbDMTDashNodeType</tabstop>
  </tabstops>
  <resources/>
  <connections/>

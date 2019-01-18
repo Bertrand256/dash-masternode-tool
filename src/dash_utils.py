@@ -97,6 +97,19 @@ def pubkey_to_address(pub_key, dash_network: str):
     return base58.b58encode(data + checksum)
 
 
+def address_to_pubkey_hash(address: str) -> typing.Optional[str]:
+    try:
+        data = base58.b58decode(address)
+        if len(data) > 5:
+            pubkey_hash = data[:-4]
+            checksum = data[-4:]
+            if bitcoin.bin_dbl_sha256(pubkey_hash)[0:4] == checksum:
+                return pubkey_hash
+    except Exception:
+        logging.exception('Address validation failure.')
+    return None
+
+
 def wif_privkey_to_address(privkey: str, dash_network: str):
     pubkey = wif_privkey_to_pubkey(privkey)
     return pubkey_to_address(pubkey, dash_network)

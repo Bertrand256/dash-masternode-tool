@@ -15,6 +15,7 @@ import shutil
 import sys
 import threading
 import time
+from enum import Enum
 from io import StringIO, BytesIO
 from configparser import ConfigParser
 from random import randint
@@ -51,6 +52,11 @@ CACHE_ITEM_LOG_FORMAT = 'LogFormat'
 DMN_ROLE_OWNER = 1
 DMN_ROLE_OPERATOR = 2
 DMN_ROLE_VOTING = 3
+
+
+class InputKeyType(Enum):
+    PRIVATE = 1,
+    PUBLIC = 2
 
 
 class AppConfig(object):
@@ -1092,6 +1098,12 @@ class MasternodeConfig:
         self.__dmn_owner_private_key = ''
         self.__dmn_operator_private_key = ''
         self.__dmn_voting_private_key = ''
+        self.__dmn_owner_address = ''
+        self.__dmn_operator_public_key = ''
+        self.__dmn_voting_address = ''
+        self.__dmn_owner_key_type = InputKeyType.PRIVATE
+        self.__dmn_operator_key_type = InputKeyType.PRIVATE
+        self.__dmn_voting_key_type = InputKeyType.PRIVATE
         self.new = False
         self.modified = False
         self.lock_modified_change = False
@@ -1116,6 +1128,9 @@ class MasternodeConfig:
         self.dmn_owner_private_key = src_mn.dmn_owner_private_key
         self.dmn_operator_private_key = src_mn.dmn_operator_private_key
         self.dmn_voting_private_key = src_mn.dmn_voting_private_key
+        self.dmn_owner_key_type = src_mn.dmn_owner_key_type
+        self.dmn_operator_key_type = src_mn.dmn_operator_key_type
+        self.dmn_voting_key_type = src_mn.dmn_voting_key_type
         self.new = True
         self.modified = True
         self.lock_modified_change = False
@@ -1263,38 +1278,12 @@ class MasternodeConfig:
         self.__dmn_owner_private_key = dmn_owner_private_key.strip()
 
     @property
-    def dmn_owner_pubkey_hash(self) -> Optional[str]:
-        if self.__dmn_owner_private_key:
-            try:
-                pubkey = dash_utils.wif_privkey_to_pubkey(self.__dmn_owner_private_key)
-                pubkey_bin = bytes.fromhex(pubkey)
-                pub_hash = bitcoin.bin_hash160(pubkey_bin)
-                return pub_hash[::-1].hex()
-            except Exception as e:
-                logging.warning('Error converting owner private to public key hash: ' + str(e))
-        return None
+    def dmn_owner_address(self):
+        return self.__dmn_owner_address
 
-    @property
-    def dmn_voting_pubkey_hash(self) -> Optional[str]:
-        if self.__dmn_voting_private_key:
-            try:
-                pubkey = dash_utils.wif_privkey_to_pubkey(self.__dmn_voting_private_key)
-                pubkey_bin = bytes.fromhex(pubkey)
-                pub_hash = bitcoin.bin_hash160(pubkey_bin)
-                return pub_hash[::-1].hex()
-            except Exception as e:
-                logging.warning('Error converting voting private to public key hash: ' + str(e))
-        return None
-
-    @property
-    def dmn_operator_pubkey(self) -> Optional[str]:
-        if self.__dmn_operator_private_key:
-            try:
-                pubkey = dash_utils.bls_privkey_to_pubkey(self.__dmn_operator_private_key)
-                return pubkey
-            except Exception as e:
-                logging.warning('Error converting operator private to public key: ' + str(e))
-        return None
+    @dmn_owner_address.setter
+    def dmn_owner_address(self, address):
+        self.__dmn_owner_address = address
 
     @property
     def dmn_operator_private_key(self):
@@ -1307,6 +1296,14 @@ class MasternodeConfig:
         self.__dmn_operator_private_key = dmn_operator_private_key.strip()
 
     @property
+    def dmn_operator_public_key(self):
+        return self.__dmn_operator_public_key
+
+    @dmn_operator_public_key.setter
+    def dmn_operator_public_key(self, key):
+        self.__dmn_operator_public_key = key
+
+    @property
     def dmn_voting_private_key(self):
         return self.__dmn_voting_private_key
 
@@ -1316,11 +1313,102 @@ class MasternodeConfig:
             dmn_voting_private_key = ''
         self.__dmn_voting_private_key = dmn_voting_private_key.strip()
 
-    def get_voting_key(self):
+    @property
+    def dmn_voting_address(self):
+        return self.__dmn_voting_address
+
+    @dmn_voting_address.setter
+    def dmn_voting_address(self, address):
+        self.__dmn_owner_address = address
+
+    @property
+    def dmn_owner_key_type(self):
+        return self.__dmn_owner_key_type
+
+    @dmn_owner_key_type.setter
+    def dmn_owner_key_type(self, type: InputKeyType):
+        if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
+            raise Exception('Invalid owner key type')
+        self.__dmn_owner_key_type = type
+
+    @property
+    def dmn_operator_key_type(self):
+        return self.__dmn_operator_key_type
+
+    @dmn_operator_key_type.setter
+    def dmn_operator_key_type(self, type: InputKeyType):
+        if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
+            raise Exception('Invalid operator key type')
+        self.__dmn_operator_key_type = type
+
+    @property
+    def dmn_voting_key_type(self):
+        return self.__dmn_voting_key_type
+
+    @dmn_voting_key_type.setter
+    def dmn_voting_key_type(self, type: InputKeyType):
+        if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
+            raise Exception('Invalid voting key type')
+        self.__dmn_voting_key_type = type
+
+    def get_current_key_for_voting(self):
         if self.is_deterministic:
             return self.dmn_voting_private_key
         else:
             return self.privateKey
+
+    def get_dmn_owner_public_address(self, dash_network) -> Optional[str]:
+        if self.__dmn_owner_key_type == InputKeyType.PRIVATE:
+            if self.__dmn_owner_private_key:
+                address = dash_utils.wif_privkey_to_address(self.__dmn_owner_private_key, dash_network)
+                return address
+        else:
+            if self.__dmn_owner_address:
+                return dash_utils.address_to_pubkey_hash(self.__dmn_owner_address)
+        return ''
+
+    def get_dmn_owner_pubkey_hash(self) -> Optional[str]:
+        if self.dmn_owner_key_type == InputKeyType.PRIVATE:
+            if self.__dmn_owner_private_key:
+                pubkey = dash_utils.wif_privkey_to_pubkey(self.__dmn_owner_private_key)
+                pubkey_bin = bytes.fromhex(pubkey)
+                pub_hash = bitcoin.bin_hash160(pubkey_bin)
+                return pub_hash.hex()
+        else:
+            if self.__dmn_owner_address:
+                return dash_utils.address_to_pubkey_hash(self.__dmn_owner_address)
+        return ''
+
+    def get_dmn_voting_public_address(self, dash_network) -> Optional[str]:
+        if self.__dmn_voting_key_type == InputKeyType.PRIVATE:
+            if self.__dmn_voting_private_key:
+                address = dash_utils.wif_privkey_to_address(self.__dmn_voting_private_key, dash_network)
+                return address
+        else:
+            if self.__dmn_voting_address:
+                return dash_utils.address_to_pubkey_hash(self.__dmn_voting_address)
+        return ''
+
+    def get_dmn_voting_pubkey_hash(self) -> Optional[str]:
+        if self.__dmn_voting_key_type == InputKeyType.PRIVATE:
+            if self.__dmn_voting_private_key:
+                pubkey = dash_utils.wif_privkey_to_pubkey(self.__dmn_voting_private_key)
+                pubkey_bin = bytes.fromhex(pubkey)
+                pub_hash = bitcoin.bin_hash160(pubkey_bin)
+                return pub_hash.hex()
+        else:
+            if self.__dmn_voting_address:
+                return dash_utils.address_to_pubkey_hash(self.__dmn_voting_address)
+        return ''
+
+    def get_dmn_operator_pubkey(self) -> Optional[str]:
+        if self.__dmn_operator_key_type == InputKeyType.PRIVATE:
+            if self.__dmn_operator_private_key:
+                pubkey = dash_utils.bls_privkey_to_pubkey(self.__dmn_operator_private_key)
+                return pubkey
+        else:
+            return self.__dmn_operator_public_key
+        return ''
 
 
 class SSHConnectionCfg(object):
