@@ -1537,9 +1537,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 collateral_tx_mismatch = False
                 ip_port_mismatch = False
                 mn_data_modified = False
-                owner_pubkey_hash_mismatch = False
+                owner_public_address_mismatch = False
                 operator_pubkey_mismatch = False
-                voting_pubkey_hash_mismatch = False
+                voting_public_address_mismatch = False
 
                 if masternode not in self.mns_user_refused_updating:
                     if not masternode.collateralTx or not masternode.collateralTxIndex or \
@@ -1606,29 +1606,32 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 mn_data_modified = True
 
                     if dmn_tx_state:
-                        owner_pubkey_network = dmn_tx_state.get('keyIDOwner')
-                        owner_pubkey_cfg = masternode.get_dmn_owner_pubkey_hash()
-                        if owner_pubkey_network and owner_pubkey_cfg and owner_pubkey_network != owner_pubkey_cfg:
-                            owner_pubkey_hash_mismatch = True
+                        owner_address_network = dmn_tx_state.get('ownerAddress')
+                        owner_address_cfg = masternode.get_dmn_owner_public_address(self.app_config.dash_network)
+                        if owner_address_network and owner_address_cfg and owner_address_network != owner_address_cfg:
+                            owner_public_address_mismatch = True
                             logging.warning(
-                                f'Owner public key hash mismatch for masternode: {masternode.name}, '
-                                f'Config pubkey hash: {owner_pubkey_cfg}, network pubkey hash: {owner_pubkey_network}')
+                                f'The owner public address mismatch for masternode: {masternode.name}, '
+                                f'address from the app configuration: {owner_address_cfg}, address from the Dash '
+                                f'network: {owner_address_network}')
 
-                        voting_pubkey_network = dmn_tx_state.get('keyIDVoting')
-                        voting_pubkey_cfg = masternode.get_dmn_voting_pubkey_hash
-                        if voting_pubkey_network and voting_pubkey_cfg and voting_pubkey_network != voting_pubkey_cfg:
-                            voting_pubkey_hash_mismatch = True
+                        voting_address_network = dmn_tx_state.get('votingAddress')
+                        voting_address_cfg = masternode.get_dmn_voting_public_address(self.app_config.dash_network)
+                        if voting_address_network and voting_address_cfg and voting_address_network != voting_address_cfg:
+                            voting_public_address_mismatch = True
                             logging.warning(
-                                f'Voting public key hash mismatch for masternode: {masternode.name}. '
-                                f'Config pubkey hash: {voting_pubkey_cfg}, network pubkey hash: {voting_pubkey_network}')
+                                f'The voting public address mismatch for masternode: {masternode.name}. '
+                                f'address from the app configuration: {voting_address_cfg}, address from the Dash '
+                                f'network: {voting_address_network}')
 
                         operator_pubkey_network = dmn_tx_state.get('pubKeyOperator')
-                        operator_pubkey_cfg = masternode.dmn_operator_pubkey
+                        operator_pubkey_cfg = masternode.get_dmn_operator_pubkey()
                         if operator_pubkey_network and operator_pubkey_cfg and operator_pubkey_network != operator_pubkey_cfg:
                             operator_pubkey_mismatch = True
                             logging.warning(
-                                f'Operator public key mismatch for masternode: {masternode.name}. '
-                                f'Config pubkey: {operator_pubkey_cfg}, network pubkey: {operator_pubkey_network}')
+                                f'The operator public key mismatch for masternode: {masternode.name}. '
+                                f'pubkey from the app configuration: {operator_pubkey_cfg}, pubkey from the Dash '
+                                f'network: {operator_pubkey_network}')
 
                 if mn_data_modified:
                     def update():
@@ -1658,11 +1661,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         errors.append('<td class="error" colspan="2">Collateral TX hash and/or index missing/mismatch</td>')
                     if ip_port_mismatch:
                         errors.append('<td class="error" colspan="2">Masternode IP and/or port number missing/mismatch</td>')
-                    if owner_pubkey_hash_mismatch:
+                    if owner_public_address_mismatch:
                         errors.append('<td class="error" colspan="2">Owner public key mismatch</td>')
                     if operator_pubkey_mismatch:
                         errors.append('<td class="error" colspan="2">Operator public key mismatch</td>')
-                    if voting_pubkey_hash_mismatch:
+                    if voting_public_address_mismatch:
                         errors.append('<td class="error" colspan="2">Voting public key mismatch</td>')
 
                     errors_msg = ''

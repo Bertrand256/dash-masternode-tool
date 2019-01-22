@@ -271,15 +271,17 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
             if found_protx:
                 if self.masternode.dmn_owner_private_key and \
-                        self.masternode.get_dmn_owner_pubkey_hash() == protx_state.get('keyIDOwner'):
+                        self.masternode.get_dmn_owner_public_address(self.app_config.dash_network) == \
+                        protx_state.get('ownerAddress'):
                     gen_owner = True
 
                 if self.masternode.dmn_operator_private_key and \
-                        self.masternode.dmn_operator_pubkey == protx_state.get('pubKeyOperator'):
+                        self.masternode.get_dmn_operator_pubkey() == protx_state.get('pubKeyOperator'):
                     gen_operator = True
 
                 if self.masternode.dmn_voting_private_key and \
-                        self.masternode.get_dmn_voting_pubkey_hash == protx_state.get('keyIDVoting'):
+                        self.masternode.get_dmn_voting_public_address(self.app_config.dash_network) == \
+                        protx_state.get('votingAddress'):
                     gen_voting = True
 
         if not self.masternode.dmn_owner_private_key:

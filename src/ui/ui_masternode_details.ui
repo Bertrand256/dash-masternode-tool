@@ -467,6 +467,9 @@
           <property name="checkable">
            <bool>true</bool>
           </property>
+          <property name="popupMode">
+           <enum>QToolButton::MenuButtonPopup</enum>
+          </property>
          </widget>
         </item>
         <item>

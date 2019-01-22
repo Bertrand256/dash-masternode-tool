@@ -207,6 +207,7 @@ class Ui_WdgMasternodeDetails(object):
         self.btnShowMnPrivateKey.setMaximumSize(QtCore.QSize(16777215, 21))
         self.btnShowMnPrivateKey.setText("")
         self.btnShowMnPrivateKey.setCheckable(True)
+        self.btnShowMnPrivateKey.setPopupMode(QtWidgets.QToolButton.MenuButtonPopup)
         self.btnShowMnPrivateKey.setObjectName("btnShowMnPrivateKey")
         self.horizontalLayout.addWidget(self.btnShowMnPrivateKey)
         self.btnCopyMnKey = QtWidgets.QToolButton(self.widget_2)
