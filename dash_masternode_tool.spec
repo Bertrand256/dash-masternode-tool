@@ -1,7 +1,5 @@
 # -*- mode: python -*-
-import glob
 import sys
-import os
 import os.path
 import platform
 
@@ -53,6 +51,11 @@ add_data_file(os.path.join(lib_path, 'trezorlib/coins.json'), '/trezorlib')
 add_data_file(os.path.join(lib_path, 'trezorlib/transport'), 'trezorlib/transport')
 if os_type == 'darwin':
     add_binary_file('/usr/local/lib/libusb-1.0.dylib', '.')
+elif os_type == 'win32':
+    import ctypes.util
+    l = ctypes.util.find_library('libusb-1.0.dll')
+    if l:
+        add_binary_file(l, '.')
 
 a = Analysis(['src/dash_masternode_tool.py'],
              pathex=[base_dir],
