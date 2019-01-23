@@ -129,7 +129,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.setIcon(self.action_open_proposals_window, "thumbs-up-down.png")
         self.setIcon(self.action_test_hw_connection, "hw-test.png")
         self.setIcon(self.action_disconnect_hw, "hw-disconnect.png")
-        self.setIcon(self.action_run_trezor_emulator, "hw-emulator.png")
         self.setIcon(self.action_transfer_funds_for_any_address, "wallet.png")
         self.setIcon(self.action_sign_message_for_cur_mn, "sign@32px.png")
         self.setIcon(self.action_hw_configuration, "hw.png")
@@ -142,6 +141,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.action_test_hw_connection.setIconVisibleInMenu(False)
         self.action_disconnect_hw.setIconVisibleInMenu(False)
         self.action_run_trezor_emulator.setIconVisibleInMenu(False)
+        self.action_run_trezor_emulator.setVisible(False)
         self.action_transfer_funds_for_any_address.setIconVisibleInMenu(False)
         self.action_sign_message_for_cur_mn.setIconVisibleInMenu(False)
         self.action_hw_configuration.setIconVisibleInMenu(False)
@@ -288,10 +288,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                         self.on_config_file_mru_action_triggered,
                                         self.config.app_config_file_name,
                                         self.on_config_file_mru_clear_triggered)
-
-    def show_hide_trezor_emulator(self):
-        enabled = False
-        self.action_run_trezor_emulator.setVisible(enabled)
 
     def on_config_file_mru_action_triggered(self, file_name: str) -> None:
         """ Triggered by clicking one of the subitems of the 'Open Recent' menu item. Each subitem is
