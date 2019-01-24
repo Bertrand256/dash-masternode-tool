@@ -8,6 +8,7 @@ pyinstaller
 paramiko>=2.2.1
 requests>=2.18.4
 mnemonic>=0.18
+pyinstaller==3.3
 simplejson
 cryptography
 bip32utils
