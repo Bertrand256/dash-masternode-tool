@@ -106,7 +106,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.inside_setup_ui = True
         self.dashd_intf.window = self
         self.closeEvent = self.closeEvent
-        self.show_hide_trezor_emulator()
         self.lblStatus1 = QtWidgets.QLabel(self)
         self.lblStatus1.setAutoFillBackground(False)
         self.lblStatus1.setOpenExternalLinks(True)
