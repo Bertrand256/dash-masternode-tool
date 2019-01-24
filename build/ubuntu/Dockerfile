@@ -3,7 +3,7 @@ MAINTAINER \
 [Bertrand256 <bertrand256gh@protonmail.com>]
 RUN apt-get update \
  && apt-get -y upgrade \
- && apt-get -y install libudev-dev libusb-1.0-0-dev libfox-1.6-dev autotools-dev autoconf automake libtool libpython3-all-dev python3-pip git \
+ && apt-get -y install libudev-dev libusb-1.0-0-dev libfox-1.6-dev autotools-dev autoconf automake libtool libpython3-all-dev python3.6-dev python3-pip git cmake \
  && pip3 install virtualenv \
  && cd ~ \
  && mkdir dmt \

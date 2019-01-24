@@ -3,7 +3,8 @@ MAINTAINER \
 [Bertrand256 <bertrand256gh@protonmail.com>]
 RUN yum update -y \
  && yum group install -y "Development Tools" "Development Libraries" \
- && yum install -y redhat-rpm-config python3-devel libusbx-devel libudev-devel \
+ && yum install -y redhat-rpm-config python3-devel libusbx-devel libudev-devel cmake gcc-c++ \
+ && yum remove -y gmp-devel \
  && pip3 install virtualenv \
  && cd ~ \
  && mkdir dmt \
