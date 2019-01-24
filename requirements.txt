@@ -4,11 +4,10 @@ trezor==0.11.1
 keepkey
 PyQt5==5.9.2
 PyQtChart==5.9.2
-pyinstaller
+pyinstaller==3.3
 paramiko>=2.2.1
 requests>=2.18.4
 mnemonic>=0.18
-pyinstaller==3.3
 simplejson
 cryptography
 bip32utils
