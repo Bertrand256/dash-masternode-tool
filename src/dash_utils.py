@@ -101,10 +101,10 @@ def address_to_pubkey_hash(address: str) -> typing.Optional[str]:
     try:
         data = base58.b58decode(address)
         if len(data) > 5:
-            pubkey_hash = data[:-4]
+            pubkey_hash = data[0:-4]
             checksum = data[-4:]
             if bitcoin.bin_dbl_sha256(pubkey_hash)[0:4] == checksum:
-                return pubkey_hash
+                return pubkey_hash[1:]
     except Exception:
         logging.exception('Address validation failure.')
     return None

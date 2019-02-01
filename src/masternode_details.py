@@ -6,7 +6,7 @@ from functools import partial
 import bitcoin
 from PyQt5 import QtCore
 from PyQt5.QtCore import QSize, pyqtSlot, Qt
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtGui import QPixmap, QTextDocument
 from PyQt5.QtWidgets import QDialog, QWidget, QLineEdit, QMessageBox, QAction, QApplication, QActionGroup
 
 import dash_utils
@@ -21,6 +21,7 @@ from wnd_utils import WndUtils
 class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetails):
     name_modified = QtCore.pyqtSignal(str)
     data_changed = QtCore.pyqtSignal(object)
+    role_modified = QtCore.pyqtSignal()
 
     def __init__(self, main_dlg, app_config, dashd_intf):
         QWidget.__init__(self, main_dlg)
@@ -31,6 +32,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.masternode: MasternodeConfig = None
         self.updating_ui = False
         self.edit_mode = False
+        self.style_sheet = 'QLineEdit[hightlight="true"]{color:#0047b3} QLabel[hightlight="true"]{color:#0047b3}'
+        self.setStyleSheet(self.style_sheet)
         self.setupUi()
 
     def setupUi(self):
@@ -44,15 +47,19 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.main_dlg.setIcon(self.btnCopyOperatorKey, 'content-copy@16px.png')
         self.main_dlg.setIcon(self.btnCopyVotingKey, 'content-copy@16px.png')
 
-        self.ag_mn_key = QActionGroup(self)
         self.act_view_as_mn_private_key = QAction('View as private key', self)
-        self.act_view_as_mn_private_key.triggered.connect(self.on_act_view_as_mn_private_key_triggered)
+        self.act_view_as_mn_private_key.setData('privkey')
+        self.act_view_as_mn_private_key.triggered.connect(self.on_masternode_view_key_type_changed)
         self.act_view_as_mn_public_address = QAction('View as Dash address', self)
-        self.act_view_as_mn_public_address.triggered.connect(self.on_act_view_as_mn_public_address_triggered)
+        self.act_view_as_mn_public_address.setData('address')
+        self.act_view_as_mn_public_address.triggered.connect(self.on_masternode_view_key_type_changed)
         self.act_view_as_mn_public_key = QAction('View as public key', self)
-        self.act_view_as_mn_public_key.triggered.connect(self.on_act_view_as_mn_public_key_triggered)
+        self.act_view_as_mn_public_key.setData('pubkey')
+        self.act_view_as_mn_public_key.triggered.connect(self.on_masternode_view_key_type_changed)
         self.act_view_as_mn_public_key_hash = QAction('View as public key hash', self)
-        self.act_view_as_mn_public_key_hash.triggered.connect(self.on_act_view_as_mn_public_key_hash_triggered)
+        self.act_view_as_mn_public_key_hash.setData('pubkeyhash')
+        self.act_view_as_mn_public_key_hash.triggered.connect(self.on_masternode_view_key_type_changed)
+        self.ag_mn_key = QActionGroup(self)
         self.act_view_as_mn_private_key.setCheckable(True)
         self.act_view_as_mn_public_address.setCheckable(True)
         self.act_view_as_mn_public_key.setCheckable(True)
@@ -61,43 +68,81 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.act_view_as_mn_public_address.setActionGroup(self.ag_mn_key)
         self.act_view_as_mn_public_key.setActionGroup(self.ag_mn_key)
         self.act_view_as_mn_public_key_hash.setActionGroup(self.ag_mn_key)
-
-        self.btnCopyMnKey.addActions((self.act_view_as_mn_private_key, self.act_view_as_mn_public_address,
-                                            self.act_view_as_mn_public_key, self.act_view_as_mn_public_key_hash))
         self.btnShowMnPrivateKey.addActions((self.act_view_as_mn_private_key, self.act_view_as_mn_public_address,
                                             self.act_view_as_mn_public_key, self.act_view_as_mn_public_key_hash))
 
-        self.act_copy_as_owner_private_key = QAction('Copy as private key', self)
-        self.act_copy_as_owner_private_key.triggered.connect(self.on_act_copy_as_owner_private_key_triggered)
-        self.act_copy_as_owner_public_address = QAction('Copy as Dash address', self)
-        self.act_copy_as_owner_public_address.triggered.connect(self.on_act_copy_as_owner_public_address_triggered)
-        self.act_copy_as_owner_public_key = QAction('Copy as public key', self)
-        self.act_copy_as_owner_public_key.triggered.connect(self.on_act_copy_as_owner_public_key_triggered)
-        self.act_copy_as_owner_public_key_hash = QAction('Copy as public key hash', self)
-        self.act_copy_as_owner_public_key_hash.triggered.connect(self.on_act_copy_as_owner_public_key_hash_triggered)
-        self.btnCopyOwnerKey.addActions((self.act_copy_as_owner_private_key, self.act_copy_as_owner_public_address,
-                                            self.act_copy_as_owner_public_key, self.act_copy_as_owner_public_key_hash))
+        self.act_view_as_owner_private_key = QAction('View as private key', self)
+        self.act_view_as_owner_private_key.setData('privkey')
+        self.act_view_as_owner_private_key.triggered.connect(self.on_owner_view_key_type_changed)
+        self.act_view_as_owner_public_address = QAction('View as Dash address', self)
+        self.act_view_as_owner_public_address.setData('address')
+        self.act_view_as_owner_public_address.triggered.connect(self.on_owner_view_key_type_changed)
+        self.act_view_as_owner_public_key = QAction('View as public key', self)
+        self.act_view_as_owner_public_key.setData('pubkey')
+        self.act_view_as_owner_public_key.triggered.connect(self.on_owner_view_key_type_changed)
+        self.act_view_as_owner_public_key_hash = QAction('View as public key hash', self)
+        self.act_view_as_owner_public_key_hash.setData('pubkeyhash')
+        self.act_view_as_owner_public_key_hash.triggered.connect(self.on_owner_view_key_type_changed)
+        self.ag_owner_key = QActionGroup(self)
+        self.act_view_as_owner_private_key.setCheckable(True)
+        self.act_view_as_owner_public_address.setCheckable(True)
+        self.act_view_as_owner_public_key.setCheckable(True)
+        self.act_view_as_owner_public_key_hash.setCheckable(True)
+        self.act_view_as_owner_private_key.setActionGroup(self.ag_owner_key)
+        self.act_view_as_owner_public_address.setActionGroup(self.ag_owner_key)
+        self.act_view_as_owner_public_key.setActionGroup(self.ag_owner_key)
+        self.act_view_as_owner_public_key_hash.setActionGroup(self.ag_owner_key)
+        self.btnShowOwnerPrivateKey.addActions(
+            (self.act_view_as_owner_private_key, self.act_view_as_owner_public_address,
+             self.act_view_as_owner_public_key, self.act_view_as_owner_public_key_hash))
 
-        self.act_copy_as_voting_private_key = QAction('Copy as private key', self)
-        self.act_copy_as_voting_private_key.triggered.connect(self.on_act_copy_as_voting_private_key_triggered)
-        self.act_copy_as_voting_public_address = QAction('Copy as Dash address', self)
-        self.act_copy_as_voting_public_address.triggered.connect(self.on_act_copy_as_voting_public_address_triggered)
-        self.act_copy_as_voting_public_key = QAction('Copy as public key', self)
-        self.act_copy_as_voting_public_key.triggered.connect(self.on_act_copy_as_voting_public_key_triggered)
-        self.act_copy_as_voting_public_key_hash = QAction('Copy as public key hash', self)
-        self.act_copy_as_voting_public_key_hash.triggered.connect(self.on_act_copy_as_voting_public_key_hash_triggered)
-        self.btnCopyVotingKey.addActions((self.act_copy_as_voting_private_key, self.act_copy_as_voting_public_address,
-                                          self.act_copy_as_voting_public_key, self.act_copy_as_voting_public_key_hash))
+        self.act_view_as_voting_private_key = QAction('View as private key', self)
+        self.act_view_as_voting_private_key.setData('privkey')
+        self.act_view_as_voting_private_key.triggered.connect(self.on_voting_view_key_type_changed)
+        self.act_view_as_voting_public_address = QAction('View as Dash address', self)
+        self.act_view_as_voting_public_address.setData('address')
+        self.act_view_as_voting_public_address.triggered.connect(self.on_voting_view_key_type_changed)
+        self.act_view_as_voting_public_key = QAction('View as public key', self)
+        self.act_view_as_voting_public_key.setData('pubkey')
+        self.act_view_as_voting_public_key.triggered.connect(self.on_voting_view_key_type_changed)
+        self.act_view_as_voting_public_key_hash = QAction('View as public key hash', self)
+        self.act_view_as_voting_public_key_hash.setData('pubkeyhash')
+        self.act_view_as_voting_public_key_hash.triggered.connect(self.on_voting_view_key_type_changed)
+        self.ag_voting_key = QActionGroup(self)
+        self.act_view_as_voting_private_key.setCheckable(True)
+        self.act_view_as_voting_public_address.setCheckable(True)
+        self.act_view_as_voting_public_key.setCheckable(True)
+        self.act_view_as_voting_public_key_hash.setCheckable(True)
+        self.act_view_as_voting_private_key.setActionGroup(self.ag_voting_key)
+        self.act_view_as_voting_public_address.setActionGroup(self.ag_voting_key)
+        self.act_view_as_voting_public_key.setActionGroup(self.ag_voting_key)
+        self.act_view_as_voting_public_key_hash.setActionGroup(self.ag_voting_key)
+        self.btnShowVotingPrivateKey.addActions((self.act_view_as_voting_private_key,
+                                                 self.act_view_as_voting_public_address,
+                                                 self.act_view_as_voting_public_key,
+                                                 self.act_view_as_voting_public_key_hash))
 
-        self.act_copy_as_operator_private_key = QAction('Copy as private key', self)
-        self.act_copy_as_operator_private_key.triggered.connect(self.on_act_copy_as_operator_private_key_triggered)
-        self.act_copy_as_operator_public_key = QAction('Copy as public key', self)
-        self.act_copy_as_operator_public_key.triggered.connect(self.on_act_copy_as_operator_public_key_triggered)
-        self.btnCopyOperatorKey.addActions((self.act_copy_as_operator_private_key,
-                                          self.act_copy_as_operator_public_key))
+        self.act_view_as_operator_private_key = QAction('View as private key', self)
+        self.act_view_as_operator_private_key.setData('privkey')
+        self.act_view_as_operator_private_key.triggered.connect(self.on_operator_view_key_type_changed)
+        self.act_view_as_operator_public_key = QAction('View as public key', self)
+        self.act_view_as_operator_public_key.setData('pubkey')
+        self.act_view_as_operator_public_key.triggered.connect(self.on_operator_view_key_type_changed)
+        self.ag_operator_key = QActionGroup(self)
+        self.act_view_as_operator_private_key.setCheckable(True)
+        self.act_view_as_operator_public_key.setCheckable(True)
+        self.act_view_as_operator_private_key.setActionGroup(self.ag_operator_key)
+        self.act_view_as_operator_public_key.setActionGroup(self.ag_operator_key)
+        self.btnShowOperatorPrivateKey.addActions((self.act_view_as_operator_private_key,
+                                          self.act_view_as_operator_public_key))
 
-        self.update_dynamic_labels()
         self.update_ui_controls_state()
+
+    def showEvent(self, QShowEvent):
+        self.update_key_controls_state()  # qt 0.9.2: control styles aren't updated properly without reapplying
+                                          # them here
+
+        self.lblOwnerKey.fontMetrics()
 
     def update_ui_controls_state(self):
         """Update visibility and enabled/disabled state of the UI controls.
@@ -134,7 +179,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.edtOwnerKey.setVisible(self.masternode is not None and is_deterministic and
                                            self.masternode.dmn_user_role == DMN_ROLE_OWNER)
         self.btnShowOwnerPrivateKey.setVisible(self.masternode is not None and is_deterministic and
-                                                   self.masternode.dmn_user_role == DMN_ROLE_OWNER)
+                                               self.edit_mode is False and
+                                               self.masternode.dmn_user_role == DMN_ROLE_OWNER)
         self.btnCopyOwnerKey.setVisible(self.masternode is not None and is_deterministic and
                                                    self.masternode.dmn_user_role == DMN_ROLE_OWNER)
         self.lblOperatorKey.setVisible(self.masternode is not None and is_deterministic and
@@ -142,7 +188,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.edtOperatorKey.setVisible(self.masternode is not None and is_deterministic and
                                               self.masternode.dmn_user_role != DMN_ROLE_VOTING)
         self.btnShowOperatorPrivateKey.setVisible(self.masternode is not None and is_deterministic and
-                                                      self.masternode.dmn_user_role != DMN_ROLE_VOTING)
+                                                  self.edit_mode is False and
+                                                  self.masternode.dmn_user_role != DMN_ROLE_VOTING)
         self.btnCopyOperatorKey.setVisible(self.masternode is not None and is_deterministic and
                                                       self.masternode.dmn_user_role != DMN_ROLE_VOTING)
         self.lblVotingKey.setVisible(self.masternode is not None and is_deterministic and
@@ -150,20 +197,21 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.edtVotingKey.setVisible(self.masternode is not None and is_deterministic and
                                             self.masternode.dmn_user_role != DMN_ROLE_OPERATOR)
         self.btnShowVotingPrivateKey.setVisible(self.masternode is not None and is_deterministic and
-                                                    self.masternode.dmn_user_role != DMN_ROLE_OPERATOR)
+                                                self.edit_mode is False and
+                                                self.masternode.dmn_user_role != DMN_ROLE_OPERATOR)
         self.btnCopyVotingKey.setVisible(self.masternode is not None and is_deterministic and
                                                     self.masternode.dmn_user_role != DMN_ROLE_OPERATOR)
 
-        self.act_copy_as_owner_private_key.setVisible(self.masternode is not None and
+        self.act_view_as_owner_private_key.setVisible(self.masternode is not None and
                                                       self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE)
-        self.act_copy_as_owner_public_key.setVisible(self.masternode is not None and
+        self.act_view_as_owner_public_key.setVisible(self.masternode is not None and
                                                      self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE)
-        self.act_copy_as_operator_private_key.setVisible(self.masternode is not None and
-                                                      self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE)
-        self.act_copy_as_voting_private_key.setVisible(self.masternode is not None and
+        self.act_view_as_operator_private_key.setVisible(self.masternode is not None and
+                                                         self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE)
+        self.act_view_as_voting_private_key.setVisible(self.masternode is not None and
+                                                       self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE)
+        self.act_view_as_voting_public_key.setVisible(self.masternode is not None and
                                                       self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE)
-        self.act_copy_as_voting_public_key.setVisible(self.masternode is not None and
-                                                     self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE)
 
         self.btnGenerateMnPrivateKey.setVisible(
             self.masternode is not None and self.edit_mode and
@@ -190,13 +238,13 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.rbRoleVoting.setVisible(self.masternode is not None and is_deterministic)
 
         self.lblMasternodePrivateKey.setVisible(self.masternode is not None and
-                                                      self.masternode.dmn_user_role != DMN_ROLE_VOTING)
+                                                self.masternode.dmn_user_role != DMN_ROLE_VOTING)
         self.edtMasternodePrivateKey.setVisible(self.masternode is not None and
-                                                      self.masternode.dmn_user_role != DMN_ROLE_VOTING)
-        self.btnShowMnPrivateKey.setVisible(self.masternode is not None and
-                                                      self.masternode.dmn_user_role != DMN_ROLE_VOTING)
+                                                self.masternode.dmn_user_role != DMN_ROLE_VOTING)
+        self.btnShowMnPrivateKey.setVisible(self.masternode is not None and self.edit_mode is False and
+                                            self.masternode.dmn_user_role != DMN_ROLE_VOTING)
         self.btnCopyMnKey.setVisible(self.masternode is not None and
-                                                      self.masternode.dmn_user_role != DMN_ROLE_VOTING)
+                                     self.masternode.dmn_user_role != DMN_ROLE_VOTING)
 
         # self.btnFindCollateral.setVisible(self.masternode is not None)
         self.lblIP.setVisible(self.masternode is not None)
@@ -241,47 +289,116 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                                                not self.masternode.collateralAddress or
                                                not self.masternode.collateralBip32Path)
         self.btnLocateCollateral.setVisible(col_btn_visible and self.edit_mode)
-        self.btnLocateCollateral.repaint()
-        self.update_dynamic_labels()
+        self.update_key_controls_state()
 
     def update_dynamic_labels(self):
-        if self.masternode:
+        # doc = QTextDocument(self)
+        # doc.setDocumentMargin(0)
+        # doc.setDefaultFont(self.lblOwnerKey.font())
+        # doc.setHtml('Test')
+        # h = int(doc.size().height())
+
+        def get_label_text(prefix:str, group: QActionGroup, tooltip_anchor: str):
+            lbl = '???'
+            a = group.checkedAction()
+            if a:
+                if a.data() == 'privkey':
+                    lbl = lbl = prefix + ' private key'
+                elif a.data() == 'address':
+                    lbl = prefix + ' Dash address'
+                elif a.data() == 'pubkey':
+                    lbl = prefix + ' public key'
+                elif a.data() == 'pubkeyhash':
+                    lbl = prefix + ' public key hash'
+
             if self.edit_mode:
-                pref = '<a href="key">'
-                suf = '</a>'
-            else:
-                pref = ''
-                suf = ''
+                change_lbl = {'addr': 'address', 'priv': 'privkey', 'pub': 'pubkey'}.get(tooltip_anchor)
 
-            if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
-                lbl = f'Owner {pref}private key{suf}'
-                tt = 'Change input to public address' if self.edit_mode else ''
+                # change_mode = f'<a href="{tooltip_anchor}"><img width="{h}" height="{h}" ' \
+                #                'src="img/swap-horiz@24px.png"></img></a>'
+                change_mode = f'(<a href="{tooltip_anchor}">use {change_lbl}</a>)'
             else:
-                lbl = f'Owner {pref}public address{suf}'
-                tt = 'Change input to private key' if self.edit_mode else ''
-            self.lblOwnerKey.setText(lbl)
-            self.lblOwnerKey.setToolTip(tt)
+                change_mode = ''
+            return f'<table style="float:right"><tr><td>{lbl}</td><td>{change_mode}</td></tr></table>'
 
-            if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
-                lbl = f'Operator {pref}private key{suf}'
-                tt = 'Change input to public key' if self.edit_mode else ''
-            else:
-                lbl = f'Operator {pref}public key{suf}'
-                tt = 'Change input to private key' if self.edit_mode else ''
-            self.lblOperatorKey.setText(lbl)
-            self.lblOperatorKey.setToolTip(tt)
+        if self.masternode:
 
-            if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-                lbl = f'Voting {pref}private key{suf}'
-                tt = 'Change input to public address' if self.edit_mode else ''
-            else:
-                lbl = f'Voting {pref}public address{suf}'
-                tt = 'Change input to private key' if self.edit_mode else ''
-            self.lblVotingKey.setText(lbl)
-            self.lblVotingKey.setToolTip(tt)
+            tooltip_anchor = 'addr' if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE else 'priv'
+            self.lblOwnerKey.setText(get_label_text('Owner', self.ag_owner_key, tooltip_anchor))
+
+            tooltip_anchor = 'pub' if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE else 'priv'
+            self.lblOperatorKey.setText(get_label_text('Operator', self.ag_operator_key, tooltip_anchor))
+
+            tooltip_anchor = 'addr' if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE else 'priv'
+            self.lblVotingKey.setText(get_label_text('Voting', self.ag_voting_key, tooltip_anchor))
+
+            self.set_left_label_width(self.get_max_left_label_width())
+
+    def update_key_controls_state(self):
+        self.edtMasternodePrivateKey.setEchoMode(QLineEdit.Normal if self.btnShowMnPrivateKey.isChecked() or
+                                                                     self.edit_mode else QLineEdit.Password)
+
+        hl = not self.act_view_as_mn_private_key.isChecked() and not self.edit_mode
+        self.edtMasternodePrivateKey.setProperty('hightlight', hl)
+        self.lblMasternodePrivateKey.setProperty('hightlight', hl)
+
+        self.edtOwnerKey.setEchoMode(QLineEdit.Normal if self.btnShowOwnerPrivateKey.isChecked() or
+                                                         self.edit_mode else QLineEdit.Password)
+
+        hl = self.masternode is not None and not self.edit_mode and \
+             not ((self.act_view_as_owner_private_key.isChecked() and
+                   self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE) or
+                  (self.act_view_as_owner_public_address.isChecked() and
+                   self.masternode.dmn_owner_key_type == InputKeyType.PUBLIC))
+        self.edtOwnerKey.setProperty('hightlight', hl )
+        self.lblOwnerKey.setProperty('hightlight', hl )
+
+        self.edtOperatorKey.setEchoMode(QLineEdit.Normal if self.btnShowOperatorPrivateKey.isChecked() or
+                                        self.edit_mode else QLineEdit.Password)
+
+        hl = self.masternode is not None and not self.edit_mode and \
+             not ((self.act_view_as_operator_private_key.isChecked() and
+                   self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE) or
+                  (self.masternode.dmn_operator_key_type == InputKeyType.PUBLIC))
+        self.edtOperatorKey.setProperty('hightlight', hl)
+        self.lblOperatorKey.setProperty('hightlight', hl )
+
+        self.edtVotingKey.setEchoMode(QLineEdit.Normal if self.btnShowVotingPrivateKey.isChecked() or
+                                      self.edit_mode else QLineEdit.Password)
+
+        hl = self.masternode is not None and not self.edit_mode and \
+             not ((self.act_view_as_voting_private_key.isChecked() and
+                   self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE) or
+                  (self.act_view_as_voting_public_address.isChecked() and
+                   self.masternode.dmn_voting_key_type == InputKeyType.PUBLIC))
+        self.edtVotingKey.setProperty('hightlight', hl)
+        self.lblVotingKey.setProperty('hightlight', hl)
+
+        self.update_dynamic_labels()
+        self.apply_stylesheet()
 
     def masternode_data_to_ui(self):
         if self.masternode:
+            self.act_view_as_mn_private_key.setChecked(True)
+            if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+                self.act_view_as_owner_private_key.setChecked(True)
+            else:
+                self.act_view_as_owner_public_address.setChecked(True)
+
+            if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
+                self.act_view_as_operator_private_key.setChecked(True)
+            else:
+                self.act_view_as_operator_public_key.setChecked(True)
+
+            if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
+                self.act_view_as_voting_private_key.setChecked(True)
+            else:
+                self.act_view_as_voting_public_address.setChecked(True)
+            self.btnShowMnPrivateKey.setChecked(False)
+            self.btnShowOwnerPrivateKey.setChecked(False)
+            self.btnShowOperatorPrivateKey.setChecked(False)
+            self.btnShowVotingPrivateKey.setChecked(False)
+
             self.rbRoleOwner.setChecked(self.masternode.dmn_user_role == DMN_ROLE_OWNER)
             self.rbRoleOperator.setChecked(self.masternode.dmn_user_role == DMN_ROLE_OPERATOR)
             self.rbRoleVoting.setChecked(self.masternode.dmn_user_role == DMN_ROLE_VOTING)
@@ -295,43 +412,22 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             self.edtCollateralTxHash.setText(self.masternode.collateralTx)
             self.edtCollateralTxIndex.setText(self.masternode.collateralTxIndex)
             self.edtDMNTxHash.setText(self.masternode.dmn_tx_hash)
-            self.edtMasternodePrivateKey.setText(self.get_masternode_key_string())
-            if self.edit_mode:
-
-                if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
-                    self.edtOwnerKey.setText(self.masternode.dmn_owner_private_key)
-                else:
-                    self.edtOwnerKey.setText(self.masternode.dmn_owner_address)
-
-                if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
-                    self.edtOperatorKey.setText(self.masternode.dmn_operator_private_key)
-                else:
-                    self.edtOperatorKey.setText(self.masternode.dmn_operator_public_key)
-
-                if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-                    self.edtVotingKey.setText(self.masternode.dmn_voting_private_key)
-                else:
-                    self.edtVotingKey.setText(self.masternode.dmn_voting_address)
-
-            self.edtMasternodePrivateKey.setEchoMode(QLineEdit.Password if self.btnShowMnPrivateKey.isChecked()
-                                                     else QLineEdit.Normal)
-            self.edtOwnerKey.setEchoMode(QLineEdit.Password if self.btnShowOwnerPrivateKey.isChecked()
-                                         else QLineEdit.Normal)
-            self.edtOperatorKey.setEchoMode(QLineEdit.Password if self.btnShowOperatorPrivateKey.isChecked()
-                                            else QLineEdit.Normal)
-            self.edtVotingKey.setEchoMode(QLineEdit.Password if self.btnShowVotingPrivateKey.isChecked()
-                                          else QLineEdit.Normal)
-
+            self.edtMasternodePrivateKey.setText(self.get_masternode_key_to_display())
+            self.edtOwnerKey.setText(self.get_owner_key_to_display())
+            self.edtVotingKey.setText(self.get_voting_key_to_display())
+            self.edtOperatorKey.setText(self.get_operator_key_to_display())
             self.updating_ui = False
         else:
             for e in self.findChildren(QLineEdit):
                 e.setText('')
         self.update_ui_controls_state()
 
-    def get_masternode_key_string(self) -> str:
+    def get_masternode_key_to_display(self) -> str:
         ret = ''
         if self.masternode:
             if self.edit_mode:
+                ret = self.masternode.privateKey
+            else:
                 if self.act_view_as_mn_private_key.isChecked():
                     ret = self.masternode.privateKey
                 elif self.act_view_as_mn_public_address.isChecked():
@@ -343,8 +439,97 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                     pubkey_bin = bytes.fromhex(pubkey)
                     pub_hash = bitcoin.bin_hash160(pubkey_bin)
                     ret = pub_hash.hex()
+                else:
+                    ret = '???'
+        return ret
+
+    def get_owner_key_to_display(self) -> str:
+        ret = ''
+        if self.masternode:
+            if self.edit_mode:
+                if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+                    ret = self.masternode.dmn_owner_private_key
+                else:
+                    ret = self.masternode.dmn_owner_address
             else:
-                ret = self.masternode.privateKey
+                if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+                    if self.act_view_as_owner_private_key.isChecked():
+                        ret = self.masternode.dmn_owner_private_key
+                    elif self.act_view_as_owner_public_address.isChecked():
+                        ret = dash_utils.wif_privkey_to_address(self.masternode.dmn_owner_private_key,
+                                                                self.app_config.dash_network)
+                    elif self.act_view_as_owner_public_key.isChecked():
+                        ret = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_owner_private_key)
+                    elif self.act_view_as_owner_public_key_hash.isChecked():
+                        pubkey = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_owner_private_key)
+                        pubkey_bin = bytes.fromhex(pubkey)
+                        pub_hash = bitcoin.bin_hash160(pubkey_bin)
+                        ret = pub_hash.hex()
+                    else:
+                        ret = '???'
+                else:
+                    if self.act_view_as_owner_public_address.isChecked():
+                        ret = self.masternode.dmn_owner_address
+                    elif self.act_view_as_owner_public_key_hash.isChecked():
+                        ret = self.masternode.get_dmn_owner_pubkey_hash()
+                    else:
+                        ret = '???'
+        return ret
+
+    def get_voting_key_to_display(self) -> str:
+        ret = ''
+        if self.masternode:
+            if self.edit_mode:
+                if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
+                    ret = self.masternode.dmn_voting_private_key
+                else:
+                    ret = self.masternode.dmn_voting_address
+            else:
+                if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
+                    if self.act_view_as_voting_private_key.isChecked():
+                        ret = self.masternode.dmn_voting_private_key
+                    elif self.act_view_as_voting_public_address.isChecked():
+                        ret = dash_utils.wif_privkey_to_address(self.masternode.dmn_voting_private_key,
+                                                                self.app_config.dash_network)
+                    elif self.act_view_as_voting_public_key.isChecked():
+                        ret = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_voting_private_key)
+                    elif self.act_view_as_voting_public_key_hash.isChecked():
+                        pubkey = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_voting_private_key)
+                        pubkey_bin = bytes.fromhex(pubkey)
+                        pub_hash = bitcoin.bin_hash160(pubkey_bin)
+                        ret = pub_hash.hex()
+                    else:
+                        ret = '???'
+                else:
+                    if self.act_view_as_voting_public_address.isChecked():
+                        ret = self.masternode.dmn_voting_address
+                    elif self.act_view_as_voting_public_key_hash.isChecked():
+                        ret = self.masternode.get_dmn_voting_pubkey_hash()
+                    else:
+                        ret = '???'
+        return ret
+
+    def get_operator_key_to_display(self) -> str:
+        ret = ''
+        if self.masternode:
+            if self.edit_mode:
+                if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
+                    ret = self.masternode.dmn_operator_private_key
+                else:
+                    ret = self.masternode.dmn_operator_public_key
+            else:
+                if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
+                    if self.act_view_as_operator_private_key.isChecked():
+                        ret = self.masternode.dmn_operator_private_key
+                    elif self.act_view_as_operator_public_key.isChecked():
+                        ret = self.masternode.get_dmn_operator_pubkey()
+                    else:
+                        ret = '???'
+                else:
+                    if self.act_view_as_operator_public_key_hash.isChecked():
+                        ret = self.masternode.dmn_operator_public_key
+                    else:
+                        ret = '???'
         return ret
 
     @pyqtSlot(str)
@@ -353,9 +538,12 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
                 self.masternode.dmn_owner_key_type = InputKeyType.PUBLIC
                 self.edtOwnerKey.setText(self.masternode.dmn_owner_address)
+                self.act_view_as_owner_private_key.setChecked(True)
             else:
                 self.masternode.dmn_owner_key_type = InputKeyType.PRIVATE
                 self.edtOwnerKey.setText(self.masternode.dmn_owner_private_key)
+                self.act_view_as_owner_public_address.setChecked(True)
+            self.set_modified()
             self.update_ui_controls_state()
 
     @pyqtSlot(str)
@@ -364,9 +552,12 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
                 self.masternode.dmn_operator_key_type = InputKeyType.PUBLIC
                 self.edtOperatorKey.setText(self.masternode.dmn_operator_public_key)
+                self.act_view_as_operator_private_key.setChecked(True)
             else:
                 self.masternode.dmn_operator_key_type = InputKeyType.PRIVATE
                 self.edtOperatorKey.setText(self.masternode.dmn_operator_private_key)
+                self.act_view_as_operator_public_key.setChecked(True)
+            self.set_modified()
             self.update_ui_controls_state()
 
     @pyqtSlot(str)
@@ -375,16 +566,60 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
                 self.masternode.dmn_voting_key_type = InputKeyType.PUBLIC
                 self.edtVotingKey.setText(self.masternode.dmn_voting_address)
+                self.act_view_as_voting_private_key.setChecked(True)
             else:
                 self.masternode.dmn_voting_key_type = InputKeyType.PRIVATE
                 self.edtVotingKey.setText(self.masternode.dmn_voting_private_key)
+                self.act_view_as_voting_public_address.setChecked(True)
+            self.set_modified()
             self.update_ui_controls_state()
 
+    @pyqtSlot(str)
+    def on_lblOwnerKey_linkHovered(self, link):
+        if link == 'addr':
+            tt = 'Change input type to Dash address'
+        else:
+            tt = 'Change input type to private key'
+        self.lblOwnerKey.setToolTip(tt)
+
+    @pyqtSlot(str)
+    def on_lblOperatorKey_linkHovered(self, link):
+        if link == 'pub':
+            tt = 'Change input type to public key'
+        else:
+            tt = 'Change input type to private key'
+        self.lblOperatorKey.setToolTip(tt)
+
+    @pyqtSlot(str)
+    def on_lblVotingKey_linkHovered(self, link):
+        if link == 'addr':
+            tt = 'Change input type to Dash address'
+        else:
+            tt = 'Change input type to private key'
+        self.lblVotingKey.setToolTip(tt)
+
     def get_max_left_label_width(self):
-        return max(self.lblName.width(), self.lblIP.width(), self.lblCollateral.width(),
-                   self.lblCollateralTxHash.width(), self.lblDMNTxHash.width(), self.lblMasternodePrivateKey.width(),
-                   self.lblOwnerKey.width(), self.lblOperatorKey.width(),
-                   self.lblVotingKey.width())
+        doc = QTextDocument(self)
+        doc.setDocumentMargin(0)
+        doc.setDefaultFont(self.lblOwnerKey.font())
+        doc.setHtml('Test')
+
+        def get_lbl_text_width(lbl):
+            nonlocal doc
+            doc.setHtml(lbl.text())
+            return int(doc.size().width() + 5)
+
+        w = max(get_lbl_text_width(self.lblName),
+                get_lbl_text_width(self.lblIP),
+                get_lbl_text_width(self.lblCollateral),
+                get_lbl_text_width(self.lblCollateralTxHash),
+                get_lbl_text_width(self.lblDMNTxHash),
+                get_lbl_text_width(self.lblMasternodePrivateKey),
+                get_lbl_text_width(self.lblOwnerKey),
+                get_lbl_text_width(self.lblOperatorKey),
+                get_lbl_text_width(self.lblVotingKey))
+
+        return w
 
     def set_left_label_width(self, width):
         self.lblName.setFixedWidth(width)
@@ -405,22 +640,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     def set_edit_mode(self, enabled: bool):
         if self.edit_mode != enabled:
             self.edit_mode = enabled
-            if not self.edit_mode:
-                self.act_view_as_mn_private_key.setChecked(True)
-
-            if self.btnShowMnPrivateKey.isChecked() != enabled:
-                self.btnShowMnPrivateKey.setChecked(enabled)
-
-            if self.btnShowOwnerPrivateKey.isChecked() != enabled:
-                self.btnShowOwnerPrivateKey.setChecked(enabled)
-
-            if self.btnShowOperatorPrivateKey.isChecked() != enabled:
-                self.btnShowOperatorPrivateKey.setChecked(enabled)
-
-            if self.btnShowVotingPrivateKey.isChecked() != enabled:
-                self.btnShowVotingPrivateKey.setChecked(enabled)
-
-            self.update_ui_controls_state()
+            self.masternode_data_to_ui()
+            self.apply_stylesheet()
 
     def set_modified(self):
         if self.masternode and not self.updating_ui:
@@ -450,6 +671,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             self.masternode.dmn_user_role = DMN_ROLE_OWNER
             self.update_ui_controls_state()
             self.set_modified()
+            self.role_modified.emit()
 
     @pyqtSlot(bool)
     def on_rbRoleOperator_toggled(self, checked):
@@ -457,6 +679,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             self.masternode.dmn_user_role = DMN_ROLE_OPERATOR
             self.update_ui_controls_state()
             self.set_modified()
+            self.role_modified.emit()
 
     @pyqtSlot(bool)
     def on_rbRoleVoting_toggled(self, checked):
@@ -464,6 +687,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             self.masternode.dmn_user_role = DMN_ROLE_VOTING
             self.update_ui_controls_state()
             self.set_modified()
+            self.role_modified.emit()
 
     @pyqtSlot(str)
     def on_edtName_textEdited(self, text):
@@ -477,14 +701,12 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         if self.masternode and not self.updating_ui:
             self.set_modified()
             self.masternode.ip = text.strip()
-            self.name_modified.emit(text)
 
     @pyqtSlot(str)
     def on_edtPort_textEdited(self, text):
         if self.masternode and not self.updating_ui:
             self.set_modified()
             self.masternode.port = text.strip()
-            self.name_modified.emit(text)
 
     @pyqtSlot(str)
     def on_edtProtocolVersion_textEdited(self, text):
@@ -495,7 +717,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 self.masternode.use_default_protocol_version = True
             else:
                 self.masternode.use_default_protocol_version = False
-            self.name_modified.emit(text)
 
     @pyqtSlot(str)
     def on_edtCollateralAddress_textEdited(self, text):
@@ -503,7 +724,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             update_ui = ((not text) != (not self.masternode.collateralAddress))
             self.set_modified()
             self.masternode.collateralAddress = text.strip()
-            self.name_modified.emit(text)
             if update_ui:
                 self.update_ui_controls_state()
 
@@ -513,7 +733,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             update_ui = ((not text) != (not self.masternode.collateralBip32Path))
             self.set_modified()
             self.masternode.collateralBip32Path = text.strip()
-            self.name_modified.emit(text)
             if update_ui:
                 self.update_ui_controls_state()
 
@@ -523,7 +742,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             update_ui = ((not text) != (not self.masternode.collateralTx))
             self.set_modified()
             self.masternode.collateralTx = text.strip()
-            self.name_modified.emit(text)
             if update_ui:
                 self.update_ui_controls_state()
 
@@ -532,14 +750,12 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         if self.masternode and not self.updating_ui:
             self.set_modified()
             self.masternode.collateralTxIndex = text.strip()
-            self.name_modified.emit(text)
 
     @pyqtSlot(str)
     def on_edtDMNTxHash_textEdited(self, text):
         if self.masternode and not self.updating_ui:
             self.set_modified()
             self.masternode.dmn_tx_hash = text.strip()
-            self.name_modified.emit(text)
 
     @pyqtSlot(bool)
     def on_btnFindDMNTxHash_clicked(self, checked):
@@ -575,34 +791,38 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 WndUtils.warnMsg('Couldn\'t find this masternode in the list of registered deterministic masternodes.')
             self.set_modified()
 
-
     @pyqtSlot(str)
     def on_edtMasternodePrivateKey_textEdited(self, text):
         if self.masternode and not self.updating_ui:
             self.set_modified()
             self.masternode.privateKey = text.strip()
-            self.name_modified.emit(text)
 
     @pyqtSlot(str)
     def on_edtOwnerKey_textEdited(self, text):
         if self.masternode and not self.updating_ui:
+            if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+                self.masternode.dmn_owner_private_key = text.strip()
+            else:
+                self.masternode.dmn_owner_address = text.strip()
             self.set_modified()
-            self.masternode.dmn_owner_private_key = text.strip()
-            self.name_modified.emit(text)
 
     @pyqtSlot(str)
     def on_edtOperatorKey_textEdited(self, text):
         if self.masternode and not self.updating_ui:
+            if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
+                self.masternode.dmn_operator_private_key = text.strip()
+            else:
+                self.masternode.dmn_operator_public_key = text.strip()
             self.set_modified()
-            self.masternode.dmn_operator_private_key = text.strip()
-            self.name_modified.emit(text)
 
     @pyqtSlot(str)
     def on_edtVotingKey_textEdited(self, text):
         if self.masternode and not self.updating_ui:
+            if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
+                self.masternode.dmn_voting_private_key = text.strip()
+            else:
+                self.masternode.dmn_voting_address = text.strip()
             self.set_modified()
-            self.masternode.dmn_voting_private_key = text.strip()
-            self.name_modified.emit(text)
 
     def generate_priv_key(self, pk_type:str, edit_control: QLineEdit, compressed: bool):
         if edit_control.text():
@@ -659,18 +879,22 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     @pyqtSlot(bool)
     def on_btnShowMnPrivateKey_toggled(self, checked):
         self.edtMasternodePrivateKey.setEchoMode(QLineEdit.Normal if checked else QLineEdit.Password)
+        self.update_key_controls_state()
 
     @pyqtSlot(bool)
     def on_btnShowOwnerPrivateKey_toggled(self, checked):
         self.edtOwnerKey.setEchoMode(QLineEdit.Normal if checked else QLineEdit.Password)
+        self.update_key_controls_state()
 
     @pyqtSlot(bool)
     def on_btnShowOperatorPrivateKey_toggled(self, checked):
         self.edtOperatorKey.setEchoMode(QLineEdit.Normal if checked else QLineEdit.Password)
+        self.update_key_controls_state()
 
     @pyqtSlot(bool)
     def on_btnShowVotingPrivateKey_toggled(self, checked):
         self.edtVotingKey.setEchoMode(QLineEdit.Normal if checked else QLineEdit.Password)
+        self.update_key_controls_state()
 
     @pyqtSlot(bool)
     def on_btnLocateCollateral_clicked(self, checked):
@@ -760,100 +984,42 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             return None
         return utxos
 
-    def on_act_view_as_mn_private_key_triggered(self):
-        if self.masternode and not self.edit_mode:
-            self.edtMasternodePrivateKey.setText(self.masternode.privateKey)
+    def apply_stylesheet(self):
+        self.setStyleSheet(self.style_sheet)
 
-    def on_act_view_as_mn_public_address_triggered(self):
-        if self.masternode and not self.edit_mode:
-            ret = dash_utils.wif_privkey_to_address(self.masternode.privateKey, self.app_config.dash_network)
-            self.edtMasternodePrivateKey.setText(ret)
+    def on_masternode_view_key_type_changed(self):
+        self.btnShowMnPrivateKey.setChecked(True)
+        self.update_key_controls_state()
+        self.edtMasternodePrivateKey.setText(self.get_masternode_key_to_display())
 
-    def on_act_view_as_mn_public_key_triggered(self):
-        if self.masternode:
-            ret = dash_utils.wif_privkey_to_pubkey(self.masternode.privateKey)
-            cl = QApplication.clipboard()
-            cl.setText(ret)
+    def on_owner_view_key_type_changed(self):
+        self.btnShowOwnerPrivateKey.setChecked(True)
+        self.update_key_controls_state()
+        self.edtOwnerKey.setText(self.get_owner_key_to_display())
 
-    def on_act_view_as_mn_public_key_hash_triggered(self):
-        if self.masternode:
-            pubkey = dash_utils.wif_privkey_to_pubkey(self.masternode.privateKey)
-            pubkey_bin = bytes.fromhex(pubkey)
-            pub_hash = bitcoin.bin_hash160(pubkey_bin)
-            ret = pub_hash.hex()
-            cl = QApplication.clipboard()
-            cl.setText(ret)
+    def on_voting_view_key_type_changed(self):
+        self.btnShowVotingPrivateKey.setChecked(True)
+        self.update_key_controls_state()
+        self.edtVotingKey.setText(self.get_voting_key_to_display())
 
-    def on_act_copy_as_owner_private_key_triggered(self):
-        if self.masternode:
-            if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
-                cl = QApplication.clipboard()
-                cl.setText(self.masternode.dmn_owner_private_key)
-            else:
-                raise Exception('Cannot convert a Dash address to a public key.')
+    def on_operator_view_key_type_changed(self):
+        self.btnShowOperatorPrivateKey.setChecked(True)
+        self.update_key_controls_state()
+        self.edtOperatorKey.setText(self.get_operator_key_to_display())
 
-    def on_act_copy_as_owner_public_address_triggered(self):
-        if self.masternode:
-            cl = QApplication.clipboard()
-            cl.setText(self.masternode.get_dmn_owner_public_address(self.app_config.dash_network))
+    def on_btnCopyMnKey_clicked(self):
+        cl = QApplication.clipboard()
+        cl.setText(self.edtMasternodePrivateKey.text())
 
-    def on_act_copy_as_owner_public_key_triggered(self):
-        if self.masternode:
-            ret = ''
-            if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
-                if self.masternode.dmn_owner_private_key:
-                    ret = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_owner_private_key)
-            else:
-                raise Exception('Cannot convert an address to a public key.')
-            cl = QApplication.clipboard()
-            cl.setText(ret)
+    def on_btnCopyOwnerKey_clicked(self):
+        cl = QApplication.clipboard()
+        cl.setText(self.edtOwnerKey.text())
 
-    def on_act_copy_as_owner_public_key_hash_triggered(self):
-        if self.masternode:
-            cl = QApplication.clipboard()
-            cl.setText(self.masternode.get_dmn_owner_pubkey_hash())
+    def on_btnCopyVotingKey_clicked(self):
+        cl = QApplication.clipboard()
+        cl.setText(self.edtVotingKey.text())
 
-    def on_act_copy_as_voting_private_key_triggered(self):
-        if self.masternode:
-            if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-                cl = QApplication.clipboard()
-                cl.setText(self.masternode.dmn_voting_private_key)
-            else:
-                raise Exception('Cannot convert a Dash address to a public key.')
+    def on_btnCopyOperatorKey_clicked(self):
+        cl = QApplication.clipboard()
+        cl.setText(self.edtOperatorKey.text())
 
-    def on_act_copy_as_voting_public_address_triggered(self):
-        if self.masternode:
-            cl = QApplication.clipboard()
-            cl.setText(self.masternode.get_dmn_voting_public_address(self.app_config.dash_network))
-
-    def on_act_copy_as_voting_public_key_triggered(self):
-        if self.masternode:
-            ret = ''
-            if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-                if self.masternode.dmn_voting_private_key:
-                    ret = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_voting_private_key)
-            else:
-                raise Exception('Cannot convert a Dash address to a public key.')
-
-            cl = QApplication.clipboard()
-            cl.setText(ret)
-
-    def on_act_copy_as_voting_public_key_hash_triggered(self):
-        if self.masternode:
-            ret = self.masternode.get_dmn_voting_pubkey_hash()
-            cl = QApplication.clipboard()
-            cl.setText(ret)
-
-    def on_act_copy_as_operator_private_key_triggered(self):
-        if self.masternode:
-            if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-                ret = self.masternode.dmn_operator_private_key
-            else:
-                raise Exception('Cannot convert a public key to a private key.')
-            cl = QApplication.clipboard()
-            cl.setText(ret)
-
-    def on_act_copy_as_operator_public_key_triggered(self):
-        if self.masternode:
-            cl = QApplication.clipboard()
-            cl.setText(self.masternode.get_dmn_operator_pubkey())

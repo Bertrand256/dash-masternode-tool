@@ -129,10 +129,6 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.setIcon(self.btnManualProtxSubmitCopy, 'content-copy@16px.png')
         self.setIcon(self.btnManualTxHashPaste, 'content-paste@16px.png')
         self.setIcon(self.btnSummaryDMNOperatorKeyCopy, 'content-copy@16px.png')
-        # self.layManualStep1.setAlignment(self.btnManualProtxPrepareCopy, Qt.AlignTop)
-        # self.layManualStep2.setAlignment(self.btnManualProtxPrepareResultPaste, Qt.AlignTop)
-        # self.layManualStep3.setAlignment(self.btnManualProtxSubmitCopy, Qt.AlignTop)
-        # self.layManualStep4.setAlignment(self.btnManualTxHashPaste, Qt.AlignTop)
         self.edtSummaryDMNOperatorKey.setStyleSheet("QLineEdit{background-color: white} "
                                                     "QLineEdit:read-only{background-color: white}")
         self.update_dynamic_labels()
@@ -145,18 +141,6 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
     def closeEvent(self, event):
         self.finishing = True
         self.save_cache_settings()
-
-    def showEvent(self, QShowEvent):
-        # self.lblOwnerKey.setEditable(True)
-        # self.lblOwnerKey.lineEdit().setAlignment(Qt.AlignRight)
-        # self.lblOwnerKey.lineEdit().setReadOnly(True)
-        # self.lblOperatorKey.setEditable(True)
-        # self.lblOperatorKey.lineEdit().setAlignment(Qt.AlignRight)
-        # self.lblOperatorKey.lineEdit().setReadOnly(True)
-        # self.lblVotingKey.setEditable(True)
-        # self.lblVotingKey.lineEdit().setAlignment(Qt.AlignRight)
-        # self.lblVotingKey.lineEdit().setReadOnly(True)
-        pass
 
     def restore_cache_settings(self):
         app_cache.restore_window_size(self)
@@ -178,32 +162,28 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.tm_resize_dlg.singleShot(100, set)
 
     def update_dynamic_labels(self):
-        if self.dmn_owner_key_type == InputKeyType.PRIVATE:
-            lbl = '<b>Owner</b> <a href="owner-key">private key</a>'
-            tt = 'Change input to public address'
-        else:
-            lbl = '<b>Owner</b> <a href="owner-key">public address</a>'
-            tt = 'Change input to private key'
-        self.lblOwnerKey.setText(lbl)
-        self.lblOwnerKey.setToolTip(tt)
 
-        if self.dmn_operator_key_type == InputKeyType.PRIVATE:
-            lbl = '<b>Operator</b> <a href="operator-key">private key</a>'
-            tt = 'Change input to public key'
-        else:
-            lbl = '<b>Operator</b> <a href="operator-key">public key</a>'
-            tt = 'Change input to private key'
-        self.lblOperatorKey.setText(lbl)
-        self.lblOperatorKey.setToolTip(tt)
+        def get_label_text(prefix:str, key_type: str, tooltip_anchor: str):
+            lbl = prefix + ' ' + \
+                  {'priv': 'private key', 'pub': 'public key', 'addr': 'Dash address'}.get(key_type, '???')
 
-        if self.dmn_voting_key_type == InputKeyType.PRIVATE:
-            lbl = '<b>Voting</b> <a href="voting-key">private key</a>'
-            tt = 'Change input to public address'
-        else:
-            lbl = '<b>Voting</b> <a href="voting-key">public address</a>'
-            tt = 'Change input to private key'
-        self.lblVotingKey.setText(lbl)
-        self.lblVotingKey.setToolTip(tt)
+            change_lbl = {'addr': 'address', 'priv': 'privkey', 'pub': 'pubkey'}.get(tooltip_anchor)
+            change_mode = f'(<a href="{tooltip_anchor}">use {change_lbl}</a>)'
+            return f'<table style="float:right"><tr><td><b>{lbl}</b></td><td>{change_mode}</td></tr></table>'
+
+        if self.masternode:
+
+            key_type, tooltip_anchor = ('priv', 'addr') if self.dmn_owner_key_type == InputKeyType.PRIVATE \
+                else ('addr', 'priv')
+            self.lblOwnerKey.setText(get_label_text('Owner', key_type, tooltip_anchor))
+
+            key_type, tooltip_anchor = ('priv', 'pub') if self.dmn_operator_key_type == InputKeyType.PRIVATE else \
+                ('pub', 'priv')
+            self.lblOperatorKey.setText(get_label_text('Operator', key_type, tooltip_anchor))
+
+            key_type, tooltip_anchor = ('priv','addr') if self.dmn_voting_key_type == InputKeyType.PRIVATE else \
+                ('addr', 'priv')
+            self.lblVotingKey.setText(get_label_text('Voting', key_type, tooltip_anchor))
 
     @pyqtSlot(str)
     def on_lblOwnerKey_linkActivated(self, link):
@@ -245,44 +225,65 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.update_dynamic_labels()
         self.update_ctrls_visibility()
 
+    @pyqtSlot(str)
+    def on_lblOwnerKey_linkHovered(self, link):
+        if link == 'addr':
+            tt = 'Change input type to Dash address'
+        else:
+            tt = 'Change input type to private key'
+        self.lblOwnerKey.setToolTip(tt)
+
+    @pyqtSlot(str)
+    def on_lblOperatorKey_linkHovered(self, link):
+        if link == 'pub':
+            tt = 'Change input type to public key'
+        else:
+            tt = 'Change input type to private key'
+        self.lblOperatorKey.setToolTip(tt)
+
+    @pyqtSlot(str)
+    def on_lblVotingKey_linkHovered(self, link):
+        if link == 'addr':
+            tt = 'Change input type to Dash address'
+        else:
+            tt = 'Change input type to private key'
+        self.lblVotingKey.setToolTip(tt)
+
     def generate_keys(self):
         """ Generate new operator and voting keys if were not provided before."""
         gen_owner = False
         gen_operator = False
         gen_voting = False
 
-        if self.masternode.dmn_owner_private_key or self.masternode.dmn_operator_private_key \
-                or self.masternode.dmn_voting_private_key:
+        # if any of the owner/operator/voting key used in the configuration is the same as the corresponding
+        # key shown in the blockchain, replace that key by a new one
+        found_protx = False
+        protx_state = {}
+        try:
+            for protx in self.dashd_intf.protx('list', 'registered', True):
+                protx_state = protx.get('state')
+                if (protx_state and protx_state.get('addr') == self.masternode.ip + ':' + self.masternode.port) or \
+                        (protx.get('collateralHash') == self.masternode.collateralTx and
+                         str(protx.get('collateralIndex')) == str(self.masternode.collateralTxIndex)):
+                    found_protx = True
+                    break
+        except Exception as e:
+            pass
 
-            # if any of the owner/operator/voting key used in the configuration is the same as the corresponding
-            # key shown in the blockchain, replace that key by a new one
-            found_protx = False
-            protx_state = {}
-            try:
-                for protx in self.dashd_intf.protx('list', 'registered', True):
-                    protx_state = protx.get('state')
-                    if (protx_state and protx_state.get('addr') == self.masternode.ip + ':' + self.masternode.port) or \
-                            (protx.get('collateralHash') == self.masternode.collateralTx and
-                             str(protx.get('collateralIndex')) == str(self.masternode.collateralTxIndex)):
-                        found_protx = True
-                        break
-            except Exception as e:
-                pass
+        if found_protx:
+            if self.masternode.dmn_owner_private_key and \
+                    self.masternode.get_dmn_owner_public_address(self.app_config.dash_network) == \
+                    protx_state.get('ownerAddress'):
+                gen_owner = True
 
-            if found_protx:
-                if self.masternode.dmn_owner_private_key and \
-                        self.masternode.get_dmn_owner_public_address(self.app_config.dash_network) == \
-                        protx_state.get('ownerAddress'):
-                    gen_owner = True
+            if self.masternode.dmn_operator_private_key and \
+                    self.masternode.get_dmn_operator_pubkey() == protx_state.get('pubKeyOperator'):
+                gen_operator = True
 
-                if self.masternode.dmn_operator_private_key and \
-                        self.masternode.get_dmn_operator_pubkey() == protx_state.get('pubKeyOperator'):
-                    gen_operator = True
-
-                if self.masternode.dmn_voting_private_key and \
-                        self.masternode.get_dmn_voting_public_address(self.app_config.dash_network) == \
-                        protx_state.get('votingAddress'):
-                    gen_voting = True
+            if self.masternode.dmn_voting_private_key and \
+                    self.masternode.get_dmn_voting_public_address(self.app_config.dash_network) == \
+                    protx_state.get('votingAddress'):
+                gen_voting = True
 
         if not self.masternode.dmn_owner_private_key:
             gen_owner = True
@@ -488,7 +489,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
         if not msg and self.show_field_hinds and self.dmn_operator_key_type == InputKeyType.PUBLIC:
             msg = 'You use public key if your masternode is managed by a separate entity (operator) ' \
-                  'that controls the related private key or if you prefer to keep the private key outside the ' \
+                  'that controls the related private key or if keep the private key outside the ' \
                   'program. If necessary, you will be able to revoke that key by sending a new ProRegTx transaction ' \
                   'with another operator key.'
             style = 'info'

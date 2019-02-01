@@ -40,7 +40,7 @@ import app_utils
 from initialize_hw_dlg import HwInitializeDlg
 from masternode_details import WdgMasternodeDetails
 from proposals_dlg import ProposalsDlg
-from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT
+from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR
 from app_defs import PROJECT_URL, HWType, get_note_url
 from dash_utils import bip32_path_n_to_string
 from dashd_intf import DashdInterface, DashdIndexException
@@ -158,6 +158,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         l = self.frmMasternodeDetails.layout()
         l.insertWidget(0, self.wdg_masternode)
         self.wdg_masternode.name_modified.connect(self.on_mn_name_modified)
+        self.wdg_masternode.role_modified.connect(self.update_mn_controls_state)
         self.wdg_masternode.data_changed.connect(self.on_mn_data_changed)
 
         self.mns_user_refused_updating = {}
@@ -214,8 +215,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         # add masternodes data to the combobox
         self.curMasternode = None
         self.cboMasternodes.clear()
-        for mn in self.config.masternodes:
-            self.cboMasternodes.addItem(mn.name, mn)
+        try:
+            self.cboMasternodes.blockSignals(True)
+            for mn in self.config.masternodes:
+                self.cboMasternodes.addItem(mn.name, mn)
+        finally:
+            self.cboMasternodes.blockSignals(False)
+
         if self.config.masternodes:
             # get last masternode selected
             idx = app_cache.get_value('MainWindow_CurMasternodeIndex', 0, int)
@@ -463,6 +469,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.update_edit_controls_state()
         else:
             self.wdg_masternode.set_masternode(None)
+        self.update_mn_controls_state()
         self.lblMnStatus.setText('')
 
     @pyqtSlot(bool)
@@ -856,6 +863,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.editing_enabled = True
         self.wdg_masternode.set_edit_mode(self.editing_enabled )
         self.update_edit_controls_state()
+        self.update_mn_controls_state()
 
     @pyqtSlot(bool)
     def on_btnCancelEditingMn_clicked(self, checked):
@@ -873,11 +881,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.display_masternode_config(sel_mn_idx)
                 self.wdg_masternode.set_edit_mode(self.editing_enabled)
                 self.update_edit_controls_state()
-            return
         else:
             self.editing_enabled = False
             self.wdg_masternode.set_edit_mode(self.editing_enabled)
             self.update_edit_controls_state()
+        self.update_mn_controls_state()
 
     @pyqtSlot(bool)
     def on_action_import_masternode_conf_triggered(self, checked):
@@ -1055,6 +1063,16 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.call_in_main_thread(update_fun)
         else:
             update_fun()
+
+    def update_mn_controls_state(self):
+        if self.curMasternode:
+            vis = not self.curMasternode.is_deterministic or (self.curMasternode.dmn_user_role in (DMN_ROLE_OWNER,
+                                                                                               DMN_ROLE_OPERATOR))
+        else:
+            vis = False
+        self.btnBroadcastMn.setVisible(vis)
+        self.btnMigrateToDMN.setVisible(vis)
+
 
     def newMasternodeConfig(self, copy_values_from_current: bool = False):
         new_mn = MasternodeConfig()

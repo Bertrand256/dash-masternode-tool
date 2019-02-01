@@ -131,7 +131,7 @@
          <widget class="QLabel" name="lblName">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>120</width>
             <height>0</height>
            </size>
           </property>
@@ -183,7 +183,7 @@
          <widget class="QLabel" name="lblIP">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>120</width>
             <height>0</height>
            </size>
           </property>
@@ -287,7 +287,7 @@
          <widget class="QLabel" name="lblCollateral">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>120</width>
             <height>0</height>
            </size>
           </property>
@@ -341,7 +341,7 @@
          <widget class="QLabel" name="lblCollateralTxHash">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>120</width>
             <height>0</height>
            </size>
           </property>
@@ -385,7 +385,7 @@
          <widget class="QLabel" name="lblDMNTxHash">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>120</width>
             <height>0</height>
            </size>
           </property>
@@ -422,7 +422,7 @@
          <widget class="QLabel" name="lblMasternodePrivateKey">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>120</width>
             <height>0</height>
            </size>
           </property>
@@ -441,6 +441,28 @@
           </property>
           <property name="clearButtonEnabled">
            <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnCopyMnKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
+          <property name="toolTip">
+           <string>Copy key to clipboard</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="popupMode">
+           <enum>QToolButton::InstantPopup</enum>
+          </property>
+          <property name="arrowType">
+           <enum>Qt::NoArrow</enum>
           </property>
          </widget>
         </item>
@@ -473,28 +495,6 @@
          </widget>
         </item>
         <item>
-         <widget class="QToolButton" name="btnCopyMnKey">
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>21</height>
-           </size>
-          </property>
-          <property name="toolTip">
-           <string>Copy key</string>
-          </property>
-          <property name="text">
-           <string/>
-          </property>
-          <property name="popupMode">
-           <enum>QToolButton::InstantPopup</enum>
-          </property>
-          <property name="arrowType">
-           <enum>Qt::NoArrow</enum>
-          </property>
-         </widget>
-        </item>
-        <item>
          <widget class="QToolButton" name="btnGenerateMnPrivateKey">
           <property name="text">
            <string>Generate new</string>
@@ -509,7 +509,7 @@
          <widget class="QLabel" name="lblOwnerKey">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>120</width>
             <height>0</height>
            </size>
           </property>
@@ -532,6 +532,25 @@
          </widget>
         </item>
         <item>
+         <widget class="QToolButton" name="btnCopyOwnerKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
+          <property name="toolTip">
+           <string>Copy key to clipboard</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="popupMode">
+           <enum>QToolButton::InstantPopup</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QToolButton" name="btnShowOwnerPrivateKey">
           <property name="maximumSize">
            <size>
@@ -548,21 +567,8 @@
           <property name="checkable">
            <bool>true</bool>
           </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QToolButton" name="btnCopyOwnerKey">
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>21</height>
-           </size>
-          </property>
-          <property name="text">
-           <string/>
-          </property>
           <property name="popupMode">
-           <enum>QToolButton::InstantPopup</enum>
+           <enum>QToolButton::MenuButtonPopup</enum>
           </property>
          </widget>
         </item>
@@ -581,7 +587,7 @@
          <widget class="QLabel" name="lblOperatorKey">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>120</width>
             <height>0</height>
            </size>
           </property>
@@ -604,6 +610,25 @@
          </widget>
         </item>
         <item>
+         <widget class="QToolButton" name="btnCopyOperatorKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
+          <property name="toolTip">
+           <string>Copy key to clipboard</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="popupMode">
+           <enum>QToolButton::InstantPopup</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QToolButton" name="btnShowOperatorPrivateKey">
           <property name="maximumSize">
            <size>
@@ -620,21 +645,8 @@
           <property name="checkable">
            <bool>true</bool>
           </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QToolButton" name="btnCopyOperatorKey">
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>21</height>
-           </size>
-          </property>
-          <property name="text">
-           <string/>
-          </property>
           <property name="popupMode">
-           <enum>QToolButton::InstantPopup</enum>
+           <enum>QToolButton::MenuButtonPopup</enum>
           </property>
          </widget>
         </item>
@@ -653,7 +665,7 @@
          <widget class="QLabel" name="lblVotingKey">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>120</width>
             <height>0</height>
            </size>
           </property>
@@ -676,6 +688,25 @@
          </widget>
         </item>
         <item>
+         <widget class="QToolButton" name="btnCopyVotingKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
+          <property name="toolTip">
+           <string>Copy key to clipboard</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="popupMode">
+           <enum>QToolButton::InstantPopup</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QToolButton" name="btnShowVotingPrivateKey">
           <property name="maximumSize">
            <size>
@@ -692,21 +723,8 @@
           <property name="checkable">
            <bool>true</bool>
           </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QToolButton" name="btnCopyVotingKey">
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>21</height>
-           </size>
-          </property>
-          <property name="text">
-           <string/>
-          </property>
           <property name="popupMode">
-           <enum>QToolButton::InstantPopup</enum>
+           <enum>QToolButton::MenuButtonPopup</enum>
           </property>
          </widget>
         </item>

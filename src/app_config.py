@@ -54,8 +54,8 @@ DMN_ROLE_OPERATOR = 2
 DMN_ROLE_VOTING = 3
 
 
-class InputKeyType(Enum):
-    PRIVATE = 1,
+class InputKeyType():
+    PRIVATE = 1
     PUBLIC = 2
 
 
@@ -446,35 +446,63 @@ class AppConfig(object):
                 else:
                     conn_cfg_section_name = 'CONNECTION'
 
+                was_error = False
                 for section in config.sections():
                     try:
                         if re.match('MN\d', section):
-                            mn = MasternodeConfig()
-                            mn.name = config.get(section, 'name', fallback='')
-                            mn.ip = config.get(section, 'ip', fallback='')
-                            mn.port = config.get(section, 'port', fallback='')
-                            mn.privateKey = self.simple_decrypt(
-                                config.get(section, 'private_key', fallback='').strip(), ini_version < 4,
-                                lambda x: dash_utils.validate_wif_privkey(x, self.dash_network) )
-                            mn.collateralBip32Path = config.get(section, 'collateral_bip32_path', fallback='').strip()
-                            mn.collateralAddress = config.get(section, 'collateral_address', fallback='').strip()
-                            mn.collateralTx = config.get(section, 'collateral_tx', fallback='').strip()
-                            mn.collateralTxIndex = config.get(section, 'collateral_tx_index', fallback='').strip()
-                            mn.use_default_protocol_version = self.value_to_bool(
-                                config.get(section, 'use_default_protocol_version', fallback='1'))
-                            mn.protocol_version = config.get(section, 'protocol_version', fallback='').strip()
-                            mn.is_deterministic = self.value_to_bool(
-                                config.get(section, 'is_deterministic', fallback='0'))
-                            mn.dmn_user_role = int(config.get(section, 'dmn_user_role',
-                                                              fallback=f'{DMN_ROLE_OWNER}').strip())
-                            mn.dmn_tx_hash = config.get(section, 'dmn_tx_hash', fallback='').strip()
-                            mn.dmn_owner_private_key = self.simple_decrypt(
-                                config.get(section, 'dmn_owner_private_key', fallback='').strip(), False)
-                            mn.dmn_operator_private_key = self.simple_decrypt(
-                                config.get(section, 'dmn_operator_private_key', fallback='').strip(), False)
-                            mn.dmn_voting_private_key = self.simple_decrypt(
-                                config.get(section, 'dmn_voting_private_key', fallback='').strip(), False)
-                            self.masternodes.append(mn)
+                            try:
+                                mn = MasternodeConfig()
+                                mn.name = config.get(section, 'name', fallback='')
+                                mn.ip = config.get(section, 'ip', fallback='')
+                                mn.port = config.get(section, 'port', fallback='')
+                                mn.privateKey = self.simple_decrypt(
+                                    config.get(section, 'private_key', fallback='').strip(), ini_version < 4,
+                                    lambda x: dash_utils.validate_wif_privkey(x, self.dash_network) )
+                                mn.collateralBip32Path = config.get(section, 'collateral_bip32_path', fallback='').strip()
+                                mn.collateralAddress = config.get(section, 'collateral_address', fallback='').strip()
+                                mn.collateralTx = config.get(section, 'collateral_tx', fallback='').strip()
+                                mn.collateralTxIndex = config.get(section, 'collateral_tx_index', fallback='').strip()
+                                mn.use_default_protocol_version = self.value_to_bool(
+                                    config.get(section, 'use_default_protocol_version', fallback='1'))
+                                mn.protocol_version = config.get(section, 'protocol_version', fallback='').strip()
+                                mn.is_deterministic = self.value_to_bool(
+                                    config.get(section, 'is_deterministic', fallback='0'))
+                                mn.dmn_user_role = int(config.get(section, 'dmn_user_role',
+                                                                  fallback=f'{DMN_ROLE_OWNER}').strip())
+                                mn.dmn_tx_hash = config.get(section, 'dmn_tx_hash', fallback='').strip()
+                                mn.dmn_voting_private_key = self.simple_decrypt(
+                                    config.get(section, 'dmn_voting_private_key', fallback='').strip(), False)
+                                mn.dmn_owner_key_type = int(config.get(section, 'dmn_owner_key_type',
+                                                                   fallback=str(InputKeyType.PRIVATE)).strip())
+                                mn.dmn_operator_key_type = int(config.get(section, 'dmn_operator_key_type',
+                                                                   fallback=str(InputKeyType.PRIVATE)).strip())
+                                mn.dmn_voting_key_type = int(config.get(section, 'dmn_voting_key_type',
+                                                                   fallback=str(InputKeyType.PRIVATE)).strip())
+                                if mn.dmn_owner_key_type == InputKeyType.PRIVATE:
+                                    mn.dmn_owner_private_key = self.simple_decrypt(
+                                        config.get(section, 'dmn_owner_private_key', fallback='').strip(), False)
+                                else:
+                                    mn.dmn_owner_address = config.get(section, 'dmn_owner_address', fallback='').strip()
+                                    
+                                if mn.dmn_operator_key_type == InputKeyType.PRIVATE:
+                                    mn.dmn_operator_private_key = self.simple_decrypt(
+                                        config.get(section, 'dmn_operator_private_key', fallback='').strip(), False)
+                                else:
+                                    mn.dmn_operator_public_key = config.get(section, 'dmn_operator_public_key', 
+                                                                            fallback='').strip()
+
+                                if mn.dmn_voting_key_type == InputKeyType.PRIVATE:
+                                    mn.dmn_voting_private_key = self.simple_decrypt(
+                                        config.get(section, 'dmn_voting_private_key', fallback='').strip(), False)
+                                else:
+                                    mn.dmn_voting_address = config.get(section, 'dmn_voting_address',
+                                                                       fallback='').strip()
+
+                                self.masternodes.append(mn)
+                            except Exception as e:
+                                logging.error('Error reading masternode configuration from file. '
+                                              'Config section name: ' + section + ': ' + str(e))
+                                was_error = True
                         elif re.match(conn_cfg_section_name+'\d', section):
                             # read network configuration from new config file format
                             cfg = DashNetworkConnectionCfg('rpc')
@@ -511,6 +539,10 @@ class AppConfig(object):
                 self.app_config_file_name = file_name
                 app_cache.set_value('AppConfig_ConfigFileName', self.app_config_file_name)
                 self.config_file_encrypted = config_file_encrypted
+
+                if was_error:
+                    WndUtils.warnMsg('There was an error reading configuration file. '
+                                     'Look into the log file for more details.')
 
             except CancelException:
                 self.hw_type = hw_type_sav
@@ -654,6 +686,12 @@ class AppConfig(object):
             config.set(section, 'dmn_owner_private_key', self.simple_encrypt(mn.dmn_owner_private_key))
             config.set(section, 'dmn_operator_private_key', self.simple_encrypt(mn.dmn_operator_private_key))
             config.set(section, 'dmn_voting_private_key', self.simple_encrypt(mn.dmn_voting_private_key))
+            config.set(section, 'dmn_owner_key_type', str(mn.dmn_owner_key_type))
+            config.set(section, 'dmn_operator_key_type', str(mn.dmn_operator_key_type))
+            config.set(section, 'dmn_voting_key_type', str(mn.dmn_voting_key_type))
+            config.set(section, 'dmn_owner_address', mn.dmn_owner_address)
+            config.set(section, 'dmn_operator_public_key', mn.dmn_operator_public_key)
+            config.set(section, 'dmn_voting_address', mn.dmn_voting_address)
             mn.modified = False
 
         # save dash network connections
@@ -1095,15 +1133,15 @@ class MasternodeConfig:
         self.is_deterministic = False
         self.__dmn_user_role = DMN_ROLE_OWNER
         self.__dmn_tx_hash = ''
+        self.__dmn_owner_key_type = InputKeyType.PRIVATE
+        self.__dmn_operator_key_type = InputKeyType.PRIVATE
+        self.__dmn_voting_key_type = InputKeyType.PRIVATE
         self.__dmn_owner_private_key = ''
         self.__dmn_operator_private_key = ''
         self.__dmn_voting_private_key = ''
         self.__dmn_owner_address = ''
         self.__dmn_operator_public_key = ''
         self.__dmn_voting_address = ''
-        self.__dmn_owner_key_type = InputKeyType.PRIVATE
-        self.__dmn_operator_key_type = InputKeyType.PRIVATE
-        self.__dmn_voting_key_type = InputKeyType.PRIVATE
         self.new = False
         self.modified = False
         self.lock_modified_change = False
@@ -1125,12 +1163,15 @@ class MasternodeConfig:
         self.is_deterministic = src_mn.is_deterministic
         self.dmn_user_role = src_mn.dmn_user_role
         self.dmn_tx_hash = src_mn.dmn_tx_hash
-        self.dmn_owner_private_key = src_mn.dmn_owner_private_key
-        self.dmn_operator_private_key = src_mn.dmn_operator_private_key
-        self.dmn_voting_private_key = src_mn.dmn_voting_private_key
         self.dmn_owner_key_type = src_mn.dmn_owner_key_type
         self.dmn_operator_key_type = src_mn.dmn_operator_key_type
         self.dmn_voting_key_type = src_mn.dmn_voting_key_type
+        self.dmn_owner_private_key = src_mn.dmn_owner_private_key
+        self.dmn_operator_private_key = src_mn.dmn_operator_private_key
+        self.dmn_voting_private_key = src_mn.dmn_voting_private_key
+        self.dmn_owner_address = src_mn.dmn_owner_address
+        self.dmn_operator_public_key = src_mn.dmn_operator_public_key
+        self.dmn_voting_address = src_mn.dmn_voting_address
         self.new = True
         self.modified = True
         self.lock_modified_change = False
@@ -1376,7 +1417,9 @@ class MasternodeConfig:
                 return pub_hash.hex()
         else:
             if self.__dmn_owner_address:
-                return dash_utils.address_to_pubkey_hash(self.__dmn_owner_address)
+                ret = dash_utils.address_to_pubkey_hash(self.__dmn_owner_address)
+                if ret:
+                    return ret.hex()
         return ''
 
     def get_dmn_voting_public_address(self, dash_network) -> Optional[str]:
@@ -1398,7 +1441,9 @@ class MasternodeConfig:
                 return pub_hash.hex()
         else:
             if self.__dmn_voting_address:
-                return dash_utils.address_to_pubkey_hash(self.__dmn_voting_address)
+                ret = dash_utils.address_to_pubkey_hash(self.__dmn_voting_address)
+                if ret:
+                    return ret.hex()
         return ''
 
     def get_dmn_operator_pubkey(self) -> Optional[str]:

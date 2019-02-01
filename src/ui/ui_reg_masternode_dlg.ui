@@ -553,7 +553,7 @@
        <item row="13" column="0">
         <widget class="QLabel" name="lblOwnerKey">
          <property name="text">
-          <string>&lt;b&gt;Owner&lt;/b&gt; &lt;a href=&quot;owner-key&quot;&gt;private key&lt;/a&gt;</string>
+          <string>&lt;b&gt;Owner private key&lt;/b&gt;</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -563,7 +563,7 @@
        <item row="16" column="0">
         <widget class="QLabel" name="lblOperatorKey">
          <property name="text">
-          <string>&lt;b&gt;Operator&lt;/b&gt; &lt;a href=&quot;operator-key&quot;&gt;private key&lt;/a&gt;</string>
+          <string>&lt;b&gt;Operator private key&lt;/b&gt; </string>
          </property>
          <property name="alignment">
           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -573,7 +573,7 @@
        <item row="19" column="0">
         <widget class="QLabel" name="lblVotingKey">
          <property name="text">
-          <string>&lt;b&gt;Voting&lt;/b&gt; &lt;a href=&quot;voting-key&quot;&gt;private key&lt;/a&gt;</string>
+          <string>&lt;b&gt;Voting private key&lt;/b&gt;</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
