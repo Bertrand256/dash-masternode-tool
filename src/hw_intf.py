@@ -9,8 +9,6 @@ from functools import partial
 from typing import Optional, Tuple, List, ByteString, Callable, Dict
 import sys
 
-from trezorlib import exceptions
-
 import dash_utils
 from dash_utils import bip32_path_n_to_string
 from hw_common import HardwareWalletPinException, HwSessionInfo, get_hw_type
@@ -63,6 +61,8 @@ def control_hw_call(func):
 
                     import hw_intf_trezor as trezor
                     import trezorlib.client as client
+                    from trezorlib import exceptions
+
                     try:
                         ret = func(*args, **kwargs)
                     except exceptions.PinException as e:
@@ -156,7 +156,7 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
     if hw_type == HWType.trezor:
         import hw_intf_trezor as trezor
         import trezorlib.client as client
-        from trezorlib import btc
+        from trezorlib import btc, exceptions
         try:
             cli = trezor.connect_trezor(device_id=device_id)
             if cli and hw_session:

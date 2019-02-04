@@ -17,11 +17,12 @@ After making sure that you have the correct Python version, execute the followin
 ```
 [dmt@ubuntu /]# sudo apt-get update
 [dmt@ubuntu /]# sudo apt-get -y upgrade
-[dmt@ubuntu /]# sudo apt-get -y install libudev-dev libusb-1.0-0-dev libfox-1.6-dev autotools-dev autoconf automake libtool libpython3-all-dev python3-pip git
+[dmt@ubuntu /]# sudo apt-get -y install libudev-dev libusb-1.0-0-dev libfox-1.6-dev autotools-dev autoconf automake libtool libpython3-all-dev python3.6-dev python3-pip git cmake
 [dmt@ubuntu /]# sudo pip3 install virtualenv
+[dmt@ubuntu /]# sudo pip3 install --upgrade pip
 [dmt@ubuntu /]# cd ~
 [dmt@ubuntu /]# mkdir dmt && cd dmt
-[dmt@ubuntu /]# virtualenv -p python3 venv
+[dmt@ubuntu /]# virtualenv -p python3.6 venv
 [dmt@ubuntu /]# . venv/bin/activate
 [dmt@ubuntu /]# pip install --upgrade setuptools
 [dmt@ubuntu /]# git clone https://github.com/Bertrand256/dash-masternode-tool
@@ -87,7 +88,8 @@ docker ps -a --filter name=dmtbuild --filter ancestor=bertrand256/build-dmt:ubun
 Create the container:
 
 ``` 
-docker create --name dmtbuild -it bertrand256/build-dmt:ubuntu
+mkdir -p build
+docker create --name dmtbuild -v $(pwd)/build:/root/dmt/dist -it bertrand256/build-dmt:ubuntu
 ```
 
 #### 5. Build the Dash Masternode Tool executable
@@ -96,10 +98,4 @@ docker create --name dmtbuild -it bertrand256/build-dmt:ubuntu
 docker start -ai dmtbuild
 ```
 
-#### 6. Copy the build result to your *working directory*
-
-```
-docker cp dmtbuild:/root/dmt/dist/all dmt-executable
-```
-
-This command completes the procedure. The `dmt-executable` directory inside your *working directory* will contain a compressed Dash Masternode Tool executable.
+When the command completes, compiled binary can be found in the 'build' subdirectory of your current directory.

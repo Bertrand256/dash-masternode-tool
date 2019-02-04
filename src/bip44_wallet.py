@@ -569,6 +569,13 @@ class Bip44Wallet(QObject):
             finally:
                 self.db_intf.release_cursor()
         try:
+            # remove address duplicates
+            addr_dict = {}
+            for a in addr_info_list:
+                addr_dict[a.address] = a
+            if len(addr_dict) != len(addr_info_list):
+                addr_info_list = list(addr_dict.values())
+
             self._process_addresses_txs(addr_info_list, cur_block_height, check_break_process_fun)
             self._update_addr_balances(account=None, addr_ids=[a.id for a in addr_info_list])
         finally:

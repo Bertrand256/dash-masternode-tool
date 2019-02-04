@@ -7,7 +7,8 @@ Execute the following commands from the terminal:
 ```
 [dmt@fedora /]# sudo yum update -y
 [dmt@fedora /]# sudo yum group install -y "Development Tools" "Development Libraries"
-[dmt@fedora /]# sudo yum install -y redhat-rpm-config python3-devel libusbx-devel libudev-devel
+[dmt@fedora /]# sudo yum install -y redhat-rpm-config python3-devel libusbx-devel libudev-devel cmake gcc-c++
+[dmt@fedora /]# sudo yum remove -y gmp-devel
 [dmt@fedora /]# sudo pip3 install virtualenv
 [dmt@fedora /]# cd ~
 [dmt@fedora /]# mkdir dmt && cd dmt
@@ -76,7 +77,8 @@ docker ps -a --filter name=dmtbuild --filter ancestor=bertrand256/build-dmt
 Create the container:
 
 ``` 
-docker create --name dmtbuild -it bertrand256/build-dmt
+mkdir -p build
+docker create --name dmtbuild -v $(pwd)/build:/root/dmt/dist -it bertrand256/build-dmt
 ```
 
 #### 5. Build the Dash Masternode Tool executable
@@ -85,10 +87,4 @@ docker create --name dmtbuild -it bertrand256/build-dmt
 docker start -ai dmtbuild
 ```
 
-#### 6. Copy the build result to your *working directory*
-
-```
-docker cp dmtbuild:/root/dmt/dist/all dmt-executable
-```
-
-This command completes the procedure. The `dmt-executable` directory inside your *working directory* will contain a compressed Dash Masternode Tool executable.
+When the command completes, compiled binary can be found in the 'build' subdirectory of your current directory.
