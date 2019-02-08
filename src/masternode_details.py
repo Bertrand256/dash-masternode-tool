@@ -298,39 +298,42 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         # doc.setHtml('Test')
         # h = int(doc.size().height())
 
-        def get_label_text(prefix:str, group: QActionGroup, tooltip_anchor: str):
+        def get_label_text(prefix:str, cur_key_type: str, group: QActionGroup, tooltip_anchor: str):
             lbl = '???'
-            a = group.checkedAction()
-            if a:
-                if a.data() == 'privkey':
-                    lbl = lbl = prefix + ' private key'
-                elif a.data() == 'address':
-                    lbl = prefix + ' Dash address'
-                elif a.data() == 'pubkey':
-                    lbl = prefix + ' public key'
-                elif a.data() == 'pubkeyhash':
-                    lbl = prefix + ' public key hash'
-
             if self.edit_mode:
-                change_lbl = {'addr': 'address', 'priv': 'privkey', 'pub': 'pubkey'}.get(tooltip_anchor)
-
                 # change_mode = f'<a href="{tooltip_anchor}"><img width="{h}" height="{h}" ' \
                 #                'src="img/swap-horiz@24px.png"></img></a>'
-                change_mode = f'(<a href="{tooltip_anchor}">use {change_lbl}</a>)'
+                change_mode = f'<td>(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)</td>'
             else:
+                a = group.checkedAction()
+                if a:
+                    cur_key_type = a.data()
                 change_mode = ''
-            return f'<table style="float:right"><tr><td>{lbl}</td><td>{change_mode}</td></tr></table>'
+
+            if cur_key_type == 'privkey':
+                lbl = prefix + ' private key'
+            elif cur_key_type == 'address':
+                lbl = prefix + ' Dash address'
+            elif cur_key_type == 'pubkey':
+                lbl = prefix + ' public key'
+            elif cur_key_type == 'pubkeyhash':
+                lbl = prefix + ' public key hash'
+
+            return f'<table style="float:right"><tr><td>{lbl}</td>{change_mode}</tr></table>'
 
         if self.masternode:
 
-            tooltip_anchor = 'addr' if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE else 'priv'
-            self.lblOwnerKey.setText(get_label_text('Owner', self.ag_owner_key, tooltip_anchor))
+            tooltip_anchor, cur_key_type = ('address', 'privkey') if self.masternode.dmn_owner_key_type == \
+                                                                   InputKeyType.PRIVATE else ('privkey', 'address')
+            self.lblOwnerKey.setText(get_label_text('Owner', cur_key_type, self.ag_owner_key, tooltip_anchor))
 
-            tooltip_anchor = 'pub' if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE else 'priv'
-            self.lblOperatorKey.setText(get_label_text('Operator', self.ag_operator_key, tooltip_anchor))
+            tooltip_anchor, cur_key_type = ('pubkey', 'privkey') if self.masternode.dmn_operator_key_type == \
+                                                                    InputKeyType.PRIVATE else ('privkey', 'pubkey')
+            self.lblOperatorKey.setText(get_label_text('Operator', cur_key_type, self.ag_operator_key, tooltip_anchor))
 
-            tooltip_anchor = 'addr' if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE else 'priv'
-            self.lblVotingKey.setText(get_label_text('Voting', self.ag_voting_key, tooltip_anchor))
+            tooltip_anchor, cur_key_type = ('address', 'privkey') if self.masternode.dmn_voting_key_type == \
+                                                                     InputKeyType.PRIVATE else ('privkey', 'address')
+            self.lblVotingKey.setText(get_label_text('Voting', cur_key_type, self.ag_voting_key, tooltip_anchor))
 
             self.set_left_label_width(self.get_max_left_label_width())
 
@@ -526,7 +529,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                     else:
                         ret = '???'
                 else:
-                    if self.act_view_as_operator_public_key_hash.isChecked():
+                    if self.act_view_as_operator_public_key.isChecked():
                         ret = self.masternode.dmn_operator_public_key
                     else:
                         ret = '???'
@@ -576,7 +579,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
     @pyqtSlot(str)
     def on_lblOwnerKey_linkHovered(self, link):
-        if link == 'addr':
+        if link == 'address':
             tt = 'Change input type to Dash address'
         else:
             tt = 'Change input type to private key'
@@ -592,7 +595,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
     @pyqtSlot(str)
     def on_lblVotingKey_linkHovered(self, link):
-        if link == 'addr':
+        if link == 'address':
             tt = 'Change input type to Dash address'
         else:
             tt = 'Change input type to private key'
@@ -642,6 +645,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             self.edit_mode = enabled
             self.masternode_data_to_ui()
             self.apply_stylesheet()
+            if not self.edit_mode:
+                self.lblOwnerKey.setToolTip('')
+                self.lblOperatorKey.setToolTip('')
+                self.lblVotingKey.setToolTip('')
 
     def set_modified(self):
         if self.masternode and not self.updating_ui:
@@ -772,7 +779,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 for protx in txes:
                     state = protx.get('state')
                     if state:
-                        if (state.get('addr') == self.masternode.ip + ':' + self.masternode.port) or \
+                        if (state.get('service') == self.masternode.ip + ':' + self.masternode.port) or \
                            (protx.get('collateralHash') == self.masternode.collateralTx and
                             str(protx.get('collateralIndex', '')) == self.masternode.collateralTxIndex):
                             found_protx = protx

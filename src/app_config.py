@@ -470,8 +470,6 @@ class AppConfig(object):
                                 mn.dmn_user_role = int(config.get(section, 'dmn_user_role',
                                                                   fallback=f'{DMN_ROLE_OWNER}').strip())
                                 mn.dmn_tx_hash = config.get(section, 'dmn_tx_hash', fallback='').strip()
-                                mn.dmn_voting_private_key = self.simple_decrypt(
-                                    config.get(section, 'dmn_voting_private_key', fallback='').strip(), False)
                                 mn.dmn_owner_key_type = int(config.get(section, 'dmn_owner_key_type',
                                                                    fallback=str(InputKeyType.PRIVATE)).strip())
                                 mn.dmn_operator_key_type = int(config.get(section, 'dmn_operator_key_type',
@@ -1360,7 +1358,7 @@ class MasternodeConfig:
 
     @dmn_voting_address.setter
     def dmn_voting_address(self, address):
-        self.__dmn_owner_address = address
+        self.__dmn_voting_address = address
 
     @property
     def dmn_owner_key_type(self):
@@ -1405,7 +1403,7 @@ class MasternodeConfig:
                 return address
         else:
             if self.__dmn_owner_address:
-                return dash_utils.address_to_pubkey_hash(self.__dmn_owner_address)
+                return self.__dmn_owner_address
         return ''
 
     def get_dmn_owner_pubkey_hash(self) -> Optional[str]:
@@ -1429,7 +1427,7 @@ class MasternodeConfig:
                 return address
         else:
             if self.__dmn_voting_address:
-                return dash_utils.address_to_pubkey_hash(self.__dmn_voting_address)
+                return self.__dmn_voting_address
         return ''
 
     def get_dmn_voting_pubkey_hash(self) -> Optional[str]:

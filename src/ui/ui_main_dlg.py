@@ -131,6 +131,7 @@ class Ui_MainWindow(object):
         self.lblMnStatus.setFrameShadow(QtWidgets.QFrame.Sunken)
         self.lblMnStatus.setText("")
         self.lblMnStatus.setWordWrap(True)
+        self.lblMnStatus.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse|QtCore.Qt.TextSelectableByMouse)
         self.lblMnStatus.setObjectName("lblMnStatus")
         self.horizontalLayout.addWidget(self.lblMnStatus)
         self.btnRefreshMnStatus = QtWidgets.QPushButton(self.frmMasternodeDetails)

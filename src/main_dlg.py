@@ -40,7 +40,7 @@ import app_utils
 from initialize_hw_dlg import HwInitializeDlg
 from masternode_details import WdgMasternodeDetails
 from proposals_dlg import ProposalsDlg
-from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR
+from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
 from app_defs import PROJECT_URL, HWType, get_note_url
 from dash_utils import bip32_path_n_to_string
 from dashd_intf import DashdInterface, DashdIndexException
@@ -84,7 +84,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.is_dashd_syncing = False
         self.dashd_connection_ok = False
         self.connecting_to_dashd = False
-        self.curMasternode = None
+        self.curMasternode: MasternodeConfig = None
         self.editing_enabled = False
         self.recent_config_files = []
 
@@ -1421,17 +1421,56 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 return (mns_info[0].status, protocol_version)
         return '???', None
 
-    def get_deterministic_status(self, masternode: MasternodeConfig) -> Optional[Dict]:
-        try:
-            txes = self.dashd_intf.protx('list', 'registered', True)
-            for protx in txes:
-                state = protx.get('state')
-                if (state and state.get('addr') == masternode.ip + ':' + masternode.port) or \
-                        (protx.get('collateralHash') == masternode.collateralTx and
-                         str(protx.get('collateralIndex')) == str(masternode.collateralTxIndex) ):
-                    return protx
-        except Exception as e:
-            pass
+    def get_deterministic_tx(self, masternode: MasternodeConfig) -> Optional[Dict]:
+        protx = None
+        protx_state = None
+
+        if masternode.dmn_tx_hash:
+            try:
+                protx = self.dashd_intf.protx('info', masternode.dmn_tx_hash)
+                if protx:
+                    protx_state = protx.get('state')
+            except Exception as e:
+                pass
+
+            if not protx:
+                try:
+                    # protx transaction is not confirmed yet, so look for it in the mempool
+                    tx = self.dashd_intf.getrawtransaction(masternode.dmn_tx_hash, 1, skip_cache=True)
+                    ptx = tx.get('proRegTx')
+                    if ptx:
+                        protx = {
+                            'proTxHash': masternode.dmn_tx_hash,
+                            'collateralHash': ptx.get('collateralHash'),
+                            'collateralIndex': ptx.get('collateralIndex'),
+                            'state': {
+                                'service': ptx.get('service'),
+                                'ownerAddress': ptx.get('ownerAddress'),
+                                'votingAddress': ptx.get('votingAddress'),
+                                'pubKeyOperator': ptx.get('pubKeyOperator'),
+                                'payoutAddress': ptx.get('payoutAddress')
+                            }
+                        }
+                    if protx:
+                        protx_state = protx.get('state')
+                except Exception as e:
+                    pass
+
+        if not (protx_state and ((protx_state.get('service') == masternode.ip + ':' + masternode.port) or
+                (protx.get('collateralHash') == masternode.collateralTx and
+                str(protx.get('collateralIndex')) == str(masternode.collateralTxIndex)))):
+            try:
+                txes = self.dashd_intf.protx('list', 'registered', True)
+                for protx in txes:
+                    protx_state = protx.get('state')
+                    if (protx_state and ((protx_state.get('service') == masternode.ip + ':' + masternode.port) or
+                            (protx.get('collateralHash') == masternode.collateralTx and
+                             str(protx.get('collateralIndex')) == str(masternode.collateralTxIndex)))):
+                        return protx
+            except Exception as e:
+                pass
+        else:
+            return protx
         return None
 
     def get_masternode_status_description_thread(self, ctrl, masternode: MasternodeConfig):
@@ -1460,7 +1499,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             else:
                 mn_info = self.dashd_intf.masternodes_by_ip_port.get(ip_port)
 
-            dmn_tx = self.get_deterministic_status(masternode)
+            dmn_tx = self.get_deterministic_tx(masternode)
             if dmn_tx:
                 dmn_tx_state = dmn_tx.get('state')
             else:
@@ -1476,7 +1515,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 mn_queue_position = '?'
                 if dmn_tx_state:
                     mn_ident = str(dmn_tx.get('collateralHash')) + '-' + str(dmn_tx.get('collateralIndex'))
-                    mn_ip_port = dmn_tx_state.get('addr')
+                    mn_ip_port = dmn_tx_state.get('service')
                 else:
                     mn_ident = None
                     mn_ip_port = None
@@ -1668,6 +1707,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                             pass
 
                     errors = []
+                    warnings  = []
+                    if dmn_tx and not dmn_tx.get('confirmations'):
+                        warnings.append('<td class="warning" colspan="2">ProRegTx not yet confirmed</td>')
                     if collateral_address_mismatch:
                         errors.append('<td class="error" colspan="2">Collateral address missing/mismatch</td>')
                     if collateral_tx_mismatch:
@@ -1689,12 +1731,21 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                             else:
                                 errors_msg += '<tr><td></td>'
                             errors_msg += e + '</tr>'
+                    warnings_msg = ''
+                    if warnings:
+                        for idx, e in enumerate(warnings):
+                            if idx == 0:
+                                warnings_msg += '<tr><td class="title">Warnings:</td>'
+                            else:
+                                warnings_msg += '<tr><td></td>'
+                            warnings_msg += e + '</tr>'
 
                     status = '<style>td {white-space:nowrap;padding-right:8px}' \
                              '.title {text-align:right;font-weight:bold}' \
                              '.ago {font-style:normal}' \
                              '.value {color:navy}' \
                              '.error {color:red}' \
+                             '.warning {color:#e65c00}' \
                              '</style>' \
                              '<table>' \
                              f'<tr><td class="title">Status:</td><td class="value"><span style="color:{status_color}">{mn_status}</span>' \
@@ -1704,7 +1755,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                              f'{bal_entry}' \
                              f'<tr><td class="title">Active Duration:</td><td class="value" colspan="2">{activeseconds_str}</td></tr>' \
                              f'<tr><td class="title">Queue/Count:</td><td class="value" colspan="2">{str(mn_queue_position)}/{enabled_mns_count}</td></tr>' \
-                             + errors_msg + '</table>'
+                             + errors_msg + warnings_msg + '</table>'
                 else:
                     status = '<span style="color:red">Masternode not found.</span>'
             else:
@@ -1834,19 +1885,51 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot(bool)
     def on_btnMigrateToDMN_clicked(self, enabled):
         reg_dlg = None
+
         def on_proregtx_finished(masternode: MasternodeConfig):
-            nonlocal reg_dlg
+            nonlocal reg_dlg, self
             try:
                 if self.curMasternode.dmn_tx_hash != reg_dlg.dmn_reg_tx_hash or \
-                        self.curMasternode.dmn_owner_private_key != reg_dlg.dmn_owner_privkey or \
-                        self.curMasternode.dmn_operator_private_key != reg_dlg.dmn_operator_privkey or \
-                        self.curMasternode.dmn_voting_private_key != reg_dlg.dmn_voting_privkey or \
+                        self.curMasternode.dmn_owner_key_type != reg_dlg.dmn_owner_key_type or \
+                        (self.curMasternode.dmn_owner_key_type == InputKeyType.PRIVATE and
+                         self.curMasternode.dmn_owner_private_key != reg_dlg.dmn_owner_privkey) or \
+                        (self.curMasternode.dmn_owner_key_type == InputKeyType.PUBLIC and
+                         self.curMasternode.dmn_owner_address != reg_dlg.dmn_owner_address) or \
+                        self.curMasternode.dmn_operator_key_type != reg_dlg.dmn_operator_key_type or \
+                        (self.curMasternode.dmn_operator_key_type == InputKeyType.PRIVATE and
+                         self.curMasternode.dmn_operator_private_key != reg_dlg.dmn_operator_privkey) or \
+                        (self.curMasternode.dmn_operator_key_type == InputKeyType.PUBLIC and
+                         self.curMasternode.dmn_operator_public_key != reg_dlg.dmn_operator_pubkey) or \
+                        self.curMasternode.dmn_voting_key_type != reg_dlg.dmn_voting_key_type or \
+                        (self.curMasternode.dmn_voting_key_type == InputKeyType.PRIVATE and
+                         self.curMasternode.dmn_voting_private_key != reg_dlg.dmn_voting_privkey) or \
+                        (self.curMasternode.dmn_voting_key_type == InputKeyType.PUBLIC and
+                         self.curMasternode.dmn_voting_address != reg_dlg.dmn_voting_address) or \
                         not self.curMasternode.is_deterministic:
 
                     self.curMasternode.dmn_tx_hash = reg_dlg.dmn_reg_tx_hash
-                    self.curMasternode.dmn_owner_private_key = reg_dlg.dmn_owner_privkey
-                    self.curMasternode.dmn_operator_private_key = reg_dlg.dmn_operator_privkey
-                    self.curMasternode.dmn_voting_private_key = reg_dlg.dmn_voting_privkey
+
+                    self.curMasternode.dmn_owner_key_type = reg_dlg.dmn_owner_key_type
+                    if self.curMasternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+                        self.curMasternode.dmn_owner_private_key = reg_dlg.dmn_owner_privkey
+                    else:
+                        self.curMasternode.dmn_owner_address = reg_dlg.dmn_owner_address
+                        self.curMasternode.dmn_owner_private_key = ''
+
+                    self.curMasternode.dmn_operator_key_type = reg_dlg.dmn_operator_key_type
+                    if self.curMasternode.dmn_operator_key_type == InputKeyType.PRIVATE:
+                        self.curMasternode.dmn_operator_private_key = reg_dlg.dmn_operator_privkey
+                    else:
+                        self.curMasternode.dmn_operator_public_key = reg_dlg.dmn_operator_pubkey
+                        self.curMasternode.dmn_operator_private_key = ''
+
+                    self.curMasternode.dmn_voting_key_type = reg_dlg.dmn_voting_key_type
+                    if self.curMasternode.dmn_voting_key_type == InputKeyType.PRIVATE:
+                        self.curMasternode.dmn_voting_private_key = reg_dlg.dmn_voting_privkey
+                    else:
+                        self.curMasternode.dmn_voting_address = reg_dlg.dmn_voting_address
+                        self.curMasternode.dmn_voting_private_key = ''
+
                     self.curMasternode.is_deterministic = True
 
                     if self.curMasternode == masternode:

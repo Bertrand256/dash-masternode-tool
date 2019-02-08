@@ -33,7 +33,7 @@ import app_utils
 import base58
 import wnd_utils as wnd_utils
 import dash_utils
-from app_config import MasternodeConfig
+from app_config import MasternodeConfig, InputKeyType
 from common import AttrsProtected
 from dashd_intf import DashdIndexException, Masternode
 from ext_item_model import ExtSortFilterTableModel, TableModelColumn
@@ -321,13 +321,18 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         for idx, mn in enumerate(self.main_wnd.config.masternodes):
             mn_ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
             if mn_ident not in mn_idents:
-                if dash_utils.validate_wif_privkey(mn.get_current_key_for_voting(), self.app_config.dash_network):
-                    if mn.get_current_key_for_voting() not in pkeys:
-                        pkeys.append(mn.get_current_key_for_voting())
-                        mn_idents.append(mn_ident)
-                        self.masternodes_cfg.append(mn)
-                else:
-                    logging.warning('Invalid private key for masternode ' + mn.name)
+                if mn.dmn_voting_key_type == InputKeyType.PRIVATE:
+                    voting_key = mn.get_current_key_for_voting()
+                    if voting_key:
+                        if dash_utils.validate_wif_privkey(voting_key, self.app_config.dash_network):
+                            if mn.get_current_key_for_voting() not in pkeys:
+                                pkeys.append(mn.get_current_key_for_voting())
+                                mn_idents.append(mn_ident)
+                                self.masternodes_cfg.append(mn)
+                        else:
+                            logging.warning('Invalid private key for masternode ' + mn.name)
+                    else:
+                        logging.info('Empty voting key for masternode ' + mn.name)
 
         # masternodes existing in the user's configuration, which can vote - list of VotingMasternode objects
         self.users_masternodes: List[VotingMasternode] = []

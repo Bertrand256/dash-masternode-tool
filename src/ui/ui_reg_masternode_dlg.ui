@@ -101,7 +101,11 @@
           <number>8</number>
          </property>
          <item>
-          <widget class="QLineEdit" name="edtIP"/>
+          <widget class="QLineEdit" name="edtIP">
+           <property name="clearButtonEnabled">
+            <bool>true</bool>
+           </property>
+          </widget>
          </item>
          <item>
           <widget class="QLabel" name="label_5">
@@ -129,6 +133,9 @@
              <width>100</width>
              <height>16777215</height>
             </size>
+           </property>
+           <property name="clearButtonEnabled">
+            <bool>true</bool>
            </property>
           </widget>
          </item>
@@ -181,7 +188,11 @@
           <number>8</number>
          </property>
          <item>
-          <widget class="QLineEdit" name="edtVotingKey"/>
+          <widget class="QLineEdit" name="edtVotingKey">
+           <property name="clearButtonEnabled">
+            <bool>true</bool>
+           </property>
+          </widget>
          </item>
          <item>
           <widget class="QToolButton" name="btnGenerateVotingKey">
@@ -211,7 +222,11 @@
           <number>8</number>
          </property>
          <item>
-          <widget class="QLineEdit" name="edtOperatorKey"/>
+          <widget class="QLineEdit" name="edtOperatorKey">
+           <property name="clearButtonEnabled">
+            <bool>true</bool>
+           </property>
+          </widget>
          </item>
          <item>
           <widget class="QToolButton" name="btnGenerateOperatorKey">
@@ -228,7 +243,11 @@
           <number>8</number>
          </property>
          <item>
-          <widget class="QLineEdit" name="edtPayoutAddress"/>
+          <widget class="QLineEdit" name="edtPayoutAddress">
+           <property name="clearButtonEnabled">
+            <bool>true</bool>
+           </property>
+          </widget>
          </item>
         </layout>
        </item>
@@ -353,7 +372,11 @@
           <number>8</number>
          </property>
          <item>
-          <widget class="QLineEdit" name="edtCollateralTx"/>
+          <widget class="QLineEdit" name="edtCollateralTx">
+           <property name="clearButtonEnabled">
+            <bool>true</bool>
+           </property>
+          </widget>
          </item>
          <item>
           <widget class="QLabel" name="label_2">
@@ -437,6 +460,9 @@
           <widget class="QLineEdit" name="edtOwnerKey">
            <property name="text">
             <string/>
+           </property>
+           <property name="clearButtonEnabled">
+            <bool>true</bool>
            </property>
           </widget>
          </item>

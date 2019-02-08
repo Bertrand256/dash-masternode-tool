@@ -97,7 +97,7 @@ def pubkey_to_address(pub_key, dash_network: str):
     return base58.b58encode(data + checksum)
 
 
-def address_to_pubkey_hash(address: str) -> typing.Optional[str]:
+def address_to_pubkey_hash(address: str) -> typing.Optional[bytes]:
     try:
         data = base58.b58decode(address)
         if len(data) > 5:
