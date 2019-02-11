@@ -76,6 +76,9 @@ CACHE_ITEM_ONLY_ONLY_NEW_PROPOSALS = 'ProposalsDlg_OnlyNewProposals'
 CACHE_ITEM_ONLY_ONLY_NOT_VOTED_PROPOSALS = 'ProposalsDlg_OnlyNotVotedProposals'
 
 
+log = logging.getLogger('dmt.proposals')
+
+
 class ProposalColumn(TableModelColumn):
     def __init__(self, name, caption, visible, column_for_vote=False):
         """
@@ -330,9 +333,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 mn_idents.append(mn_ident)
                                 self.masternodes_cfg.append(mn)
                         else:
-                            logging.warning('Invalid private key for masternode ' + mn.name)
+                            log.warning('Invalid private key for masternode ' + mn.name)
                     else:
-                        logging.info('Empty voting key for masternode ' + mn.name)
+                        log.info('Empty voting key for masternode ' + mn.name)
 
         # masternodes existing in the user's configuration, which can vote - list of VotingMasternode objects
         self.users_masternodes: List[VotingMasternode] = []
@@ -441,7 +444,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             # run thread reloading proposal details when the selected proposal changes
             self.run_thread(self, self.refresh_preview_panel_thread, ())
         except:
-            logging.exception('Exception occurred')
+            log.exception('Exception occurred')
             raise
 
     def updateUi(self):
@@ -452,7 +455,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.refresh_details_event.set()
         self.votesModel.finish()
         self.save_cache_settings()
-        logging.info('Closing the dialog.')
+        log.info('Closing the dialog.')
 
     def restore_cache_settings(self):
         app_cache.restore_window_size(self)
@@ -477,7 +480,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 if initial_width and col_saved_index < self.votesModel.columnCount():
                     self.votesView.setColumnWidth(col_saved_index, initial_width)
         else:
-            logging.warning('Invalid type of cached VotesColumnsCfg')
+            log.warning('Invalid type of cached VotesColumnsCfg')
 
         filter_text = app_cache.get_value(CACHE_ITEM_HIST_FILTER_TEXT, '', str)
         self.edtVotesViewFilter.setText(filter_text)
@@ -522,7 +525,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             app_cache.set_value(CACHE_ITEM_ONLY_ONLY_NOT_VOTED_PROPOSALS, self.chb_not_voted.isChecked())
 
         except Exception as e:
-            logging.exception('Exception while saving dialog configuration to cache.')
+            log.exception('Exception while saving dialog configuration to cache.')
 
     def setup_user_voting_controls(self):
         # setup a user-voting tab
@@ -622,7 +625,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     except CloseDialogException:
                         pass
                     except Exception as e:
-                        logging.exception('Exception while realoading proposal external attributes')
+                        log.exception('Exception while realoading proposal external attributes')
                         self.errorMsg('Error while retrieving proposals data: ' + str(e))
                     finally:
                         self.db_intf.release_cursor()
@@ -797,12 +800,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             """ Find proposal dict inside a list extracted from DataString field. """
             if isinstance(prop_data, list):
                 if len(prop_data) > 2:
-                    logging.warning('len(prop_data) > 2 [level: %d]. prop_data: %s' % (level, json.dumps(prop_data)))
+                    log.warning('len(prop_data) > 2 [level: %d]. prop_data: %s' % (level, json.dumps(prop_data)))
 
                 if len(prop_data) >= 2 and prop_data[0] == 'proposal' and isinstance(prop_data[1], dict):
                     return prop_data[1]
                 elif len(prop_data) >= 1 and isinstance(prop_data[0], list):
                     return find_prop_data(prop_data[0], level+1)
+            elif isinstance(prop_data, dict):
+                return prop_data
             return None
 
         def clean_float(data_in):
@@ -818,10 +823,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         try:
 
             self.display_message('Reading proposals data, please wait...')
-            logging.info('Reading proposals from the Dash network.')
+            log.info('Reading proposals from the Dash network.')
             begin_time = time.time()
             proposals_new = self.dashd_intf.gobject("list", "valid", "proposals")
-            logging.info('Read proposals from network (gobject list). Count: %s, operation time: %s' %
+            log.info('Read proposals from network (gobject list). Count: %s, operation time: %s' %
                          (str(len(proposals_new)), str(time.time() - begin_time)))
 
             rows_added = False
@@ -844,6 +849,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     if prop_data is None:
                         continue
                     hash = prop_raw['Hash']
+                    log.debug('Read proposal: ' + hash)
                     prop = self.proposals_by_hash.get(hash)
                     if not prop:
                         is_new = True
@@ -880,7 +886,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         self.proposals_by_hash[prop.get_value('hash')] = prop
                         rows_added = True
                 except Exception as e:
-                    logging.exception('Error while processing proposal data. Proposal hash: ' + hash)
+                    log.exception('Error while processing proposal data. Proposal hash: ' + hash)
                     errors += 1
 
             if len(proposals_new) > 0:
@@ -904,11 +910,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                         prop.modified = True
                                         cur.execute('UPDATE PROPOSALS set dmt_active=1, dmt_deactivation_time=NULL '
                                                     'WHERE id=?', (row[0],))
-                                        logging.info('Proposal "%s" (db_id: %d) exists int the DB. Re-activating.' %
+                                        log.info('Proposal "%s" (db_id: %d) exists int the DB. Re-activating.' %
                                                      (hash, row[0]))
 
                                 if not prop.db_id:
-                                    logging.info('Adding a new proposal to DB. Hash: ' + prop.get_value('hash'))
+                                    log.info('Adding a new proposal to DB. Hash: ' + prop.get_value('hash'))
                                     cur.execute("INSERT INTO PROPOSALS (name, payment_start, payment_end, payment_amount,"
                                                 " yes_count, absolute_yes_count, no_count, abstain_count, creation_time,"
                                                 " url, payment_address, type, hash, collateral_hash, f_blockchain_validity,"
@@ -945,7 +951,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 else:
                                     # proposal's db record already exists, check if should be updated
                                     if prop.modified:
-                                        logging.debug('Updating proposal in the DB. Hash: %s, DB id: %d' %
+                                        log.debug('Updating proposal in the DB. Hash: %s, DB id: %d' %
                                                       (prop.get_value('hash'), prop.db_id) )
                                         cur.execute("UPDATE PROPOSALS set name=?, payment_start=?, payment_end=?, "
                                                     "payment_amount=?, yes_count=?, absolute_yes_count=?, no_count=?, "
@@ -987,7 +993,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             prop = self.proposals[prop_idx]
 
                             if not prop.marker:
-                                logging.info('Deactivating proposal in the cache. Hash: %s, DB id: %s' %
+                                log.info('Deactivating proposal in the cache. Hash: %s, DB id: %s' %
                                               (prop.get_value('hash'), str(prop.db_id)))
                                 cur.execute("UPDATE PROPOSALS set dmt_active=0, dmt_deactivation_time=? WHERE id=?",
                                             (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), prop.db_id))
@@ -1011,7 +1017,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         raise
 
                     except Exception as e:
-                        logging.exception('Exception while saving proposals to db.')
+                        log.exception('Exception while saving proposals to db.')
                         self.db_intf.rollback()
                         raise
                     finally:
@@ -1028,14 +1034,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             else:
                 # no proposals read from network - skip deactivating records because probably
                 # some network glitch occured
-                logging.warning('No proposals returned from dashd.')
-            logging.info('Finished reading proposals data from network.')
+                log.warning('No proposals returned from dashd.')
+            log.info('Finished reading proposals data from network.')
 
         except CloseDialogException:
-            logging.info('Closing the dialog.')
+            log.info('Closing the dialog.')
 
         except Exception as e:
-            logging.exception('Exception wile reading proposals from Dash network.')
+            log.exception('Exception wile reading proposals from Dash network.')
             self.display_message('')
             self.errorMsg('Error while reading proposals data from the Dash network: ' + str(e))
             raise
@@ -1080,7 +1086,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.display_budget_summary()
 
         except Exception as e:
-            logging.exception('Exception while reading governance info.')
+            log.exception('Exception while reading governance info.')
             self.errorMsg("Coundn't read governanceinfo from the Dash network. "
                       "Some features may not work correctly because of this. Details: " + str(e))
 
@@ -1155,7 +1161,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             if row:
                                 self.proposals_last_read_time = int(row[0])
 
-                            logging.info("Reading proposals' data from DB")
+                            log.info("Reading proposals' data from DB")
                             tm_begin = time.time()
                             cur.execute(
                                 "SELECT name, payment_start, payment_end, payment_amount,"
@@ -1183,7 +1189,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                                         (row[24], fix_row[0]))
                                     cur_fix_upd.execute('DELETE FROM PROPOSALS WHERE id=?', (fix_row[0],))
                                     data_modified = True
-                                    logging.warning('Deleted duplicated proposal from DB. ID: %s, HASH: %s' %
+                                    log.warning('Deleted duplicated proposal from DB. ID: %s, HASH: %s' %
                                                     (str(fix_row[0]), row[12]))
 
                                 prop = Proposal(self.propsModel, self.vote_columns_by_mn_ident, self.next_superblock_time,
@@ -1235,7 +1241,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             if data_modified:
                                 self.db_intf.commit()
 
-                            logging.info("Finished reading proposals' data from DB. Time: %s s" %
+                            log.info("Finished reading proposals' data from DB. Time: %s s" %
                                          str(time.time() - tm_begin))
 
                             def disp():
@@ -1249,7 +1255,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         except CloseDialogException:
                             raise
                         except Exception as e:
-                            logging.exception('Exception while saving proposals to db.')
+                            log.exception('Exception while saving proposals to db.')
                             self.errorMsg('Error while saving proposals data to db. Details: ' + str(e))
                         finally:
                             self.db_intf.release_cursor()
@@ -1268,7 +1274,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     self.errorMsg(str(e))
 
                 except Exception as e:
-                    logging.exception('Exception while retrieving proposals data.')
+                    log.exception('Exception while retrieving proposals data.')
                     self.errorMsg('Error while retrieving proposals data: ' + str(e))
 
             if not self.finishing:
@@ -1299,10 +1305,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     self.read_voting_from_network(False, proposals)
 
         except CloseDialogException:
-            logging.info('Closing the dialog.')
+            log.info('Closing the dialog.')
 
         except Exception as e:
-            logging.exception('Exception while reading data.')
+            log.exception('Exception while reading data.')
             if not self.finishing:
                 self.errorMsg(str(e))
 
@@ -1312,7 +1318,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.reading_vote_data = old_reading_state
 
     def read_external_attibutes(self, proposals):
-        """Method reads additional proposal attributes from an external source such as DashCentral.org
+        """Method reads additional proposal attributes from an external source such as DashCentral.org/DashNexus.org
         :return True if proposals' external attributes has been updated.
         """
         self.display_message("Reading proposal external attributes, please wait...")
@@ -1347,7 +1353,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             except URLError:
                                 if url_try >= url_err_retries:
                                     raise
-                                logging.info('URLError, retrying...')
+                                log.info('URLError, retrying...')
 
                         network_duration += time.time() - network_tm_begin
                         if contents is not None:
@@ -1366,19 +1372,19 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         else:
                             err = contents.get('error_type')
                             if err is not None:
-                                logging.error('Error returned for proposal "' + hash + '": ' + err)
+                                log.error('Error returned for proposal "' + hash + '": ' + err)
                             else:
-                                logging.error('Empty "proposal" attribute for proposal: ' + hash)
+                                log.error('Empty "proposal" attribute for proposal: ' + hash)
                     except CloseDialogException:
                         raise
 
                     except URLError as e:
                         exceptions_occurred = True
-                        logging.warning(str(e))
+                        log.warning(str(e))
 
                     except Exception as e:
                         exceptions_occurred = True
-                        logging.error(str(e))
+                        log.error(str(e))
 
                 if not self.finishing:
                     cur = self.db_intf.get_cursor()
@@ -1413,14 +1419,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                       'DashCentral.org.')
 
         except CloseDialogException:
-            logging.info('Closing the dialog.')
+            log.info('Closing the dialog.')
 
         except Exception as e:
-            logging.exception('Exception while reading external attributes.')
+            log.exception('Exception while reading external attributes.')
 
         finally:
             time_diff = time.time() - begin_time
-            logging.info('Finished reading external attributes. Overall time: %s seconds, network time: %s.' %
+            log.info('Finished reading external attributes. Overall time: %s seconds, network time: %s.' %
                          (str(time_diff), str(network_duration)))
             self.display_message('')
         return modified_ext_attributes
@@ -1454,15 +1460,15 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                                 row[2])
             self.votes_loaded = True
         except CloseDialogException:
-            logging.info('Closing the dialog.')
+            log.info('Closing the dialog.')
 
         except Exception as e:
-            logging.exception('Exception while saving proposals to db.')
+            log.exception('Exception while saving proposals to db.')
 
         finally:
             self.db_intf.release_cursor()
             time_diff = time.time() - begin_time
-            logging.info('Voting data read from database time: %s seconds' % str(time_diff))
+            log.info('Voting data read from database time: %s seconds' % str(time_diff))
 
     def read_voting_from_network_thread(self, ctrl, force_reload_all, proposals):
         self.read_voting_from_network(force_reload_all, proposals)
@@ -1484,7 +1490,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             db_modified = False
             cur = None
             refresh_preview_votes = False
-            logging.info('Begin reading voting data from network.')
+            log.info('Begin reading voting data from network.')
             try:
                 # read the date/time of the last vote, read from the DB the last time, to initially filter out
                 # of all older votes from finding if it has its record in the DB:
@@ -1516,7 +1522,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             try:
                                 votes = self.dashd_intf.gobject("getvotes", prop.get_value('hash'))
                             except Exception:
-                                logging.exception('Exception occurred while calling getvotes')
+                                log.exception('Exception occurred while calling getvotes')
                                 continue
                             network_duration += (time.time() - tm_begin)
 
@@ -1564,17 +1570,17 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                             votes_added.append((prop, mn, voting_time, voting_result, mn_ident, v_key))
 
                                 else:
-                                    logging.warning('Proposal %s, parsing unsuccessful for voting: %s' %
+                                    log.warning('Proposal %s, parsing unsuccessful for voting: %s' %
                                                     (prop.get_value('hash'), v))
 
                             proposals_updated.append(prop)
 
-                        logging.info('Network calls duration: %s for %d proposals' %
+                        log.info('Network calls duration: %s for %d proposals' %
                                      (str(network_duration), (len(proposals))))
 
                         # display data from dynamic (voting) columns
                         # WndUtils.call_in_main_thread(self.update_grid_data, cells_to_update)
-                        logging.info('DB calls duration (stage 1): %s, SQL count: %d' % (str(db_oper_duration),
+                        log.info('DB calls duration (stage 1): %s, SQL count: %d' % (str(db_oper_duration),
                                                                                         db_oper_count))
 
                         # save voting results to the database cache
@@ -1633,7 +1639,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 db_modified = True
                                 db_oper_duration += (time.time() - tm_begin)
 
-                            logging.info('DB calls duration (stage 2): %s' % str(db_oper_duration))
+                            log.info('DB calls duration (stage 2): %s' % str(db_oper_duration))
 
                             if cur_vote_max_date > last_vote_max_date:
                                 # save max vot date to the DB
@@ -1648,18 +1654,18 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         raise
 
                     except DashdIndexException as e:
-                        logging.exception('Exception while retrieving voting data.')
+                        log.exception('Exception while retrieving voting data.')
                         self.errorMsg(str(e))
 
                     except Exception as e:
-                        logging.exception('Exception while retrieving voting data.')
+                        log.exception('Exception while retrieving voting data.')
                         self.errorMsg('Error while retrieving voting data: ' + str(e))
 
             except CloseDialogException:
-                logging.info('Closing the dialog.')
+                log.info('Closing the dialog.')
 
             except Exception as e:
-                logging.exception('Exception while retrieving voting data.')
+                log.exception('Exception while retrieving voting data.')
 
             finally:
                 if cur:
@@ -1670,7 +1676,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             if refresh_preview_votes and not self.finishing:
                 self.refresh_details_event.set()
-            logging.info('Finished reading voting data from network.')
+            log.info('Finished reading voting data from network.')
         finally:
             self.reading_vote_data = old_reading_state
 
@@ -1735,9 +1741,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.update_proposals_order_no()
             self.display_budget_summary()
 
-            logging.debug("Display proposals' data time: " + str(time.time() - tm_begin))
+            log.debug("Display proposals' data time: " + str(time.time() - tm_begin))
         except Exception as e:
-            logging.exception("Exception occurred while displaing proposals.")
+            log.exception("Exception occurred while displaing proposals.")
             self.lblMessage.setVisible(False)
             raise Exception('Error occurred while displaying proposals: ' + str(e))
 
@@ -2032,7 +2038,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 self.refresh_details_event.set()
 
         except Exception:
-            logging.exception('Exception while refreshing proposal details panel')
+            log.exception('Exception while refreshing proposal details panel')
             raise
 
     def refresh_vote_tab(self, proposals: List[Proposal], active_proposals: List[Proposal]):
@@ -2383,7 +2389,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 self.last_chart_type = new_chart_type
 
         except Exception:
-            logging.exception('Exception while drawing vote chart.')
+            log.exception('Exception while drawing vote chart.')
 
     def refresh_preview_panel_thread(self, ctrl):
         """Thread reloading additional proposal data after changing current proposal. This is done in the background
@@ -2412,7 +2418,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 if self.refresh_details_event.is_set():
                     self.refresh_details_event.clear()
             except Exception:
-                logging.exception('Exception while refreshing preview panel')
+                log.exception('Exception while refreshing preview panel')
 
     def on_chart_type_change(self):
         if self.rbVotesChartIncremental.isChecked():
@@ -2529,7 +2535,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                         vote_code + '|' + \
                                         str(sig_time)
 
-                    logging.info('Vote message to sign: ' + serialize_for_sig)
+                    log.info('Vote message to sign: ' + serialize_for_sig)
                     step = 2
                     vote_sig = dash_utils.ecdsa_sign(serialize_for_sig, mn_info.masternode_config.get_current_key_for_voting(),
                                                      self.app_config.dash_network)
@@ -2564,21 +2570,21 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     else:
                         msg = "Error while broadcasting vote message: " + str(e)
                         # write some info to the log file for analysis in case of problems
-                        logging.info('masternode_pub_key: %s' %
+                        log.info('masternode_pub_key: %s' %
                                      str(dash_utils.wif_privkey_to_pubkey(mn_info.masternode_config.get_current_key_for_voting())))
-                        logging.info('masternode_pub_key_hash: %s' %
+                        log.info('masternode_pub_key_hash: %s' %
                                      str(dash_utils.pubkey_to_address(dash_utils.wif_privkey_to_pubkey(
                                          mn_info.masternode_config.get_current_key_for_voting()), self.app_config.dash_network)))
-                        logging.info('masternode_tx_hash: %s' % str(mn_info.masternode_config.collateralTx))
-                        logging.info('masternode_tx_index: %s' % str(mn_info.masternode_config.collateralTxIndex))
-                        logging.info('governance_hash: %s' % prop_hash)
-                        logging.info('vote_sig: %s' % vote_sig)
-                        logging.info('sig_time: %s' % str(sig_time))
+                        log.info('masternode_tx_hash: %s' % str(mn_info.masternode_config.collateralTx))
+                        log.info('masternode_tx_index: %s' % str(mn_info.masternode_config.collateralTxIndex))
+                        log.info('governance_hash: %s' % prop_hash)
+                        log.info('vote_sig: %s' % vote_sig)
+                        log.info('sig_time: %s' % str(sig_time))
                         t = time.time()
-                        logging.info('cur_time: timestamp: %s, timestr local: %s, timestr UTC: %s' %
+                        log.info('cur_time: timestamp: %s, timestr local: %s, timestr UTC: %s' %
                                      (str(t), str(datetime.datetime.fromtimestamp(t)),
                                       str(datetime.datetime.utcfromtimestamp(t))))
-                        logging.info('serialize_for_sig: %s' % str(serialize_for_sig))
+                        log.info('serialize_for_sig: %s' % str(serialize_for_sig))
                     vote_errors_out.append((prop, mn_info.masternode_config, msg))
 
                     unsuccessful_votes += 1
@@ -2592,7 +2598,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         cur.execute("UPDATE PROPOSALS set dmt_voting_last_read_time=? where id=?",
                                     (int(time.time()) - VOTING_RELOAD_TIME, p.db_id))
                 except Exception:
-                    logging.exception('Exception while saving configuration data.')
+                    log.exception('Exception while saving configuration data.')
                 finally:
                     self.db_intf.commit()
                     self.db_intf.release_cursor()
@@ -2702,7 +2708,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         self.write_csv_row(f_ptr, elems)
                 self.infoMsg('Proposals data successfully saved.')
             except Exception as e:
-                logging.exception("Exception saving proposals' data to a file.")
+                log.exception("Exception saving proposals' data to a file.")
                 self.errorMsg('Couldn\'t save a CSV file due to the following error: ' + str(e))
 
     @pyqtSlot()
@@ -2724,7 +2730,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     self.infoMsg('Votes of the proposal "%s" successfully saved.' %
                                  self.current_proposal.get_value('name'))
                 except Exception as e:
-                    logging.exception("Exception saving proposals votes to a file.")
+                    log.exception("Exception saving proposals votes to a file.")
                     self.errorMsg('Couldn\'t save a CSV file due to the following error: ' + str(e))
 
     @pyqtSlot()
@@ -2983,7 +2989,7 @@ class ProposalsModel(ExtSortFilterTableModel):
             else:
                 pass
         except Exception:
-            logging.exception('Exception wile filtering votes')
+            log.exception('Exception wile filtering votes')
         return will_show
 
 
@@ -3030,7 +3036,7 @@ class VotesFilterProxyModel(QSortFilterProxyModel):
                             will_show = True
                             break
         except Exception:
-            logging.exception('Exception wile filtering votes')
+            log.exception('Exception wile filtering votes')
         return will_show
 
 
@@ -3106,7 +3112,7 @@ class VotesModel(QAbstractTableModel):
             tm_begin = time.time()
             cur = self.db_intf.get_cursor()
             if self.proposal:
-                logging.debug('Get votes fot proposal id: ' + str(self.proposal.db_id))
+                log.debug('Get votes fot proposal id: ' + str(self.proposal.db_id))
                 cur.execute("SELECT voting_time, voting_result, masternode_ident, m.ip "
                             "FROM VOTING_RESULTS v "
                             "LEFT OUTER JOIN masternodes m on m.ident = v.masternode_ident "
@@ -3127,13 +3133,13 @@ class VotesModel(QAbstractTableModel):
 
                     self.votes.append((datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S'),
                                        row[1], mn_label, users_mn_name))
-                logging.debug('Reading votes time from DB: %s' % str(time.time() - tm_begin))
+                log.debug('Reading votes time from DB: %s' % str(time.time() - tm_begin))
 
         except CloseDialogException:
-            logging.info('Closing the dialog.')
+            log.info('Closing the dialog.')
 
         except Exception as e:
-            logging.exception('SQLite error')
+            log.exception('SQLite error')
 
         finally:
             self.db_intf.release_cursor()

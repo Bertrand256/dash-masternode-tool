@@ -99,6 +99,7 @@ class AppConfig(object):
         self.tx_api_url_mainnet = 'https://insight.dash.org/insight'
         self.tx_api_url_testnet = 'https://testnet-insight.dashevo.org/insight'
         self.dash_central_proposal_api = 'https://www.dashcentral.org/api/v1/proposal?hash=%HASH%'
+        self.dash_nexus_proposal_api = 'https://api.dashnexus.org/proposals/%HASH%'
 
         # public RPC connection configurations
         self.public_conns_mainnet: Dict[str, DashNetworkConnectionCfg] = {}
