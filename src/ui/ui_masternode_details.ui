@@ -74,7 +74,7 @@
          <widget class="QLabel" name="lblUserRole">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -87,7 +87,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QRadioButton" name="rbRoleOwner">
+         <widget class="QCheckBox" name="chbRoleOwner">
           <property name="text">
            <string>Owner</string>
           </property>
@@ -97,16 +97,22 @@
          </widget>
         </item>
         <item>
-         <widget class="QRadioButton" name="rbRoleOperator">
+         <widget class="QCheckBox" name="chbRoleOperator">
           <property name="text">
            <string>Operator</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QRadioButton" name="rbRoleVoting">
+         <widget class="QCheckBox" name="chbRoleVoting">
           <property name="text">
            <string>Voting</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
           </property>
          </widget>
         </item>
@@ -131,7 +137,7 @@
          <widget class="QLabel" name="lblName">
           <property name="minimumSize">
            <size>
-            <width>120</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -183,7 +189,7 @@
          <widget class="QLabel" name="lblIP">
           <property name="minimumSize">
            <size>
-            <width>120</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -287,7 +293,7 @@
          <widget class="QLabel" name="lblCollateral">
           <property name="minimumSize">
            <size>
-            <width>120</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -341,7 +347,7 @@
          <widget class="QLabel" name="lblCollateralTxHash">
           <property name="minimumSize">
            <size>
-            <width>120</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -385,7 +391,7 @@
          <widget class="QLabel" name="lblDMNTxHash">
           <property name="minimumSize">
            <size>
-            <width>120</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -422,12 +428,12 @@
          <widget class="QLabel" name="lblMasternodePrivateKey">
           <property name="minimumSize">
            <size>
-            <width>120</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
           <property name="text">
-           <string>MN private key</string>
+           <string>Masternode private key</string>
           </property>
           <property name="alignment">
            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -509,7 +515,7 @@
          <widget class="QLabel" name="lblOwnerKey">
           <property name="minimumSize">
            <size>
-            <width>120</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -587,7 +593,7 @@
          <widget class="QLabel" name="lblOperatorKey">
           <property name="minimumSize">
            <size>
-            <width>120</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -665,7 +671,7 @@
          <widget class="QLabel" name="lblVotingKey">
           <property name="minimumSize">
            <size>
-            <width>120</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -756,9 +762,9 @@
   <tabstop>edtOperatorKey</tabstop>
   <tabstop>edtVotingKey</tabstop>
   <tabstop>btnGenerateMnPrivateKey</tabstop>
-  <tabstop>rbRoleOwner</tabstop>
-  <tabstop>rbRoleOperator</tabstop>
-  <tabstop>rbRoleVoting</tabstop>
+  <tabstop>chbRoleOwner</tabstop>
+  <tabstop>chbRoleOperator</tabstop>
+  <tabstop>chbRoleVoting</tabstop>
  </tabstops>
  <resources/>
  <connections/>

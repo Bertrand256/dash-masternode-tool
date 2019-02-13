@@ -49,9 +49,9 @@ CACHE_ITEM_LOGGERS_LOGLEVEL = 'LoggersLogLevel'
 CACHE_ITEM_LOG_FORMAT = 'LogFormat'
 
 
-DMN_ROLE_OWNER = 1
-DMN_ROLE_OPERATOR = 2
-DMN_ROLE_VOTING = 3
+DMN_ROLE_OWNER = 0x1
+DMN_ROLE_OPERATOR = 0x2
+DMN_ROLE_VOTING = 0x4
 
 
 class InputKeyType():
@@ -468,8 +468,23 @@ class AppConfig(object):
                                 mn.protocol_version = config.get(section, 'protocol_version', fallback='').strip()
                                 mn.is_deterministic = self.value_to_bool(
                                     config.get(section, 'is_deterministic', fallback='0'))
-                                mn.dmn_user_role = int(config.get(section, 'dmn_user_role',
-                                                                  fallback=f'{DMN_ROLE_OWNER}').strip())
+
+                                roles = int(config.get(section, 'dmn_user_roles', fallback='0').strip())
+                                if not roles:
+                                    role_old = int(config.get(section, 'dmn_user_role', fallback='0').strip())
+                                    # try reding the pre v0.9.22 role and map it to the current role-set
+                                    if role_old:
+                                        if role_old == 1:
+                                            mn.dmn_user_roles = DMN_ROLE_OWNER | DMN_ROLE_OPERATOR | DMN_ROLE_VOTING
+                                        elif role_old == 2:
+                                            mn.dmn_user_roles = DMN_ROLE_OPERATOR
+                                        elif role_old == 3:
+                                            mn.dmn_user_roles = DMN_ROLE_VOTING
+                                else:
+                                    mn.dmn_user_roles = roles
+                                if not mn.dmn_user_roles:
+                                    mn.dmn_user_roles = DMN_ROLE_OWNER | DMN_ROLE_OPERATOR | DMN_ROLE_VOTING
+
                                 mn.dmn_tx_hash = config.get(section, 'dmn_tx_hash', fallback='').strip()
                                 mn.dmn_owner_key_type = int(config.get(section, 'dmn_owner_key_type',
                                                                    fallback=str(InputKeyType.PRIVATE)).strip())
@@ -680,7 +695,7 @@ class AppConfig(object):
             config.set(section, 'use_default_protocol_version', '1' if mn.use_default_protocol_version else '0')
             config.set(section, 'protocol_version', str(mn.protocol_version))
             config.set(section, 'is_deterministic', '1' if mn.is_deterministic else '0')
-            config.set(section, 'dmn_user_role', str(mn.dmn_user_role))
+            config.set(section, 'dmn_user_roles', str(mn.dmn_user_roles))
             config.set(section, 'dmn_tx_hash', mn.dmn_tx_hash)
             config.set(section, 'dmn_owner_private_key', self.simple_encrypt(mn.dmn_owner_private_key))
             config.set(section, 'dmn_operator_private_key', self.simple_encrypt(mn.dmn_operator_private_key))
@@ -1130,7 +1145,7 @@ class MasternodeConfig:
         self.use_default_protocol_version = True
         self.__protocol_version = ''
         self.is_deterministic = False
-        self.__dmn_user_role = DMN_ROLE_OWNER
+        self.__dmn_user_roles = DMN_ROLE_OWNER | DMN_ROLE_OPERATOR | DMN_ROLE_VOTING
         self.__dmn_tx_hash = ''
         self.__dmn_owner_key_type = InputKeyType.PRIVATE
         self.__dmn_operator_key_type = InputKeyType.PRIVATE
@@ -1160,7 +1175,7 @@ class MasternodeConfig:
         self.use_default_protocol_version = src_mn.use_default_protocol_version
         self.protocol_version = src_mn.protocol_version
         self.is_deterministic = src_mn.is_deterministic
-        self.dmn_user_role = src_mn.dmn_user_role
+        self.dmn_user_roles = src_mn.dmn_user_roles
         self.dmn_tx_hash = src_mn.dmn_tx_hash
         self.dmn_owner_key_type = src_mn.dmn_owner_key_type
         self.dmn_operator_key_type = src_mn.dmn_operator_key_type
@@ -1288,14 +1303,12 @@ class MasternodeConfig:
             self.__protocol_version = new_protocol_version
 
     @property
-    def dmn_user_role(self):
-        return self.__dmn_user_role
+    def dmn_user_roles(self):
+        return self.__dmn_user_roles
 
-    @dmn_user_role.setter
-    def dmn_user_role(self, role):
-        if role not in (DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING):
-            raise Exception('Invalid dmn user role')
-        self.__dmn_user_role = role
+    @dmn_user_roles.setter
+    def dmn_user_roles(self, roles):
+        self.__dmn_user_roles = roles
 
     @property
     def dmn_tx_hash(self):

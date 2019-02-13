@@ -159,6 +159,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.wdg_masternode.name_modified.connect(self.on_mn_name_modified)
         self.wdg_masternode.role_modified.connect(self.update_mn_controls_state)
         self.wdg_masternode.data_changed.connect(self.on_mn_data_changed)
+        self.wdg_masternode.label_width_changed.connect(self.set_mn_labels_width)
 
         self.mns_user_refused_updating = {}
 
@@ -197,10 +198,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.config.close()
 
     def showEvent(self, QShowEvent):
-        width = max(self.wdg_masternode.get_max_left_label_width(), self.lblMasternodeStatus.width())
-        self.lblMasternodeStatus.setFixedWidth(width)
-        self.wdg_masternode.set_left_label_width(width)
         self.cboMasternodes.setFixedHeight(self.btnNewMn.height())
+
+    def set_mn_labels_width(self, width):
+        self.lblMasternodeStatus.setFixedWidth(width)
 
     def get_hw_client(self):
         return self.hw_client
@@ -1061,8 +1062,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def update_mn_controls_state(self):
         if self.curMasternode:
-            vis = not self.curMasternode.is_deterministic or (self.curMasternode.dmn_user_role in (DMN_ROLE_OWNER,
-                                                                                               DMN_ROLE_OPERATOR))
+            vis = not self.curMasternode.is_deterministic or (self.curMasternode.dmn_user_roles & DMN_ROLE_OPERATOR)
         else:
             vis = False
         self.btnBroadcastMn.setVisible(vis)
@@ -1437,22 +1437,26 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 try:
                     # protx transaction is not confirmed yet, so look for it in the mempool
                     tx = self.dashd_intf.getrawtransaction(masternode.dmn_tx_hash, 1, skip_cache=True)
-                    ptx = tx.get('proRegTx')
-                    if ptx:
-                        protx = {
-                            'proTxHash': masternode.dmn_tx_hash,
-                            'collateralHash': ptx.get('collateralHash'),
-                            'collateralIndex': ptx.get('collateralIndex'),
-                            'state': {
-                                'service': ptx.get('service'),
-                                'ownerAddress': ptx.get('ownerAddress'),
-                                'votingAddress': ptx.get('votingAddress'),
-                                'pubKeyOperator': ptx.get('pubKeyOperator'),
-                                'payoutAddress': ptx.get('payoutAddress')
+                    confirmations = tx.get('confirmations', 0)
+                    if confirmations < 3:
+                        # in this case dmn tx should have been found by the 'protx info' call above;
+                        # it hasn't been, so it is no longer valid a protx transaction
+                        ptx = tx.get('proRegTx')
+                        if ptx:
+                            protx = {
+                                'proTxHash': masternode.dmn_tx_hash,
+                                'collateralHash': ptx.get('collateralHash'),
+                                'collateralIndex': ptx.get('collateralIndex'),
+                                'state': {
+                                    'service': ptx.get('service'),
+                                    'ownerAddress': ptx.get('ownerAddress'),
+                                    'votingAddress': ptx.get('votingAddress'),
+                                    'pubKeyOperator': ptx.get('pubKeyOperator'),
+                                    'payoutAddress': ptx.get('payoutAddress')
+                                }
                             }
-                        }
-                    if protx:
-                        protx_state = protx.get('state')
+                        if protx:
+                            protx_state = protx.get('state')
                 except Exception as e:
                     pass
 
@@ -1595,7 +1599,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                 if masternode not in self.mns_user_refused_updating:
                     if not masternode.collateralTx or not masternode.collateralTxIndex or \
-                            not masternode.collateralAddress:
+                            (not masternode.collateralAddress and
+                             ((masternode.is_deterministic and masternode.dmn_user_roles & DMN_ROLE_OWNER) or
+                              not masternode.is_deterministic)) or \
+                            (dmn_tx and masternode.dmn_tx_hash != dmn_tx.get('proTxHash')):
                         msg = 'In the configuration of your masternode some information is missing that is ' \
                               'available on the network. Do you want to update the configuration?'
 
@@ -1617,22 +1624,25 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                             collateral_tx_mismatch = True
 
                 if not collateral_tx_mismatch:
-                    # check outputs of the collateral transaction
-                    tx_json = self.dashd_intf.getrawtransaction(masternode.collateralTx, 1)
-                    if tx_json:
-                        vout = tx_json.get('vout')
-                        if vout and int(masternode.collateralTxIndex) < len(vout):
-                            v = vout[ int(masternode.collateralTxIndex)]
-                            if v and v.get('scriptPubKey'):
-                                addrs = v.get('scriptPubKey').get('addresses')
-                                if addrs:
-                                    addr = addrs[0]
-                                    if masternode.collateralAddress != addr:
-                                        if update_mn_info:
-                                            masternode.collateralAddress = addr
-                                            mn_data_modified = True
-                                        else:
-                                            collateral_address_mismatch = True
+                    if (masternode.is_deterministic and masternode.dmn_user_roles & DMN_ROLE_OWNER) or \
+                            not masternode.is_deterministic:
+
+                        # check outputs of the collateral transaction
+                        tx_json = self.dashd_intf.getrawtransaction(masternode.collateralTx, 1)
+                        if tx_json:
+                            vout = tx_json.get('vout')
+                            if vout and int(masternode.collateralTxIndex) < len(vout):
+                                v = vout[ int(masternode.collateralTxIndex)]
+                                if v and v.get('scriptPubKey'):
+                                    addrs = v.get('scriptPubKey').get('addresses')
+                                    if addrs:
+                                        addr = addrs[0]
+                                        if masternode.collateralAddress != addr:
+                                            if update_mn_info:
+                                                masternode.collateralAddress = addr
+                                                mn_data_modified = True
+                                            else:
+                                                collateral_address_mismatch = True
 
                 if masternode.ip + ':' + masternode.port != mn_ip_port:
                     elems = mn_ip_port.split(':')
