@@ -12,7 +12,7 @@ from random import randint
 import bitcoin
 from bip32utils import Base58
 import base58
-import blspy
+from bls_py import bls
 
 
 # Bitcoin opcodes used in the application
@@ -194,7 +194,7 @@ def generate_bls_privkey() -> str:
     """
     :return: Generated BLS private key as a hex string.
     """
-    max_iterations = 2
+    max_iterations = 2000
     for i in range(0, max_iterations):
         privkey = bitcoin.random_key()
         pk_bytes = bytes.fromhex(privkey)
@@ -206,16 +206,21 @@ def generate_bls_privkey() -> str:
                     # the last resort is to change it to a random value < 0x73
                     tmp_pk_bytes = bytearray(pk_bytes)
                     tmp_pk_bytes[0] = randint(0, 0x73)
+                    logging.warning('Changing the first byte of the generated BLS key from %s to %s to meet '
+                                    'the requirements', str(pk_bytes[0]), str(tmp_pk_bytes[0]))
                     pk_bytes = bytes(tmp_pk_bytes)
                 else:
                     continue
 
             try:
-                pk = blspy.PrivateKey.from_bytes(pk_bytes)
+                pk = bls.PrivateKey.from_bytes(pk_bytes)
                 pk_bin = pk.serialize()
                 return pk_bin.hex()
             except Exception as e:
-                logging.exception(str(e))
+                logging.warning('Could not process "%s" as a BLS private key. Error details: %s',
+                                pk_bytes.hex(), str(e))
+        else:
+            logging.warning('Skipping the generated key: %s', pk_bytes.hex())
     raise Exception("Could not generate BLS private key")
 
 
@@ -224,7 +229,7 @@ def bls_privkey_to_pubkey(privkey: str) -> str:
     :param privkey: BLS privkey as a hex string
     :return: BLS pubkey as a hex string.
     """
-    pk = blspy.PrivateKey.from_bytes(bytes.fromhex(privkey))
+    pk = bls.PrivateKey.from_bytes(bytes.fromhex(privkey))
     pubkey = pk.get_public_key()
     pubkey_bin = pubkey.serialize()
     return pubkey_bin.hex()
