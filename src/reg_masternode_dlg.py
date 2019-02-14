@@ -163,26 +163,48 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
     def update_dynamic_labels(self):
 
-        def get_label_text(prefix:str, key_type: str, tooltip_anchor: str):
+        def style_to_color(style: str) -> str:
+            if style == 'hl1':
+                color = 'color:#00802b'
+            else:
+                color = ''
+            return color
+
+        def get_label_text(prefix:str, key_type: str, tooltip_anchor: str, style: str):
             lbl = prefix + ' ' + \
                   {'privkey': 'private key', 'pubkey': 'public key', 'address': 'Dash address'}.get(key_type, '???')
 
             change_mode = f'(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)'
-            return f'<table style="float:right"><tr><td><b>{lbl}</b></td><td>{change_mode}</td></tr></table>'
+            return f'<table style="float:right;{style_to_color(style)}"><tr><td><b>{lbl}</b></td><td>{change_mode}</td></tr></table>'
 
         if self.masternode:
 
-            key_type, tooltip_anchor = ('privkey', 'address') if self.dmn_owner_key_type == InputKeyType.PRIVATE \
-                else ('address', 'privkey')
-            self.lblOwnerKey.setText(get_label_text('Owner', key_type, tooltip_anchor))
+            if self.dmn_owner_key_type == InputKeyType.PRIVATE:
+                key_type, tooltip_anchor, placeholder_text = ('privkey', 'address', 'Enter the owner private key')
+                style = ''
+            else:
+                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Dash address')
+                style = 'hl1'
+            self.lblOwnerKey.setText(get_label_text('Owner', key_type, tooltip_anchor, style))
+            self.edtOwnerKey.setPlaceholderText(placeholder_text)
 
-            key_type, tooltip_anchor = ('privkey', 'pubkey') if self.dmn_operator_key_type == InputKeyType.PRIVATE else \
-                ('pubkey', 'privkey')
-            self.lblOperatorKey.setText(get_label_text('Operator', key_type, tooltip_anchor))
+            if self.dmn_operator_key_type == InputKeyType.PRIVATE:
+                key_type, tooltip_anchor, placeholder_text = ('privkey', 'pubkey', 'Enter the operator private key')
+                style = ''
+            else:
+                key_type, tooltip_anchor, placeholder_text = ('pubkey', 'privkey', 'Enter the operator public key')
+                style = 'hl1'
+            self.lblOperatorKey.setText(get_label_text('Operator', key_type, tooltip_anchor, style))
+            self.edtOperatorKey.setPlaceholderText(placeholder_text)
 
-            key_type, tooltip_anchor = ('privkey','address') if self.dmn_voting_key_type == InputKeyType.PRIVATE else \
-                ('address', 'privkey')
-            self.lblVotingKey.setText(get_label_text('Voting', key_type, tooltip_anchor))
+            if self.dmn_voting_key_type == InputKeyType.PRIVATE:
+                key_type, tooltip_anchor, placeholder_text = ('privkey','address', 'Enter the voting private key')
+                style = ''
+            else:
+                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Dash address')
+                style = 'hl1'
+            self.lblVotingKey.setText(get_label_text('Voting', key_type, tooltip_anchor, style))
+            self.edtVotingKey.setPlaceholderText(placeholder_text)
 
     @pyqtSlot(str)
     def on_lblOwnerKey_linkActivated(self, link):
@@ -486,10 +508,10 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             if self.show_field_hinds:
                 if self.dmn_owner_key_type == InputKeyType.PRIVATE:
                     if self.edtOwnerKey.text().strip() == self.owner_pkey_generated:
-                        msg = 'This is a newly generated owner key. You can enter your own key or generate a ' \
-                              'new one by pressing the button on the right.'
+                        msg = 'This is an automatically generated owner private key. You can enter your own or ' \
+                              'generate a new one by pressing the button on the right.'
                     elif not self.edtOwnerKey.text().strip():
-                        msg = 'Enter an owner key or generate a new one by clicking the button on the right.'
+                        msg = 'Enter the owner private key or generate a new one by clicking the button on the right.'
                     style = 'info'
                 else:
                     msg = 'You can use Dash address if the related private key is stored elsewhere, eg in ' \
@@ -510,13 +532,14 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             if self.show_field_hinds:
                 if self.dmn_operator_key_type == InputKeyType.PRIVATE:
                     if self.edtOperatorKey.text().strip() == self.operator_pkey_generated:
-                        msg = 'This is a newly generated operator BLS private key. You can enter your own key or ' \
-                              'generate a new one by pressing the button on the right.'
+                        msg = 'This is an automatically generated operator BLS private key. You can enter your ' \
+                              'own or generate a new one by pressing the button on the right.'
                     elif not self.edtOperatorKey.text().strip():
-                        msg = 'Enter an operator key or generate a new one by clicking the button on the right.'
+                        msg = 'Enter the operator private key or generate a new one by clicking the button on ' \
+                              'the right.'
                     style = 'info'
                 else:
-                    msg = 'You can use a public key if your masternode is managed by a separate entity (operator) ' \
+                    msg = 'You can use public key if your masternode is managed by a separate entity (operator) ' \
                           'that controls the related private key or if you prefer to keep the private key outside ' \
                           'the program. If necessary, you can revoke this key by sending a new ProRegTx ' \
                           'transaction with a new operator key.'
@@ -534,10 +557,11 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             if self.show_field_hinds:
                 if self.dmn_voting_key_type == InputKeyType.PRIVATE:
                     if self.edtVotingKey.text().strip() == self.voting_pkey_generated:
-                        msg = 'This is a newly generated private key for voting. You can enter your own key or ' \
+                        msg = 'This is an automatically generated private key for voting. You can enter your own or ' \
                               'generate a new one by pressing the button on the right.'
                     elif not self.edtVotingKey.text().strip():
-                        msg = 'Enter a voting key or generate a new one by clicking the button on the right.'
+                        msg = 'Enter the private key for voting or generate a new one by clicking the button on ' \
+                              'the right.'
                     style = 'info'
                 else:
                     msg = 'You can use Dash address if the related private key is stored elsewhere, eg in ' \

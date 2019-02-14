@@ -1801,6 +1801,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 raise
         else:
             enable_buttons()
+            self.lblMnStatus.setText('')
             self.errorMsg('Dash daemon not connected')
 
     @pyqtSlot(bool)

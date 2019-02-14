@@ -33,8 +33,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.masternode: MasternodeConfig = None
         self.updating_ui = False
         self.edit_mode = False
-        self.style_sheet = 'QLineEdit[hightlight="true"]{color:#0047b3} QLabel[hightlight="true"]{color:#0047b3}'
-        self.setStyleSheet(self.style_sheet)
         self.setupUi()
 
     def setupUi(self):
@@ -304,17 +302,19 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.update_key_controls_state()
 
     def update_dynamic_labels(self):
-        # doc = QTextDocument(self)
-        # doc.setDocumentMargin(0)
-        # doc.setDefaultFont(self.lblOwnerKey.font())
-        # doc.setHtml('Test')
-        # h = int(doc.size().height())
 
-        def get_label_text(prefix:str, cur_key_type: str, group: QActionGroup, tooltip_anchor: str):
+        def style_to_color(style: str) -> str:
+            if style == 'hl1':
+                color = 'color:#00802b'
+            elif style == 'hl2':
+                color = 'color:#0047b3'
+            else:
+                color = ''
+            return color
+
+        def get_label_text(prefix:str, cur_key_type: str, tooltip_anchor: str, group: QActionGroup, style: str):
             lbl = '???'
             if self.edit_mode:
-                # change_mode = f'<a href="{tooltip_anchor}"><img width="{h}" height="{h}" ' \
-                #                'src="img/swap-horiz@24px.png"></img></a>'
                 change_mode = f'<td>(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)</td>'
             else:
                 a = group.checkedAction()
@@ -331,21 +331,52 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             elif cur_key_type == 'pubkeyhash':
                 lbl = prefix + ' public key hash'
 
-            return f'<table style="float:right"><tr><td>{lbl}</td>{change_mode}</tr></table>'
+            return f'<table style="float:right;{style_to_color(style)}"><tr><td>{lbl}</td>{change_mode}</tr></table>'
 
         if self.masternode:
+            if not self.edit_mode and not self.act_view_as_mn_private_key.isChecked():
+                style = 'hl2'
+            else:
+                style = ''
+            self.lblMasternodePrivateKey.setText(f'<span style="{style_to_color(style)}">Masternode private '
+                                                 f'key</span>')
 
-            tooltip_anchor, cur_key_type = ('address', 'privkey') if self.masternode.dmn_owner_key_type == \
-                                                                   InputKeyType.PRIVATE else ('privkey', 'address')
-            self.lblOwnerKey.setText(get_label_text('Owner', cur_key_type, self.ag_owner_key, tooltip_anchor))
+            style = ''
+            if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+                key_type, tooltip_anchor, placeholder_text = ('privkey', 'address', 'Enter the owner private key')
+                if not self.edit_mode and not self.act_view_as_owner_private_key.isChecked():
+                    style = 'hl2'
+            else:
+                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Dash address')
+                if not self.edit_mode:
+                    style = 'hl1' if self.act_view_as_owner_public_address.isChecked() else 'hl2'
+            self.lblOwnerKey.setText(get_label_text('Owner', key_type, tooltip_anchor, self.ag_owner_key, style))
+            self.edtOwnerKey.setPlaceholderText(placeholder_text)
 
-            tooltip_anchor, cur_key_type = ('pubkey', 'privkey') if self.masternode.dmn_operator_key_type == \
-                                                                    InputKeyType.PRIVATE else ('privkey', 'pubkey')
-            self.lblOperatorKey.setText(get_label_text('Operator', cur_key_type, self.ag_operator_key, tooltip_anchor))
+            style = ''
+            if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
+                key_type, tooltip_anchor, placeholder_text = ('privkey', 'pubkey', 'Enter the operator private key')
+                if not self.edit_mode and not self.act_view_as_operator_private_key.isChecked():
+                    style = 'hl2'
+            else:
+                key_type, tooltip_anchor, placeholder_text = ('pubkey', 'privkey', 'Enter the operator public key')
+                if not self.edit_mode:
+                    style = 'hl1' if self.act_view_as_operator_public_key.isChecked() else 'hl2'
+            self.lblOperatorKey.setText(get_label_text('Operator', key_type, tooltip_anchor, self.ag_operator_key,
+                                                       style))
+            self.edtOperatorKey.setPlaceholderText(placeholder_text)
 
-            tooltip_anchor, cur_key_type = ('address', 'privkey') if self.masternode.dmn_voting_key_type == \
-                                                                     InputKeyType.PRIVATE else ('privkey', 'address')
-            self.lblVotingKey.setText(get_label_text('Voting', cur_key_type, self.ag_voting_key, tooltip_anchor))
+            style = ''
+            if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
+                key_type, tooltip_anchor, placeholder_text = ('privkey','address', 'Enter the voting private key')
+                if not self.edit_mode and not self.act_view_as_voting_private_key.isChecked():
+                    style = 'hl2'
+            else:
+                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Dash address')
+                if not self.edit_mode:
+                    style = 'hl1' if self.act_view_as_voting_public_address.isChecked() else 'hl2'
+            self.lblVotingKey.setText(get_label_text('Voting', key_type, tooltip_anchor, self.ag_voting_key, style))
+            self.edtVotingKey.setPlaceholderText(placeholder_text)
 
             self.set_left_label_width(self.get_max_left_label_width())
 
@@ -353,44 +384,16 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.edtMasternodePrivateKey.setEchoMode(QLineEdit.Normal if self.btnShowMnPrivateKey.isChecked() or
                                                                      self.edit_mode else QLineEdit.Password)
 
-        hl = not self.act_view_as_mn_private_key.isChecked() and not self.edit_mode
-        self.edtMasternodePrivateKey.setProperty('hightlight', hl)
-        self.lblMasternodePrivateKey.setProperty('hightlight', hl)
-
         self.edtOwnerKey.setEchoMode(QLineEdit.Normal if self.btnShowOwnerPrivateKey.isChecked() or
                                                          self.edit_mode else QLineEdit.Password)
-
-        hl = self.masternode is not None and not self.edit_mode and \
-             not ((self.act_view_as_owner_private_key.isChecked() and
-                   self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE) or
-                  (self.act_view_as_owner_public_address.isChecked() and
-                   self.masternode.dmn_owner_key_type == InputKeyType.PUBLIC))
-        self.edtOwnerKey.setProperty('hightlight', hl )
-        self.lblOwnerKey.setProperty('hightlight', hl )
 
         self.edtOperatorKey.setEchoMode(QLineEdit.Normal if self.btnShowOperatorPrivateKey.isChecked() or
                                         self.edit_mode else QLineEdit.Password)
 
-        hl = self.masternode is not None and not self.edit_mode and \
-             not ((self.act_view_as_operator_private_key.isChecked() and
-                   self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE) or
-                  (self.masternode.dmn_operator_key_type == InputKeyType.PUBLIC))
-        self.edtOperatorKey.setProperty('hightlight', hl)
-        self.lblOperatorKey.setProperty('hightlight', hl )
-
         self.edtVotingKey.setEchoMode(QLineEdit.Normal if self.btnShowVotingPrivateKey.isChecked() or
                                       self.edit_mode else QLineEdit.Password)
 
-        hl = self.masternode is not None and not self.edit_mode and \
-             not ((self.act_view_as_voting_private_key.isChecked() and
-                   self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE) or
-                  (self.act_view_as_voting_public_address.isChecked() and
-                   self.masternode.dmn_voting_key_type == InputKeyType.PUBLIC))
-        self.edtVotingKey.setProperty('hightlight', hl)
-        self.lblVotingKey.setProperty('hightlight', hl)
-
         self.update_dynamic_labels()
-        self.apply_stylesheet()
 
     def masternode_data_to_ui(self):
         if self.masternode:
@@ -660,7 +663,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         if self.edit_mode != enabled:
             self.edit_mode = enabled
             self.masternode_data_to_ui()
-            self.apply_stylesheet()
             if not self.edit_mode:
                 self.lblOwnerKey.setToolTip('')
                 self.lblOperatorKey.setToolTip('')
@@ -1015,9 +1017,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         except BreakFetchTransactionsException:
             return None
         return utxos
-
-    def apply_stylesheet(self):
-        self.setStyleSheet(self.style_sheet)
 
     def on_masternode_view_key_type_changed(self):
         self.btnShowMnPrivateKey.setChecked(True)
