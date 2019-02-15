@@ -28,21 +28,21 @@
   "features": {
     "NON_DETERMINISTIC_MNS": {
       "mainnet": {
-        "active": true,
+        "status": "enabled",
         "priority": 0
       },
       "testnet": {
-        "active": false,
+        "status": "disabled",
         "priority": 0
       }
     },
     "DETERMINISTIC_MNS": {
       "mainnet": {
-        "active": false,
+        "status": "disabled",
         "priority": 0
       },
       "testnet": {
-        "active": true,
+        "status": "enabled",
         "priority": 0
       }
     }
