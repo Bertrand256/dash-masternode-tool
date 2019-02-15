@@ -25,9 +25,8 @@
       }
     }
   ],
-  "features": [
-    {
-      "symbol": "NON_DETERMINISTIC_MNS",
+  "features": {
+    "NON_DETERMINISTIC_MNS": {
       "mainnet": {
         "active": true,
         "priority": 0
@@ -37,8 +36,7 @@
         "priority": 0
       }
     },
-    {
-      "symbol": "DETERMINISTIC_MNS",
+    "DETERMINISTIC_MNS": {
       "mainnet": {
         "active": false,
         "priority": 0
@@ -48,5 +46,5 @@
         "priority": 0
       }
     }
-  ]
+  }
 }
