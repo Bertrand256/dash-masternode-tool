@@ -10,9 +10,11 @@ from PyQt5.QtGui import QPixmap, QTextDocument
 from PyQt5.QtWidgets import QDialog, QWidget, QLineEdit, QMessageBox, QAction, QApplication, QActionGroup
 
 import dash_utils
+import hw_intf
 from app_config import MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING, InputKeyType
 from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException
 from find_coll_tx_dlg import ListCollateralTxsDlg
+from hw_common import HardwareWalletCancelException
 from thread_fun_dlg import CtrlObject
 from ui import ui_masternode_details
 from wnd_utils import WndUtils
@@ -45,6 +47,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.main_dlg.setIcon(self.btnCopyOwnerKey, 'content-copy@16px.png')
         self.main_dlg.setIcon(self.btnCopyOperatorKey, 'content-copy@16px.png')
         self.main_dlg.setIcon(self.btnCopyVotingKey, 'content-copy@16px.png')
+        self.main_dlg.setIcon(self.btnShowCollateralPathAddress, 'eye@16px.png')
 
         self.act_view_as_mn_private_key = QAction('View as private key', self)
         self.act_view_as_mn_private_key.setData('privkey')
@@ -177,8 +180,14 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.lblCollateral.setVisible(self.masternode is not None and
                                       ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0) or not is_deterministic))
         self.btnLocateCollateral.setVisible(self.masternode is not None and self.edit_mode and
-                                         ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
+                                            ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
                                           or not is_deterministic))
+        self.btnBip32PathToAddress.setVisible(self.masternode is not None and self.edit_mode and
+                                              ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
+                                               or not is_deterministic))
+        self.btnShowCollateralPathAddress.setVisible(self.masternode is not None and
+                                                    ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
+                                               or not is_deterministic))
         self.edtCollateralAddress.setVisible(self.masternode is not None and
                                              ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
                                               or not is_deterministic))
@@ -824,6 +833,34 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             else:
                 WndUtils.warnMsg('Couldn\'t find this masternode in the list of registered deterministic masternodes.')
             self.set_modified()
+
+    @pyqtSlot(bool)
+    def on_btnBip32PathToAddress_clicked(self, checked):
+        if self.masternode.collateralBip32Path:
+            if self.main_dlg.connect_hardware_wallet():
+                try:
+                    hw_session = self.main_dlg.hw_session
+                    addr = hw_intf.get_address(hw_session, self.masternode.collateralBip32Path, show_display=True)
+                    if addr:
+                        self.masternode.collateralAddress = addr.strip()
+                        self.edtCollateralAddress.setText(addr.strip())
+                        self.set_modified()
+                        self.update_ui_controls_state()
+                except HardwareWalletCancelException:
+                    pass
+
+    @pyqtSlot(bool)
+    def on_btnShowCollateralPathAddress_clicked(self, checked):
+        if self.masternode.collateralBip32Path:
+            if self.main_dlg.connect_hardware_wallet():
+                try:
+                    hw_session = self.main_dlg.hw_session
+                    addr = hw_intf.get_address(
+                        hw_session, self.masternode.collateralBip32Path, True,
+                        f'Displaying address for the BIP32 path <b>{self.masternode.collateralBip32Path}</b>.'
+                        f'<br>Click the confirmation button on your device.')
+                except HardwareWalletCancelException:
+                    pass
 
     @pyqtSlot(str)
     def on_edtMasternodePrivateKey_textEdited(self, text):

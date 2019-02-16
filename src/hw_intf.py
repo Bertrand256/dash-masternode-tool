@@ -11,7 +11,7 @@ import sys
 
 import dash_utils
 from dash_utils import bip32_path_n_to_string
-from hw_common import HardwareWalletPinException, HwSessionInfo, get_hw_type
+from hw_common import HardwareWalletPinException, HwSessionInfo, get_hw_type, HardwareWalletCancelException
 import logging
 from app_defs import HWType
 from wallet_common import UtxoType, TxOutputType
@@ -388,9 +388,14 @@ def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool =
             if hw_session.app_config.hw_type == HWType.trezor:
 
                 from trezorlib import btc
-                if isinstance(bip32_path, str):
-                    bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
-                return btc.get_address(client, hw_session.app_config.hw_coin_name, bip32_path, show_display)
+                from trezorlib import exceptions
+
+                try:
+                    if isinstance(bip32_path, str):
+                        bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
+                    return btc.get_address(client, hw_session.app_config.hw_coin_name, bip32_path, show_display)
+                except exceptions.Cancelled:
+                    raise HardwareWalletCancelException('Cancelled')
 
             elif hw_session.app_config.hw_type == HWType.keepkey:
 

@@ -1343,7 +1343,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 dashd_version = {70208: 'v0.12.2',
                                  70209: 'v0.12.3',
                                  70210: 'v0.12.3',
-                                 70213: 'v0.13.0'}.get(mn_protocol_version, '')
+                                 70213: 'v0.13.x'}.get(mn_protocol_version, '')
                 if dashd_version:
                     dashd_version = f', dashd {dashd_version}'
 
