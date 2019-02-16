@@ -1327,3 +1327,10 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
+    @control_rpc_call
+    def getblockchaininfo(self):
+        if self.open():
+            return self.proxy.getblockchaininfo()
+        else:
+            raise Exception('Not connected')
+

@@ -21,10 +21,12 @@ from configparser import ConfigParser
 from random import randint
 from shutil import copyfile
 import logging
-from typing import Optional, Callable, Dict
+from typing import Optional, Callable, Dict, Tuple
 import bitcoin
 from logging.handlers import RotatingFileHandler
-from PyQt5.QtCore import QLocale
+
+from PyQt5 import QtCore
+from PyQt5.QtCore import QLocale, QObject
 from PyQt5.QtWidgets import QMessageBox
 from cryptography.fernet import Fernet
 
@@ -59,6 +61,42 @@ class InputKeyType():
     PUBLIC = 2
 
 
+class AppFeatueStatus(QObject):
+    # Priority of the feature value.
+    #  0: default value implemented in the source code
+    #  2: value read from the app cache
+    #  4: value read from the project github repository (can be lowered or rised)
+    #  6: value read from the Dash network (the highest priority by default)
+    PRIORITY_DEFAULT = 0
+    PRIORITY_APP_CACHE = 2
+    PRIORITY_NETWORK = 6
+
+    value_changed = QtCore.pyqtSignal(object, int)  # args: object being changed, new value
+
+    def __init__(self, initial_value, initial_priority):
+        QObject.__init__(self)
+        self.__value = initial_value
+        self.__priority = initial_priority
+
+    def set_value(self, value, priority):
+        if (self.__priority is None or priority >= self.__priority) and value is not None:
+            if self.__value != value:
+                changed = True
+            else:
+                changed = False
+            self.__value = value
+            self.__priority = priority
+            if changed:
+                self.value_changed.emit(self, value)
+
+    def get_value(self):
+        return self.__value
+
+    def reset(self):
+        self.__value = None
+        self.__priority = None
+
+
 class AppConfig(object):
     def __init__(self):
         self.initialized = False
@@ -84,6 +122,14 @@ class AppConfig(object):
         # list of misbehaving dash network configurations - they will have the lowest priority during next
         # connections
         self.defective_net_configs = []
+
+        # the contents of the app-params.json configuration file read from the project GitHub repository
+        self._remote_app_params = {}
+        self._dash_blockchain_info = {}
+        self.non_deterministic_mns_status = AppFeatueStatus(True, 0)
+        self.deterministic_mns_status = AppFeatueStatus(False, 0)
+        self.__dip3_active = None
+        self.__spork15_active = None
 
         self.hw_type = None  # TREZOR, KEEPKEY, LEDGERNANOS
         self.hw_keepkey_psw_encoding = 'NFC'  # Keepkey passphrase UTF8 chars encoding:
@@ -233,9 +279,24 @@ class AppConfig(object):
         self.initialized = True
 
     def close(self):
+        self.save_cache_settings()
         self.save_loggers_config()
         app_cache.finish()
         self.db_intf.close()
+
+    def save_cache_settings(self):
+        if self.non_deterministic_mns_status.get_value() is not None:
+            app_cache.set_value('NON_DETERMINISTIC_MNS_' + self.dash_network,
+                                self.non_deterministic_mns_status.get_value())
+        if self.deterministic_mns_status.get_value() is not None:
+            app_cache.set_value('DETERMINISTIC_MNS_' + self.dash_network, self.deterministic_mns_status.get_value())
+
+    def restore_cache_settings(self):
+        ena = app_cache.get_value('NON_DETERMINISTIC_MNS_' + self.dash_network, True, bool)
+        self.non_deterministic_mns_status.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
+
+        ena = app_cache.get_value('DETERMINISTIC_MNS_' + self.dash_network, False, bool)
+        self.deterministic_mns_status.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
 
     def copy_from(self, src_config):
         self.dash_network = src_config.dash_network
@@ -292,6 +353,7 @@ class AppConfig(object):
             self.db_intf = DBCache()
             self.db_intf.open(new_db_cache_file_name)
             self.db_cache_file_name = new_db_cache_file_name
+        self.restore_cache_settings()
 
     def clear_configuration(self):
         """
@@ -752,6 +814,107 @@ class AppConfig(object):
         self.modified = False
         self.app_config_file_name = file_name
         app_cache.set_value('AppConfig_ConfigFileName', self.app_config_file_name)
+
+    def reset_network_dependent_dyn_params(self):
+        self.non_deterministic_mns_status.reset()
+        self.deterministic_mns_status.reset()
+        self.__dip3_active = None
+        self.__spork15_active = None
+        self.apply_remote_app_params()
+
+    def set_remote_app_params(self, params: Dict):
+        """ Set the dictionary containing the app live parameters stored in the project repository
+        (remote app-params.json).
+        """
+        self._remote_app_params = params
+        self.apply_remote_app_params()
+
+    def apply_remote_app_params(self):
+        def get_feature_config_remote(symbol) -> Tuple[Optional[bool], Optional[int]]:
+            features = self._remote_app_params.get('features')
+            if features:
+                feature = features.get(symbol)
+                if feature:
+                    a = feature.get(self.dash_network.lower())
+                    if a:
+                        prio = a.get('priority', 0)
+                        status = a.get('status')
+                        if status in ('enabled', 'disabled'):
+                            return (True if status == 'enabled' else False, prio)
+            return None, None
+
+        if self._remote_app_params:
+            self.non_deterministic_mns_status.set_value(*get_feature_config_remote('NON_DETERMINISTIC_MNS'))
+            self.deterministic_mns_status.set_value(*get_feature_config_remote('DETERMINISTIC_MNS'))
+
+    def read_dash_network_app_params(self, dashd_intf):
+        """ Read parameters having impact on the app's behavior (sporks/dips) from the Dash network. Called
+        after connecting to the network. """
+
+        if self.__dip3_active is None:
+            try:
+                self._dash_blockchain_info = dashd_intf.getblockchaininfo()
+                bip9 = self._dash_blockchain_info.get("bip9_softforks")
+                if bip9:
+                    dip3 = bip9.get('dip0003')
+                    if dip3:
+                        status = dip3.get('status')
+                        if status == 'active':
+                            self.__dip3_active = True
+                        else:
+                            self.__dip3_active = False
+                        self.deterministic_mns_status.set_value(self.__dip3_active, AppFeatueStatus.PRIORITY_NETWORK)
+            except Exception as e:
+                logging.error(str(e))
+
+        if self.__spork15_active is None:
+            try:
+                spork_block = dashd_intf.get_spork_value('SPORK_15_DETERMINISTIC_MNS_ENABLED')
+                if isinstance(spork_block, int):
+                    height = dashd_intf.getblockcount()
+                    self.__spork15_active = (height >= spork_block)
+                else:
+                    self.__spork15_active = False
+                self.__spork15_active = True # todo: testing
+                self.non_deterministic_mns_status.set_value(not self.__spork15_active, AppFeatueStatus.PRIORITY_NETWORK)
+            except Exception as e:
+                logging.error(str(e))
+
+    def is_non_deterministic_mns_enabled(self):
+        return self.non_deterministic_mns_status.get_value() is True
+
+    def is_deterministic_mns_enabled(self):
+        return self.deterministic_mns_status.get_value() is True
+
+    def is_dip3_active(self, dashd_intf):
+        if self.__dip3_active is None:
+            self.read_dash_network_app_params(dashd_intf)
+        return self.__dip3_active is True
+
+    def is_spork_15_active(self, dashd_intf):
+        if self.__spork15_active is None:
+            self.read_dash_network_app_params(dashd_intf)
+        return self.__spork15_active is True
+
+    def get_default_protocol(self) -> int:
+        prot = None
+        if self._remote_app_params:
+            dp = self._remote_app_params.get('defaultDashdProtocol')
+            if dp:
+                prot = dp.get(self.dash_network.lower())
+        return prot
+
+    def get_spork_state_from_config(self, spork_nr: int, dash_network: str, default_state: bool):
+        state = default_state
+        if self._remote_app_params:
+            sporks = self._remote_app_params.get('sporks')
+            if sporks and isinstance(sporks, list):
+                for spork in sporks:
+                    name = spork.get('name', '')
+                    active = spork.get('active')
+                    if name.find('SPORK_' + str(spork_nr) + '_') == 0:
+                        state = active.get(dash_network.lower(), state)
+        return state
 
     def value_to_bool(self, value, default=None):
         """

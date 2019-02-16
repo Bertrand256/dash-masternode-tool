@@ -174,18 +174,18 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.edtDMNTxHash.setVisible(self.masternode is not None and is_deterministic)
         self.btnFindDMNTxHash.setVisible(self.masternode is not None and self.edit_mode and is_deterministic)
 
-        self.lblCollateral.setVisible(self.masternode is not None and self.edit_mode and
+        self.lblCollateral.setVisible(self.masternode is not None and
                                       ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0) or not is_deterministic))
         self.btnLocateCollateral.setVisible(self.masternode is not None and self.edit_mode and
                                          ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
                                           or not is_deterministic))
-        self.edtCollateralAddress.setVisible(self.masternode is not None and self.edit_mode and
+        self.edtCollateralAddress.setVisible(self.masternode is not None and
                                              ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
                                               or not is_deterministic))
-        self.lblCollateralPath.setVisible(self.masternode is not None and self.edit_mode and
+        self.lblCollateralPath.setVisible(self.masternode is not None and
                                           ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
                                            or not is_deterministic))
-        self.edtCollateralPath.setVisible(self.masternode is not None and self.edit_mode and
+        self.edtCollateralPath.setVisible(self.masternode is not None and
                                           ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
                                            or not is_deterministic))
 

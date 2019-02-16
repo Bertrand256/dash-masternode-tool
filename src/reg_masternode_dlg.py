@@ -68,7 +68,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.current_step = STEP_MN_DATA
         self.step_stack: List[int] = []
         self.proregtx_prepare_thread_ref = None
-        self.deterministic_mns_spork_active = False
+        self.deterministic_mns_spork_active = self.app_config.is_spork_15_active(self.dashd_intf)
         self.dmn_collateral_tx: str = None
         self.dmn_collateral_tx_index: int = None
         self.dmn_collateral_tx_address: str = None
@@ -123,7 +123,6 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.chbWholeMNReward.setChecked(True)
         self.lblProtxSummary2.linkActivated.connect(self.save_summary_info)
         self.lblCollateralTxMsg.sizePolicy().setHeightForWidth(True)
-        self.determine_spork_15_active()
         self.prepare_keys()
         self.btnClose.hide()
         self.setIcon(self.btnManualFundingAddressPaste, 'content-paste@16px.png')
@@ -354,17 +353,6 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                     self.edtVotingKey.setText(self.masternode.dmn_voting_private_key)
                 else:
                     self.edtVotingKey.setText(self.masternode.dmn_voting_address)
-        else:
-            self.dmn_voting_key_type = self.dmn_owner_key_type
-            self.edtVotingKey.setText(self.edtOwnerKey.text().strip())
-
-    def determine_spork_15_active(self):
-        spork_block = self.dashd_intf.get_spork_value('SPORK_15_DETERMINISTIC_MNS_ENABLED')
-        if isinstance(spork_block, int):
-            height = self.dashd_intf.getblockcount()
-            self.deterministic_mns_spork_active = height >= spork_block
-        else:
-            self.deterministic_mns_spork_active = False
 
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
@@ -550,24 +538,25 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
     def upd_voting_key_info(self, show_invalid_data_msg: bool):
         msg = ''
         style = ''
-        if show_invalid_data_msg and self.voting_key_validation_err_msg:
-            msg = self.voting_key_validation_err_msg
-            style = 'error'
-        else:
-            if self.show_field_hinds:
-                if self.dmn_voting_key_type == InputKeyType.PRIVATE:
-                    if self.edtVotingKey.text().strip() == self.voting_pkey_generated:
-                        msg = 'This is an automatically generated private key for voting. You can enter your own or ' \
-                              'generate a new one by pressing the button on the right.'
-                    elif not self.edtVotingKey.text().strip():
-                        msg = 'Enter the private key for voting or generate a new one by clicking the button on ' \
-                              'the right.'
-                    style = 'info'
-                else:
-                    msg = 'You can use Dash address if the related private key is stored elsewhere, eg in ' \
-                          'the Dash Core wallet.<br><span class="warning">Note, that providing an address instead of ' \
-                          'a private key will prevent you from voting on proposals in this program.</span>'
-                    style = 'info'
+        if self.deterministic_mns_spork_active:
+            if show_invalid_data_msg and self.voting_key_validation_err_msg:
+                msg = self.voting_key_validation_err_msg
+                style = 'error'
+            else:
+                if self.show_field_hinds:
+                    if self.dmn_voting_key_type == InputKeyType.PRIVATE:
+                        if self.edtVotingKey.text().strip() == self.voting_pkey_generated:
+                            msg = 'This is an automatically generated private key for voting. You can enter your own or ' \
+                                  'generate a new one by pressing the button on the right.'
+                        elif not self.edtVotingKey.text().strip():
+                            msg = 'Enter the private key for voting or generate a new one by clicking the button on ' \
+                                  'the right.'
+                        style = 'info'
+                    else:
+                        msg = 'You can use Dash address if the related private key is stored elsewhere, eg in ' \
+                              'the Dash Core wallet.<br><span class="warning">Note, that providing an address instead of ' \
+                              'a private key will prevent you from voting on proposals in this program.</span>'
+                        style = 'info'
 
         self.set_ctrl_message(self.lblVotingMsg, msg, style)
 
@@ -871,23 +860,30 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             error_count += 1
 
         self.voting_key_validation_err_msg = ''
-        key = self.edtVotingKey.text().strip()
-        if not key:
-            self.voting_key_validation_err_msg = 'Voting key/address is required.'
-        else:
-            if self.dmn_voting_key_type == InputKeyType.PRIVATE:
-                self.dmn_voting_privkey = key
-                if not validate_wif_privkey(self.dmn_voting_privkey, self.app_config.dash_network):
-                    self.edtVotingKey.setFocus()
-                    self.voting_key_validation_err_msg = 'Invalid voting private key.'
-                else:
-                    self.dmn_voting_address = wif_privkey_to_address(self.dmn_voting_privkey, self.app_config.dash_network)
+        if self.deterministic_mns_spork_active:
+            key = self.edtVotingKey.text().strip()
+            if not key:
+                self.voting_key_validation_err_msg = 'Voting key/address is required.'
             else:
-                self.dmn_voting_address = key
-                self.dmn_voting_privkey = ''
-                if not validate_address(self.dmn_voting_address, self.app_config.dash_network):
-                    self.edtVotingKey.setFocus()
-                    self.voting_key_validation_err_msg = 'Invalid voting Dash address.'
+                if self.dmn_voting_key_type == InputKeyType.PRIVATE:
+                    self.dmn_voting_privkey = key
+                    if not validate_wif_privkey(self.dmn_voting_privkey, self.app_config.dash_network):
+                        self.edtVotingKey.setFocus()
+                        self.voting_key_validation_err_msg = 'Invalid voting private key.'
+                    else:
+                        self.dmn_voting_address = wif_privkey_to_address(self.dmn_voting_privkey, self.app_config.dash_network)
+                else:
+                    self.dmn_voting_address = key
+                    self.dmn_voting_privkey = ''
+                    if not validate_address(self.dmn_voting_address, self.app_config.dash_network):
+                        self.edtVotingKey.setFocus()
+                        self.voting_key_validation_err_msg = 'Invalid voting Dash address.'
+        else:
+            # spork 15 not active - use the owner private key for voting
+            self.dmn_voting_address = self.dmn_owner_address
+            self.dmn_voting_privkey = self.dmn_owner_privkey
+            self.dmn_voting_key_type = self.dmn_owner_key_type
+
         if self.voting_key_validation_err_msg:
             self.upd_voting_key_info(True)
             error_count += 1
