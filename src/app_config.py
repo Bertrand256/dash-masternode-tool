@@ -875,7 +875,6 @@ class AppConfig(object):
                     self.__spork15_active = (height >= spork_block)
                 else:
                     self.__spork15_active = False
-                self.__spork15_active = True # todo: testing
                 self.non_deterministic_mns_status.set_value(not self.__spork15_active, AppFeatueStatus.PRIORITY_NETWORK)
             except Exception as e:
                 logging.error(str(e))
