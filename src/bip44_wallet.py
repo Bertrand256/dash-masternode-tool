@@ -19,6 +19,7 @@ from dashd_intf import DashdInterface
 from hw_common import HwSessionInfo
 from db_intf import DBCache
 from thread_fun_dlg import CtrlObject
+from thread_utils import EnhRLock
 from wallet_common import Bip44AccountType, Bip44AddressType, UtxoType, TxOutputType, xpub_to_hash, Bip44Entry, \
     address_to_hash, TxType
 from wnd_utils import WndUtils
@@ -83,6 +84,17 @@ class Bip44Wallet(QObject):
         self.utxos_added: Dict[int, int] = {}  # {'tx_output.id': 'tx_output.id'}
         self.utxos_removed: Dict[int, int] = {}  # {'tx_output.id': 'tx_output.id'}
 
+        # individual addresses subscribed for balance change notifications
+        # these are all addresses configured in the masternode view, which may but don't have to belong
+        # to the bip44 tree displayed in the wallet view
+        self.__chbalance_subscribed_addrs: Dict[int, int] = {}
+
+        # individual addresses subscribed for transactions activity
+        # these are all addresses selected by the user in the masternodes view
+        self.__txes_subscribed_addrs: Dict[int, int] = {}
+
+        self.subscribed_addrs_lock = EnhRLock()
+
         self.purge_unconf_txs_called = False
         self.external_call_level = 0
 
@@ -109,9 +121,10 @@ class Bip44Wallet(QObject):
             self.on_account_address_added_callback(account, address)
 
     def signal_address_data_changed(self, account: Bip44AccountType, address: Bip44AddressType):
-        if self.on_address_data_changed_callback and account and self.__tree_id == account.tree_id and \
-                self.__tree_id is not None:
-            self.on_address_data_changed_callback(account, address)
+        if self.on_address_data_changed_callback:
+            if (account and self.__tree_id == account.tree_id and self.__tree_id is not None) or \
+                    address.id in self.__chbalance_subscribed_addrs:
+                self.on_address_data_changed_callback(account, address)
 
     def signal_address_loaded(self, address: Bip44AddressType):
         if self.on_address_loaded_callback:
@@ -132,6 +145,7 @@ class Bip44Wallet(QObject):
         self.addresses_by_id.clear()
         self.addresses_by_address.clear()
         self.utxos_by_id.clear()
+        self.__txes_subscribed_addrs.clear()
         self.reset_tx_diffs()
 
     def get_hd_identity_info(self) -> Tuple[int, str]:
@@ -176,6 +190,20 @@ class Bip44Wallet(QObject):
 
     def get_block_height_nofetch(self):
         return self.cur_block_height
+
+    def subscribe_addresses_for_chbalance(self, addr_ids: List[int], reset=True):
+        with self.subscribed_addrs_lock:
+            if reset:
+                self.__chbalance_subscribed_addrs.clear()
+            for id in addr_ids:
+                self.__chbalance_subscribed_addrs[id] = id
+
+    def subscribe_addresses_for_txes(self, acc_ids: List[int], reset=True):
+        with self.subscribed_addrs_lock:
+            if reset:
+                self.__txes_subscribed_addrs.clear()
+            for id in acc_ids:
+                self.__txes_subscribed_addrs[id] = id
 
     def get_address_id(self, address: str, db_cursor):
         db_cursor.execute('select id from address where address=?', (address,))
@@ -573,6 +601,7 @@ class Bip44Wallet(QObject):
             addr_dict = {}
             for a in addr_info_list:
                 addr_dict[a.address] = a
+
             if len(addr_dict) != len(addr_info_list):
                 addr_info_list = list(addr_dict.values())
 
@@ -1111,11 +1140,11 @@ class Bip44Wallet(QObject):
 
                 db_cursor.execute(
                     "select id, account_id, real_received, "
-                    "real_spent + real_received real_balance from (select a.id id, ca.id change_id, aa.id account_id, "
+                    "real_spent + real_received real_balance from (select a.id id, aa.id account_id, "
                     "a.received, (select ifnull(sum(satoshis), 0) from tx_output o where o.address_id = a.id) "
                     "real_received, a.balance, (select ifnull(sum(satoshis), 0) "
                     "from tx_input o where o.src_address_id = a.id) real_spent from address a "
-                    "join address ca on ca.id = a.parent_id join address aa on aa.id = ca.parent_id "
+                    "left join address ca on ca.id = a.parent_id left join address aa on aa.id = ca.parent_id "
                     "where a.id in (select id from temp_ids)) "
                     "where received <> real_received or balance <> real_received + real_spent")
             elif account:
@@ -1275,8 +1304,7 @@ class Bip44Wallet(QObject):
             in_part = ','.join(['?'] * len(address_ids))
             sql_text = "select o.id, tx.block_height, tx.coinbase,tx.block_timestamp, tx.tx_hash, o.output_index, " \
                        "o.satoshis, o.address_id from tx_output o join address a" \
-                       " on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca" \
-                       " on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null " \
+                       " on a.id=o.address_id join tx on tx.id=o.tx_id where (spent_tx_id is null " \
                        " or spent_input_index is null) and a.id in (" + in_part + ')'
 
             if only_new:

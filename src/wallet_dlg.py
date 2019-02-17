@@ -965,7 +965,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 else:
                     return False
             else:
-                connect()
+                return connect()
         else:
             return True
 
@@ -982,7 +982,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
             address_ids = []
             for mni in self.selected_mns:
-                if mni.address:
+                if mni.address and not mni.address.id in address_ids:
                     address_ids.append(mni.address.id)
             list_utxos = self.bip44_wallet.list_utxos_for_addresses(address_ids)
         else:
@@ -1002,7 +1002,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
             address_ids = []
             for mni in self.selected_mns:
-                if mni.address:
+                if mni.address and not mni.address.id in address_ids:
                     address_ids.append(mni.address.id)
             list_txs = self.bip44_wallet.list_txs(None, address_ids, only_new)
         else:
@@ -1041,6 +1041,14 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 if not hw_error:
                     if self.finishing:
                         break
+
+                    if last_addr_selection_hash_for_txes != self.cur_utxo_src_hash:
+                        if self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
+                            addr_ids = []
+                            for a in self.selected_mns:
+                                if a.address.id not in addr_ids:
+                                    addr_ids.append(a.address.id)
+                            self.bip44_wallet.subscribe_addresses_for_txes(addr_ids, True)
 
                     if self.detailsTab.currentIndex() == self.detailsTab.indexOf(self.tabSend):
                         # current tab: the list of utxos
@@ -1211,7 +1219,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                     removed_utxos = [x for x in self.bip44_wallet.utxos_removed]
 
-                    #todo: temporarity turned off
+                    #todo: temporarily turned off
                     # if new_utxos or removed_utxos:
                     #     with self.utxo_table_model:
                     #         WndUtils.call_in_main_thread(self.utxo_table_model.update_utxos, new_utxos, removed_utxos)
@@ -1274,9 +1282,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 fun()
 
     def on_bip44_account_address_changed(self, account: Bip44AccountType, address: Bip44AddressType):
-        if not self.finishing and account:
+        if not self.finishing:
             def fun():
-                self.account_list_model.address_data_changed(account, address)
+                if account:
+                    self.account_list_model.address_data_changed(account, address)
                 self.mn_model.address_data_changed(address)
 
             if threading.current_thread() != threading.main_thread():

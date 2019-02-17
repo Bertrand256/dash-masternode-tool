@@ -41,6 +41,8 @@ class MnAddressTableModel(ExtSortFilterTableModel):
         ExtSortFilterTableModel.__init__(self, parent, [
             TableModelColumn('description', 'Description', True, 100)
         ], False, False)
+
+        addr_ids = []
         self.mn_items: List[MnAddressItem] = []
         for mn in masternode_list:
             mni = MnAddressItem()
@@ -51,8 +53,13 @@ class MnAddressTableModel(ExtSortFilterTableModel):
                 address_loc.copy_from(a)
                 if not address_loc.bip32_path:
                     address_loc.bip32_path = mni.masternode.collateralBip32Path
+                    a.bip32_path = mni.masternode.collateralBip32Path
                 mni.address = address_loc
                 self.mn_items.append(mni)
+                if mni.masternode.collateralAddress not in addr_ids:
+                    addr_ids.append(mni.address.id)
+        if addr_ids:
+            bip44_wallet.subscribe_addresses_for_chbalance(addr_ids, True)
 
     def flags(self, index):
         return Qt.ItemIsEnabled | Qt.ItemIsSelectable
@@ -93,6 +100,12 @@ class MnAddressTableModel(ExtSortFilterTableModel):
         for idx, mni in enumerate(self.mn_items):
             if mni.address.id == address.id:
                 return idx
+        return None
+
+    def get_mn_by_addr(self, address: Bip44AddressType) -> Optional[MasternodeConfig]:
+        for idx, mni in enumerate(self.mn_items):
+            if mni.address.id == address.id:
+                return mni.masternode
         return None
 
     def address_data_changed(self, address: Bip44AddressType):
