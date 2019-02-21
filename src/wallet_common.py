@@ -293,6 +293,10 @@ class Bip44AddressType(AttrsProtected, Bip44Entry):
         self.db_fields.extend(('balance', 'received'))
         self.bip44_account = None
         self.__is_change = False
+
+        # timestamp of the last db-network balance consictency check
+        self.last_balance_verify_ts = 0
+
         self.set_attr_protection()
 
     def set_bip32_path(self, path):

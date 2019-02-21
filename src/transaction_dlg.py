@@ -256,7 +256,9 @@ td.lbl{{text-align: right;vertical-align: top}} p.lbl{{margin: 0 5px 0 0; font-w
     def on_btn_broadcast_clicked(self):
         try:
             log.debug('Broadcasting raw transaction: ' + self.raw_transaction)
+            #todo: test
             txid = self.dashd_intf.sendrawtransaction(self.raw_transaction, self.use_instant_send)
+            # txid = self.tx_id
             if txid != self.tx_id:
                 log.warning('TXID returned by sendrawtransaction differs from the original txid')
                 self.tx_id = txid

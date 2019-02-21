@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException, EncodeDecimal
 from paramiko import AuthenticationException, PasswordRequiredException, SSHException
 from paramiko.ssh_exception import NoValidConnectionsError
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Callable, Optional
 import app_cache
 import app_defs
 import app_utils
@@ -469,9 +469,12 @@ class Masternode(AttrsProtected):
         super().__setattr__(name, value)
 
 
-def json_cache_wrapper(func, intf, cache_file_ident, skip_cache=False):
+def json_cache_wrapper(func, intf, cache_file_ident, skip_cache=False,
+                       accept_cache_data_fun: Optional[Callable[[Dict], bool]]=None):
     """
     Wrapper for saving/restoring rpc-call results inside cache files.
+    :param accept_cache_data_fun: reference to an external function verifying whether data read from cache
+        can be accepted; if not, a normal call to an rpc node will be executed
     """
     def json_call_wrapper(*args, **kwargs):
         nonlocal skip_cache, cache_file_ident, intf, func
@@ -486,7 +489,9 @@ def json_cache_wrapper(func, intf, cache_file_ident, skip_cache=False):
                 with open(cache_file) as fp:
                     j = json.load(fp, parse_float=decimal.Decimal)
                 log.debug('Loaded data from existing cache file: ' + cache_file)
-                return j
+
+                if accept_cache_data_fun is None or accept_cache_data_fun(j):
+                    return j
             except:
                 pass
 
@@ -1115,14 +1120,24 @@ class DashdInterface(WndUtils):
 
     @control_rpc_call
     def getrawtransaction(self, txid, verbose, skip_cache=False):
+
+        def check_if_tx_confirmed(tx_json):
+            # cached transaction will not be accepted if the transaction stored in cache file was not confirmed
+            if tx_json.get('confirmations'):
+                return True
+            return False
+
         if self.open():
             if TX_SEND_SIMULATION_MODE:
                 tx = self.test_txs_by_txid.get(txid)
                 if tx:
                     return tx
 
-            return json_cache_wrapper(self.proxy.getrawtransaction, self, 'tx-' + str(verbose) + '-' + txid,
-                                      skip_cache=skip_cache)(txid, verbose)
+            tx_json = json_cache_wrapper(self.proxy.getrawtransaction, self, 'tx-' + str(verbose) + '-' + txid,
+                                         skip_cache=skip_cache, accept_cache_data_fun=check_if_tx_confirmed)\
+                (txid, verbose)
+
+            return tx_json
         else:
             raise Exception('Not connected')
 

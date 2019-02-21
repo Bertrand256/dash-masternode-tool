@@ -409,7 +409,7 @@ class UtxoTableModel(ExtSortFilterTableModel):
                                 if utxo.masternode:
                                     return utxo.masternode.name
                             elif field_name == 'confirmations':
-                                if utxo.block_height == UNCONFIRMED_TX_BLOCK_HEIGHT:
+                                if utxo.block_height >= UNCONFIRMED_TX_BLOCK_HEIGHT:
                                     return 'Unconfirmed'
                                 else:
                                     return app_utils.to_string(utxo.__getattribute__(field_name))
@@ -429,16 +429,13 @@ class UtxoTableModel(ExtSortFilterTableModel):
                                 return app_utils.to_string(utxo.__getattribute__(field_name))
                     elif role == Qt.ForegroundRole:
                         if utxo.is_collateral:
-                            return QColor(Qt.red)
-                        elif utxo.coinbase_locked:
-                            if col_idx == 1:
-                                return QColor('red')
-                            else:
-                                return QColor('gray')
+                            return QColor(Qt.white)
+                        elif utxo.coinbase_locked or utxo.block_height >= UNCONFIRMED_TX_BLOCK_HEIGHT:
+                            return QColor('red')
 
                     elif role == Qt.BackgroundRole:
-                        if utxo.coinbase_locked:
-                            return QColor('lightgray')
+                        if utxo.is_collateral:
+                            return QColor(Qt.red)
 
                     elif role == Qt.TextAlignmentRole:
                         col = self.col_by_index(col_idx)
@@ -466,7 +463,7 @@ class UtxoTableModel(ExtSortFilterTableModel):
         self.utxos.clear()
         self.utxo_by_id.clear()
 
-    def update_utxos(self, utxos_to_add: List[UtxoType], utxos_to_delete: List[Tuple[int, int]]):
+    def update_utxos(self, utxos_to_add: List[UtxoType], utxos_to_update: List[UtxoType], utxos_to_delete: List[Tuple[int, int]]):
         if utxos_to_delete:
             row_indexes_to_remove = []
             for utxo_id in utxos_to_delete:
@@ -487,14 +484,31 @@ class UtxoTableModel(ExtSortFilterTableModel):
         if utxos_to_add:
             # in the model, the rows are sorted by the number of confirmations in the descending order, so put
             # the new ones in the right place
-            utxos_to_add.sort(key=lambda x: x.block_height, reverse=True)
+
+            # filter out the already existing utxos
+            utxos_to_add_verified = []
+            for utxo in utxos_to_add:
+                if utxo.id not in self.utxo_by_id:
+                    utxos_to_add_verified.append(utxo)
+
+            utxos_to_add_verified.sort(key=lambda x: x.block_height, reverse=True)
             row_idx = 0
-            self.beginInsertRows(QModelIndex(), row_idx, row_idx + len(utxos_to_add) - 1)
+            self.beginInsertRows(QModelIndex(), row_idx, row_idx + len(utxos_to_add_verified) - 1)
             try:
-                for index, utxo in enumerate(utxos_to_add):
-                    self.add_utxo(utxo, index)
+                for index, utxo in enumerate(utxos_to_add_verified):
+                    if utxo.id not in self.utxo_by_id:
+                        self.add_utxo(utxo, index)
             finally:
                 self.endInsertRows()
+
+        if utxos_to_update:
+            for utxo_new in utxos_to_update:
+                utxo = self.utxo_by_id.get(utxo_new.id)
+                if utxo:
+                    utxo.block_height = utxo_new.block_height  # block_height is the only field that can be updated
+                    utxo_index = self.utxos.index(utxo)
+                    ui_index = self.index(utxo_index, 0)
+                    self.dataChanged.emit(ui_index, ui_index)
 
     def lessThan(self, col_index, left_row_index, right_row_index):
         col = self.col_by_index(col_index)
@@ -707,6 +721,8 @@ class TransactionTableModel(ExtSortFilterTableModel):
                 right_tx = self.txes[right_row_index]
                 if col_name == 'block_time_str':
                     col_name = 'block_timestamp'
+                    left_value = left_tx.__getattribute__(col_name)
+                    right_value = right_tx.__getattribute__(col_name)
                 elif col_name in ('senders', 'recipient'):
                     return False
                 elif col_name == 'confirmations':

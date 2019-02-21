@@ -410,7 +410,7 @@ def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool =
                     # ledger requires bip32 path argument as a string
                     bip32_path = bip32_path_n_to_string(bip32_path)
 
-                adr_pubkey = ledger.get_address_and_pubkey(client, bip32_path)
+                adr_pubkey = ledger.get_address_and_pubkey(client, bip32_path, show_display)
                 return adr_pubkey.get('address')
             else:
                 raise Exception('Unknown hardware wallet type: ' + hw_session.app_config.hw_type)

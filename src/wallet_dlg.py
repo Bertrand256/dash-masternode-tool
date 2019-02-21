@@ -20,7 +20,8 @@ from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSlot, QStringLis
     QItemSelection, QSortFilterProxyModel, QAbstractItemModel, QModelIndex, QObject, QAbstractListModel, QPoint, QRect
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox, QSplitter, QVBoxLayout, QPushButton, \
-    QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout, QAction, QAbstractItemView, QStatusBar, QCheckBox
+    QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout, QAction, QAbstractItemView, QStatusBar, QCheckBox, \
+    QApplication
 from cryptography.fernet import Fernet
 import app_cache
 import app_utils
@@ -258,6 +259,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.setIcon(self.btnTxesTabFilter, 'filter@16px.png')
 
         # context menu actions:
+        self.act_copy_address = QAction('Copy address', self)
+        self.act_copy_address.triggered.connect(self.on_act_copy_address_triggered)
+        self.accountsListView.addAction(self.act_copy_address)
         self.act_show_address_on_hw = QAction('Show address on hardware wallet', self)
         self.act_show_address_on_hw.triggered.connect(self.on_show_address_on_hw_triggered)
         self.accountsListView.addAction(self.act_show_address_on_hw)
@@ -680,12 +684,16 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.update_details_tab()
 
     def update_context_actions(self):
-        visible = False
+
         if self.hw_selected_address_id is not None:
-            if self.hw_session.hw_type in (HWType.trezor, HWType.keepkey):
-                visible = True
-        # self.act_delete_address_data.setVisible(visible)
+            visible = True
+        else:
+            visible = False
+
         self.act_show_address_on_hw.setVisible(visible)
+        self.act_copy_address.setVisible(visible)
+
+        # self.act_delete_address_data.setVisible(visible)
         # if self.hw_selected_account_id is not None:
         #     self.act_delete_account_data.setVisible(True)
         # else:
@@ -705,6 +713,19 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 addr = a.address_by_id(self.hw_selected_address_id)
                 if addr:
                     self.show_address_on_hw(addr)
+
+    def on_act_copy_address_triggered(self):
+        addr = None
+        if self.hw_selected_address_id is not None:
+            a = self.account_list_model.account_by_id(self.hw_selected_account_id)
+            if a:
+                addr = a.address_by_id(self.hw_selected_address_id)
+                if addr:
+                    clipboard = QApplication.clipboard()
+                    clipboard.setText(addr.address)
+        if not addr:
+            WndUtils.warnMsg('Couldn\'t copy the selected address.')
+
 
     def on_delete_account_triggered(self):
         if self.hw_selected_account_id is not None:
@@ -826,12 +847,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         else:
             img_size_str = ''
 
+        self.btnFetchTransactions.setVisible(self.hw_connected() or self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST)
         if not self.hw_connected():
             t = f'<table><tr><td>Hardware wallet <span>not connected</span></td>' \
                 f'<td> (<a href="hw-connect">connect</a>)</td></tr></table>'
             self.btnSetHwIdentityLabel.hide()
             self.btnPurgeHwIdentity.hide()
-            self.btnFetchTransactions.hide()
         else:
             ht = HWType.get_desc(self.hw_session.hw_type)
             id, label = self.bip44_wallet.get_hd_identity_info()
@@ -843,7 +864,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 f'{label}</tr></table>'
             self.btnSetHwIdentityLabel.show()
             self.btnPurgeHwIdentity.show()
-            self.btnFetchTransactions.show()
         self.lblHW.setText(t)
 
     def on_lblHW_linkHovered(self, link):
@@ -1049,6 +1069,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                 if a.address.id not in addr_ids:
                                     addr_ids.append(a.address.id)
                             self.bip44_wallet.subscribe_addresses_for_txes(addr_ids, True)
+                        elif self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+                            self.bip44_wallet.subscribe_accounts_for_txes([self.hw_selected_account_id], True)
 
                     if self.detailsTab.currentIndex() == self.detailsTab.indexOf(self.tabSend):
                         # current tab: the list of utxos
@@ -1213,17 +1235,19 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 if list_utxos:
                     self.utxo_table_model.set_block_height(self.bip44_wallet.get_block_height())
 
-                    new_utxos = []
-                    for utxo in list_utxos:
-                        new_utxos.append(utxo)
+                    # new_utxos = []
+                    # for utxo in list_utxos:
+                    #     new_utxos.append(utxo)
 
-                    removed_utxos = [x for x in self.bip44_wallet.utxos_removed]
+                    added_utxos = []
+                    removed_utxos = []
+                    modified_utxos = []
+                    self.bip44_wallet.get_utxos_diff(added_utxos, modified_utxos, removed_utxos)
 
-                    #todo: temporarily turned off
-                    # if new_utxos or removed_utxos:
-                    #     with self.utxo_table_model:
-                    #         WndUtils.call_in_main_thread(self.utxo_table_model.update_utxos, new_utxos, removed_utxos)
-                    #     pass
+                    if added_utxos or modified_utxos or removed_utxos:
+                        with self.utxo_table_model:
+                            WndUtils.call_in_main_thread(self.utxo_table_model.update_utxos, added_utxos,
+                                                         modified_utxos, removed_utxos)
 
         except BreakFetchTransactionsException:
             raise
