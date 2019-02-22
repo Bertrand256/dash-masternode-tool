@@ -255,14 +255,23 @@ class AccountListModel(ExtSortFilterTableModel):
             else:
                 if source_row < len(self.accounts):
                     acc = self.accounts[source_row]
-                    if (not acc.received and acc.status != 1 and source_row != 0) or acc.status == 2:
-                        will_show = False
+                    will_show = self.is_account_visible(acc)
                 else:
                     will_show = False
         except Exception as e:
             log.exception('Exception occurred while filtering account/address')
             raise
         return will_show
+
+    def is_account_visible(self, account: Bip44AccountType):
+        if account.status_force_hide:
+            return False
+        if account.status_force_show or account.address_index == 0x80000000:
+            return True
+        if account.received > 0:
+            return True
+        else:
+            return False
 
     def increase_account_fresh_addr_count(self, acc: Bip44AccountType, increase_count=1):
         acc.view_fresh_addresses_count += increase_count
@@ -278,6 +287,12 @@ class AccountListModel(ExtSortFilterTableModel):
         for idx, a in enumerate(self.accounts):
             if a.id == id:
                 return idx
+        return None
+
+    def account_by_bip44_index(self, bip44_index: int) -> Optional[Bip44AccountType]:
+        for a in self.accounts:
+            if a.address_index == bip44_index:
+                return a
         return None
 
     def add_account(self, account: Bip44AccountType):
@@ -345,6 +360,16 @@ class AccountListModel(ExtSortFilterTableModel):
         log.debug('Clearing accounts')
         self.__data_modified = True
         self.accounts.clear()
+
+    def get_first_unused_bip44_account_index(self):
+        """ Get first unused not yet visible account index. """
+        cur_index = 0x80000000
+        for a in self.accounts:
+            if a.address_index >= cur_index and not self.is_account_visible(a) and a.received == 0:
+                return a.address_index
+            else:
+                cur_index = a.address_index
+        return cur_index + 1
 
 
 class UtxoTableModel(ExtSortFilterTableModel):

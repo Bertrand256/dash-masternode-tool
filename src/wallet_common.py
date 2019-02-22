@@ -405,6 +405,14 @@ class Bip44AccountType(AttrsProtected, Bip44Entry):
             else:
                 return f'Account *' + str(self.address_index)
 
+    @property
+    def status_force_show(self):
+        return True if self.status == 1 else False
+
+    @property
+    def status_force_hide(self):
+        return True if self.status == 2 else False
+
     def copy_from(self, src_entry: 'Bip44AccountType'):
         Bip44Entry.copy_from(self, src_entry)
         self.balance = src_entry.balance
@@ -426,10 +434,11 @@ class Bip44AccountType(AttrsProtected, Bip44Entry):
         :return: True if any of the attributes have been updated.
         """
         if src_account.balance != self.balance or src_account.received != self.received or \
-            src_account.label != self.label:
+            src_account.label != self.label or src_account.status != self.status:
             self.balance = src_account.balance
             self.received = src_account.received
             self.label = src_account.label
+            self.status = src_account.status
             return True
         return False
 

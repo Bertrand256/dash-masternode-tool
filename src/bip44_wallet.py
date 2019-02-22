@@ -213,6 +213,7 @@ class Bip44Wallet(QObject):
         with self.subscribed_addrs_lock:
             if reset:
                 self.__txes_subscribed_addrs.clear()
+                self.__txes_subscribed_accounts.clear()
             for id in addrs_ids:
                 if id:
                     self.__txes_subscribed_addrs[id] = id
@@ -221,6 +222,7 @@ class Bip44Wallet(QObject):
         with self.subscribed_addrs_lock:
             if reset:
                 self.__txes_subscribed_accounts.clear()
+                self.__txes_subscribed_addrs.clear()
             for id in acc_ids:
                 if id:
                     self.__txes_subscribed_accounts[id] = id
@@ -1077,42 +1079,56 @@ class Bip44Wallet(QObject):
         self.__cur_tx_fetch_prioriry = new_priority
 
     def fetch_all_accounts_txs(self, check_break_process_fun: Callable, priority: int = DEFAULT_TX_FETCH_PRIORITY):
-        log.debug('Starting fetching transactions for all accounts.')
 
+        def scan_account_txs(account, db_cursor):
+            for change in (0, 1):
+                if check_break_process_fun and check_break_process_fun():
+                    break
+
+                change_level_node = account.get_child_entry(change)
+                change_level_node.read_from_db(db_cursor, create=True)
+                change_level_node.evaluate_address_if_null(db_cursor, self.dash_network)
+                self._fetch_child_addrs_txs(change_level_node, account, check_break_process_fun)
+            self._update_addr_balances(account)
+            account.read_from_db(db_cursor)
+            account.evaluate_address_if_null(db_cursor, self.dash_network)
+            self._process_addresses_created(db_cursor)
+
+        log.debug('Starting fetching transactions for all accounts.')
         self._wait_for_tx_fetch_terminate(priority)
         try:
             self.validate_hd_tree()
             self.addr_ids_created.clear()
             self.increase_ext_call_level()
+            db_cursor = self.db_intf.get_cursor()
+
             try:
+                account_ids_scanned = []
+
                 for idx in range(MAX_BIP44_ACCOUNTS):
                     if check_break_process_fun and check_break_process_fun():
                         break
 
-                    db_cursor = self.db_intf.get_cursor()
-                    try:
-                        account_address_index = 0x80000000 + idx
-                        account = self._get_account_by_index(account_address_index, db_cursor)
-                        for change in (0, 1):
-                            if check_break_process_fun and check_break_process_fun():
-                                break
+                    account_address_index = 0x80000000 + idx
+                    account = self._get_account_by_index(account_address_index, db_cursor)
+                    if account.status != 2:
+                        scan_account_txs(account, db_cursor)
+                        account_ids_scanned.append(account.id)
+                    if not account.received:
+                        break
 
-                            change_level_node = account.get_child_entry(change)
-                            change_level_node.read_from_db(db_cursor, create=True)
-                            change_level_node.evaluate_address_if_null(db_cursor, self.dash_network)
-                            self._fetch_child_addrs_txs(change_level_node, account, check_break_process_fun)
-                        self._update_addr_balances(account)
-                        account.read_from_db(db_cursor)
-                        account.evaluate_address_if_null(db_cursor, self.dash_network)
-                        self._process_addresses_created(db_cursor)
-                        if not account.received:
-                            break
-                    finally:
-                        if db_cursor.connection.total_changes > 0:
-                            self.db_intf.commit()
-                        self.db_intf.release_cursor()
+                for acc_id in self.account_by_id:
+                    account = self.account_by_id[acc_id]
+                    if account.id not in account_ids_scanned and account.status != 2:
+                        scan_account_txs(account, db_cursor)
+                        account_ids_scanned.append(account.id)
+
             finally:
+                if db_cursor.connection.total_changes > 0:
+                    self.db_intf.commit()
+                self.db_intf.release_cursor()
                 self.decrease_ext_call_level()
+
         finally:
             self.__cur_tx_fetch_prioriry = None
             self.__tx_fetch_end_event.set()
@@ -1611,6 +1627,46 @@ class Bip44Wallet(QObject):
         diff = time.time() - tm_begin
         log.debug(f'Accounts read time: {diff}s')
 
+    def force_show_account(self, account_index: int, check_break_process_fun: Optional[Callable],
+                           priority: int = DEFAULT_TX_FETCH_PRIORITY) -> Bip44AccountType:
+        """ Show account that hasn't been revealed during BIP44 account discovery process: it's an empty account or
+        there is a gap between it and the last used account (having any tx history).
+        """
+
+        self._wait_for_tx_fetch_terminate(priority)
+        try:
+            self.validate_hd_tree()
+            self.addr_ids_created.clear()
+            self.increase_ext_call_level()
+            try:
+                db_cursor = self.db_intf.get_cursor()
+                try:
+                    account_address_index = 0x80000000 + account_index
+                    account = self._get_account_by_index(account_address_index, db_cursor)
+                    for change in (0, 1):
+                        if check_break_process_fun and check_break_process_fun():
+                            break
+
+                        change_level_node = account.get_child_entry(change)
+                        change_level_node.read_from_db(db_cursor, create=True)
+                        change_level_node.evaluate_address_if_null(db_cursor, self.dash_network)
+                        # self._fetch_child_addrs_txs(change_level_node, account, check_break_process_fun)
+                    # self._update_addr_balances(account)
+                    account.read_from_db(db_cursor)
+                    account.evaluate_address_if_null(db_cursor, self.dash_network)
+                    self.set_account_status(account, 1)
+                    self._process_addresses_created(db_cursor)
+                finally:
+                    if db_cursor.connection.total_changes > 0:
+                        self.db_intf.commit()
+                    self.db_intf.release_cursor()
+            finally:
+                self.decrease_ext_call_level()
+        finally:
+            self.__cur_tx_fetch_prioriry = None
+            self.__tx_fetch_end_event.set()
+        return account
+
     def register_spending_transaction(self, inputs: List[UtxoType], outputs: List[TxOutputType], tx_json: Dict):
         """
         Register outgoing transaction in the database cache. It will be used util it appears on the blockchain.
@@ -1727,6 +1783,27 @@ class Bip44Wallet(QObject):
             if acc_loc:
                 acc_loc.label = label
             self.signal_account_data_changed(entry)
+
+    def set_account_status(self, account: Bip44AccountType, status: int):
+        if status not in (1, 2):
+            raise Exception('Invalid status: ' + str(status))
+
+        db_cursor = self.db_intf.get_cursor()
+        try:
+            account.status = status
+            db_cursor.execute('update address set status=? where id=?', (status, account.id))
+
+            # update status in the Bip44AccountType object maintained locally (its reference doesn't have to be the
+            # same as the object ref passed as an argument to this method
+            acc_loc = self.account_by_id.get(account.id)
+            if acc_loc:
+                acc_loc.status = status
+        finally:
+            if db_cursor.connection.total_changes > 0:
+                self.db_intf.commit()
+            self.db_intf.release_cursor()
+
+        self.signal_account_data_changed(account)
 
     def set_label_for_transaction(self, tx: TxType, label: str):
         db_cursor = self.db_intf.get_cursor()

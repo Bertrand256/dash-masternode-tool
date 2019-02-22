@@ -9,6 +9,8 @@ from functools import partial
 from typing import Optional, Tuple, List, ByteString, Callable, Dict
 import sys
 
+from PyQt5 import QtWidgets
+
 import dash_utils
 from dash_utils import bip32_path_n_to_string
 from hw_common import HardwareWalletPinException, HwSessionInfo, get_hw_type, HardwareWalletCancelException
@@ -126,6 +128,22 @@ def get_device_list(hw_type: HWType, return_clients: bool = True, allow_bootload
         raise Exception('Invalid HW type: ' + str(hw_type))
 
 
+def cancel_hw_thread_dialog(hw_session: HwSessionInfo):
+    try:
+        if hw_session.app_config.hw_type == HWType.trezor:
+            if hw_session.hw_client:
+                hw_session.hw_client.cancel()
+        elif hw_session.app_config.hw_type == HWType.keepkey:
+            if hw_session.hw_client:
+                hw_session.hw_client.cancel()
+        elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
+            pass
+        return True
+    except Exception as e:
+        logging.warning('Error when canceling hw session. Details: %s', str(e))
+        return True
+
+
 def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: Optional[str] = 'NFC',
                passphrase_encoding: Optional[str] = None):
     """
@@ -148,9 +166,13 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
         # show message for Trezor T device while waiting for the user to choose the passphrase input method
         pub = WndUtils.run_thread_dialog(call_get_public_node, (get_public_node_fun, path_n), title='Confirm',
                                          text='<b>Complete the action on your hardware wallet device</b>',
+                                         force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session),
                                          show_window_delay_ms=1000)
 
-        hw_session.set_base_info(path, pub)
+        if pub:
+            hw_session.set_base_info(path, pub)
+        else:
+            raise Exception('Couldn\'t read data from the hardware wallet.')
 
     control_trezor_keepkey_libs(hw_type)
     if hw_type == HWType.trezor:
@@ -260,7 +282,7 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType],
     :param rawtransactions: dict mapping txid to rawtransaction
     :return: tuple (serialized tx, total transaction amount in satoshis)
     """
-    def prepare(ctrl):
+    def sign(ctrl):
         ctrl.dlg_config_fun(dlg_title="Confirm transaction signing.", show_progress_bar=False)
         ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet<br>'
                              'and wait for the transaction to be signed...</b>')
@@ -285,7 +307,8 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType],
 
     # execute the 'prepare' function, but due to the fact that the call blocks the UI until the user clicks the HW
     # button, it's done inside a thread within a dialog that shows an appropriate message to the user
-    sig = WndUtils.run_thread_dialog(prepare, (), True)
+    sig = WndUtils.run_thread_dialog(sign, (), True,
+                                     force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session))
     return sig
 
 
@@ -322,7 +345,8 @@ def hw_sign_message(hw_session: HwSessionInfo, bip32path, message, display_label
 
     # execute the 'sign' function, but due to the fact that the call blocks the UI until the user clicks the HW
     # button, it's done inside a thread within a dialog that shows an appropriate message to the user
-    sig = WndUtils.run_thread_dialog(sign, (display_label,), True)
+    sig = WndUtils.run_thread_dialog(sign, (display_label,), True,
+                                     force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session))
     return sig
 
 
@@ -393,7 +417,8 @@ def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool =
                 try:
                     if isinstance(bip32_path, str):
                         bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
-                    return btc.get_address(client, hw_session.app_config.hw_coin_name, bip32_path, show_display)
+                    ret = btc.get_address(client, hw_session.app_config.hw_coin_name, bip32_path, show_display)
+                    return ret
                 except exceptions.Cancelled:
                     raise HardwareWalletCancelException('Cancelled')
 
@@ -419,7 +444,7 @@ def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool =
 
     if show_display:
         return WndUtils.run_thread_dialog(_get_address, (hw_session, bip32_path, show_display, message_to_display),
-                                          True)
+                                          True, force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session))
     else:
         return _get_address(None, hw_session, bip32_path, show_display, message_to_display)
 
@@ -536,7 +561,8 @@ def wipe_device(hw_type: HWType, hw_device_id: Optional[str], parent_window = No
             raise Exception('Invalid HW type: ' + str(hw_type))
 
     # execute the 'wipe' inside a thread to avoid blocking UI
-    return WndUtils.run_thread_dialog(wipe, (), True, center_by_window=parent_window)
+    return WndUtils.run_thread_dialog(wipe, (), True, center_by_window=parent_window,
+                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session))
 
 
 def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemonic_words: str,
@@ -733,7 +759,9 @@ def hw_encrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
     if len(value) != 32:
         raise ValueError("Invalid password length (<> 32).")
 
-    return WndUtils.run_thread_dialog(encrypt, (hw_session, bip32_path_n, label, value), True, show_window_delay_ms=200)
+    return WndUtils.run_thread_dialog(encrypt, (hw_session, bip32_path_n, label, value), True,
+                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session),
+                                      show_window_delay_ms=200)
 
 
 @control_hw_call
@@ -780,6 +808,7 @@ def hw_decrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
     if len(value) != 32:
         raise ValueError("Invalid password length (<> 32).")
 
-    return WndUtils.run_thread_dialog(decrypt, (hw_session, bip32_path_n, label, value), True)
+    return WndUtils.run_thread_dialog(decrypt, (hw_session, bip32_path_n, label, value), True,
+                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session))
 
 

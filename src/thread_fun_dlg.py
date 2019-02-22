@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-04
+import logging
 import time
-from collections import Callable
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt, QEventLoop, QPoint
 from PyQt5.QtCore import QThread
 from PyQt5.QtWidgets import QDialog, QLabel
-from typing import Optional
+from typing import Optional, Callable
 
 from ui import ui_thread_fun_dlg
 
@@ -54,7 +54,9 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
     dlg_config_signal = QtCore.pyqtSignal(object, object, object, object)
 
     def __init__(self, worker_fun, worker_args, close_after_finish=True, buttons=None, title='', text=None,
-                 center_by_window=None, show_window_delay_ms: Optional[int] = 0):
+                 center_by_window=None,
+                 force_close_dlg_callback: Optional[Callable[[None], bool]]=None,
+                 show_window_delay_ms: Optional[int] = 0):
         """
         Constructor.
         :param worker_fun: reference to an external method which is to be run in background
@@ -72,6 +74,12 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         :param title: title of the dialog
         :param text: initial text to display
         :param center_by_window: True, if this dialog is to be centered by window 'center_by_window'
+        :param force_close_dlg_callback: non mandatory callback function called when a user tries to close window
+            while the associated thread hasn't finished yet; the callback function can for example ask the user if
+            he/she really wants to break the underlying process (this means leaving the thread alone and closing the
+            window) or apply a little more civilized approach like causing the termination ofthe underlying thread if
+            possible; if the callback function returns True it means that there is consent to abandon thread and
+            close the window
         :param show_window_delay_ms:
            -1: the window is initially hidden; can be shown only by emitting the 'show_window_signal' signal
            or explicitly calling the 'show' method
@@ -83,27 +91,29 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         self.worker_fun = worker_fun
         self.worker_args = worker_args
         self.close_after_finish = close_after_finish
+        self.force_close_dlg_callback = force_close_dlg_callback
         self.buttons = buttons
         self.setTextCalled = False
         self.title = title
         self.text = text
         self.show_window_delay_ms = show_window_delay_ms
         self.max_width = None
+        self.worker_thread: 'WorkerDlgThread' = None
         self.center_by_window = center_by_window
         self.setupUi()
 
     def setupUi(self):
         ui_thread_fun_dlg.Ui_ThreadFunDlg.setupUi(self, self)
         self.setWindowFlags(self.windowFlags() | Qt.CustomizeWindowHint)
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowCloseButtonHint)
+        # self.setWindowFlags(self.windowFlags() & ~Qt.WindowCloseButtonHint)
         self.setWindowTitle(self.title)
         self.display_msg_signal.connect(self.setText)
         self.dlg_config_signal.connect(self.onConfigureDialog)
         self.show_window_signal.connect(self.onShowWindow)
         self.set_progress_value_signal.connect(self.setProgressValue)
         self.closeEvent = self.closeEvent
-        self.btnBox.accepted.connect(self.accept)
-        self.btnBox.rejected.connect(self.reject)
+        # self.btnBox.accepted.connect(self.accept)
+        # self.btnBox.rejected.connect(self.reject)
         self.progressBar.setVisible(False)
         self.btnBox.clear()
         self.btnBox.setCenterButtons(True)
@@ -122,17 +132,17 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
                 if btn.get('callback'):
                     b.clicked.connect(btn.get('callback'))
         if self.worker_fun:
-            self.work = WorkerDlgThread(self, self.worker_fun, self.worker_args,
-                                        display_msg_signal=self.display_msg_signal,
-                                        set_progress_value_signal=self.set_progress_value_signal,
-                                        dlg_config_signal=self.dlg_config_signal,
-                                        show_dialog_signal=self.show_window_signal)
-            self.work.finished.connect(self.threadFinished)
+            self.worker_thread = WorkerDlgThread(self, self.worker_fun, self.worker_args,
+                                                 display_msg_signal=self.display_msg_signal,
+                                                 set_progress_value_signal=self.set_progress_value_signal,
+                                                 dlg_config_signal=self.dlg_config_signal,
+                                                 show_dialog_signal=self.show_window_signal)
+            self.worker_thread.finished.connect(self.threadFinished)
 
             # the user method controlled by the worker thread may need to access the widget
             # displaying a feedback for its non-standard purposes, so we expose it through
             # control object which is passed to that method
-            self.work.ctrl_obj.set_msg_label(self.lblText)
+            self.worker_thread.ctrl_obj.set_msg_label(self.lblText)
 
         self.worker_result = None
         self.worker_exception = None
@@ -141,10 +151,10 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         if self.center_by_window:
             self.centerByWindow(self.center_by_window)
         if self.worker_fun:
-            self.thread_runnung = True
-            self.work.start()
+            self.thread_running = True
+            self.worker_thread.start()
         else:
-            self.thread_runnung = False
+            self.thread_running = False
 
     def getResult(self):
         return self.worker_result
@@ -213,20 +223,32 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         self.worker_exception = exception
 
     def threadFinished(self):
-        self.thread_runnung = False
-        work = self.work
-        self.work = None
+        self.thread_running = False
+        work = self.worker_thread
+        self.worker_thread = None
         del work
         if self.close_after_finish:
             self.accept()
 
     def waitForTerminate(self):
-        if self.thread_runnung:
-            self.work.stop()
-            self.work.wait()
+        if self.thread_running:
+            self.worker_thread.stop()
+            if self.force_close_dlg_callback is not None:
+                try:
+                    finish = self.force_close_dlg_callback()
+                    if finish:
+                        # user's decision to force close the window; probably something went wrong
+                        # and some underlying process hung
+                        self.thread_running = False
+                        return
+                except Exception as e:
+                    logging.error(str(e))
+            self.worker_thread.wait()
 
     def closeEvent(self, event):
-        self.waitForTerminate()
+        if self.thread_running:
+            self.worker_thread.currentThreadId()
+            self.waitForTerminate()
 
     def accept(self):
         self.waitForTerminate()
@@ -239,13 +261,13 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
     def wait_for_worker_completion(self):
         start_time = time.time()
         shown = False
-        while self.thread_runnung:
+        while self.thread_running:
             if not shown and self.show_window_delay_ms >= 0 and (time.time() - start_time) * 1000 >= self.show_window_delay_ms:
                 self.show()
                 shown = True
             QtWidgets.qApp.processEvents()
-            if self.work:
-                self.work.wait(100)
+            if self.worker_thread:
+                self.worker_thread.wait(100)
             else:
                 break
 

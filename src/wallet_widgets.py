@@ -828,7 +828,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
     def display_totals(self):
         recipients = self.get_number_of_recipients()
         bytes = (self.inputs_count * 148) + (recipients * 34) + 10
-        text = f'<span class="label"><b>Total value of selected inputs:</b>&nbsp;</span><span class="value">&nbsp;{self.inputs_total_amount} Dash&nbsp;</span>'
+        text = f'<span class="label"><b>Total value of the selected inputs:</b>&nbsp;</span><span class="value">&nbsp;{self.inputs_total_amount} Dash&nbsp;</span>'
         if self.inputs_total_amount > 0:
             text += f'<span class="label">&nbsp;<b>Inputs:</b>&nbsp;</span><span class="value">&nbsp;{self.inputs_count}&nbsp;</span>' \
                     f'<span class="label">&nbsp;<b>Outputs:</b>&nbsp;</span><span class="value">&nbsp;{recipients}&nbsp;</span>' \
