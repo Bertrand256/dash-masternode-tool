@@ -308,6 +308,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         QDialog.__init__(self, parent=parent)
         wnd_utils.WndUtils.__init__(self, parent.config)
         self.main_wnd = parent
+        self.app_config = parent.config
         self.finishing = False  # True if the dialog is closing (all thread operations will be stopped)
         self.dashd_intf = dashd_intf
         self.db_intf = parent.config.db_intf
@@ -321,15 +322,15 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.masternodes_cfg: List[MasternodeConfig] = []
         pkeys = []
         mn_idents = []
-        for idx, mn in enumerate(self.main_wnd.config.masternodes):
+        for idx, mn in enumerate(self.app_config.masternodes):
             mn_ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
             if mn_ident not in mn_idents:
                 if mn.dmn_voting_key_type == InputKeyType.PRIVATE:
-                    voting_key = mn.get_current_key_for_voting()
+                    voting_key = mn.get_current_key_for_voting(self.app_config, self.dashd_intf)
                     if voting_key:
                         if dash_utils.validate_wif_privkey(voting_key, self.app_config.dash_network):
-                            if mn.get_current_key_for_voting() not in pkeys:
-                                pkeys.append(mn.get_current_key_for_voting())
+                            if voting_key not in pkeys:
+                                pkeys.append(voting_key)
                                 mn_idents.append(mn_ident)
                                 self.masternodes_cfg.append(mn)
                         else:
@@ -2537,8 +2538,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                     log.info('Vote message to sign: ' + serialize_for_sig)
                     step = 2
-                    vote_sig = dash_utils.ecdsa_sign(serialize_for_sig, mn_info.masternode_config.get_current_key_for_voting(),
-                                                     self.app_config.dash_network)
+                    vote_sig = dash_utils.ecdsa_sign(
+                        serialize_for_sig,
+                        mn_info.masternode_config.get_current_key_for_voting(self.app_config, self.dashd_intf),
+                        self.app_config.dash_network)
 
                     step = 3
                     v_res = self.dashd_intf.voteraw(
@@ -2571,10 +2574,13 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         msg = "Error while broadcasting vote message: " + str(e)
                         # write some info to the log file for analysis in case of problems
                         log.info('masternode_pub_key: %s' %
-                                     str(dash_utils.wif_privkey_to_pubkey(mn_info.masternode_config.get_current_key_for_voting())))
+                                     str(dash_utils.wif_privkey_to_pubkey(
+                                         mn_info.masternode_config.get_current_key_for_voting(
+                                             self.app_config, self.dashd_intf))))
                         log.info('masternode_pub_key_hash: %s' %
                                      str(dash_utils.pubkey_to_address(dash_utils.wif_privkey_to_pubkey(
-                                         mn_info.masternode_config.get_current_key_for_voting()), self.app_config.dash_network)))
+                                         mn_info.masternode_config.get_current_key_for_voting(
+                                             self.app_config, self.dashd_intf)), self.app_config.dash_network)))
                         log.info('masternode_tx_hash: %s' % str(mn_info.masternode_config.collateralTx))
                         log.info('masternode_tx_index: %s' % str(mn_info.masternode_config.collateralTxIndex))
                         log.info('governance_hash: %s' % prop_hash)

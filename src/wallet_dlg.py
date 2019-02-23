@@ -981,20 +981,26 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             return False
 
     def disconnect_hw(self):
+        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+            reset_details_pane = True
+        else:
+            reset_details_pane = False
+
         self.allow_fetch_transactions = False
         self.enable_synch_with_main_thread = False
 
-        # clear the utxo model data
-        with self.utxo_table_model:
-            self.utxo_table_model.beginResetModel()
-            self.utxo_table_model.clear_utxos()
-            self.utxo_table_model.endResetModel()
+        if reset_details_pane:
+            # clear the utxo model data
+            with self.utxo_table_model:
+                self.utxo_table_model.beginResetModel()
+                self.utxo_table_model.clear_utxos()
+                self.utxo_table_model.endResetModel()
 
-        # and the txes model data
-        with self.tx_table_model:
-            self.tx_table_model.beginResetModel()
-            self.tx_table_model.clear_txes()
-            self.tx_table_model.endResetModel()
+            # and the txes model data
+            with self.tx_table_model:
+                self.tx_table_model.beginResetModel()
+                self.tx_table_model.clear_txes()
+                self.tx_table_model.endResetModel()
 
         # clear the account model data
         with self.account_list_model:
