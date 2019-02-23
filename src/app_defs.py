@@ -46,6 +46,14 @@ def get_note_url(note_symbol):
     return PROJECT_URL + f'/blob/master/doc/notes.md#note-{note_symbol.lower()}'
 
 
+def get_doc_url(doc_file_name):
+    """
+    Returns an URL to a project documentation page.
+    :return: URL
+    """
+    return PROJECT_URL + f'/blob/master/doc/{doc_file_name}'
+
+
 __KNOWN_LOGGERS = [
     KnownLoggerType(name='dmt.wallet_dlg', external=False),
     KnownLoggerType(name='dmt.bip44_wallet', external=False),

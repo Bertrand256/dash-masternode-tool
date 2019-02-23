@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_RegMasternodeDlg(object):
     def setupUi(self, RegMasternodeDlg):
         RegMasternodeDlg.setObjectName("RegMasternodeDlg")
-        RegMasternodeDlg.resize(808, 665)
+        RegMasternodeDlg.resize(808, 659)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -542,6 +542,11 @@ class Ui_RegMasternodeDlg(object):
         self.lblFieldHints = QtWidgets.QLabel(self.frame)
         self.lblFieldHints.setObjectName("lblFieldHints")
         self.horizontalLayout.addWidget(self.lblFieldHints)
+        self.lblDocumentation = QtWidgets.QLabel(self.frame)
+        self.lblDocumentation.setText("")
+        self.lblDocumentation.setOpenExternalLinks(True)
+        self.lblDocumentation.setObjectName("lblDocumentation")
+        self.horizontalLayout.addWidget(self.lblDocumentation)
         spacerItem5 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout.addItem(spacerItem5)
         self.btnBack = QtWidgets.QPushButton(self.frame)

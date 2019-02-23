@@ -809,7 +809,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_action_test_hw_connection_triggered(self):
-        self.connect_hardware_wallet()
+        try:
+            self.connect_hardware_wallet()
+        except HardwareWalletCancelException:
+            return
+
         self.update_edit_controls_state()
         if self.hw_client:
             try:
@@ -1829,14 +1833,18 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
         Shows tranfser funds window with utxos related to all masternodes. 
         """
-        self.show_wallet_window(-1)
+        self.show_wallet_window(None)
 
     @pyqtSlot(bool)
     def on_action_transfer_funds_for_any_address_triggered(self):
         """
         Shows tranfser funds window for address/path specified by the user.
         """
-        self.show_wallet_window(None)
+        if self.cur_masternode:
+            mn_index = self.config.masternodes.index(self.cur_masternode)
+        else:
+            mn_index = None
+        self.show_wallet_window(mn_index)
 
     def show_wallet_window(self, initial_mn: Optional[int]):
         """ Shows the wallet/send payments dialog.

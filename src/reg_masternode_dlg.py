@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import QDialog, QApplication, QToolButton, QAction, QWidget
 from bitcoinrpc.authproxy import EncodeDecimal, JSONRPCException
 
 import app_cache
+import app_defs
 import hw_intf
 from app_config import MasternodeConfig, AppConfig, InputKeyType
 from app_defs import FEE_DUFF_PER_BYTE
@@ -133,6 +134,9 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.setIcon(self.btnSummaryDMNOperatorKeyCopy, 'content-copy@16px.png')
         self.edtSummaryDMNOperatorKey.setStyleSheet("QLineEdit{background-color: white} "
                                                     "QLineEdit:read-only{background-color: white}")
+        doc_url = app_defs.get_doc_url('deterministic-mn-migration.md')
+        if doc_url:
+            self.lblDocumentation.setText(f'<a href="{doc_url}">Documentation</a>')
         self.update_dynamic_labels()
         self.update_ctrls_visibility()
         self.update_ctrl_state()
@@ -444,14 +448,11 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             if self.show_field_hinds:
                 if self.edtIP.text().strip():
                     msg = 'You can leave the IP address and port fields empty if you want to delegate the operator ' \
-                          'role to an external entity and you don\'t know their values in advance ' \
-                          '(<a href=\"https://docs.dash.org/en/latest/masternodes/maintenance.html#proupservtx\">' \
-                          'read more</a>).'
+                          'role to an external entity and you don\'t know their values in advance.'
                     style = 'info'
                 else:
                     msg = 'If don\'t set the IP address and port fields, the masternode operator will ' \
-                          'have to issue a ProUpServTx transaction using Dash wallet (<a href=\"' \
-                          'https://docs.dash.org/en/latest/masternodes/maintenance.html#proupservtx\">read more</a>).'
+                          'have to issue a ProUpServTx transaction using Dash wallet.'
                     style = 'warning'
         self.set_ctrl_message(self.lblIPMsg, msg, style)
 

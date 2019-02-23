@@ -336,10 +336,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         # main spliiter size
         self.splitterMain.setSizes(app_cache.get_value(CACHE_ITEM_MAIN_SPLITTER_SIZES, [100, 600], list))
 
-        if self.initial_mn_sel is None:
-            mode = app_cache.get_value(CACHE_ITEM_UTXO_SOURCE_MODE, MAIN_VIEW_BIP44_ACCOUNTS, int)
-            if mode in (MAIN_VIEW_BIP44_ACCOUNTS, MAIN_VIEW_MASTERNODE_LIST):
-                self.utxo_src_mode = mode
+        mode = app_cache.get_value(CACHE_ITEM_UTXO_SOURCE_MODE, MAIN_VIEW_BIP44_ACCOUNTS, int)
+        if mode in (MAIN_VIEW_BIP44_ACCOUNTS, MAIN_VIEW_MASTERNODE_LIST):
+            self.utxo_src_mode = mode
 
         # base bip32 path:
         path = app_cache.get_value(CACHE_ITEM_HW_ACCOUNT_BASE_PATH.replace('%NETWORK%', self.app_config.dash_network),
@@ -356,12 +355,19 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.tx_table_model.restore_col_defs(CACHE_ITEM_TXS_COLS)
 
         # restore the selected masternodes
-        sel_hashes = app_cache.get_value(
-            CACHE_ITEM_UTXO_SRC_MASTRNODE.replace('%NETWORK%', self.app_config.dash_network), [], list)
-        for hash in sel_hashes:
-            mni = self.mn_model.get_mn_by_addr_hash(hash)
-            if mni and mni not in self.selected_mns:
+        if self.initial_mn_sel is None:
+            sel_hashes = app_cache.get_value(
+                CACHE_ITEM_UTXO_SRC_MASTRNODE.replace('%NETWORK%', self.app_config.dash_network), [], list)
+            for hash in sel_hashes:
+                mni = self.mn_model.get_mn_by_addr_hash(hash)
+                if mni and mni not in self.selected_mns:
+                    self.selected_mns.append(mni)
+        else:
+            try:
+                mni = self.mn_model.data_by_row_index(self.initial_mn_sel)
                 self.selected_mns.append(mni)
+            except Exception:
+                pass
 
         # restore last list of used addresses
         enc_json_str = app_cache.get_value(CACHE_ITEM_LAST_RECIPIENTS.replace('%NETWORK%', self.app_config.dash_network), None, str)
@@ -389,8 +395,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def save_cache_settings(self):
         app_cache.save_window_size(self)
         app_cache.set_value(CACHE_ITEM_MAIN_SPLITTER_SIZES, self.splitterMain.sizes())
-        if self.initial_mn_sel is None:
-            app_cache.set_value(CACHE_ITEM_UTXO_SOURCE_MODE, self.utxo_src_mode)
+        app_cache.set_value(CACHE_ITEM_UTXO_SOURCE_MODE, self.utxo_src_mode)
         app_cache.set_value(CACHE_ITEM_HW_ACCOUNT_BASE_PATH.replace('%NETWORK%', self.app_config.dash_network),
                             self.hw_account_base_bip32_path)
         app_cache.set_value(CACHE_ITEM_HW_SEL_ACCOUNT_ADDR_ID, self.hw_selected_account_id)
@@ -1011,6 +1016,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.hw_connection_established = False
         self.main_ui.disconnect_hardware_wallet()
         self.bip44_wallet.clear()
+        # reload mn addresses into the address cache cleared by the call ^
+        self.mn_model.load_mn_addresses_in_bip44_wallet(self.bip44_wallet)
         self.allow_fetch_transactions = True
         self.hw_selected_account_id = None
         self.hw_selected_address_id = None

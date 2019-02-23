@@ -747,7 +747,8 @@ class Bip44Wallet(QObject):
             db_cursor.execute('select min(last_scan_block_height) from address where id in (select id from temp_ids)')
             row = db_cursor.fetchone()
             if row:
-                last_block_height = row[0]
+                if row[0] is not None:
+                    last_block_height = row[0]
 
             if last_block_height < max_block_height:
                 log.debug(f'getaddressdeltas for {addresses}, start: {last_block_height + 1}, end: {max_block_height}')

@@ -141,7 +141,7 @@ def cancel_hw_thread_dialog(hw_session: HwSessionInfo):
             if hw_session.hw_client:
                 hw_session.hw_client.cancel()
         elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
-            pass
+            return False
         return True
     except Exception as e:
         logging.warning('Error when canceling hw session. Details: %s', str(e))
@@ -189,6 +189,10 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
                 try:
                     get_public_node_fun = partial(btc.get_public_node, cli)
                     get_session_info_trezor(get_public_node_fun, hw_session)
+                except HardwareWalletCancelException:
+                    cancel_hw_operation(cli)
+                    disconnect_hw(cli)
+                    raise
                 except Exception:
                     # in the case of error close the session
                     disconnect_hw(cli)
@@ -205,6 +209,10 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
             if cli and hw_session:
                 try:
                     get_session_info_trezor(cli.get_public_node, hw_session)
+                except HardwareWalletCancelException:
+                    cancel_hw_operation(cli)
+                    disconnect_hw(cli)
+                    raise
                 except Exception:
                     # in the case of error close the session
                     disconnect_hw(cli)
@@ -222,6 +230,10 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
                 path = dash_utils.get_default_bip32_base_path(hw_session.app_config.dash_network)
                 ap = ledger.get_address_and_pubkey(cli, path)
                 hw_session.set_base_info(path, ap['publicKey'])
+            except HardwareWalletCancelException:
+                cancel_hw_operation(cli)
+                disconnect_hw(cli)
+                raise
             except Exception:
                 # in the case of error close the session
                 disconnect_hw(cli)
@@ -246,9 +258,12 @@ def disconnect_hw(hw_client):
 
 
 def cancel_hw_operation(hw_client):
-    hw_type = get_hw_type(hw_client)
-    if hw_type in (HWType.trezor, HWType.keepkey):
-        hw_client.cancel()
+    try:
+        hw_type = get_hw_type(hw_client)
+        if hw_type in (HWType.trezor, HWType.keepkey):
+            hw_client.cancel()
+    except Exception as e:
+        logging.error('Error when cancelling hw operation: %s', str(e))
 
 
 def get_hw_label(hw_client):

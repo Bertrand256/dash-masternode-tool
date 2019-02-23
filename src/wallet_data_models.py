@@ -42,11 +42,17 @@ class MnAddressTableModel(ExtSortFilterTableModel):
             TableModelColumn('description', 'Description', True, 100)
         ], False, False)
 
-        addr_ids = []
         self.mn_items: List[MnAddressItem] = []
         for mn in masternode_list:
             mni = MnAddressItem()
             mni.masternode = mn
+            if mni.masternode.collateralAddress:
+                self.mn_items.append(mni)
+        self.load_mn_addresses_in_bip44_wallet(bip44_wallet)
+
+    def load_mn_addresses_in_bip44_wallet(self, bip44_wallet: Bip44Wallet):
+        addr_ids = []
+        for mni in self.mn_items:
             if mni.masternode.collateralAddress:
                 a = bip44_wallet.get_address_item(mni.masternode.collateralAddress, True)
                 address_loc = Bip44AddressType(tree_id=None)
@@ -55,7 +61,6 @@ class MnAddressTableModel(ExtSortFilterTableModel):
                     address_loc.bip32_path = mni.masternode.collateralBip32Path
                     a.bip32_path = mni.masternode.collateralBip32Path
                 mni.address = address_loc
-                self.mn_items.append(mni)
                 if mni.masternode.collateralAddress not in addr_ids:
                     addr_ids.append(mni.address.id)
         if addr_ids:
