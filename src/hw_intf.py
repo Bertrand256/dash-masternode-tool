@@ -20,6 +20,10 @@ from wallet_common import UtxoType, TxOutputType
 from wnd_utils import WndUtils
 
 
+DEFAULT_HW_BUSY_MESSAGE = '<b>Complete the action on your hardware wallet device</b>'
+DEFAULT_HW_BUSY_TITLE = 'Please confirm'
+
+
 # Dict[str <hd tree ident>, Dict[str <bip32 path>, Tuple[str <address>, int <db id>]]]
 bip32_address_map: Dict[str, Dict[str, Tuple[str, int]]] = {}
 
@@ -164,8 +168,8 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
         path_n = dash_utils.bip32_path_string_to_n(path)
 
         # show message for Trezor T device while waiting for the user to choose the passphrase input method
-        pub = WndUtils.run_thread_dialog(call_get_public_node, (get_public_node_fun, path_n), title='Confirm',
-                                         text='<b>Complete the action on your hardware wallet device</b>',
+        pub = WndUtils.run_thread_dialog(call_get_public_node, (get_public_node_fun, path_n),
+                                         title=DEFAULT_HW_BUSY_TITLE, text=DEFAULT_HW_BUSY_MESSAGE,
                                          force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session),
                                          show_window_delay_ms=1000)
 
@@ -395,7 +399,7 @@ def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool =
     def _get_address(ctrl, hw_session: HwSessionInfo, bip32_path: str, show_display: bool = False,
                      message_to_display: str = None):
         if ctrl:
-            ctrl.dlg_config_fun(dlg_title="Please confirm", show_progress_bar=False)
+            ctrl.dlg_config_fun(dlg_title=DEFAULT_HW_BUSY_TITLE, show_progress_bar=False)
             if message_to_display:
                 ctrl.display_msg_fun(message_to_display)
             else:
@@ -442,11 +446,15 @@ def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool =
         else:
             raise Exception('HW client not open.')
 
-    if show_display:
-        return WndUtils.run_thread_dialog(_get_address, (hw_session, bip32_path, show_display, message_to_display),
-                                          True, force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session))
+    if message_to_display or show_display:
+        msg_delay = 0
     else:
-        return _get_address(None, hw_session, bip32_path, show_display, message_to_display)
+        msg_delay = 1000
+        message_to_display = DEFAULT_HW_BUSY_MESSAGE
+
+    return WndUtils.run_thread_dialog(_get_address, (hw_session, bip32_path, show_display, message_to_display),
+                                      True, show_window_delay_ms=msg_delay,
+                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session))
 
 
 @control_hw_call

@@ -153,6 +153,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.accounts_view_show_not_used_addresses = False
         self.wdg_loading_txs_animation = None
 
+        # display thread data:
+        self.dt_last_addr_selection_hash_for_utxo = ''
+        self.dt_last_addr_selection_hash_for_txes = ''
+        self.dt_last_hd_tree_id = None
+
         self.setupUi()
 
     def setupUi(self):
@@ -1001,6 +1006,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.update_context_actions()
                 self.cur_utxo_src_hash = None
                 self.enable_synch_with_main_thread = True
+                self.dt_last_addr_selection_hash_for_utxo = ''
+                self.dt_last_addr_selection_hash_for_txes = ''
+                self.dt_last_hd_tree_id = None
                 self.display_thread_event.set()
                 self.fetch_transactions()
                 return True
@@ -1059,7 +1067,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         return list_txs
 
     def display_thread(self, ctrl: CtrlObject):
-        last_hd_tree_id = None
+        self.dt_last_hd_tree_id = None
         log.debug('Starting display_thread')
 
         def subscribe_for_tx_activity_notificatoins():
@@ -1079,8 +1087,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         try:
             self.last_txs_fetch_time = 0
-            last_addr_selection_hash_for_utxo = ''
-            last_addr_selection_hash_for_txes = ''
+            self.dt_last_addr_selection_hash_for_utxo = ''
+            self.dt_last_addr_selection_hash_for_txes = ''
 
             while not ctrl.finish and not self.finishing:
                 hw_error = False
@@ -1088,10 +1096,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:  # the hw accounts view needs an hw connection
                     if not self.hw_connected():
                         hw_error = True
-                        last_hd_tree_id = None
+                        self.dt_last_hd_tree_id = None
 
                     if not hw_error:
-                        if last_hd_tree_id != self.cur_hd_tree_id:
+                        if self.dt_last_hd_tree_id != self.cur_hd_tree_id:
                             # not read hw accounts yet or switched to another hw/used another passphrase
 
                             log.debug('About to start listing accounts')
@@ -1101,7 +1109,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                     pass
                                 log.debug('Finished listing accounts')
                             WndUtils.call_in_main_thread(self.reflect_data_account_selection)
-                            last_hd_tree_id = self.cur_hd_tree_id
+                            self.dt_last_hd_tree_id = self.cur_hd_tree_id
 
                 if not hw_error:
                     if self.finishing:
@@ -1110,16 +1118,23 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     if self.detailsTab.currentIndex() == self.detailsTab.indexOf(self.tabSend):
                         # current tab: the list of utxos
 
-                        if last_addr_selection_hash_for_utxo != self.cur_utxo_src_hash:
+                        if self.dt_last_addr_selection_hash_for_utxo != self.cur_utxo_src_hash:
                             # reload the utxo view
-                            last_addr_selection_hash_for_utxo = self.cur_utxo_src_hash
+                            self.dt_last_addr_selection_hash_for_utxo = self.cur_utxo_src_hash
                             subscribe_for_tx_activity_notificatoins()
 
                             list_utxos_generator = self.get_utxo_list_generator(False)
-                            with self.utxo_table_model:
-                                self.utxo_table_model.beginResetModel()
-                                self.utxo_table_model.clear_utxos()
-                                self.utxo_table_model.endResetModel()
+
+                            # pause the fetch process to avoid waiting for the data do be displayed
+                            self.allow_fetch_transactions = False
+                            try:
+                                with self.utxo_table_model:
+                                    self.utxo_table_model.beginResetModel()
+                                    self.utxo_table_model.clear_utxos()
+                                    self.utxo_table_model.endResetModel()
+                                    log.info('Did reset utxo table')
+                            finally:
+                                self.allow_fetch_transactions = True
 
                             if list_utxos_generator:
                                 log.debug('Reading utxos from database')
@@ -1127,6 +1142,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                                 t = time.time()
                                 self.utxo_table_model.beginResetModel()
+
+                                # pause the fetch process to avoid waiting for the data do be displayed
+                                self.allow_fetch_transactions = False
                                 try:
                                     with self.utxo_table_model:
                                         for utxo in list_utxos_generator:
@@ -1135,27 +1153,34 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                             self.utxo_table_model.add_utxo(utxo)
                                 finally:
                                     self.utxo_table_model.endResetModel()
+                                    self.allow_fetch_transactions = True
 
                                 log.debug('Reading of utxos finished, time: %s', time.time() - t)
 
                     elif self.detailsTab.currentIndex() == self.detailsTab.indexOf(self.tabTransactions):
                         # current tab: the list of transactions
 
-                        if last_addr_selection_hash_for_txes != self.cur_utxo_src_hash:
+                        if self.dt_last_addr_selection_hash_for_txes != self.cur_utxo_src_hash:
 
                             list_txs_generator = self.get_txs_list_generator(False)
                             if list_txs_generator:
                                 subscribe_for_tx_activity_notificatoins()
                                 log.debug('Reading transactions from database')
 
-                                last_addr_selection_hash_for_txes = self.cur_utxo_src_hash
-                                with self.tx_table_model:
-                                    self.tx_table_model.beginResetModel()
-                                    self.tx_table_model.clear_txes()
-                                    self.tx_table_model.endResetModel()
+                                self.dt_last_addr_selection_hash_for_txes = self.cur_utxo_src_hash
+
+                                self.allow_fetch_transactions = False
+                                try:
+                                    with self.tx_table_model:
+                                        self.tx_table_model.beginResetModel()
+                                        self.tx_table_model.clear_txes()
+                                        self.tx_table_model.endResetModel()
+                                finally:
+                                    self.allow_fetch_transactions = True
 
                                 t = time.time()
                                 self.tx_table_model.beginResetModel()
+                                self.allow_fetch_transactions = False
                                 try:
                                     with self.tx_table_model:
                                         for utxo in list_txs_generator:
@@ -1164,6 +1189,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                             self.tx_table_model.add_tx(utxo)
                                 finally:
                                     self.tx_table_model.endResetModel()
+                                    self.allow_fetch_transactions = True
 
                                 log.debug('Reading of transactions finished, time: %s', time.time() - t)
                             else:

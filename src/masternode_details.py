@@ -455,19 +455,28 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             if self.edit_mode:
                 ret = self.masternode.privateKey
             else:
-                if self.act_view_as_mn_private_key.isChecked():
-                    ret = self.masternode.privateKey
-                elif self.act_view_as_mn_public_address.isChecked():
-                    ret = dash_utils.wif_privkey_to_address(self.masternode.privateKey, self.app_config.dash_network)
-                elif self.act_view_as_mn_public_key.isChecked():
-                    ret = dash_utils.wif_privkey_to_pubkey(self.masternode.privateKey)
-                elif self.act_view_as_mn_public_key_hash.isChecked():
-                    pubkey = dash_utils.wif_privkey_to_pubkey(self.masternode.privateKey)
-                    pubkey_bin = bytes.fromhex(pubkey)
-                    pub_hash = bitcoin.bin_hash160(pubkey_bin)
-                    ret = pub_hash.hex()
-                else:
-                    ret = '???'
+                try:
+                    if self.act_view_as_mn_private_key.isChecked():
+                        ret = self.masternode.privateKey
+                    elif self.act_view_as_mn_public_address.isChecked():
+                        if self.masternode.privateKey:
+                            ret = dash_utils.wif_privkey_to_address(self.masternode.privateKey, self.app_config.dash_network)
+                    elif self.act_view_as_mn_public_key.isChecked():
+                        if self.masternode.privateKey:
+                            ret = dash_utils.wif_privkey_to_pubkey(self.masternode.privateKey)
+                    elif self.act_view_as_mn_public_key_hash.isChecked():
+                        if self.masternode.privateKey:
+                            pubkey = dash_utils.wif_privkey_to_pubkey(self.masternode.privateKey)
+                            pubkey_bin = bytes.fromhex(pubkey)
+                            pub_hash = bitcoin.bin_hash160(pubkey_bin)
+                            ret = pub_hash.hex()
+                    else:
+                        ret = '???'
+                except Exception as e:
+                    msg = str(e)
+                    if not msg:
+                        msg = 'Key conversion error.'
+                    WndUtils.errorMsg(msg)
         return ret
 
     def get_owner_key_to_display(self) -> str:
@@ -479,28 +488,38 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 else:
                     ret = self.masternode.dmn_owner_address
             else:
-                if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
-                    if self.act_view_as_owner_private_key.isChecked():
-                        ret = self.masternode.dmn_owner_private_key
-                    elif self.act_view_as_owner_public_address.isChecked():
-                        ret = dash_utils.wif_privkey_to_address(self.masternode.dmn_owner_private_key,
-                                                                self.app_config.dash_network)
-                    elif self.act_view_as_owner_public_key.isChecked():
-                        ret = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_owner_private_key)
-                    elif self.act_view_as_owner_public_key_hash.isChecked():
-                        pubkey = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_owner_private_key)
-                        pubkey_bin = bytes.fromhex(pubkey)
-                        pub_hash = bitcoin.bin_hash160(pubkey_bin)
-                        ret = pub_hash.hex()
+                try:
+                    if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+                        if self.act_view_as_owner_private_key.isChecked():
+                            ret = self.masternode.dmn_owner_private_key
+                        elif self.act_view_as_owner_public_address.isChecked():
+                            if self.masternode.dmn_owner_private_key:
+                                ret = dash_utils.wif_privkey_to_address(self.masternode.dmn_owner_private_key,
+                                                                        self.app_config.dash_network)
+                        elif self.act_view_as_owner_public_key.isChecked():
+                            if self.masternode.dmn_owner_private_key:
+                                ret = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_owner_private_key)
+                        elif self.act_view_as_owner_public_key_hash.isChecked():
+                            if self.masternode.dmn_owner_private_key:
+                                pubkey = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_owner_private_key)
+                                pubkey_bin = bytes.fromhex(pubkey)
+                                pub_hash = bitcoin.bin_hash160(pubkey_bin)
+                                ret = pub_hash.hex()
+                        else:
+                            ret = '???'
                     else:
-                        ret = '???'
-                else:
-                    if self.act_view_as_owner_public_address.isChecked():
-                        ret = self.masternode.dmn_owner_address
-                    elif self.act_view_as_owner_public_key_hash.isChecked():
-                        ret = self.masternode.get_dmn_owner_pubkey_hash()
-                    else:
-                        ret = '???'
+                        if self.act_view_as_owner_public_address.isChecked():
+                            ret = self.masternode.dmn_owner_address
+                        elif self.act_view_as_owner_public_key_hash.isChecked():
+                            ret = self.masternode.get_dmn_owner_pubkey_hash()
+                        else:
+                            ret = '???'
+                except Exception as e:
+                    msg = str(e)
+                    if not msg:
+                        msg = 'Key conversion error.'
+                    WndUtils.errorMsg(msg)
+
         return ret
 
     def get_voting_key_to_display(self) -> str:
@@ -512,28 +531,37 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 else:
                     ret = self.masternode.dmn_voting_address
             else:
-                if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-                    if self.act_view_as_voting_private_key.isChecked():
-                        ret = self.masternode.dmn_voting_private_key
-                    elif self.act_view_as_voting_public_address.isChecked():
-                        ret = dash_utils.wif_privkey_to_address(self.masternode.dmn_voting_private_key,
-                                                                self.app_config.dash_network)
-                    elif self.act_view_as_voting_public_key.isChecked():
-                        ret = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_voting_private_key)
-                    elif self.act_view_as_voting_public_key_hash.isChecked():
-                        pubkey = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_voting_private_key)
-                        pubkey_bin = bytes.fromhex(pubkey)
-                        pub_hash = bitcoin.bin_hash160(pubkey_bin)
-                        ret = pub_hash.hex()
+                try:
+                    if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
+                        if self.act_view_as_voting_private_key.isChecked():
+                            ret = self.masternode.dmn_voting_private_key
+                        elif self.act_view_as_voting_public_address.isChecked():
+                            if self.masternode.dmn_voting_private_key:
+                                ret = dash_utils.wif_privkey_to_address(self.masternode.dmn_voting_private_key,
+                                                                        self.app_config.dash_network)
+                        elif self.act_view_as_voting_public_key.isChecked():
+                            if self.masternode.dmn_voting_private_key:
+                                ret = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_voting_private_key)
+                        elif self.act_view_as_voting_public_key_hash.isChecked():
+                            if self.masternode.dmn_voting_private_key:
+                                pubkey = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_voting_private_key)
+                                pubkey_bin = bytes.fromhex(pubkey)
+                                pub_hash = bitcoin.bin_hash160(pubkey_bin)
+                                ret = pub_hash.hex()
+                        else:
+                            ret = '???'
                     else:
-                        ret = '???'
-                else:
-                    if self.act_view_as_voting_public_address.isChecked():
-                        ret = self.masternode.dmn_voting_address
-                    elif self.act_view_as_voting_public_key_hash.isChecked():
-                        ret = self.masternode.get_dmn_voting_pubkey_hash()
-                    else:
-                        ret = '???'
+                        if self.act_view_as_voting_public_address.isChecked():
+                            ret = self.masternode.dmn_voting_address
+                        elif self.act_view_as_voting_public_key_hash.isChecked():
+                            ret = self.masternode.get_dmn_voting_pubkey_hash()
+                        else:
+                            ret = '???'
+                except Exception as e:
+                    msg = str(e)
+                    if not msg:
+                        msg = 'Key conversion error.'
+                    WndUtils.errorMsg(msg)
         return ret
 
     def get_operator_key_to_display(self) -> str:
@@ -545,18 +573,24 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 else:
                     ret = self.masternode.dmn_operator_public_key
             else:
-                if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
-                    if self.act_view_as_operator_private_key.isChecked():
-                        ret = self.masternode.dmn_operator_private_key
-                    elif self.act_view_as_operator_public_key.isChecked():
-                        ret = self.masternode.get_dmn_operator_pubkey()
+                try:
+                    if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
+                        if self.act_view_as_operator_private_key.isChecked():
+                            ret = self.masternode.dmn_operator_private_key
+                        elif self.act_view_as_operator_public_key.isChecked():
+                            ret = self.masternode.get_dmn_operator_pubkey()
+                        else:
+                            ret = '???'
                     else:
-                        ret = '???'
-                else:
-                    if self.act_view_as_operator_public_key.isChecked():
-                        ret = self.masternode.dmn_operator_public_key
-                    else:
-                        ret = '???'
+                        if self.act_view_as_operator_public_key.isChecked():
+                            ret = self.masternode.dmn_operator_public_key
+                        else:
+                            ret = '???'
+                except Exception as e:
+                    msg = str(e)
+                    if not msg:
+                        msg = 'Key conversion error.'
+                    WndUtils.errorMsg(msg)
         return ret
 
     @pyqtSlot(str)
