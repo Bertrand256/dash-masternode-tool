@@ -2,6 +2,7 @@ import os
 import sys
 from enum import Enum
 from functools import partial
+from typing import Callable
 
 import bitcoin
 from PyQt5 import QtCore
@@ -13,8 +14,8 @@ import dash_utils
 import hw_intf
 from app_config import MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING, InputKeyType
 from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException
+from common import CancelException
 from find_coll_tx_dlg import ListCollateralTxsDlg
-from hw_common import HardwareWalletCancelException
 from thread_fun_dlg import CtrlObject
 from ui import ui_masternode_details
 from wnd_utils import WndUtils
@@ -880,21 +881,21 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                         self.edtCollateralAddress.setText(addr.strip())
                         self.set_modified()
                         self.update_ui_controls_state()
-                except HardwareWalletCancelException:
+                except CancelException:
                     pass
 
     @pyqtSlot(bool)
     def on_btnShowCollateralPathAddress_clicked(self, checked):
         if self.masternode.collateralBip32Path:
-            if self.main_dlg.connect_hardware_wallet():
-                try:
+            try:
+                if self.main_dlg.connect_hardware_wallet():
                     hw_session = self.main_dlg.hw_session
                     addr = hw_intf.get_address(
                         hw_session, self.masternode.collateralBip32Path, True,
                         f'Displaying address for the BIP32 path <b>{self.masternode.collateralBip32Path}</b>.'
                         f'<br>Click the confirmation button on your device.')
-                except HardwareWalletCancelException:
-                    pass
+            except CancelException:
+                pass
 
     @pyqtSlot(str)
     def on_edtMasternodePrivateKey_textEdited(self, text):
@@ -1003,8 +1004,19 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
     @pyqtSlot(bool)
     def on_btnLocateCollateral_clicked(self, checked):
+        break_scanning = False
+
         if not self.main_dlg.connect_hardware_wallet():
             return
+
+        def do_break_scanning():
+            nonlocal break_scanning
+            break_scanning = True
+            return False
+
+        def check_break_scanning():
+            nonlocal break_scanning
+            return break_scanning
 
         def apply_utxo(utxo):
             self.masternode.collateralAddress = utxo.address
@@ -1021,7 +1033,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.main_dlg.hw_session,
                                    self.app_config.db_intf, self.dashd_intf, self.app_config.dash_network)
 
-        utxos = WndUtils.run_thread_dialog(self.get_collateral_tx_address_thread, (bip44_wallet,), True)
+        utxos = WndUtils.run_thread_dialog(self.get_collateral_tx_address_thread, (bip44_wallet, check_break_scanning),
+                                           True, force_close_dlg_callback=do_break_scanning)
         if utxos:
             if len(utxos) == 1 and not self.masternode.collateralAddress and not self.masternode.collateralTx:
                 used = False
@@ -1043,7 +1056,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             if utxos is not None:
                 WndUtils.warnMsg('Couldn\'t find any 1000 Dash UTXO in your wallet.')
 
-    def get_collateral_tx_address_thread(self, ctrl: CtrlObject, bip44_wallet: Bip44Wallet):
+    def get_collateral_tx_address_thread(self, ctrl: CtrlObject, bip44_wallet: Bip44Wallet,
+                                         check_break_scanning_ext: Callable[[], bool]):
         utxos = []
         break_scanning = False
         txes_cnt = 0
@@ -1056,6 +1070,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             nonlocal break_scanning
             if break_scanning:
                 # stop the scanning process if the dialog finishes or the address/bip32path has been found
+                raise BreakFetchTransactionsException()
+            if check_break_scanning_ext is not None and check_break_scanning_ext():
                 raise BreakFetchTransactionsException()
 
         def fetch_txes_feeback(tx_cnt: int):

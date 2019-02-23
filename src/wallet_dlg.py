@@ -31,13 +31,14 @@ import thread_utils
 from app_config import MasternodeConfig
 from app_defs import HWType, DEBUG_MODE
 from bip44_wallet import Bip44Wallet, Bip44Entry, BreakFetchTransactionsException
+from common import CancelException
 from sign_message_dlg import SignMessageDlg
 from ui.ui_wallet_dlg_options1 import Ui_WdgOptions1
 from ui.ui_wdg_wallet_txes_filter import Ui_WdgWalletTxesFilter
 from wallet_common import UtxoType, Bip44AccountType, Bip44AddressType, TxOutputType, TxType
 from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
-from hw_common import HardwareWalletCancelException, HwSessionInfo
+from hw_common import HwSessionInfo
 from hw_intf import sign_tx, get_address
 from ext_item_model import ExtSortFilterTableModel, TableModelColumn
 from thread_fun_dlg import WorkerThread, CtrlObject
@@ -549,7 +550,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 connected = self.connect_hw()
                 if not connected:
                     return
-            except HardwareWalletCancelException:
+            except CancelException:
                 return
 
             bip32_to_address = {}  # for saving addresses read from HW by BIP32 path
@@ -639,7 +640,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     try:
                         serialized_tx, amount_to_send = sign_tx(
                             self.main_ui.hw_session, tx_inputs, tx_outputs, fee)
-                    except HardwareWalletCancelException:
+                    except CancelException:
                         # user cancelled the operations
                         return
                     except Exception:
@@ -750,11 +751,14 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         #     self.act_delete_account_data.setVisible(False)
 
     def show_address_on_hw(self, addr: Bip44AddressType):
-        _a = hw_intf.get_address(self.hw_session, addr.bip32_path, True,
-                                 f'Displaying address <b>{addr.address}</b>.<br>Click the confirmation button on'
-                                 f' your device.')
-        if _a != addr.address:
-            raise Exception('Address inconsistency between db cache and device')
+        try:
+            _a = hw_intf.get_address(self.hw_session, addr.bip32_path, True,
+                                     f'Displaying address <b>{addr.address}</b>.<br>Click the confirmation button on'
+                                     f' your device.')
+            if _a != addr.address:
+                raise Exception('Address inconsistency between db cache and device')
+        except CancelException:
+            return
 
     def on_show_address_on_hw_triggered(self):
         if self.hw_selected_address_id is not None:

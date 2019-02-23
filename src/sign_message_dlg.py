@@ -8,9 +8,9 @@ from PyQt5.QtWidgets import QDialog
 import wnd_utils as wnd_utils
 import hw_intf
 from app_defs import HWType
+from common import CancelException
 from ui import ui_sign_message_dlg
 import logging
-from hw_common import HardwareWalletCancelException
 
 
 class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.WndUtils):
@@ -55,8 +55,8 @@ class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.W
             else:
                 self.errorMsg('Empty message cannot be signed.')
 
-        except HardwareWalletCancelException:
-            logging.warning('HardwareWalletCancelException')
+        except CancelException:
+            logging.warning('CancelException')
 
         except Exception as e:
             logging.exception('Sign message exception:')

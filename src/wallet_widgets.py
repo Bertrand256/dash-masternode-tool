@@ -19,6 +19,7 @@ import app_cache
 import app_utils
 import dash_utils
 from app_defs import FEE_DUFF_PER_BYTE, MIN_TX_FEE
+from common import CancelException
 from encrypted_files import write_file_encrypted, read_file_encrypted
 from hw_common import HwSessionInfo
 from wallet_common import TxOutputType, Bip44AccountType, Bip44AddressType, TxType
@@ -894,7 +895,10 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
                 data += line.encode('utf-8')
 
             if save_encrypted:
-                write_file_encrypted(file_name, self.hw_session, data)
+                try:
+                    write_file_encrypted(file_name, self.hw_session, data)
+                except CancelException:
+                    return
             else:
                 with open(file_name, 'wb') as f_ptr:
                     f_ptr.write(data)
@@ -933,8 +937,11 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         try:
             file_info = {}
             data_decrypted = bytearray()
-            for block in read_file_encrypted(file_name, file_info, self.hw_session):
-                data_decrypted.extend(block)
+            try:
+                for block in read_file_encrypted(file_name, file_info, self.hw_session):
+                    data_decrypted.extend(block)
+            except CancelException:
+                return
 
             file_encrypted = file_info.get('encrypted', False)
             data = data_decrypted.decode('utf-8')

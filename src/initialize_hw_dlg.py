@@ -22,7 +22,6 @@ from PyQt5.QtWidgets import QDialog, QMenu, QApplication, QLineEdit, QShortcut, 
 import app_cache
 import app_defs
 from dash_utils import pubkey_to_address
-from hw_common import HardwareWalletCancelException
 from thread_fun_dlg import CtrlObject
 from ui import ui_initialize_hw_dlg
 from doc_dlg import show_doc_dlg
@@ -259,7 +258,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                             # there is more than one instance of this device type; go to the device instance selection tab
                             self.set_next_step(STEP_SELECT_DEVICE_INSTANCE)
                             success = True
-                    except HardwareWalletCancelException:
+                    except CancelException:
                         self.warnMsg('Operation cancelled.')
                         success = False
                 else:

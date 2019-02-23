@@ -24,7 +24,8 @@ from trezorlib import device
 from trezorlib import coins
 
 import dash_utils
-from hw_common import HardwareWalletCancelException, ask_for_pass_callback, ask_for_pin_callback, \
+from common import CancelException
+from hw_common import ask_for_pass_callback, ask_for_pin_callback, \
     ask_for_word_callback, select_hw_device, HwSessionInfo
 import logging
 import wallet_common
@@ -76,13 +77,13 @@ class MyTrezorClient(TrezorClient):
         try:
             return TrezorClient._callback_passphrase(self, msg)
         except exceptions.Cancelled:
-            raise HardwareWalletCancelException('Cancelled')
+            raise CancelException('Cancelled')
 
     def _callback_pin(self, msg):
         try:
             return TrezorClient._callback_pin(self, msg)
         except exceptions.Cancelled:
-            raise HardwareWalletCancelException('Cancelled')
+            raise CancelException('Cancelled')
 
 
     # def callback_WordRequest(self, msg):
@@ -468,7 +469,7 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
                               'and retrying...')
         raise Exception('Internal error: transaction not signed')
     except exceptions.Cancelled:
-        raise HardwareWalletCancelException('Cancelled')
+        raise CancelException('Cancelled')
 
 
 def sign_message(hw_session: HwSessionInfo, bip32path, message):
@@ -477,7 +478,7 @@ def sign_message(hw_session: HwSessionInfo, bip32path, message):
     try:
         return btc.sign_message(client, hw_session.app_config.hw_coin_name, address_n, message)
     except exceptions.Cancelled:
-        raise HardwareWalletCancelException('Cancelled')
+        raise CancelException('Cancelled')
 
 
 def change_pin(hw_session: HwSessionInfo, remove=False):
@@ -524,7 +525,7 @@ def wipe_device(hw_device_id) -> Tuple[str, bool]:
         else:
             return hw_device_id, True  # cancelled by user
 
-    except HardwareWalletCancelException:
+    except CancelException:
         if client:
             client.close()
         return hw_device_id, True  # cancelled by user
@@ -572,7 +573,7 @@ def recovery_device(hw_device_id: str, word_count: int, passphrase_enabled: bool
     except exceptions.Cancelled:
         return hw_device_id, True
 
-    except HardwareWalletCancelException:
+    except CancelException:
         return hw_device_id, True  # cancelled by user
 
     finally:
@@ -622,7 +623,7 @@ def reset_device(hw_device_id: str, strength: int, passphrase_enabled: bool, pin
         else:
             return hw_device_id, True  # cancelled by user
 
-    except HardwareWalletCancelException:
+    except CancelException:
         if client:
             client.close()
         return hw_device_id, True  # cancelled by user

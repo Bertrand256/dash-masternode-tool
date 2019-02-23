@@ -24,10 +24,10 @@ import hw_intf
 from app_config import MasternodeConfig, AppConfig, InputKeyType
 from app_defs import FEE_DUFF_PER_BYTE
 from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException, find_wallet_addresses
+from common import CancelException
 from dash_utils import generate_bls_privkey, generate_wif_privkey, validate_address, wif_privkey_to_address, \
     validate_wif_privkey, bls_privkey_to_pubkey
 from dashd_intf import DashdInterface
-from hw_common import HardwareWalletCancelException
 from thread_fun_dlg import CtrlObject
 from ui import ui_reg_masternode_dlg
 from wallet_common import Bip44AccountType, Bip44AddressType
@@ -897,12 +897,24 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                                  self.owner_key_validation_err_msg, self.operator_key_validation_err_msg,
                                  self.voting_key_validation_err_msg)))
 
+        break_scanning = False
+
+        def check_break_scanning():
+            nonlocal break_scanning
+            return break_scanning
+
+        def do_break_scanning():
+            nonlocal break_scanning
+            break_scanning = True
+            return False
+
         self.btnContinue.setEnabled(False)
-        ret = WndUtils.run_thread_dialog(self.get_collateral_tx_address_thread, (), True)
+        ret = WndUtils.run_thread_dialog(self.get_collateral_tx_address_thread, (check_break_scanning,), True,
+                                         force_close_dlg_callback=do_break_scanning)
         self.btnContinue.setEnabled(True)
         return ret
 
-    def get_collateral_tx_address_thread(self, ctrl: CtrlObject):
+    def get_collateral_tx_address_thread(self, ctrl: CtrlObject, check_break_scanning_ext: Callable[[], bool]):
         txes_cnt = 0
         msg = ''
         break_scanning = False
@@ -913,6 +925,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             nonlocal break_scanning
             if self.finishing or break_scanning:
                 # stop the scanning process if the dialog finishes or the address/bip32path has been found
+                raise BreakFetchTransactionsException()
+            if check_break_scanning_ext is not None and check_break_scanning_ext():
                 raise BreakFetchTransactionsException()
 
         def fetch_txes_feeback(tx_cnt: int):
@@ -942,6 +956,9 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 ads = spk.get('addresses')
                 if not ads or len(ads) < 0:
                     raise Exception('The collateral transaction output doesn\'t have the Dash address assigned.')
+                if vout.get('valueSat') != 1000e8:
+                    raise Exception('The value of the collateral transaction output is not equal to 1000 Dash.')
+
                 self.dmn_collateral_tx_address = ads[0]
             else:
                 raise Exception(f'Transaction {self.dmn_collateral_tx} doesn\'t have output with index: '
@@ -1190,7 +1207,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
                 set_text(self.lblProtxTransaction3, '<b>2. Signing message with hardware wallet.</b> '
                                                     '<span style="color:green">Success.</span>')
-            except HardwareWalletCancelException:
+            except CancelException:
                 set_text(self.lblProtxTransaction3,
                          '<b>2. Signing message with hardware wallet.</b> <span style="color:red">Cancelled.</span>')
                 return
@@ -1244,7 +1261,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 self.btnContinue.setEnabled(True)
                 self.btnContinue.repaint()
                 self.manual_signed_message = True
-            except HardwareWalletCancelException:
+            except CancelException:
                 return
             except Exception as e:
                 log.exception('Signature failed.')

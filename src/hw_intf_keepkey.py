@@ -14,7 +14,8 @@ from keepkeylib import messages_pb2 as keepkey_proto
 from keepkeylib.tx_api import TxApiInsight
 from mnemonic import Mnemonic
 import dash_utils
-from hw_common import HardwareWalletCancelException, ask_for_pin_callback, ask_for_pass_callback, ask_for_word_callback, \
+from common import CancelException
+from hw_common import ask_for_pin_callback, ask_for_pass_callback, ask_for_word_callback, \
     HwSessionInfo, select_hw_device
 import keepkeylib.types_pb2 as proto_types
 import wallet_common
@@ -34,7 +35,7 @@ class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):
     def callback_PassphraseRequest(self, msg):
         passphrase = self.ask_for_pass_fun()
         if passphrase is None:
-            raise HardwareWalletCancelException('Cancelled')
+            raise CancelException('Cancelled')
         else:
             if self.passphrase_encoding in ('NFKD', 'NFC'):
                 passphrase = unicodedata.normalize(self.passphrase_encoding, passphrase)
@@ -53,14 +54,14 @@ class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):
             desc = 'Enter PIN'
         pin = self.ask_for_pin_fun(desc)
         if not pin:
-            raise HardwareWalletCancelException('Cancelled')
+            raise CancelException('Cancelled')
         return keepkey_proto.PinMatrixAck(pin=pin)
 
     def callback_WordRequest(self, msg):
         msg = "Enter one word of mnemonic: "
         word = ask_for_word_callback(msg, self.__mnemonic.wordlist)
         if not word:
-            raise HardwareWalletCancelException('Cancelled')
+            raise CancelException('Cancelled')
         return keepkey_proto.WordAck(word=word)
 
 
@@ -291,7 +292,7 @@ def sign_message(hw_session: HwSessionInfo, bip32path, message):
         return client.sign_message(hw_session.app_config.hw_coin_name, address_n, message)
     except CallException as e:
         if e.args and len(e.args) >= 2 and e.args[1].lower().find('cancelled') >= 0:
-            raise HardwareWalletCancelException('Cancelled')
+            raise CancelException('Cancelled')
         else:
             raise
 
@@ -340,7 +341,7 @@ def wipe_device(hw_device_id) -> Tuple[str, bool]:
         else:
             return hw_device_id, True  # cancelled by user
 
-    except HardwareWalletCancelException:
+    except CancelException:
         if client:
             client.close()
         return hw_device_id, True  # cancelled by user
@@ -384,7 +385,7 @@ def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphra
         else:
             return hw_device_id, True  # cancelled by user
 
-    except HardwareWalletCancelException:
+    except CancelException:
         if client:
             client.close()
         return hw_device_id, True  # cancelled by user
@@ -429,7 +430,7 @@ def recovery_device(hw_device_id: str, word_count: int, passphrase_enabled: bool
         else:
             return hw_device_id, True  # cancelled by user
 
-    except HardwareWalletCancelException:
+    except CancelException:
         if client:
             client.close()
         return hw_device_id, True  # cancelled by user
@@ -476,7 +477,7 @@ def reset_device(hw_device_id: str, strength: int, passphrase_enabled: bool, pin
         else:
             return hw_device_id, True  # cancelled by user
 
-    except HardwareWalletCancelException:
+    except CancelException:
         if client:
             client.close()
         return hw_device_id, True  # cancelled by user

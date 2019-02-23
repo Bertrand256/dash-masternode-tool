@@ -44,7 +44,7 @@ from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT, DMN_ROLE_OWN
 from app_defs import PROJECT_URL, HWType, get_note_url
 from dash_utils import bip32_path_n_to_string
 from dashd_intf import DashdInterface, DashdIndexException
-from hw_common import HardwareWalletCancelException, HardwareWalletPinException, HwSessionInfo
+from hw_common import HardwareWalletPinException, HwSessionInfo
 import hw_intf
 from hw_setup_dlg import HwSetupDlg
 from psw_cache import SshPassCache
@@ -770,7 +770,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.setStatus2Text('<b>HW status:</b> connected to %s' % hw_intf.get_hw_label(self.hw_client),
                                         'green')
                     self.update_edit_controls_state()
-                except HardwareWalletCancelException:
+                except CancelException:
                     raise
                 except Exception as e:
                     logging.exception('Exception while connecting hardware wallet')
@@ -783,7 +783,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.errorMsg(str(e))
 
                 ret = self.hw_client
-            except HardwareWalletCancelException:
+            except CancelException:
                 raise
             except HardwareWalletPinException as e:
                 self.errorMsg(e.msg)
@@ -811,7 +811,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def on_action_test_hw_connection_triggered(self):
         try:
             self.connect_hardware_wallet()
-        except HardwareWalletCancelException:
+        except CancelException:
             return
 
         self.update_edit_controls_state()
@@ -823,7 +823,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 elif self.config.hw_type == HWType.ledger_nano_s:
                     self.infoMsg('Connection to %s device successful.' %
                                  (self.getHwName(),))
-            except HardwareWalletCancelException:
+            except CancelException:
                 if self.hw_client:
                     self.hw_client.init_device()
 
@@ -1385,7 +1385,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 errorMessage = ret[list(ret.keys())[0]].get('errorMessage')
                 self.errorMsg(errorMessage)
 
-        except HardwareWalletCancelException:
+        except CancelException:
             if self.hw_client:
                 self.hw_client.init_device()
 
@@ -1653,8 +1653,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     if not masternode.is_deterministic:
                         if update_mn_info:
                             masternode.dmn_tx_hash = dmn_tx.get('proTxHash')
-                            self.wdg_masternode.set_deterministic(True)
-                            mn_data_modified = True
+                            if not self.finishing:
+                                self.call_in_main_thread(self.wdg_masternode.set_deterministic, True)
+                                mn_data_modified = True
+                            else:
+                                return
                     else:
                         dmn_hash = dmn_tx.get('proTxHash')
                         if dmn_hash and masternode.dmn_tx_hash != dmn_hash:

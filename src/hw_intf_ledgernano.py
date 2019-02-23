@@ -3,7 +3,9 @@ from btchip.btchip import *
 from btchip.btchipComm import getDongle
 from btchip.btchipUtils import compress_public_key
 from typing import List
-from hw_common import HardwareWalletCancelException, clean_bip32_path, HwSessionInfo
+
+from common import CancelException
+from hw_common import clean_bip32_path, HwSessionInfo
 import wallet_common
 from wnd_utils import WndUtils
 from dash_utils import *
@@ -87,7 +89,7 @@ def sign_message(hw_session: HwSessionInfo, bip32_path, message):
             break
 
     if not ok:
-        raise HardwareWalletCancelException('Cancelled')
+        raise CancelException('Cancelled')
 
     try:
         signature = client.signMessageSign()

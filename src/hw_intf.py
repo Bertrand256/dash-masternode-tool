@@ -12,8 +12,9 @@ import sys
 from PyQt5 import QtWidgets
 
 import dash_utils
+from common import CancelException
 from dash_utils import bip32_path_n_to_string
-from hw_common import HardwareWalletPinException, HwSessionInfo, get_hw_type, HardwareWalletCancelException
+from hw_common import HardwareWalletPinException, HwSessionInfo, get_hw_type
 import logging
 from app_defs import HWType
 from wallet_common import UtxoType, TxOutputType
@@ -101,6 +102,9 @@ def control_hw_call(func):
         except HardwareWalletPinException:
             raise
 
+        except CancelException:
+            raise
+
         except Exception as e:
             logging.exception('Exception calling %s function' % func.__name__)
             raise
@@ -132,17 +136,18 @@ def get_device_list(hw_type: HWType, return_clients: bool = True, allow_bootload
         raise Exception('Invalid HW type: ' + str(hw_type))
 
 
-def cancel_hw_thread_dialog(hw_session: HwSessionInfo):
+def cancel_hw_thread_dialog(hw_client):
     try:
-        if hw_session.app_config.hw_type == HWType.trezor:
-            if hw_session.hw_client:
-                hw_session.hw_client.cancel()
-        elif hw_session.app_config.hw_type == HWType.keepkey:
-            if hw_session.hw_client:
-                hw_session.hw_client.cancel()
-        elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
+        hw_type = get_hw_type(hw_client)
+        if hw_type == HWType.trezor:
+            hw_client.cancel()
+        elif hw_type == HWType.keepkey:
+            hw_client.cancel()
+        elif hw_type == HWType.ledger_nano_s:
             return False
-        return True
+        raise CancelException('Cancel')
+    except CancelException:
+        raise
     except Exception as e:
         logging.warning('Error when canceling hw session. Details: %s', str(e))
         return True
@@ -157,7 +162,7 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
         standard (NFKD), which is used by Trezor devices; by default Keepkey uses non-standard encoding (NFC).
     :return:
     """
-    def get_session_info_trezor(get_public_node_fun, hw_session: HwSessionInfo):
+    def get_session_info_trezor(get_public_node_fun, hw_session: HwSessionInfo, hw_client):
         nonlocal hw_type
 
         def call_get_public_node(ctrl, get_public_node_fun, path_n):
@@ -170,7 +175,7 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
         # show message for Trezor T device while waiting for the user to choose the passphrase input method
         pub = WndUtils.run_thread_dialog(call_get_public_node, (get_public_node_fun, path_n),
                                          title=DEFAULT_HW_BUSY_TITLE, text=DEFAULT_HW_BUSY_MESSAGE,
-                                         force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session),
+                                         force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_client),
                                          show_window_delay_ms=1000)
 
         if pub:
@@ -188,12 +193,12 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
             if cli and hw_session:
                 try:
                     get_public_node_fun = partial(btc.get_public_node, cli)
-                    get_session_info_trezor(get_public_node_fun, hw_session)
-                except HardwareWalletCancelException:
-                    cancel_hw_operation(cli)
+                    get_session_info_trezor(get_public_node_fun, hw_session, cli)
+                except (CancelException, exceptions.Cancelled):
+                    # cancel_hw_operation(cli)
                     disconnect_hw(cli)
-                    raise
-                except Exception:
+                    raise CancelException()
+                except Exception as e:
                     # in the case of error close the session
                     disconnect_hw(cli)
                     raise
@@ -208,8 +213,8 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
             cli = keepkey.connect_keepkey(passphrase_encoding=passphrase_encoding, device_id=device_id)
             if cli and hw_session:
                 try:
-                    get_session_info_trezor(cli.get_public_node, hw_session)
-                except HardwareWalletCancelException:
+                    get_session_info_trezor(cli.get_public_node, hw_session, cli)
+                except CancelException:
                     cancel_hw_operation(cli)
                     disconnect_hw(cli)
                     raise
@@ -230,7 +235,7 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
                 path = dash_utils.get_default_bip32_base_path(hw_session.app_config.dash_network)
                 ap = ledger.get_address_and_pubkey(cli, path)
                 hw_session.set_base_info(path, ap['publicKey'])
-            except HardwareWalletCancelException:
+            except CancelException:
                 cancel_hw_operation(cli)
                 disconnect_hw(cli)
                 raise
@@ -248,7 +253,6 @@ def disconnect_hw(hw_client):
     try:
         hw_type = get_hw_type(hw_client)
         if hw_type in (HWType.trezor, HWType.keepkey):
-            # hw_client.cancel()
             hw_client.close()
         elif hw_type == HWType.ledger_nano_s:
             hw_client.dongle.close()
@@ -327,7 +331,7 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType],
     # execute the 'prepare' function, but due to the fact that the call blocks the UI until the user clicks the HW
     # button, it's done inside a thread within a dialog that shows an appropriate message to the user
     sig = WndUtils.run_thread_dialog(sign, (), True,
-                                     force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session))
+                                     force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
     return sig
 
 
@@ -365,7 +369,7 @@ def hw_sign_message(hw_session: HwSessionInfo, bip32path, message, display_label
     # execute the 'sign' function, but due to the fact that the call blocks the UI until the user clicks the HW
     # button, it's done inside a thread within a dialog that shows an appropriate message to the user
     sig = WndUtils.run_thread_dialog(sign, (display_label,), True,
-                                     force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session))
+                                     force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
     return sig
 
 
@@ -438,14 +442,21 @@ def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool =
                         bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
                     ret = btc.get_address(client, hw_session.app_config.hw_coin_name, bip32_path, show_display)
                     return ret
-                except exceptions.Cancelled:
-                    raise HardwareWalletCancelException('Cancelled')
+                except (CancelException, exceptions.Cancelled):
+                    raise CancelException()
 
             elif hw_session.app_config.hw_type == HWType.keepkey:
 
-                if isinstance(bip32_path, str):
-                    bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
-                return client.get_address(hw_session.app_config.hw_coin_name, bip32_path, show_display)
+                from keepkeylib.client import CallException
+
+                try:
+                    if isinstance(bip32_path, str):
+                        bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
+                    return client.get_address(hw_session.app_config.hw_coin_name, bip32_path, show_display)
+                except CallException as e:
+                    if isinstance(e.args, tuple) and len(e.args) >= 2 and isinstance(e.args[1], str) and \
+                            e.args[1].find('cancel') >= 0:
+                        raise CancelException('Cancelled')
 
             elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
                 import hw_intf_ledgernano as ledger
@@ -469,7 +480,7 @@ def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool =
 
     return WndUtils.run_thread_dialog(_get_address, (hw_session, bip32_path, show_display, message_to_display),
                                       True, show_window_delay_ms=msg_delay,
-                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session))
+                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
 
 
 @control_hw_call
@@ -584,8 +595,7 @@ def wipe_device(hw_type: HWType, hw_device_id: Optional[str], parent_window = No
             raise Exception('Invalid HW type: ' + str(hw_type))
 
     # execute the 'wipe' inside a thread to avoid blocking UI
-    return WndUtils.run_thread_dialog(wipe, (), True, center_by_window=parent_window,
-                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session))
+    return WndUtils.run_thread_dialog(wipe, (), True, center_by_window=parent_window)
 
 
 def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemonic_words: str,
@@ -759,11 +769,15 @@ def hw_encrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
 
         if hw_session.hw_type == HWType.trezor:
             from trezorlib import misc, btc
+            from trezorlib import exceptions
 
-            client = hw_session.hw_client
-            data = misc.encrypt_keyvalue(client, bip32_path_n, label, value, ask_on_encrypt, ask_on_decrypt)
-            pub_key = btc.get_public_node(client, bip32_path_n).node.public_key
-            return data, pub_key
+            try:
+                client = hw_session.hw_client
+                data = misc.encrypt_keyvalue(client, bip32_path_n, label, value, ask_on_encrypt, ask_on_decrypt)
+                pub_key = btc.get_public_node(client, bip32_path_n).node.public_key
+                return data, pub_key
+            except (CancelException, exceptions.Cancelled):
+                raise CancelException()
 
         elif hw_session.hw_type == HWType.keepkey:
 
@@ -783,7 +797,7 @@ def hw_encrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
         raise ValueError("Invalid password length (<> 32).")
 
     return WndUtils.run_thread_dialog(encrypt, (hw_session, bip32_path_n, label, value), True,
-                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session),
+                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client),
                                       show_window_delay_ms=200)
 
 
@@ -809,10 +823,15 @@ def hw_decrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
         if hw_session.hw_type == HWType.trezor:
 
             from trezorlib import misc, btc
-            client = hw_session.hw_client
-            data = misc.decrypt_keyvalue(client, bip32_path_n, label, value, ask_on_encrypt, ask_on_decrypt)
-            pub_key = btc.get_public_node(client, bip32_path_n).node.public_key
-            return data, pub_key
+            from trezorlib import exceptions
+
+            try:
+                client = hw_session.hw_client
+                data = misc.decrypt_keyvalue(client, bip32_path_n, label, value, ask_on_encrypt, ask_on_decrypt)
+                pub_key = btc.get_public_node(client, bip32_path_n).node.public_key
+                return data, pub_key
+            except (CancelException, exceptions.Cancelled):
+                raise CancelException()
 
         elif hw_session.hw_type == HWType.keepkey:
 
@@ -832,6 +851,6 @@ def hw_decrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
         raise ValueError("Invalid password length (<> 32).")
 
     return WndUtils.run_thread_dialog(decrypt, (hw_session, bip32_path_n, label, value), True,
-                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session))
+                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
 
 

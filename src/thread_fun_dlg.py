@@ -10,6 +10,7 @@ from PyQt5.QtCore import QThread
 from PyQt5.QtWidgets import QDialog, QLabel
 from typing import Optional, Callable
 
+from common import CancelException
 from ui import ui_thread_fun_dlg
 
 
@@ -241,8 +242,12 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
                         # and some underlying process hung
                         self.thread_running = False
                         return
+                except CancelException as e:
+                    self.worker_exception = e
+                    return
                 except Exception as e:
-                    logging.error(str(e))
+                    self.worker_exception = e
+                    return
             self.worker_thread.wait()
 
     def closeEvent(self, event):
