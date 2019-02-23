@@ -14,10 +14,9 @@ from hw_common import HardwareWalletCancelException
 
 
 class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.WndUtils):
-    def __init__(self, main_ui, bip32path, address):
+    def __init__(self, main_ui, hw_session, bip32path, address):
         QDialog.__init__(self, parent=main_ui)
-        wnd_utils.WndUtils.__init__(self, main_ui.config)
-        self.main_ui = main_ui
+        self.hw_session = hw_session
         self.bip32path = bip32path
         self.address = address
         self.setupUi()
@@ -34,7 +33,7 @@ class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.W
             msg_to_sign = self.edtMessageToSign.toPlainText()
             if msg_to_sign:
                 # for ledger HW check if the message contains non-ascii characters
-                if self.main_ui.config.hw_type == HWType.ledger_nano_s:
+                if self.hw_session.app_config.hw_type == HWType.ledger_nano_s:
                     try:
                         msg_to_sign.encode('ascii')
                     except UnicodeEncodeError:
@@ -46,7 +45,7 @@ class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.W
                                      'remove any extra characters and try again.')
                         return
 
-                sig = hw_intf.hw_sign_message(self.main_ui.hw_session, self.bip32path, msg_to_sign)
+                sig = hw_intf.hw_sign_message(self.hw_session, self.bip32path, msg_to_sign)
                 signed = base64.b64encode(sig.signature)
                 # hex_message = binascii.hexlify(sig.signature).decode('base64')
                 self.edtSignedMessage.setPlainText(signed.decode('ascii'))

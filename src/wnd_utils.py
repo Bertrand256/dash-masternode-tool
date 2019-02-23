@@ -110,7 +110,7 @@ class WndUtils:
     @staticmethod
     def run_thread_dialog(worker_fun: Callable[[CtrlObject, Any], Any], worker_fun_args: Tuple[Any,...],
                           close_after_finish=True, buttons=None, title='', text=None, center_by_window=None,
-                          show_window_delay_ms: Optional[int] = 0):
+                          force_close_dlg_callback=None, show_window_delay_ms: Optional[int] = 0):
         """
         Executes worker_fun function inside a thread. Function provides a dialog for UI feedback (messages 
         and/or progressbar).
@@ -121,10 +121,11 @@ class WndUtils:
         :return: value returned from worker_fun
         """
         def call(worker_fun, worker_fun_args, close_after_finish, buttons, title, text, center_by_window,
-                 show_window_delay_ms):
+                 force_close_dlg_callback, show_window_delay_ms):
 
             ui = ThreadFunDlg(worker_fun, worker_fun_args, close_after_finish,
                               buttons=buttons, title=title, text=text, center_by_window=center_by_window,
+                              force_close_dlg_callback=force_close_dlg_callback,
                               show_window_delay_ms=show_window_delay_ms)
             ui.wait_for_worker_completion()
             ret = ui.getResult()
@@ -141,10 +142,11 @@ class WndUtils:
             # with the main thread first
             ret = thread_wnd_utils.call_in_main_thread(
                 call, worker_fun, worker_fun_args, close_after_finish=close_after_finish, buttons=buttons, title=title,
-                text=text, center_by_window=center_by_window, show_window_delay_ms=show_window_delay_ms)
+                text=text, center_by_window=center_by_window, force_close_dlg_callback=force_close_dlg_callback,
+                show_window_delay_ms=show_window_delay_ms)
         else:
             ret = call(worker_fun, worker_fun_args, close_after_finish, buttons, title, text, center_by_window,
-                       show_window_delay_ms)
+                       force_close_dlg_callback, show_window_delay_ms)
 
         return ret
 
@@ -195,7 +197,7 @@ class WndUtils:
     def call_in_main_thread(fun_to_call, *args, **kwargs):
         return thread_wnd_utils.call_in_main_thread(fun_to_call, *args, **kwargs)
 
-    def setIcon(self, widget, ico, rotate=0):
+    def setIcon(self, widget, ico, rotate=0, force_color_change:str=None):
         if isinstance(ico, str):
             icon = QIcon()
             if app_defs.APP_IMAGE_DIR:
@@ -211,6 +213,16 @@ class WndUtils:
             if rotate:
                 transf = QTransform().rotate(rotate)
                 pixmap = QPixmap(pixmap.transformed(transf))
+
+            if force_color_change:
+                tmp = pixmap.toImage()
+                color = QColor(force_color_change)
+                for y in range(0, tmp.height()):
+                    for x in range(0, tmp.width()):
+                        color.setAlpha(tmp.pixelColor(x,y).alpha())
+                        tmp.setPixelColor(x, y, color)
+
+                pixmap = QPixmap.fromImage(tmp)
 
             icon.addPixmap(pixmap)
         else:

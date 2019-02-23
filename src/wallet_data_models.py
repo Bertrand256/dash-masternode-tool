@@ -41,6 +41,8 @@ class MnAddressTableModel(ExtSortFilterTableModel):
         ExtSortFilterTableModel.__init__(self, parent, [
             TableModelColumn('description', 'Description', True, 100)
         ], False, False)
+
+        addr_ids = []
         self.mn_items: List[MnAddressItem] = []
         for mn in masternode_list:
             mni = MnAddressItem()
@@ -51,8 +53,13 @@ class MnAddressTableModel(ExtSortFilterTableModel):
                 address_loc.copy_from(a)
                 if not address_loc.bip32_path:
                     address_loc.bip32_path = mni.masternode.collateralBip32Path
+                    a.bip32_path = mni.masternode.collateralBip32Path
                 mni.address = address_loc
                 self.mn_items.append(mni)
+                if mni.masternode.collateralAddress not in addr_ids:
+                    addr_ids.append(mni.address.id)
+        if addr_ids:
+            bip44_wallet.subscribe_addresses_for_chbalance(addr_ids, True)
 
     def flags(self, index):
         return Qt.ItemIsEnabled | Qt.ItemIsSelectable
@@ -93,6 +100,12 @@ class MnAddressTableModel(ExtSortFilterTableModel):
         for idx, mni in enumerate(self.mn_items):
             if mni.address.id == address.id:
                 return idx
+        return None
+
+    def get_mn_by_addr(self, address: Bip44AddressType) -> Optional[MasternodeConfig]:
+        for idx, mni in enumerate(self.mn_items):
+            if mni.address.id == address.id:
+                return mni.masternode
         return None
 
     def address_data_changed(self, address: Bip44AddressType):
@@ -242,14 +255,23 @@ class AccountListModel(ExtSortFilterTableModel):
             else:
                 if source_row < len(self.accounts):
                     acc = self.accounts[source_row]
-                    if (not acc.received and acc.status != 1 and source_row != 0) or acc.status == 2:
-                        will_show = False
+                    will_show = self.is_account_visible(acc)
                 else:
                     will_show = False
         except Exception as e:
             log.exception('Exception occurred while filtering account/address')
             raise
         return will_show
+
+    def is_account_visible(self, account: Bip44AccountType):
+        if account.status_force_hide:
+            return False
+        if account.status_force_show or account.address_index == 0x80000000:
+            return True
+        if account.received > 0:
+            return True
+        else:
+            return False
 
     def increase_account_fresh_addr_count(self, acc: Bip44AccountType, increase_count=1):
         acc.view_fresh_addresses_count += increase_count
@@ -265,6 +287,12 @@ class AccountListModel(ExtSortFilterTableModel):
         for idx, a in enumerate(self.accounts):
             if a.id == id:
                 return idx
+        return None
+
+    def account_by_bip44_index(self, bip44_index: int) -> Optional[Bip44AccountType]:
+        for a in self.accounts:
+            if a.address_index == bip44_index:
+                return a
         return None
 
     def add_account(self, account: Bip44AccountType):
@@ -333,6 +361,16 @@ class AccountListModel(ExtSortFilterTableModel):
         self.__data_modified = True
         self.accounts.clear()
 
+    def get_first_unused_bip44_account_index(self):
+        """ Get first unused not yet visible account index. """
+        cur_index = 0x80000000
+        for a in self.accounts:
+            if a.address_index >= cur_index and not self.is_account_visible(a) and a.received == 0:
+                return a.address_index
+            else:
+                cur_index = a.address_index
+        return cur_index + 1
+
 
 class UtxoTableModel(ExtSortFilterTableModel):
     def __init__(self, parent, masternode_list: List[MasternodeConfig], tx_explorer_url: str):
@@ -396,7 +434,7 @@ class UtxoTableModel(ExtSortFilterTableModel):
                                 if utxo.masternode:
                                     return utxo.masternode.name
                             elif field_name == 'confirmations':
-                                if utxo.block_height == UNCONFIRMED_TX_BLOCK_HEIGHT:
+                                if utxo.block_height >= UNCONFIRMED_TX_BLOCK_HEIGHT:
                                     return 'Unconfirmed'
                                 else:
                                     return app_utils.to_string(utxo.__getattribute__(field_name))
@@ -416,16 +454,13 @@ class UtxoTableModel(ExtSortFilterTableModel):
                                 return app_utils.to_string(utxo.__getattribute__(field_name))
                     elif role == Qt.ForegroundRole:
                         if utxo.is_collateral:
-                            return QColor(Qt.red)
-                        elif utxo.coinbase_locked:
-                            if col_idx == 1:
-                                return QColor('red')
-                            else:
-                                return QColor('gray')
+                            return QColor(Qt.white)
+                        elif utxo.coinbase_locked or utxo.block_height >= UNCONFIRMED_TX_BLOCK_HEIGHT:
+                            return QColor('red')
 
                     elif role == Qt.BackgroundRole:
-                        if utxo.coinbase_locked:
-                            return QColor('lightgray')
+                        if utxo.is_collateral:
+                            return QColor(Qt.red)
 
                     elif role == Qt.TextAlignmentRole:
                         col = self.col_by_index(col_idx)
@@ -453,7 +488,7 @@ class UtxoTableModel(ExtSortFilterTableModel):
         self.utxos.clear()
         self.utxo_by_id.clear()
 
-    def update_utxos(self, utxos_to_add: List[UtxoType], utxos_to_delete: List[Tuple[int, int]]):
+    def update_utxos(self, utxos_to_add: List[UtxoType], utxos_to_update: List[UtxoType], utxos_to_delete: List[Tuple[int, int]]):
         if utxos_to_delete:
             row_indexes_to_remove = []
             for utxo_id in utxos_to_delete:
@@ -474,14 +509,31 @@ class UtxoTableModel(ExtSortFilterTableModel):
         if utxos_to_add:
             # in the model, the rows are sorted by the number of confirmations in the descending order, so put
             # the new ones in the right place
-            utxos_to_add.sort(key=lambda x: x.block_height, reverse=True)
+
+            # filter out the already existing utxos
+            utxos_to_add_verified = []
+            for utxo in utxos_to_add:
+                if utxo.id not in self.utxo_by_id:
+                    utxos_to_add_verified.append(utxo)
+
+            utxos_to_add_verified.sort(key=lambda x: x.block_height, reverse=True)
             row_idx = 0
-            self.beginInsertRows(QModelIndex(), row_idx, row_idx + len(utxos_to_add) - 1)
+            self.beginInsertRows(QModelIndex(), row_idx, row_idx + len(utxos_to_add_verified) - 1)
             try:
-                for index, utxo in enumerate(utxos_to_add):
-                    self.add_utxo(utxo, index)
+                for index, utxo in enumerate(utxos_to_add_verified):
+                    if utxo.id not in self.utxo_by_id:
+                        self.add_utxo(utxo, index)
             finally:
                 self.endInsertRows()
+
+        if utxos_to_update:
+            for utxo_new in utxos_to_update:
+                utxo = self.utxo_by_id.get(utxo_new.id)
+                if utxo:
+                    utxo.block_height = utxo_new.block_height  # block_height is the only field that can be updated
+                    utxo_index = self.utxos.index(utxo)
+                    ui_index = self.index(utxo_index, 0)
+                    self.dataChanged.emit(ui_index, ui_index)
 
     def lessThan(self, col_index, left_row_index, right_row_index):
         col = self.col_by_index(col_index)
@@ -694,6 +746,8 @@ class TransactionTableModel(ExtSortFilterTableModel):
                 right_tx = self.txes[right_row_index]
                 if col_name == 'block_time_str':
                     col_name = 'block_timestamp'
+                    left_value = left_tx.__getattribute__(col_name)
+                    right_value = right_tx.__getattribute__(col_name)
                 elif col_name in ('senders', 'recipient'):
                     return False
                 elif col_name == 'confirmations':

@@ -129,13 +129,13 @@ def sign_message(hw_session: HwSessionInfo, bip32_path, message):
 
 
 @process_ledger_exceptions
-def get_address_and_pubkey(client, bip32_path):
+def get_address_and_pubkey(client, bip32_path, show_display=False):
     bip32_path = clean_bip32_path(bip32_path)
     bip32_path.strip()
     if bip32_path.lower().find('m/') >= 0:
         bip32_path = bip32_path[2:]
 
-    nodedata = client.getWalletPublicKey(bip32_path)
+    nodedata = client.getWalletPublicKey(bip32_path, showOnScreen=show_display)
     return {
         'address': nodedata.get('address').decode('utf-8'),
         'publicKey': compress_public_key(nodedata.get('publicKey'))

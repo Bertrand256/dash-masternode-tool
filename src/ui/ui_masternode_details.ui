@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>753</width>
+    <width>741</width>
     <height>384</height>
    </rect>
   </property>
@@ -15,6 +15,12 @@
     <horstretch>0</horstretch>
     <verstretch>0</verstretch>
    </sizepolicy>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>700</width>
+    <height>0</height>
+   </size>
   </property>
   <property name="windowTitle">
    <string>Form</string>
@@ -68,7 +74,7 @@
          <widget class="QLabel" name="lblUserRole">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -81,7 +87,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QRadioButton" name="rbRoleOwner">
+         <widget class="QCheckBox" name="chbRoleOwner">
           <property name="text">
            <string>Owner</string>
           </property>
@@ -91,16 +97,22 @@
          </widget>
         </item>
         <item>
-         <widget class="QRadioButton" name="rbRoleOperator">
+         <widget class="QCheckBox" name="chbRoleOperator">
           <property name="text">
            <string>Operator</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QRadioButton" name="rbRoleVoting">
+         <widget class="QCheckBox" name="chbRoleVoting">
           <property name="text">
            <string>Voting</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
           </property>
          </widget>
         </item>
@@ -125,7 +137,7 @@
          <widget class="QLabel" name="lblName">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -177,7 +189,7 @@
          <widget class="QLabel" name="lblIP">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -199,6 +211,12 @@
             <horstretch>0</horstretch>
             <verstretch>0</verstretch>
            </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>170</width>
+            <height>0</height>
+           </size>
           </property>
           <property name="clearButtonEnabled">
            <bool>true</bool>
@@ -270,12 +288,12 @@
        </layout>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="horizontalLayout_5" stretch="0,0,1,0,0">
+       <layout class="QHBoxLayout" name="horizontalLayout_5" stretch="0,0,2,0,0,1,0">
         <item>
          <widget class="QLabel" name="lblCollateral">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -302,6 +320,16 @@
          </widget>
         </item>
         <item>
+         <widget class="QToolButton" name="btnBip32PathToAddress">
+          <property name="toolTip">
+           <string>Convert BIP32 path to address</string>
+          </property>
+          <property name="text">
+           <string>&lt;&lt;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QLabel" name="lblCollateralPath">
           <property name="text">
            <string>path</string>
@@ -321,6 +349,22 @@
           </property>
          </widget>
         </item>
+        <item>
+         <widget class="QToolButton" name="btnShowCollateralPathAddress">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
+          <property name="toolTip">
+           <string>Show Dash address for the entered BIP32 path</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+         </widget>
+        </item>
        </layout>
       </item>
       <item>
@@ -329,7 +373,7 @@
          <widget class="QLabel" name="lblCollateralTxHash">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -373,7 +417,7 @@
          <widget class="QLabel" name="lblDMNTxHash">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -410,12 +454,12 @@
          <widget class="QLabel" name="lblMasternodePrivateKey">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
           <property name="text">
-           <string>MN private key</string>
+           <string>Masternode private key</string>
           </property>
           <property name="alignment">
            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -429,6 +473,28 @@
           </property>
           <property name="clearButtonEnabled">
            <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnCopyMnKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
+          <property name="toolTip">
+           <string>Copy key to clipboard</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="popupMode">
+           <enum>QToolButton::InstantPopup</enum>
+          </property>
+          <property name="arrowType">
+           <enum>Qt::NoArrow</enum>
           </property>
          </widget>
         </item>
@@ -455,6 +521,9 @@
           <property name="checkable">
            <bool>true</bool>
           </property>
+          <property name="popupMode">
+           <enum>QToolButton::MenuButtonPopup</enum>
+          </property>
          </widget>
         </item>
         <item>
@@ -469,10 +538,10 @@
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_7">
         <item>
-         <widget class="QLabel" name="lblOwnerPrivateKey">
+         <widget class="QLabel" name="lblOwnerKey">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -485,12 +554,31 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="edtOwnerPrivateKey">
+         <widget class="QLineEdit" name="edtOwnerKey">
           <property name="echoMode">
            <enum>QLineEdit::Password</enum>
           </property>
           <property name="clearButtonEnabled">
            <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnCopyOwnerKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
+          <property name="toolTip">
+           <string>Copy key to clipboard</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="popupMode">
+           <enum>QToolButton::InstantPopup</enum>
           </property>
          </widget>
         </item>
@@ -511,6 +599,9 @@
           <property name="checkable">
            <bool>true</bool>
           </property>
+          <property name="popupMode">
+           <enum>QToolButton::MenuButtonPopup</enum>
+          </property>
          </widget>
         </item>
         <item>
@@ -525,10 +616,10 @@
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_8">
         <item>
-         <widget class="QLabel" name="lblOperatorPrivateKey">
+         <widget class="QLabel" name="lblOperatorKey">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -541,12 +632,31 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="edtOperatorPrivateKey">
+         <widget class="QLineEdit" name="edtOperatorKey">
           <property name="echoMode">
            <enum>QLineEdit::Password</enum>
           </property>
           <property name="clearButtonEnabled">
            <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnCopyOperatorKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
+          <property name="toolTip">
+           <string>Copy key to clipboard</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="popupMode">
+           <enum>QToolButton::InstantPopup</enum>
           </property>
          </widget>
         </item>
@@ -567,6 +677,9 @@
           <property name="checkable">
            <bool>true</bool>
           </property>
+          <property name="popupMode">
+           <enum>QToolButton::MenuButtonPopup</enum>
+          </property>
          </widget>
         </item>
         <item>
@@ -581,10 +694,10 @@
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_9">
         <item>
-         <widget class="QLabel" name="lblVotingPrivateKey">
+         <widget class="QLabel" name="lblVotingKey">
           <property name="minimumSize">
            <size>
-            <width>140</width>
+            <width>144</width>
             <height>0</height>
            </size>
           </property>
@@ -597,12 +710,31 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="edtVotingPrivateKey">
+         <widget class="QLineEdit" name="edtVotingKey">
           <property name="echoMode">
            <enum>QLineEdit::Password</enum>
           </property>
           <property name="clearButtonEnabled">
            <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnCopyVotingKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
+          <property name="toolTip">
+           <string>Copy key to clipboard</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="popupMode">
+           <enum>QToolButton::InstantPopup</enum>
           </property>
          </widget>
         </item>
@@ -622,6 +754,9 @@
           </property>
           <property name="checkable">
            <bool>true</bool>
+          </property>
+          <property name="popupMode">
+           <enum>QToolButton::MenuButtonPopup</enum>
           </property>
          </widget>
         </item>
@@ -649,13 +784,13 @@
   <tabstop>edtCollateralTxIndex</tabstop>
   <tabstop>edtDMNTxHash</tabstop>
   <tabstop>edtMasternodePrivateKey</tabstop>
-  <tabstop>edtOwnerPrivateKey</tabstop>
-  <tabstop>edtOperatorPrivateKey</tabstop>
-  <tabstop>edtVotingPrivateKey</tabstop>
+  <tabstop>edtOwnerKey</tabstop>
+  <tabstop>edtOperatorKey</tabstop>
+  <tabstop>edtVotingKey</tabstop>
   <tabstop>btnGenerateMnPrivateKey</tabstop>
-  <tabstop>rbRoleOwner</tabstop>
-  <tabstop>rbRoleOperator</tabstop>
-  <tabstop>rbRoleVoting</tabstop>
+  <tabstop>chbRoleOwner</tabstop>
+  <tabstop>chbRoleOperator</tabstop>
+  <tabstop>chbRoleVoting</tabstop>
  </tabstops>
  <resources/>
  <connections/>

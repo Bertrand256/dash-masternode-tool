@@ -6,18 +6,21 @@ import base64
 import json
 import logging
 import time
+from collections import namedtuple
+from enum import Enum
 from functools import partial
 from typing import List, Union, Callable
 import ipaddress
 
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtCore import pyqtSlot, Qt, QTimerEvent, QTimer
-from PyQt5.QtWidgets import QDialog, QApplication
+from PyQt5.QtGui import QPalette
+from PyQt5.QtWidgets import QDialog, QApplication, QToolButton, QAction, QWidget
 from bitcoinrpc.authproxy import EncodeDecimal, JSONRPCException
 
 import app_cache
 import hw_intf
-from app_config import MasternodeConfig, AppConfig
+from app_config import MasternodeConfig, AppConfig, InputKeyType
 from app_defs import FEE_DUFF_PER_BYTE
 from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException, find_wallet_addresses
 from dash_utils import generate_bls_privkey, generate_wif_privkey, validate_address, wif_privkey_to_address, \
@@ -39,6 +42,7 @@ STEP_SUMMARY = 5
 NODE_TYPE_PUBLIC_RPC = 1
 NODE_TYPE_OWN = 2
 
+
 CACHE_ITEM_SHOW_FIELD_HINTS = 'RegMasternodeDlg_ShowFieldHints'
 
 
@@ -56,16 +60,15 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.app_config = config
         self.dashd_intf = dashd_intf
         self.on_proregtx_success_callback = on_proregtx_success_callback
-        self.style = '<style>.info{color:darkblue} .warning{color:red} .error{background-color:red;color:white}</style>'
+        self.style = '<style>.info{color:darkblue} .warning{color:#ff6600} .error{background-color:red;color:white}</style>'
         self.operator_reward_saved = None
-        self.owner_pkey_old: str = self.masternode.dmn_owner_pubkey_hash
         self.owner_pkey_generated: str = None
         self.operator_pkey_generated: str = None
         self.voting_pkey_generated: str = None
         self.current_step = STEP_MN_DATA
         self.step_stack: List[int] = []
         self.proregtx_prepare_thread_ref = None
-        self.deterministic_mns_spork_active = False
+        self.deterministic_mns_spork_active = self.app_config.is_spork_15_active(self.dashd_intf)
         self.dmn_collateral_tx: str = None
         self.dmn_collateral_tx_index: int = None
         self.dmn_collateral_tx_address: str = None
@@ -80,8 +83,20 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.dmn_operator_pubkey: str = None
         self.dmn_voting_privkey: str = None
         self.dmn_voting_address: str = None
-        self.dmn_reg_tx_hash: str = None
-        self.manual_signed_message: bool = False
+        self.dmn_owner_key_type = InputKeyType.PRIVATE
+        self.dmn_operator_key_type = InputKeyType.PRIVATE
+        self.dmn_voting_key_type = InputKeyType.PRIVATE
+
+        self.collateral_validation_err_msg = ''
+        self.ip_port_validation_err_msg = ''
+        self.payout_address_validation_err_msg = ''
+        self.operator_reward_validation_err_msg = ''
+        self.owner_key_validation_err_msg = ''
+        self.operator_key_validation_err_msg = ''
+        self.voting_key_validation_err_msg = ''
+
+        self.dmn_reg_tx_hash = ''
+        self.manual_signed_message = False
         self.last_manual_prepare_string: str = None
         self.wait_for_confirmation_timer_id = None
         self.show_field_hinds = True
@@ -105,32 +120,21 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.edtIP.setText(self.masternode.ip)
         self.edtPort.setText(self.masternode.port)
         self.edtPayoutAddress.setText(self.masternode.collateralAddress)
-        self.edtOwnerKey.setText(self.masternode.privateKey)
         self.chbWholeMNReward.setChecked(True)
         self.lblProtxSummary2.linkActivated.connect(self.save_summary_info)
         self.lblCollateralTxMsg.sizePolicy().setHeightForWidth(True)
-        self.determine_spork_15_active()
-        self.generate_keys()
+        self.prepare_keys()
         self.btnClose.hide()
-        if not self.deterministic_mns_spork_active:
-            # hide controls related to the voting key - if spork 15 is not active, voting key has to be the same
-            # as the owner key
-            self.lblVotingMsg.hide()
-            self.lblVotingKey.hide()
-            self.edtVotingKey.hide()
-            self.btnGenerateVotingKey.hide()
         self.setIcon(self.btnManualFundingAddressPaste, 'content-paste@16px.png')
         self.setIcon(self.btnManualProtxPrepareCopy, 'content-copy@16px.png')
         self.setIcon(self.btnManualProtxPrepareResultPaste, 'content-paste@16px.png')
         self.setIcon(self.btnManualProtxSubmitCopy, 'content-copy@16px.png')
         self.setIcon(self.btnManualTxHashPaste, 'content-paste@16px.png')
         self.setIcon(self.btnSummaryDMNOperatorKeyCopy, 'content-copy@16px.png')
-        # self.layManualStep1.setAlignment(self.btnManualProtxPrepareCopy, Qt.AlignTop)
-        # self.layManualStep2.setAlignment(self.btnManualProtxPrepareResultPaste, Qt.AlignTop)
-        # self.layManualStep3.setAlignment(self.btnManualProtxSubmitCopy, Qt.AlignTop)
-        # self.layManualStep4.setAlignment(self.btnManualTxHashPaste, Qt.AlignTop)
         self.edtSummaryDMNOperatorKey.setStyleSheet("QLineEdit{background-color: white} "
                                                     "QLineEdit:read-only{background-color: white}")
+        self.update_dynamic_labels()
+        self.update_ctrls_visibility()
         self.update_ctrl_state()
         self.update_step_tab_ui()
         self.update_show_hints_label()
@@ -150,94 +154,205 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
     def minimize_dialog_height(self):
         def set():
-            # QtWidgets.qApp.processEvents()
             self.adjustSize()
-            # s = self.size()
-            # self.resize(s.width(), 100)
 
         self.tm_resize_dlg = QTimer(self)
         self.tm_resize_dlg.setSingleShot(True)
         self.tm_resize_dlg.singleShot(100, set)
 
-    def generate_keys(self):
-        """ Generate new operator and voting keys if were not provided before."""
+    def update_dynamic_labels(self):
+
+        def style_to_color(style: str) -> str:
+            if style == 'hl1':
+                color = 'color:#00802b'
+            else:
+                color = ''
+            return color
+
+        def get_label_text(prefix:str, key_type: str, tooltip_anchor: str, style: str):
+            lbl = prefix + ' ' + \
+                  {'privkey': 'private key', 'pubkey': 'public key', 'address': 'Dash address'}.get(key_type, '???')
+
+            change_mode = f'(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)'
+            return f'<table style="float:right;{style_to_color(style)}"><tr><td><b>{lbl}</b></td><td>{change_mode}</td></tr></table>'
+
+        if self.masternode:
+
+            if self.dmn_owner_key_type == InputKeyType.PRIVATE:
+                key_type, tooltip_anchor, placeholder_text = ('privkey', 'address', 'Enter the owner private key')
+                style = ''
+            else:
+                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Dash address')
+                style = 'hl1'
+            self.lblOwnerKey.setText(get_label_text('Owner', key_type, tooltip_anchor, style))
+            self.edtOwnerKey.setPlaceholderText(placeholder_text)
+
+            if self.dmn_operator_key_type == InputKeyType.PRIVATE:
+                key_type, tooltip_anchor, placeholder_text = ('privkey', 'pubkey', 'Enter the operator private key')
+                style = ''
+            else:
+                key_type, tooltip_anchor, placeholder_text = ('pubkey', 'privkey', 'Enter the operator public key')
+                style = 'hl1'
+            self.lblOperatorKey.setText(get_label_text('Operator', key_type, tooltip_anchor, style))
+            self.edtOperatorKey.setPlaceholderText(placeholder_text)
+
+            if self.dmn_voting_key_type == InputKeyType.PRIVATE:
+                key_type, tooltip_anchor, placeholder_text = ('privkey','address', 'Enter the voting private key')
+                style = ''
+            else:
+                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Dash address')
+                style = 'hl1'
+            self.lblVotingKey.setText(get_label_text('Voting', key_type, tooltip_anchor, style))
+            self.edtVotingKey.setPlaceholderText(placeholder_text)
+
+    @pyqtSlot(str)
+    def on_lblOwnerKey_linkActivated(self, link):
+        if self.dmn_owner_key_type == InputKeyType.PRIVATE:
+            self.dmn_owner_key_type = InputKeyType.PUBLIC
+            self.dmn_owner_privkey = self.edtOwnerKey.text()
+            self.edtOwnerKey.setText(self.dmn_owner_address)
+        else:
+            self.dmn_owner_key_type = InputKeyType.PRIVATE
+            self.dmn_owner_address = self.edtOwnerKey.text()
+            self.edtOwnerKey.setText(self.dmn_owner_privkey)
+        self.update_dynamic_labels()
+        self.update_ctrls_visibility()
+        self.upd_owner_key_info(False)
+
+    @pyqtSlot(str)
+    def on_lblOperatorKey_linkActivated(self, link):
+        if self.dmn_operator_key_type == InputKeyType.PRIVATE:
+            self.dmn_operator_key_type = InputKeyType.PUBLIC
+            self.dmn_operator_privkey = self.edtOperatorKey.text()
+            self.edtOperatorKey.setText(self.dmn_operator_pubkey)
+        else:
+            self.dmn_operator_key_type = InputKeyType.PRIVATE
+            self.dmn_operator_pubkey = self.edtOperatorKey.text()
+            self.edtOperatorKey.setText(self.dmn_operator_privkey)
+        self.update_dynamic_labels()
+        self.update_ctrls_visibility()
+        self.upd_operator_key_info(False)
+
+    @pyqtSlot(str)
+    def on_lblVotingKey_linkActivated(self, link):
+        if self.dmn_voting_key_type == InputKeyType.PRIVATE:
+            self.dmn_voting_key_type = InputKeyType.PUBLIC
+            self.dmn_voting_privkey = self.edtVotingKey.text()
+            self.edtVotingKey.setText(self.dmn_voting_address)
+        else:
+            self.dmn_voting_key_type = InputKeyType.PRIVATE
+            self.dmn_voting_address = self.edtVotingKey.text()
+            self.edtVotingKey.setText(self.dmn_voting_privkey)
+        self.update_dynamic_labels()
+        self.update_ctrls_visibility()
+        self.upd_voting_key_info(False)
+
+    @pyqtSlot(str)
+    def on_lblOwnerKey_linkHovered(self, link):
+        if link == 'address':
+            tt = 'Change input type to Dash address'
+        else:
+            tt = 'Change input type to private key'
+        self.lblOwnerKey.setToolTip(tt)
+
+    @pyqtSlot(str)
+    def on_lblOperatorKey_linkHovered(self, link):
+        if link == 'pubkey':
+            tt = 'Change input type to public key'
+        else:
+            tt = 'Change input type to private key'
+        self.lblOperatorKey.setToolTip(tt)
+
+    @pyqtSlot(str)
+    def on_lblVotingKey_linkHovered(self, link):
+        if link == 'address':
+            tt = 'Change input type to Dash address'
+        else:
+            tt = 'Change input type to private key'
+        self.lblVotingKey.setToolTip(tt)
+
+    def prepare_keys(self):
         gen_owner = False
         gen_operator = False
         gen_voting = False
 
-        if self.masternode.dmn_owner_private_key or self.masternode.dmn_operator_private_key \
-                or self.masternode.dmn_voting_private_key:
+        # if any of the owner/operator/voting key used in the configuration is the same as the corresponding
+        # key shown in the blockchain, replace that key by a new one
+        found_protx = False
+        protx_state = {}
+        try:
+            for protx in self.dashd_intf.protx('list', 'registered', True):
+                protx_state = protx.get('state')
+                if (protx_state and protx_state.get('service') == self.masternode.ip + ':' + self.masternode.port) or \
+                        (protx.get('collateralHash') == self.masternode.collateralTx and
+                         str(protx.get('collateralIndex')) == str(self.masternode.collateralTxIndex)):
+                    found_protx = True
+                    break
+        except Exception as e:
+            pass
 
-            # if any of the owner/operator/voting key used in the configuration is the same as the corresponding
-            # key shown in the blockchain, replace that key by a new one
-            found_protx = False
-            protx_state = {}
-            try:
-                for protx in self.dashd_intf.protx('list', 'registered', True):
-                    protx_state = protx.get('state')
-                    if (protx_state and protx_state.get('addr') == self.masternode.ip + ':' + self.masternode.port) or \
-                            (protx.get('collateralHash') == self.masternode.collateralTx and
-                             str(protx.get('collateralIndex')) == str(self.masternode.collateralTxIndex)):
-                        found_protx = True
-                        break
-            except Exception as e:
-                pass
+        if found_protx:
+            if self.masternode.get_dmn_owner_public_address(self.app_config.dash_network) == \
+                    protx_state.get('ownerAddress'):
+                gen_owner = True
 
-            if found_protx:
-                if self.masternode.dmn_owner_private_key and \
-                        self.masternode.dmn_owner_pubkey_hash == protx_state.get('keyIDOwner'):
-                    gen_owner = True
+            if self.masternode.get_dmn_operator_pubkey() == protx_state.get('pubKeyOperator'):
+                gen_operator = True
 
-                if self.masternode.dmn_operator_private_key and \
-                        self.masternode.dmn_operator_pubkey == protx_state.get('pubKeyOperator'):
-                    gen_operator = True
+            if self.masternode.get_dmn_voting_public_address(self.app_config.dash_network) == \
+                    protx_state.get('votingAddress'):
+                gen_voting = True
 
-                if self.masternode.dmn_voting_private_key and \
-                        self.masternode.dmn_voting_pubkey_hash == protx_state.get('keyIDVoting'):
-                    gen_voting = True
-
-        if not self.masternode.dmn_owner_private_key:
+        if (self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE and
+             not self.masternode.dmn_owner_private_key) or \
+                (self.masternode.dmn_owner_key_type == InputKeyType.PUBLIC and
+                 not self.masternode.dmn_owner_address):
             gen_owner = True
 
-        if not self.masternode.dmn_operator_private_key:
+        if (self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE and
+            not self.masternode.dmn_operator_private_key) or \
+                (self.masternode.dmn_operator_key_type == InputKeyType.PUBLIC and
+                not self.masternode.dmn_operator_public_key):
             gen_operator = True
 
-        if not self.masternode.dmn_voting_private_key:
+        if (self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE and
+            not self.masternode.dmn_voting_private_key) or \
+                (self.masternode.dmn_voting_key_type == InputKeyType.PUBLIC and
+                 not self.masternode.dmn_voting_address):
             gen_voting = True
 
         if gen_owner:
-            log.debug('Generation owner key')
             self.owner_pkey_generated =  generate_wif_privkey(self.app_config.dash_network, compressed=True)
             self.edtOwnerKey.setText(self.owner_pkey_generated)
         else:
-            self.edtOwnerKey.setText(self.masternode.dmn_owner_private_key)
+            if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+                self.edtOwnerKey.setText(self.masternode.dmn_owner_private_key)
+            else:
+                self.edtOwnerKey.setText(self.masternode.dmn_owner_address)
+            self.dmn_owner_key_type = self.masternode.dmn_owner_key_type
 
         if gen_operator:
-            log.debug('Generation bls key')
-            self.operator_pkey_generated = generate_bls_privkey()
-            self.edtOperatorKey.setText(self.operator_pkey_generated)
+            try:
+                self.operator_pkey_generated = generate_bls_privkey()
+                self.edtOperatorKey.setText(self.operator_pkey_generated)
+            except Exception as e:
+                self.errorMsg(str(e))
         else:
-            self.edtOperatorKey.setText(self.masternode.dmn_operator_private_key)
+            if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
+                self.edtOperatorKey.setText(self.masternode.dmn_operator_private_key)
+            else:
+                self.edtOperatorKey.setText(self.masternode.dmn_operator_public_key)
+            self.dmn_operator_key_type = self.masternode.dmn_operator_key_type
 
         if self.deterministic_mns_spork_active:
             if gen_voting:
-                log.debug('Generation voting key')
                 self.voting_pkey_generated = generate_wif_privkey(self.app_config.dash_network, compressed=True)
+                self.edtVotingKey.setText(self.voting_pkey_generated)
             else:
-                self.edtVotingKey.setText(self.masternode.dmn_voting_private_key)
-        else:
-            self.voting_pkey_generated = self.edtOwnerKey.text().strip()
-
-        if self.voting_pkey_generated:
-            self.edtVotingKey.setText(self.voting_pkey_generated)
-
-    def determine_spork_15_active(self):
-        spork_block = self.dashd_intf.get_spork_value('SPORK_15_DETERMINISTIC_MNS_ENABLED')
-        if isinstance(spork_block, int):
-            height = self.dashd_intf.getblockcount()
-            self.deterministic_mns_spork_active = height >= spork_block
-        else:
-            self.deterministic_mns_spork_active = False
+                if self.dmn_voting_key_type == InputKeyType.PRIVATE:
+                    self.edtVotingKey.setText(self.masternode.dmn_voting_private_key)
+                else:
+                    self.edtVotingKey.setText(self.masternode.dmn_voting_address)
 
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
@@ -272,6 +387,20 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         else:
             control.setVisible(False)
 
+    def update_ctrls_visibility(self):
+        if not self.deterministic_mns_spork_active:
+            # hide controls related to the voting key - if spork 15 is not active, voting key has to be the same
+            # as the owner key
+            self.lblVotingMsg.hide()
+            self.lblVotingKey.hide()
+            self.edtVotingKey.hide()
+            self.btnGenerateVotingKey.hide()
+        else:
+            self.btnGenerateVotingKey.setVisible(self.dmn_voting_key_type == InputKeyType.PRIVATE)
+
+        self.btnGenerateOwnerKey.setVisible(self.dmn_owner_key_type == InputKeyType.PRIVATE)
+        self.btnGenerateOperatorKey.setVisible(self.dmn_operator_key_type == InputKeyType.PRIVATE)
+
     def update_fields_info(self, show_invalid_data_msg: bool):
         """
         :param show_data_invalid_msg: if the argument is true and the data is invalid, an error message is shown
@@ -294,6 +423,10 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         """
         msg = ''
         style = 'info'
+        if show_invalid_data_msg and self.collateral_validation_err_msg:
+            msg = self.collateral_validation_err_msg
+            style = 'error'
+
         self.set_ctrl_message(self.lblCollateralTxMsg, msg, style)
 
     def upd_ip_info(self, show_invalid_data_msg: bool):
@@ -304,100 +437,128 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         """
         msg = ''
         style = ''
-        if self.show_field_hinds:
-            if self.edtIP.text().strip():
-                msg = 'You can leave the IP address and port fields empty if you want to delegate the operator ' \
-                      'role to a hosting service and you don\'t know the IP address and port in advance ' \
-                      '(<a href=\"https://docs.dash.org/en/latest/masternodes/maintenance.html#proupservtx\">' \
-                      'read more</a>).'
-                style = 'info'
-            else:
-                msg = 'If don\'t set the IP address and port fields, the masternode operator will ' \
-                      'have to issue a ProUpServTx transaction using Dash wallet (<a href=\"https://docs.dash.org/en/' \
-                      'latest/masternodes/maintenance.html#proupservtx\">read more</a>).'
-                style = 'warning'
+        if show_invalid_data_msg and self.ip_port_validation_err_msg:
+            msg = self.ip_port_validation_err_msg
+            style = 'error'
+        else:
+            if self.show_field_hinds:
+                if self.edtIP.text().strip():
+                    msg = 'You can leave the IP address and port fields empty if you want to delegate the operator ' \
+                          'role to an external entity and you don\'t know their values in advance ' \
+                          '(<a href=\"https://docs.dash.org/en/latest/masternodes/maintenance.html#proupservtx\">' \
+                          'read more</a>).'
+                    style = 'info'
+                else:
+                    msg = 'If don\'t set the IP address and port fields, the masternode operator will ' \
+                          'have to issue a ProUpServTx transaction using Dash wallet (<a href=\"' \
+                          'https://docs.dash.org/en/latest/masternodes/maintenance.html#proupservtx\">read more</a>).'
+                    style = 'warning'
         self.set_ctrl_message(self.lblIPMsg, msg, style)
 
     def upd_payout_addr_info(self, show_invalid_data_msg: bool):
         msg = ''
         style = ''
-        if self.edtPayoutAddress.text().strip():
+        if show_invalid_data_msg and self.payout_address_validation_err_msg:
+            msg = self.payout_address_validation_err_msg
+            style = 'error'
+        else:
             if self.show_field_hinds:
                 msg = 'The owner\'s payout address can be set to any valid Dash address - it no longer ' \
                       'has to be the same as the collateral address.'
                 style = 'info'
-        else:
-            if show_invalid_data_msg:
-                msg = 'You have to set a valid payout address.'
-                style = 'error'
         self.set_ctrl_message(self.lblPayoutMsg, msg, style)
 
     def upd_oper_reward_info(self, show_invalid_data_msg: bool):
         msg = ''
         style = ''
-        if self.show_field_hinds:
-            if self.chbWholeMNReward.isChecked():
-                msg = 'Here you can specify how much of the masternode earnings will go to the ' \
-                      'masternode operator.'
-                style = 'info'
-            else:
-                msg = 'The masternode operator will have to specify his reward payee address in a ProUpServTx ' \
-                      'transaction, otherwise the full reward will go to the masternode owner.'
-                style = 'warning'
+        if show_invalid_data_msg and self.operator_reward_validation_err_msg:
+            msg = self.operator_reward_validation_err_msg
+            style = 'error'
+        else:
+            if self.show_field_hinds:
+                if self.chbWholeMNReward.isChecked():
+                    msg = 'Here you can specify how much of the masternode earnings will go to the ' \
+                          'masternode operator.'
+                    style = 'info'
+                else:
+                    msg = 'The masternode operator will have to specify his reward payee address in a ProUpServTx ' \
+                          'transaction, otherwise the full reward will go to the masternode owner.'
+                    style = 'warning'
         self.set_ctrl_message(self.lblOperatorRewardMsg, msg, style)
 
     def upd_owner_key_info(self, show_invalid_data_msg: bool):
         msg = ''
         style = ''
-        if self.edtOwnerKey.text().strip():
-            if self.show_field_hinds:
-                if self.masternode and self.edtOwnerKey.text().strip() == self.owner_pkey_generated:
-                    msg = 'This is a newly generated owner key. You can generate a new one (by clicking ' \
-                          'the button on the right) or you can enter your own one.'
-            style = 'info'
+        if show_invalid_data_msg and self.owner_key_validation_err_msg:
+            msg = self.owner_key_validation_err_msg
+            style = 'error'
         else:
-            if show_invalid_data_msg:
-                msg = 'The owner key value is required.'
-                style = 'error'
+            if self.show_field_hinds:
+                if self.dmn_owner_key_type == InputKeyType.PRIVATE:
+                    if self.edtOwnerKey.text().strip() == self.owner_pkey_generated:
+                        msg = 'This is an automatically generated owner private key. You can enter your own or ' \
+                              'generate a new one by pressing the button on the right.'
+                    elif not self.edtOwnerKey.text().strip():
+                        msg = 'Enter the owner private key or generate a new one by clicking the button on the right.'
+                    style = 'info'
+                else:
+                    msg = 'You can use Dash address if the related private key is stored elsewhere, eg in ' \
+                          'the Dash Core wallet.<br><span class="warning">Note, that if you provide an address ' \
+                          'instead of a private key, you will not be able to publish ProRegTx ' \
+                          'transaction through public RPC nodes in the next steps.</span>'
+                    style = 'info'
+
         self.set_ctrl_message(self.lblOwnerMsg, msg, style)
 
     def upd_operator_key_info(self, show_invalid_data_msg: bool):
         msg = ''
         style = ''
-        if self.edtOperatorKey.text().strip():
-            if self.show_field_hinds:
-                if self.edtOperatorKey.text().strip() == self.operator_pkey_generated:
-                    msg = 'This is a newly generated operator BLS private key. You can generate a new one (by clicking ' \
-                          'the button on the right) or you can enter your own one.'
-                style = 'info'
+        if show_invalid_data_msg and self.operator_key_validation_err_msg:
+            msg = self.operator_key_validation_err_msg
+            style = 'error'
         else:
-            if show_invalid_data_msg:
-                msg = 'The operator key value is required.'
-                style = 'error'
+            if self.show_field_hinds:
+                if self.dmn_operator_key_type == InputKeyType.PRIVATE:
+                    if self.edtOperatorKey.text().strip() == self.operator_pkey_generated:
+                        msg = 'This is an automatically generated operator BLS private key. You can enter your ' \
+                              'own or generate a new one by pressing the button on the right.'
+                    elif not self.edtOperatorKey.text().strip():
+                        msg = 'Enter the operator private key or generate a new one by clicking the button on ' \
+                              'the right.'
+                    style = 'info'
+                else:
+                    msg = 'You can use public key if your masternode is managed by a separate entity (operator) ' \
+                          'that controls the related private key or if you prefer to keep the private key outside ' \
+                          'the program. If necessary, you can revoke this key by sending a new ProRegTx ' \
+                          'transaction with a new operator key.'
+                    style = 'info'
+
         self.set_ctrl_message(self.lblOperatorMsg, msg, style)
 
     def upd_voting_key_info(self, show_invalid_data_msg: bool):
         msg = ''
         style = ''
-        if self.edtVotingKey.text().strip():
-            if self.show_field_hinds:
-                if not self.deterministic_mns_spork_active and \
-                        self.edtVotingKey.text().strip() != self.edtOwnerKey.text().strip():
-                    msg = 'Note: SPORK 15 isn\'t active yet, which means that the voting key must be equal to the' \
-                          ' owner key.'
-                    style = 'warning'
-                else:
-                    if self.edtVotingKey.text().strip() == self.voting_pkey_generated:
-                        style = 'info'
-                        msg = 'This is a newly generated private key for voting. You can generate a new one ' \
-                              '(by pressing the button on the right) or you can enter your own one.'
-        else:
-            if show_invalid_data_msg:
-                msg = 'The voting key value is required.'
-                style = 'error'
-        # we hide the voting key controls if the spork 15 is not activated
         if self.deterministic_mns_spork_active:
-            self.set_ctrl_message(self.lblVotingMsg, msg, style)
+            if show_invalid_data_msg and self.voting_key_validation_err_msg:
+                msg = self.voting_key_validation_err_msg
+                style = 'error'
+            else:
+                if self.show_field_hinds:
+                    if self.dmn_voting_key_type == InputKeyType.PRIVATE:
+                        if self.edtVotingKey.text().strip() == self.voting_pkey_generated:
+                            msg = 'This is an automatically generated private key for voting. You can enter your own or ' \
+                                  'generate a new one by pressing the button on the right.'
+                        elif not self.edtVotingKey.text().strip():
+                            msg = 'Enter the private key for voting or generate a new one by clicking the button on ' \
+                                  'the right.'
+                        style = 'info'
+                    else:
+                        msg = 'You can use Dash address if the related private key is stored elsewhere, eg in ' \
+                              'the Dash Core wallet.<br><span class="warning">Note, that providing an address instead of ' \
+                              'a private key will prevent you from voting on proposals in this program.</span>'
+                        style = 'info'
+
+        self.set_ctrl_message(self.lblVotingMsg, msg, style)
 
     def get_dash_node_type(self):
         if self.rbDMTDashNodeType.isChecked():
@@ -409,6 +570,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
     def upd_node_type_info(self):
         nt = self.get_dash_node_type()
+        msg = ''
         if nt is None:
             msg = 'DIP-3 masternode registration involves sending a special transaction via the v0.13 Dash node ' \
                   '(eg Dash-Qt). <b>Note, that this requires incurring a certain transaction fee, as with any ' \
@@ -426,9 +588,16 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                   'complete the next steps.'
         self.lblDashNodeTypeMessage.setText(msg)
 
-
     def update_ctrl_state(self):
         self.edtOperatorReward.setDisabled(self.chbWholeMNReward.isChecked())
+
+    @pyqtSlot(str)
+    def on_edtCollateralTx_textChanged(self, text):
+        self.upd_collateral_tx_info(False)
+
+    @pyqtSlot(str)
+    def on_edtCollateralIndex_textChanged(self, text):
+        self.upd_collateral_tx_info(False)
 
     @pyqtSlot(str)
     def on_edtIP_textChanged(self, text):
@@ -506,14 +675,29 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         elif self.current_step == STEP_SUMMARY:
             self.stackedWidget.setCurrentIndex(4)
 
+            if self.dmn_owner_key_type == InputKeyType.PRIVATE:
+                owner_privkey = self.dmn_owner_privkey
+            else:
+                owner_privkey = '&lt;not available&gt;'
+
+            if self.dmn_operator_key_type == InputKeyType.PRIVATE:
+                operator_privkey = self.dmn_operator_privkey
+            else:
+                operator_privkey = '&lt;not available&gt;'
+
+            if self.dmn_voting_key_type == InputKeyType.PRIVATE:
+                voting_privkey = self.dmn_voting_privkey
+            else:
+                voting_privkey = '&lt;not available&gt;'
+
             self.summary_info = \
                 [f'Network address\t{self.dmn_ip}:{self.dmn_tcp_port}',
                  f'Payout address\t{self.dmn_owner_payout_addr}',
-                 f'Owner private key\t{self.dmn_owner_privkey}',
+                 f'Owner private key\t{owner_privkey}',
                  f'Owner public address\t{self.dmn_owner_address}',
-                 f'Operator private key\t{self.dmn_operator_privkey}',
+                 f'Operator private key\t{operator_privkey}',
                  f'Operator public key\t{self.dmn_operator_pubkey}',
-                 f'Voting private key\t{self.dmn_voting_privkey}',
+                 f'Voting private key\t{voting_privkey}',
                  f'Voting public address\t{self.dmn_voting_address}',
                  f'Deterministic MN tx hash\t{self.dmn_reg_tx_hash}']
 
@@ -525,11 +709,24 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             self.edtProtxSummary.setText(text)
             self.edtProtxSummary.show()
             self.lblProtxSummary2.show()
-            self.lblProtxSummary3.setText(
-                '<b><span style="color:red">One more thing... <span></b>copy the following line to '
-                'the <code>dash.conf</code> file on your masternode server (and restart <i>dashd</i>) or '
-                'pass it to the masternode operator:')
-            self.edtSummaryDMNOperatorKey.setText(f'masternodeblsprivkey={self.dmn_operator_privkey}')
+
+            if self.dmn_operator_key_type == InputKeyType.PRIVATE:
+                operator_message = '<b><span style="color:red">One more thing... <span></b>copy the following ' \
+                                   'line to the <code>dash.conf</code> file on your masternode server ' \
+                                   '(and restart <i>dashd</i>) or pass it to the masternode operator:'
+            else:
+                operator_message = '<b><span style="color:red">One more thing... <span></b>copy the following ' \
+                                   'line to the <code>dash.conf</code> file on your masternode server, replacing ' \
+                                   '"&lt;your-operator-bls-private-key&gt;" with the appropriate value or ask the operator ' \
+                                   'for it:'
+            self.lblProtxSummary3.setText(operator_message)
+
+            if self.dmn_operator_key_type == InputKeyType.PRIVATE:
+                operator_privkey = self.dmn_operator_privkey
+            else:
+                operator_privkey = '<your-operator-bls-private-key>'
+
+            self.edtSummaryDMNOperatorKey.setText(f'masternodeblsprivkey={operator_privkey}')
             self.btnCancel.hide()
             self.btnBack.hide()
             self.btnContinue.hide()
@@ -546,23 +743,36 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.btnCancel.repaint()
         self.btnBack.repaint()
 
-    def verify_data(self):
+    def validate_data(self):
         self.dmn_collateral_tx = self.edtCollateralTx.text().strip()
+        self.collateral_validation_err_msg = ''
+        error_count = 0
         try:
-            self.dmn_collateral_tx_index = int(self.edtCollateralIndex.text())
-            if self.dmn_collateral_tx_index < 0:
-                raise Exception('Invalid transaction index')
+            if not self.dmn_collateral_tx:
+                self.collateral_validation_err_msg = 'Collteral transaction ID is required.'
+                self.edtCollateralTx.setFocus()
+            else:
+                self.dmn_collateral_tx_index = int(self.edtCollateralIndex.text())
+                if self.dmn_collateral_tx_index < 0:
+                     self.collateral_validation_err_msg = 'Invalid collateral transaction index.'
         except Exception:
             self.edtCollateralIndex.setFocus()
-            raise Exception('Invalid collateral transaction index: should be integer greater or equal 0.')
+            self.collateral_validation_err_msg = 'Invalid collateral transaction index: should be an integer ' \
+                                                 'value, greater or equal 0.'
+        if self.collateral_validation_err_msg:
+            self.upd_collateral_tx_info(True)
+            error_count += 1
 
+        self.ip_port_validation_err_msg = ''
         try:
             self.dmn_ip = self.edtIP.text().strip()
             if self.dmn_ip:
                 ipaddress.ip_address(self.dmn_ip)
         except Exception as e:
             self.edtIP.setFocus()
-            raise Exception('Invalid masternode IP address: %s.' % str(e))
+            self.ip_port_validation_err_msg = 'Invalid masternode IP address: %s.' % str(e)
+            self.upd_ip_info(True)
+            error_count += 1
 
         try:
             if self.dmn_ip:
@@ -571,51 +781,124 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 self.dmn_tcp_port = None
         except Exception:
             self.edtPort.setFocus()
-            raise Exception('Invalid TCP port: should be integer.')
+            self.ip_port_validation_err_msg = 'Invalid TCP port: should be integer.'
+            self.upd_ip_info(True)
+            error_count += 1
 
-        self.dmn_owner_payout_addr = self.edtPayoutAddress.text().strip()
-        if not validate_address(self.dmn_owner_payout_addr, self.app_config.dash_network):
+        self.payout_address_validation_err_msg = ''
+        addr = self.edtPayoutAddress.text().strip()
+        if not addr:
+            self.payout_address_validation_err_msg = 'Owner payout address is required.'
+        else:
+            self.dmn_owner_payout_addr = addr
+            if not validate_address(self.dmn_owner_payout_addr, self.app_config.dash_network):
+                self.payout_address_validation_err_msg = 'Invalid owner payout address.'
+        if self.payout_address_validation_err_msg:
             self.edtPayoutAddress.setFocus()
-            raise Exception('Invalid owner payout address.')
+            self.upd_payout_addr_info(True)
+            error_count += 1
 
+        self.operator_reward_validation_err_msg = ''
         if self.chbWholeMNReward.isChecked():
             self.dmn_operator_reward = 0
         else:
             self.dmn_operator_reward = self.edtOperatorReward.value()
             if self.dmn_operator_reward > 100 or self.dmn_operator_reward < 0:
                 self.edtOperatorReward.setFocus()
-                raise Exception('Invalid operator reward value: should be a value between 0 and 100.')
+                self.operator_reward_validation_err_msg = 'Invalid operator reward value: should be a value ' \
+                                                          'between 0 and 100.'
+        if self.operator_reward_validation_err_msg:
+            self.upd_oper_reward_info(True)
+            error_count += 1
 
-        self.dmn_owner_privkey = self.edtOwnerKey.text().strip()
-        if not validate_wif_privkey(self.dmn_owner_privkey, self.app_config.dash_network):
-            self.edtOwnerKey.setFocus()
+        self.owner_key_validation_err_msg = ''
+        key = self.edtOwnerKey.text().strip()
+        if not key:
+            self.owner_key_validation_err_msg = 'Owner key/address is required.'
+        else:
+            if self.dmn_owner_key_type == InputKeyType.PRIVATE:
+                self.dmn_owner_privkey = key
+                if not validate_wif_privkey(self.dmn_owner_privkey, self.app_config.dash_network):
+                    self.edtOwnerKey.setFocus()
+                    self.owner_key_validation_err_msg = 'Invalid owner private key.'
+                else:
+                    self.dmn_owner_address = wif_privkey_to_address(self.dmn_owner_privkey, self.app_config.dash_network)
+            else:
+                self.dmn_owner_address = key
+                self.dmn_owner_privkey = ''
+                if not validate_address(self.dmn_owner_address, self.app_config.dash_network):
+                    self.edtOwnerKey.setFocus()
+                    self.owner_key_validation_err_msg = 'Invalid owner Dash address.'
+        if self.owner_key_validation_err_msg:
             self.upd_owner_key_info(True)
-            raise Exception('Invalid owner private key.')
-        else:
-            self.dmn_owner_address = wif_privkey_to_address(self.dmn_owner_privkey, self.app_config.dash_network)
+            error_count += 1
 
-        try:
-            self.dmn_operator_privkey = self.edtOperatorKey.text().strip()
-            self.dmn_operator_pubkey = bls_privkey_to_pubkey(self.dmn_operator_privkey)
-        except Exception as e:
+        self.operator_key_validation_err_msg = ''
+        key = self.edtOperatorKey.text().strip()
+        if not key:
+            self.operator_key_validation_err_msg = 'Operator key is required.'
+        else:
+            if self.dmn_operator_key_type == InputKeyType.PRIVATE:
+                try:
+                    self.dmn_operator_privkey = key
+                    self.dmn_operator_pubkey = bls_privkey_to_pubkey(self.dmn_operator_privkey)
+                except Exception as e:
+                    self.edtOperatorKey.setFocus()
+                    self.operator_key_validation_err_msg = 'Invalid operator private key: ' + str(e)
+            else:
+                self.dmn_operator_pubkey = key
+                self.dmn_operator_privkey = ''
+                try:
+                    b = bytes.fromhex(self.dmn_operator_pubkey)
+                    if len(b) != 48:
+                        raise Exception('invalid length (' + str(len(b)) + ')')
+                except Exception as e:
+                    self.edtOperatorKey.setFocus()
+                    self.operator_key_validation_err_msg = 'Invalid operator public key: ' + str(e)
+        if self.operator_key_validation_err_msg:
             self.upd_operator_key_info(True)
-            self.edtOperatorKey.setFocus()
-            raise Exception('Invalid operator private key: ' + str(e))
+            error_count += 1
 
-        self.dmn_voting_privkey = self.edtVotingKey.text().strip()
-        if not validate_wif_privkey(self.dmn_voting_privkey, self.app_config.dash_network):
-            self.upd_voting_key_info(True)
-            self.edtVotingKey.setFocus()
-            raise Exception('Invalid voting private key.')
+        self.voting_key_validation_err_msg = ''
+        if self.deterministic_mns_spork_active:
+            key = self.edtVotingKey.text().strip()
+            if not key:
+                self.voting_key_validation_err_msg = 'Voting key/address is required.'
+            else:
+                if self.dmn_voting_key_type == InputKeyType.PRIVATE:
+                    self.dmn_voting_privkey = key
+                    if not validate_wif_privkey(self.dmn_voting_privkey, self.app_config.dash_network):
+                        self.edtVotingKey.setFocus()
+                        self.voting_key_validation_err_msg = 'Invalid voting private key.'
+                    else:
+                        self.dmn_voting_address = wif_privkey_to_address(self.dmn_voting_privkey, self.app_config.dash_network)
+                else:
+                    self.dmn_voting_address = key
+                    self.dmn_voting_privkey = ''
+                    if not validate_address(self.dmn_voting_address, self.app_config.dash_network):
+                        self.edtVotingKey.setFocus()
+                        self.voting_key_validation_err_msg = 'Invalid voting Dash address.'
         else:
-            self.dmn_voting_address = wif_privkey_to_address(self.dmn_voting_privkey, self.app_config.dash_network)
+            # spork 15 not active - use the owner private key for voting
+            self.dmn_voting_address = self.dmn_owner_address
+            self.dmn_voting_privkey = self.dmn_owner_privkey
+            self.dmn_voting_key_type = self.dmn_owner_key_type
+
+        if self.voting_key_validation_err_msg:
+            self.upd_voting_key_info(True)
+            error_count += 1
+
+        if error_count > 1:
+            raise Exception('Errors were encountered in the input data. You must correct them before you can continue.')
+        elif error_count == 1:
+            raise Exception(max((self.collateral_validation_err_msg, self.ip_port_validation_err_msg,
+                                 self.payout_address_validation_err_msg, self.operator_reward_validation_err_msg,
+                                 self.owner_key_validation_err_msg, self.operator_key_validation_err_msg,
+                                 self.voting_key_validation_err_msg)))
 
         self.btnContinue.setEnabled(False)
-        self.btnContinue.repaint()
-
         ret = WndUtils.run_thread_dialog(self.get_collateral_tx_address_thread, (), True)
         self.btnContinue.setEnabled(True)
-        self.btnContinue.repaint()
         return ret
 
     def get_collateral_tx_address_thread(self, ctrl: CtrlObject):
@@ -714,7 +997,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
     def next_step(self):
         cs = None
         if self.current_step == STEP_MN_DATA:
-            if self.verify_data():
+            if self.validate_data():
                 cs = STEP_DASHD_TYPE
             else:
                 return
@@ -865,10 +1148,16 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                                  "`register_prepare` call")
 
                 set_text(self.lblProtxTransaction1, '<b>1. Preparing a ProRegTx transaction on a remote node...</b>')
+
+                if self.dmn_owner_key_type == InputKeyType.PRIVATE:
+                    owner_key = self.dmn_owner_privkey
+                else:
+                    owner_key = self.dmn_owner_address
+
                 params = ['register_prepare', self.dmn_collateral_tx, self.dmn_collateral_tx_index,
-                    self.dmn_ip + ':' + str(self.dmn_tcp_port) if self.dmn_ip else '0',
-                    self.dmn_owner_privkey, self.dmn_operator_pubkey,
-                    self.dmn_voting_address, str(round(self.dmn_operator_reward, 2)), self.dmn_owner_payout_addr]
+                          self.dmn_ip + ':' + str(self.dmn_tcp_port) if self.dmn_ip else '0', owner_key,
+                          self.dmn_operator_pubkey, self.dmn_voting_address, str(round(self.dmn_operator_reward, 2)),
+                          self.dmn_owner_payout_addr]
                 if funding_address:
                     params.append(funding_address)
                 call_ret = self.dashd_intf.protx(*params)
@@ -975,9 +1264,14 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         if addr:
             valid = validate_address(addr, self.app_config.dash_network)
             if valid:
+                if self.dmn_owner_key_type == InputKeyType.PRIVATE:
+                    owner_key = self.dmn_owner_privkey
+                else:
+                    owner_key = self.dmn_owner_address
+
                 cmd = f'protx register_prepare "{self.dmn_collateral_tx}" "{self.dmn_collateral_tx_index}" ' \
                     f'"{self.dmn_ip + ":" + str(self.dmn_tcp_port) if self.dmn_ip else "0"}" ' \
-                    f'"{self.dmn_owner_privkey}" "{self.dmn_operator_pubkey}" "{self.dmn_voting_address}" ' \
+                    f'"{owner_key}" "{self.dmn_operator_pubkey}" "{self.dmn_voting_address}" ' \
                     f'"{str(round(self.dmn_operator_reward, 2))}" "{self.dmn_owner_payout_addr}" "{addr}"'
             else:
                 cmd = 'Enter the valid funding address in the exit box above'
@@ -1026,7 +1320,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         else:
             self.show_field_hinds = False
         self.update_show_hints_label()
-        self.update_fields_info(True)
+        self.update_fields_info(False)
         self.minimize_dialog_height()
 
     @pyqtSlot(str)

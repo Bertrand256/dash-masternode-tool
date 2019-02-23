@@ -19,6 +19,7 @@ from dashd_intf import DashdInterface
 from hw_common import HwSessionInfo
 from db_intf import DBCache
 from thread_fun_dlg import CtrlObject
+from thread_utils import EnhRLock
 from wallet_common import Bip44AccountType, Bip44AddressType, UtxoType, TxOutputType, xpub_to_hash, Bip44Entry, \
     address_to_hash, TxType
 from wnd_utils import WndUtils
@@ -31,7 +32,7 @@ GET_BLOCKHEIGHT_MIN_SECONDS = 30
 UNCONFIRMED_TX_PURGE_SECONDS = 3600
 UNCONFIRMED_TX_BLOCK_HEIGHT = 99999999
 DEFAULT_TX_FETCH_PRIORITY = 1  # the higher the number to higher the priority
-
+ADDR_BALANCE_CONSISTENCY_CHECK_SECONDS = 3600
 
 log = logging.getLogger('dmt.bip44_wallet')
 
@@ -75,13 +76,32 @@ class Bip44Wallet(QObject):
         self.addr_ids_created: Dict[int, int] = {}  # {'address_id': 'address_id' }
 
         # transactions added/modified since the last reset_tx_diffs call
-        self.txs_added: Dict[int, int] = {}  # {'tx_id': 'address_id'}
+        self.txs_added: Dict[int, int] = {}  # {'tx_id': 'tx_id'}
         self.txs_removed: Dict[int, int] = {}  # {'tx_id': 'tx_id'}
 
         # utxos added/removed since the last reset_tx_diffs call
         self.utxos_by_id: Dict[int, UtxoType] = {}
         self.utxos_added: Dict[int, int] = {}  # {'tx_output.id': 'tx_output.id'}
         self.utxos_removed: Dict[int, int] = {}  # {'tx_output.id': 'tx_output.id'}
+        self.utxos_modified: Dict[int, int] = {}  # confirmed utxos that were unconfirmed during the previous iteration
+
+        # individual addresses subscribed for balance change notifications
+        # these are all addresses configured in the masternode view, which may but don't have to belong
+        # to the bip44 tree displayed in the wallet view
+        self.__chbalance_subscribed_addrs: Dict[int, int] = {}
+
+        # individual addresses subscribed for transactions activity
+        # these are all addresses selected by the user in the masternodes view
+        self.__txes_subscribed_addrs: Dict[int, int] = {}
+
+        # ... the same for accounts:
+        self.__txes_subscribed_accounts: Dict[int, int] = {}
+
+        # dict of txids fetched from mempool; used to avoid processing multiple times
+        # before they get confirmed
+        self.__txs_in_mempool: Dict[str, str] = {}
+
+        self.subscribed_addrs_lock = EnhRLock()
 
         self.purge_unconf_txs_called = False
         self.external_call_level = 0
@@ -109,9 +129,10 @@ class Bip44Wallet(QObject):
             self.on_account_address_added_callback(account, address)
 
     def signal_address_data_changed(self, account: Bip44AccountType, address: Bip44AddressType):
-        if self.on_address_data_changed_callback and account and self.__tree_id == account.tree_id and \
-                self.__tree_id is not None:
-            self.on_address_data_changed_callback(account, address)
+        if self.on_address_data_changed_callback:
+            if (account and self.__tree_id == account.tree_id and self.__tree_id is not None) or \
+                    address.id in self.__chbalance_subscribed_addrs:
+                self.on_address_data_changed_callback(account, address)
 
     def signal_address_loaded(self, address: Bip44AddressType):
         if self.on_address_loaded_callback:
@@ -122,6 +143,7 @@ class Bip44Wallet(QObject):
         self.txs_removed.clear()
         self.utxos_added.clear()
         self.utxos_removed.clear()
+        self.utxos_modified.clear()
         self.addr_bal_updated.clear()
         self.addr_ids_created.clear()
 
@@ -132,6 +154,9 @@ class Bip44Wallet(QObject):
         self.addresses_by_id.clear()
         self.addresses_by_address.clear()
         self.utxos_by_id.clear()
+        self.__txs_in_mempool.clear()
+        with self.subscribed_addrs_lock:
+            self.__txes_subscribed_addrs.clear()
         self.reset_tx_diffs()
 
     def get_hd_identity_info(self) -> Tuple[int, str]:
@@ -176,6 +201,104 @@ class Bip44Wallet(QObject):
 
     def get_block_height_nofetch(self):
         return self.cur_block_height
+
+    def subscribe_addresses_for_chbalance(self, addr_ids: List[int], reset=True):
+        with self.subscribed_addrs_lock:
+            if reset:
+                self.__chbalance_subscribed_addrs.clear()
+            for id in addr_ids:
+                self.__chbalance_subscribed_addrs[id] = id
+
+    def subscribe_addresses_for_txes(self, addrs_ids: List[int], reset=True):
+        with self.subscribed_addrs_lock:
+            if reset:
+                self.__txes_subscribed_addrs.clear()
+                self.__txes_subscribed_accounts.clear()
+            for id in addrs_ids:
+                if id:
+                    self.__txes_subscribed_addrs[id] = id
+
+    def subscribe_accounts_for_txes(self, acc_ids: List[int], reset=True):
+        with self.subscribed_addrs_lock:
+            if reset:
+                self.__txes_subscribed_accounts.clear()
+                self.__txes_subscribed_addrs.clear()
+            for id in acc_ids:
+                if id:
+                    self.__txes_subscribed_accounts[id] = id
+
+    def _utxo_added(self, utxo_id: int):
+        if utxo_id in self.utxos_removed:
+            del self.utxos_removed[utxo_id]
+        if utxo_id in self.utxos_modified:
+            del self.utxos_modified[utxo_id]
+        self.utxos_added[utxo_id] = utxo_id
+
+    def _utxo_removed(self, utxo_id: int):
+        if utxo_id in self.utxos_added:
+            del self.utxos_added[utxo_id]  # the registered utxo has just been spent
+        if utxo_id in self.utxos_modified:
+            del self.utxos_modified[utxo_id]
+        self.utxos_removed[utxo_id] = utxo_id
+
+    def _utxo_modified(self, utxo_id: int):
+        if utxo_id not in self.utxos_added:
+            self.utxos_modified[utxo_id] = utxo_id
+
+    def _tx_added(self, tx_id: int):
+        if tx_id in self.txs_removed:
+            del self.txs_removed[tx_id]
+        self.txs_added[tx_id] = tx_id
+
+    def _tx_removed(self, tx_id: int):
+        if tx_id in self.txs_added:
+            del self.txs_added[tx_id]
+        self.txs_removed[tx_id] = tx_id
+
+    def get_utxos_diff(self, added_utxos: List[UtxoType], modified_utxos: List[UtxoType], removed_utxos: List[int]):
+        with self.subscribed_addrs_lock:
+            # fetch missing Utxo objects from database
+            missing_utxos = []
+            for utxo_id in self.utxos_added:
+                if not self.utxos_by_id.get(utxo_id):
+                    missing_utxos.append(utxo_id)
+            for utxo_id in self.utxos_modified:
+                if not self.utxos_by_id.get(utxo_id):
+                    missing_utxos.append(utxo_id)
+            if missing_utxos:
+                for _ in self.list_utxos_for_ids(missing_utxos):
+                    pass
+
+            for utxo_id in self.utxos_added:
+                utxo = self.utxos_by_id.get(utxo_id)
+                if utxo:
+                    if utxo.address_obj and ((utxo.address_obj.id in self.__txes_subscribed_addrs) or
+                            (utxo.address_obj.bip44_account and utxo.address_obj.bip44_account.id in
+                             self.__txes_subscribed_accounts)):
+                        added_utxos.append(utxo)
+                else:
+                    log.warning('Cannot find utxo object by id: %s', utxo_id)
+
+            for utxo_id in self.utxos_modified:
+                utxo = self.utxos_by_id.get(utxo_id)
+                if utxo:
+                    if utxo.address_obj and ((utxo.address_obj.id in self.__txes_subscribed_addrs) or
+                            (utxo.address_obj.bip44_account and utxo.address_obj.bip44_account.id in
+                             self.__txes_subscribed_accounts)):
+                        modified_utxos.append(utxo)
+                else:
+                    log.warning('Cannot find utxo object by id: %s', utxo_id)
+
+            for utxo_id in self.utxos_removed:
+                utxo = self.utxos_by_id.get(utxo_id)
+                if utxo:
+                    if utxo.address_obj and ((utxo.address_obj.id in self.__txes_subscribed_addrs) or
+                            (utxo.address_obj.bip44_account and utxo.address_obj.bip44_account.id in
+                             self.__txes_subscribed_accounts)):
+                        removed_utxos.append(utxo.id)
+
+    def get_tx_diff(self, added_utxos: List[UtxoType], removed_utxos: List[UtxoType]):
+        pass
 
     def get_address_id(self, address: str, db_cursor):
         db_cursor.execute('select id from address where address=?', (address,))
@@ -270,81 +393,85 @@ class Bip44Wallet(QObject):
         if parent_key_entry.id is None:
             raise Exception('parent_key_entry.is is null')
 
-        db_cursor = self.db_intf.get_cursor()
-        try:
-            db_cursor.execute('select a.id, a.parent_id, a.address_index, a.address, a.path, a.tree_id, a.balance, '
-                              'a.received, a.last_scan_block_height, ac.is_change, a.label from address a '
-                              'join address ac on ac.id=a.parent_id '
-                              'where a.parent_id=? and a.address_index=?',
-                              (parent_key_entry.id, child_addr_index))
-            row = db_cursor.fetchone()
-            if not row:
-                parent_key = parent_key_entry.get_bip32key()
-                key = parent_key.ChildKey(child_addr_index)
-                address = pubkey_to_address(key.PublicKey().hex(), self.dash_network)
-                if not parent_key_entry.bip32_path:
-                    raise Exception('BIP32 path of the parent key not set')
-                bip32_path = bip32_path_string_append_elem(parent_key_entry.bip32_path, child_addr_index)
+        addr = parent_key_entry.child_entries.get(child_addr_index)
 
-                db_cursor.execute('select * from address where address=?',
-                                  (address,))
+        if not addr:
+            db_cursor = self.db_intf.get_cursor()
+            try:
+                db_cursor.execute('select a.id, a.parent_id, a.address_index, a.address, a.path, a.tree_id, a.balance, '
+                                  'a.received, a.last_scan_block_height, ac.is_change, a.label from address a '
+                                  'join address ac on ac.id=a.parent_id '
+                                  'where a.parent_id=? and a.address_index=?',
+                                  (parent_key_entry.id, child_addr_index))
                 row = db_cursor.fetchone()
-                if row:
-                    addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
-                    if addr_info.get('parent_id') != parent_key_entry.id or \
-                        addr_info.get('address_index') != child_addr_index or addr_info.get('path') != bip32_path or \
-                        addr_info.get('tree_id') != parent_key_entry.tree_id:
-                        # address wasn't initially opened as a part of xpub account scan, so update its attrs
-                        db_cursor.execute('update address set parent_id=?, address_index=?, path=?, tree_id=? '
-                                          'where id=?',
-                                          (parent_key_entry.id, child_addr_index, bip32_path, parent_key_entry.tree_id,
-                                           row[0]))
+                if not row:
+                    parent_key = parent_key_entry.get_bip32key()
+                    key = parent_key.ChildKey(child_addr_index)
+                    address = pubkey_to_address(key.PublicKey().hex(), self.dash_network)
+                    if not parent_key_entry.bip32_path:
+                        raise Exception('BIP32 path of the parent key not set')
+                    bip32_path = bip32_path_string_append_elem(parent_key_entry.bip32_path, child_addr_index)
 
-                        addr_info['parent_id'] = parent_key_entry.id
-                        addr_info['address_index'] = child_addr_index
-                        addr_info['path'] = bip32_path
-                        addr_info['tree_id'] = parent_key_entry.tree_id
-
-                    addr = self._get_address_from_dict(addr_info)
-                else:
-                    h = address_to_hash(address)
-                    db_cursor.execute('select label from labels.address_label where key=?', (h,))
+                    db_cursor.execute('select * from address where address=?',
+                                      (address,))
                     row = db_cursor.fetchone()
                     if row:
-                        label = row[0]
+                        addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
+                        if addr_info.get('parent_id') != parent_key_entry.id or \
+                            addr_info.get('address_index') != child_addr_index or addr_info.get('path') != bip32_path or \
+                            addr_info.get('tree_id') != parent_key_entry.tree_id:
+                            # address wasn't initially opened as a part of xpub account scan, so update its attrs
+                            db_cursor.execute('update address set parent_id=?, address_index=?, path=?, tree_id=? '
+                                              'where id=?',
+                                              (parent_key_entry.id, child_addr_index, bip32_path, parent_key_entry.tree_id,
+                                               row[0]))
+
+                            addr_info['parent_id'] = parent_key_entry.id
+                            addr_info['address_index'] = child_addr_index
+                            addr_info['path'] = bip32_path
+                            addr_info['tree_id'] = parent_key_entry.tree_id
+
+                        addr = self._get_address_from_dict(addr_info)
                     else:
-                        label = ''
+                        h = address_to_hash(address)
+                        db_cursor.execute('select label from labels.address_label where key=?', (h,))
+                        row = db_cursor.fetchone()
+                        if row:
+                            label = row[0]
+                        else:
+                            label = ''
 
-                    db_cursor.execute('insert into address(parent_id, address_index, address, label, path, tree_id) '
-                                      'values(?,?,?,?,?,?)',
-                                      (parent_key_entry.id, child_addr_index, address, label, bip32_path,
-                                       parent_key_entry.tree_id))
+                        db_cursor.execute('insert into address(parent_id, address_index, address, label, path, tree_id) '
+                                          'values(?,?,?,?,?,?)',
+                                          (parent_key_entry.id, child_addr_index, address, label, bip32_path,
+                                           parent_key_entry.tree_id))
 
-                    addr_id = db_cursor.lastrowid
-                    addr_info = {
-                        'id': addr_id,
-                        'parent_id': parent_key_entry.id,
-                        'address_index': child_addr_index,
-                        'address': address,
-                        'label': label,
-                        'last_scan_block_height': 0,
-                        'path': bip32_path,
-                        'tree_id': parent_key_entry.tree_id
-                    }
-                    self.addr_ids_created[addr_id] = addr_id
+                        addr_id = db_cursor.lastrowid
+                        addr_info = {
+                            'id': addr_id,
+                            'parent_id': parent_key_entry.id,
+                            'address_index': child_addr_index,
+                            'address': address,
+                            'label': label,
+                            'last_scan_block_height': 0,
+                            'path': bip32_path,
+                            'tree_id': parent_key_entry.tree_id
+                        }
+                        self.addr_ids_created[addr_id] = addr_id
+                        addr = self._get_address_from_dict(addr_info)
+                else:
+                    addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
                     addr = self._get_address_from_dict(addr_info)
-            else:
-                addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
-                addr = self._get_address_from_dict(addr_info)
 
-            self._address_loaded(addr)
-            return addr
-        except Exception:
-            raise
-        finally:
-            if db_cursor.connection.total_changes > 0:
-                self.db_intf.commit()
-            self.db_intf.release_cursor()
+                self._address_loaded(addr)
+                parent_key_entry.child_entries[child_addr_index] = addr
+            except Exception:
+                raise
+            finally:
+                if db_cursor.connection.total_changes > 0:
+                    self.db_intf.commit()
+                self.db_intf.release_cursor()
+        return addr
 
     def _get_key_entry_by_xpub(self, xpub: str) -> Bip44Entry:
         raise Exception('ToDo')
@@ -573,11 +700,11 @@ class Bip44Wallet(QObject):
             addr_dict = {}
             for a in addr_info_list:
                 addr_dict[a.address] = a
+
             if len(addr_dict) != len(addr_info_list):
                 addr_info_list = list(addr_dict.values())
 
             self._process_addresses_txs(addr_info_list, cur_block_height, check_break_process_fun)
-            self._update_addr_balances(account=None, addr_ids=[a.id for a in addr_info_list])
         finally:
             self.decrease_ext_call_level()
 
@@ -585,6 +712,21 @@ class Bip44Wallet(QObject):
 
     def _process_addresses_txs(self, addr_info_list: List[Bip44AddressType], max_block_height: int,
                                check_break_process_fun: Callable = None):
+
+        def process_txes(txids: List[Dict]):
+            log.debug('starting process_txes - tx count: %s', len(txids))
+            last_time_checked = time.time()
+            last_nr = 0
+            for nr, tx_entry in enumerate(txids):
+                self._process_tx(db_cursor, tx_entry.get('txid'))
+                if time.time() - last_time_checked > 1:  # feedback every 1s
+                    if check_break_process_fun and check_break_process_fun():
+                        break
+                    if self.on_fetch_account_txs_feedback:
+                        self.on_fetch_account_txs_feedback(nr - last_nr)
+                        last_time_checked = time.time()
+                        last_nr = nr
+            log.debug('finished process_txes')
 
         log.debug('_process_addresses_txs, addr count: %s', len(addr_info_list))
         tm_begin = time.time()
@@ -615,32 +757,64 @@ class Bip44Wallet(QObject):
             else:
                 txids = []
 
-            # todo: test this
-            # mempool_entries = self.dashd_intf.getaddressmempool(addresses)
-            # txids.extend(mempool_entries)
+            try:
+                mempool_entries = self.dashd_intf.getaddressmempool(addresses)
+                mempool_entries_verified = []
+                for me_tx in mempool_entries:
+                    me_txid = me_tx.get('txid')
+                    if me_txid not in self.__txs_in_mempool:
+                        mempool_entries_verified.append(me_tx)
+                        self.__txs_in_mempool[me_txid] = me_txid
+                if mempool_entries_verified:
+                    txids.extend(mempool_entries_verified)
+            except Exception as e:
+                log.warning('Error querying mempool: ' + str(e))
 
             if txids:
-                log.debug('Tx count: %s', len(txids))
-                last_time_checked = time.time()
-                last_nr = 0
-                for nr, tx_entry in enumerate(txids):
-                    self._process_tx(db_cursor, tx_entry.get('txid'))
-                    if time.time() - last_time_checked > 1:  # feedback every 1s
-                        if check_break_process_fun and check_break_process_fun():
-                            break
-                        if self.on_fetch_account_txs_feedback:
-                            self.on_fetch_account_txs_feedback(nr - last_nr)
-                            last_time_checked = time.time()
-                            last_nr = nr
+                process_txes(txids)
 
                 # update the last scan block height info for each of the addresses
-                for addr_info in addr_info_list:
-                    db_cursor.execute('update address set last_scan_block_height=? where id=?',
-                                      (max_block_height, addr_info.id))
+                if last_block_height != max_block_height:
+                    for addr_info in addr_info_list:
+                        db_cursor.execute('update address set last_scan_block_height=? where id=?',
+                                          (max_block_height, addr_info.id))
 
-                for addr_info in addr_info_list:
-                    if addr_info.address:
-                        addr_info.last_scan_block_height = max_block_height
+                    for addr_info in addr_info_list:
+                        if addr_info.address:
+                            addr_info.last_scan_block_height = max_block_height
+
+                # update balances of the all addresses affected by processing transactions
+                addr_ids_to_update_balance = [a.id for a in addr_info_list if a.id in self.addr_bal_updated]
+                if addr_ids_to_update_balance:
+                    self._update_addr_balances(account=None, addr_ids=addr_ids_to_update_balance)
+
+            # verify whether the address balances from the db cache match the balances maintained by network
+            addr_ids_to_update_balance = []
+            for a in addr_info_list:
+                if time.time() - a.last_balance_verify_ts >= ADDR_BALANCE_CONSISTENCY_CHECK_SECONDS:
+                    log.debug('Verifying address balance consistency. Id: %s', a.id)
+                    try:
+                        b = self.dashd_intf.getaddressbalance([a.address])
+                        bal = b.get('balance')
+                        a.last_balance_verify_ts = int(time.time())
+                        if bal is not None and bal != a.balance:
+                            log.warning('Balance of address %s inconsistency. Trying to refetch transactions.',
+                                        a.id)
+                            txids = self.dashd_intf.getaddressdeltas({'addresses': [a.address],
+                                                                      'start': 0,
+                                                                      'end': max_block_height})
+
+                            process_txes(txids)
+
+                            if a.id in self.addr_bal_updated:
+                                addr_ids_to_update_balance.append(a.id)
+                    except Exception as e:
+                        log.error('Address balance check error: %s', str(e))
+                    log.debug('Finished verifying address balance consistency. Id: %s', a.id)
+
+            if addr_ids_to_update_balance:
+                self._update_addr_balances(account=None, addr_ids=addr_ids_to_update_balance)
+
         finally:
             if db_cursor.connection.total_changes > 0:
                 self.db_intf.commit()
@@ -650,6 +824,18 @@ class Bip44Wallet(QObject):
 
     def _process_tx(self, db_cursor, txhash: str, tx_json: Optional[Dict] = None):
         self._get_tx_db_id(db_cursor, txhash, tx_json)
+
+    def _getrawtransaction(self, txhash, refetch_from_network: bool = False):
+        if txhash in self.__txs_in_mempool:
+            in_mempool = True
+        else:
+            in_mempool = False
+
+        tx = self.dashd_intf.getrawtransaction(txhash, 1)
+
+        if in_mempool and tx.get('height'):
+            del self.__txs_in_mempool[txhash]
+        return tx
 
     def _get_tx_db_id(self, db_cursor, txhash: str, tx_json: Dict = None, create=True) -> Tuple[int, Optional[Dict]]:
         """
@@ -664,7 +850,7 @@ class Bip44Wallet(QObject):
         if not row:
             if create:
                 if not tx_json:
-                    tx_json = self.dashd_intf.getrawtransaction(txhash, 1)
+                    tx_json = self._getrawtransaction(txhash)
 
                 block_height = tx_json.get('height')
                 if block_height:
@@ -683,7 +869,7 @@ class Bip44Wallet(QObject):
                 db_cursor.execute('insert into tx(tx_hash, block_height, block_timestamp, coinbase) values(?,?,?,?)',
                                   (tx_hash, block_height, block_timestamp, is_coinbase))
                 tx_id = db_cursor.lastrowid
-                self.txs_added[tx_id] = tx_id
+                self._tx_added(tx_id)
 
                 db_cursor.execute('update tx_input set src_tx_id=? where src_tx_id is null and src_tx_hash=?',
                                   (tx_id, txhash))
@@ -693,11 +879,12 @@ class Bip44Wallet(QObject):
         else:
             tx_id = row[0]
             height = row[1]
+            is_unconfirmed = True if height >= UNCONFIRMED_TX_BLOCK_HEIGHT else False
 
             if not tx_json:
-                tx_json = self.dashd_intf.getrawtransaction(txhash, 1)
+                tx_json = self._getrawtransaction(txhash)
 
-            if height == UNCONFIRMED_TX_BLOCK_HEIGHT:
+            if is_unconfirmed:
                 # it is unconfirmed transactions; check whether it has been confirmed since the last call
 
                 block_height = tx_json.get('height', 0)
@@ -708,6 +895,15 @@ class Bip44Wallet(QObject):
                     db_cursor.execute('update tx set block_height=?, block_timestamp=? where id=?',
                                       (block_height, block_timestamp, tx_id))
                     self.db_intf.commit()
+
+                    # list utxos for this transaction and signal they got confirmed
+                    db_cursor.execute('select id from main.tx_output where tx_id=? and (spent_tx_id is null '
+                                      'or spent_input_index is null) and address_id is not null', (tx_id,))
+                    for utxo_id, in db_cursor.fetchall():
+                        utxo = self.utxos_by_id.get(utxo_id)
+                        if utxo:
+                            utxo.block_height = block_height
+                        self._utxo_modified(utxo_id)
 
         if tx_json:
             for index, vout in enumerate(tx_json.get('vout', [])):
@@ -727,7 +923,7 @@ class Bip44Wallet(QObject):
                 tx_json = tx_json_
 
         if not tx_json:
-            tx_json = self.dashd_intf.getrawtransaction(txhash, 1)
+            tx_json = self._getrawtransaction(txhash)
 
         vouts = tx_json.get('vout')
         if tx_index < len(vouts):
@@ -766,7 +962,7 @@ class Bip44Wallet(QObject):
                                       (addr_id, address, tx_id, tx_index, satoshis, spent_tx_id, spent_input_index,
                                        scr_type))
                     utxo_id = db_cursor.lastrowid
-                    self.utxos_added[utxo_id] = utxo_id
+                    self._utxo_added(utxo_id)
                     if addr_id:
                         self.addr_bal_updated[addr_id] = True
                 else:
@@ -787,7 +983,7 @@ class Bip44Wallet(QObject):
                 tx_json = tx_json_
 
         if not tx_json:
-            tx_json = self.dashd_intf.getrawtransaction(txhash, 1)
+            tx_json = self._getrawtransaction(txhash)
 
         vins = tx_json.get('vin')
         if tx_index < len(vins):
@@ -833,10 +1029,7 @@ class Bip44Wallet(QObject):
                             db_cursor.execute('update tx_output set spent_tx_id=?, spent_input_index=? where id=?',
                                               (tx_id, tx_index, utxo_id))
 
-                            if utxo_id in self.utxos_added:
-                                del self.utxos_added[utxo_id]  # the registered utxo has just been spent
-                            else:
-                                self.utxos_removed[utxo_id] = utxo_id
+                            self._utxo_removed(utxo_id)
                             self.addr_bal_updated[addr_id] = True
             else:
                 if row[1] != addr_id:
@@ -886,70 +1079,60 @@ class Bip44Wallet(QObject):
         self.__cur_tx_fetch_prioriry = new_priority
 
     def fetch_all_accounts_txs(self, check_break_process_fun: Callable, priority: int = DEFAULT_TX_FETCH_PRIORITY):
-        log.debug('Starting fetching transactions for all accounts.')
 
+        def scan_account_txs(account, db_cursor):
+            for change in (0, 1):
+                if check_break_process_fun and check_break_process_fun():
+                    break
+
+                change_level_node = account.get_child_entry(change)
+                change_level_node.read_from_db(db_cursor, create=True)
+                change_level_node.evaluate_address_if_null(db_cursor, self.dash_network)
+                self._fetch_child_addrs_txs(change_level_node, account, check_break_process_fun)
+            self._update_addr_balances(account)
+            account.read_from_db(db_cursor)
+            account.evaluate_address_if_null(db_cursor, self.dash_network)
+            self._process_addresses_created(db_cursor)
+
+        log.debug('Starting fetching transactions for all accounts.')
         self._wait_for_tx_fetch_terminate(priority)
         try:
             self.validate_hd_tree()
             self.addr_ids_created.clear()
             self.increase_ext_call_level()
+            db_cursor = self.db_intf.get_cursor()
+
             try:
+                account_ids_scanned = []
+
                 for idx in range(MAX_BIP44_ACCOUNTS):
                     if check_break_process_fun and check_break_process_fun():
                         break
 
-                    db_cursor = self.db_intf.get_cursor()
-                    try:
-                        account_address_index = 0x80000000 + idx
-                        account = self._get_account_by_index(account_address_index, db_cursor)
-                        for change in (0, 1):
-                            if check_break_process_fun and check_break_process_fun():
-                                break
+                    account_address_index = 0x80000000 + idx
+                    account = self._get_account_by_index(account_address_index, db_cursor)
+                    if account.status != 2:
+                        scan_account_txs(account, db_cursor)
+                        account_ids_scanned.append(account.id)
+                    if not account.received:
+                        break
 
-                            change_level_node = account.get_child_entry(change)
-                            change_level_node.read_from_db(db_cursor, create=True)
-                            change_level_node.evaluate_address_if_null(db_cursor, self.dash_network)
-                            self._fetch_child_addrs_txs(change_level_node, account, check_break_process_fun)
-                        self._update_addr_balances(account)
-                        account.read_from_db(db_cursor)
-                        account.evaluate_address_if_null(db_cursor, self.dash_network)
-                        self._process_addresses_created(db_cursor)
-                        if not account.received:
-                            break
-                    finally:
-                        if db_cursor.connection.total_changes > 0:
-                            self.db_intf.commit()
-                        self.db_intf.release_cursor()
+                for acc_id in self.account_by_id:
+                    account = self.account_by_id[acc_id]
+                    if account.id not in account_ids_scanned and account.status != 2:
+                        scan_account_txs(account, db_cursor)
+                        account_ids_scanned.append(account.id)
+
             finally:
+                if db_cursor.connection.total_changes > 0:
+                    self.db_intf.commit()
+                self.db_intf.release_cursor()
                 self.decrease_ext_call_level()
+
         finally:
             self.__cur_tx_fetch_prioriry = None
             self.__tx_fetch_end_event.set()
         log.debug('Finished fetching transactions for all accounts.')
-
-    # def fetch_account_txs(self, account_index: int, check_break_process_fun: Callable):
-    #     log.debug(f'fetch_account_txs account index: {account_index}')
-    #     tm_begin = time.time()
-    #
-    #     self.increase_ext_call_level()
-    #     try:
-    #         if account_index < 0:
-    #             raise Exception('Invalid account number')
-    #
-    #         account_entry = self._get_account_id_by_index(account_index)
-    #         account = self.accounts_by_id.get(account_entry.id)
-    #
-    #         for change in (0, 1):
-    #             if check_break_process_fun and check_break_process_fun():
-    #                 break
-    #
-    #             change_level_entry = account_entry.get_child(change)
-    #             self._fetch_child_addrs_txs(change_level_entry, account, check_break_process_fun)
-    #         self._update_addr_balances(account)
-    #     finally:
-    #         self.decrease_ext_call_level()
-    #
-    #     log.debug(f'fetch_account_txs exec time: {time.time() - tm_begin}s')
 
     def fetch_account_txs_xpub(self, account: Union[Bip44AccountType, str], change: int,
                                check_break_process_fun: Callable, priority: int = DEFAULT_TX_FETCH_PRIORITY):
@@ -1067,22 +1250,22 @@ class Bip44Wallet(QObject):
                 if not row[0] in mod_addr_ids:
                     mod_addr_ids.append(row[0])
 
-            # list all transaction outputs that was prevoiusly spent - due to the transaction deletion
+            # list all transaction outputs that was previously spent - due to the transaction deletion
             # they are no longer spent, so we add them to the "new" utxos list
             db_cursor.execute('select id, address_id from tx_output where spent_tx_id=?', (tx_id,))
             for row in db_cursor.fetchall():
-                self.utxos_added[row[0]] = row[1]
+                self._utxo_added(row[0])
             db_cursor.execute('update tx_output set spent_tx_id=null, spent_input_index=null where spent_tx_id=?',
                               (tx_id,))
 
             db_cursor.execute('select id, address_id from tx_output where tx_id=?', (tx_id,))
             for row in db_cursor.fetchall():
-                self.utxos_removed[row[0]] = row[0]
+                self._utxo_removed(row[0])
 
             db_cursor.execute('delete from tx_output where tx_id=?', (tx_id,))
             db_cursor.execute('delete from tx_input where tx_id=?', (tx_id,))
             db_cursor.execute('delete from tx where id=?', (tx_id,))
-            self.txs_removed[tx_id] = tx_id
+            self._tx_removed(tx_id)
 
             self._update_addr_balances(account=None, addr_ids=mod_addr_ids, db_cursor=db_cursor)
         finally:
@@ -1111,11 +1294,11 @@ class Bip44Wallet(QObject):
 
                 db_cursor.execute(
                     "select id, account_id, real_received, "
-                    "real_spent + real_received real_balance from (select a.id id, ca.id change_id, aa.id account_id, "
+                    "real_spent + real_received real_balance from (select a.id id, aa.id account_id, "
                     "a.received, (select ifnull(sum(satoshis), 0) from tx_output o where o.address_id = a.id) "
                     "real_received, a.balance, (select ifnull(sum(satoshis), 0) "
                     "from tx_input o where o.src_address_id = a.id) real_spent from address a "
-                    "join address ca on ca.id = a.parent_id join address aa on aa.id = ca.parent_id "
+                    "left join address ca on ca.id = a.parent_id left join address aa on aa.id = ca.parent_id "
                     "where a.id in (select id from temp_ids)) "
                     "where received <> real_received or balance <> real_received + real_spent")
             elif account:
@@ -1130,18 +1313,18 @@ class Bip44Wallet(QObject):
             else:
                 raise Exception('Both arguments account_id and addr_ids are empty')
 
-            for id, acc_id, real_received, real_balance in db_cursor.fetchall():
-                if acc_id not in account_ids:
+            for addr_id, acc_id, real_received, real_balance in db_cursor.fetchall():
+                if acc_id is not None and acc_id not in account_ids:
                     account_ids[acc_id] = acc_id
 
                 db_cursor.execute('update address set balance=?, received=? where id=?',
-                                  (real_balance, real_received, id))
+                                  (real_balance, real_received, addr_id))
 
                 if self.on_address_data_changed_callback:
                     if account:
-                        address = account.address_by_id(id)
+                        address = account.address_by_id(addr_id)
                     else:
-                        address, account = self._find_address_item_in_cache_by_id(id)
+                        address, account = self._find_address_item_in_cache_by_id(addr_id)
                     if address:
                         address.balance = real_balance
                         address.received = real_received
@@ -1170,11 +1353,11 @@ class Bip44Wallet(QObject):
                     "where id=?) "
                     "where received <> real_received or balance <> real_balance", (account.id,))
 
-                for id, real_balance, real_received in db_cursor.fetchall():
+                for addr_id, real_balance, real_received in db_cursor.fetchall():
                     db_cursor.execute('update address set balance=?, received=? where id=?',
-                                      (real_balance, real_received, id))
+                                      (real_balance, real_received, addr_id))
 
-                    account = self._get_account_by_id(id, db_cursor, force_reload=True)
+                    account = self._get_account_by_id(addr_id, db_cursor, force_reload=True)
                     self.signal_account_data_changed(account)
 
         finally:
@@ -1262,10 +1445,6 @@ class Bip44Wallet(QObject):
                 self.db_intf.commit()
             self.db_intf.release_cursor()
 
-            for id in self.utxos_removed:
-                if id in self.utxos_by_id:
-                    del self.utxos_by_id[id]
-
         diff = time.time() - tm_begin
         log.debug('list_utxos_for_account exec time: %ss', diff)
 
@@ -1275,8 +1454,7 @@ class Bip44Wallet(QObject):
             in_part = ','.join(['?'] * len(address_ids))
             sql_text = "select o.id, tx.block_height, tx.coinbase,tx.block_timestamp, tx.tx_hash, o.output_index, " \
                        "o.satoshis, o.address_id from tx_output o join address a" \
-                       " on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca" \
-                       " on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null " \
+                       " on a.id=o.address_id join tx on tx.id=o.tx_id where (spent_tx_id is null " \
                        " or spent_input_index is null) and a.id in (" + in_part + ')'
 
             if only_new:
@@ -1300,9 +1478,31 @@ class Bip44Wallet(QObject):
                 self.db_intf.commit()
             self.db_intf.release_cursor()
 
-            for id in self.utxos_removed:
-                if id in self.utxos_by_id:
-                    del self.utxos_by_id[id]
+    def list_utxos_for_ids(self, utxo_ids: List[int]) -> Generator[UtxoType, None, None]:
+        db_cursor = self.db_intf.get_cursor()
+        try:
+            self._fill_temp_ids_table(utxo_ids, db_cursor)
+
+            sql_text = "select o.id, tx.block_height, tx.coinbase,tx.block_timestamp, tx.tx_hash, o.output_index, " \
+                       "o.satoshis, o.address_id from tx_output o join address a" \
+                       " on a.id=o.address_id join tx on tx.id=o.tx_id where (spent_tx_id is null " \
+                       " or spent_input_index is null) and o.id in (select id from temp_ids) " \
+                       " order by tx.block_height desc"
+
+            db_cursor.execute(sql_text)
+
+            for id, block_height, coinbase, block_timestamp, tx_hash, \
+                output_index, satoshis, address_id in db_cursor.fetchall():
+
+                utxo = self._get_utxo(id, tx_hash, address_id, output_index, satoshis, block_height,
+                                      block_timestamp, coinbase)
+
+                yield utxo
+
+        finally:
+            if db_cursor.connection.total_changes > 0:
+                self.db_intf.commit()
+            self.db_intf.release_cursor()
 
     def _prepare_cursor_for_txs_list(self, db_cursor, account_id: Optional[int], address_ids: Optional[List[int]]):
 
@@ -1400,10 +1600,6 @@ class Bip44Wallet(QObject):
                 self.db_intf.commit()
             self.db_intf.release_cursor()
 
-            for id in self.utxos_removed:
-                if id in self.utxos_by_id:
-                    del self.utxos_by_id[id]
-
         diff = time.time() - tm_begin
         log.debug('list_utxos_for_account exec time: %ss', diff)
 
@@ -1430,6 +1626,46 @@ class Bip44Wallet(QObject):
             self.db_intf.release_cursor()
         diff = time.time() - tm_begin
         log.debug(f'Accounts read time: {diff}s')
+
+    def force_show_account(self, account_index: int, check_break_process_fun: Optional[Callable],
+                           priority: int = DEFAULT_TX_FETCH_PRIORITY) -> Bip44AccountType:
+        """ Show account that hasn't been revealed during BIP44 account discovery process: it's an empty account or
+        there is a gap between it and the last used account (having any tx history).
+        """
+
+        self._wait_for_tx_fetch_terminate(priority)
+        try:
+            self.validate_hd_tree()
+            self.addr_ids_created.clear()
+            self.increase_ext_call_level()
+            try:
+                db_cursor = self.db_intf.get_cursor()
+                try:
+                    account_address_index = 0x80000000 + account_index
+                    account = self._get_account_by_index(account_address_index, db_cursor)
+                    for change in (0, 1):
+                        if check_break_process_fun and check_break_process_fun():
+                            break
+
+                        change_level_node = account.get_child_entry(change)
+                        change_level_node.read_from_db(db_cursor, create=True)
+                        change_level_node.evaluate_address_if_null(db_cursor, self.dash_network)
+                        # self._fetch_child_addrs_txs(change_level_node, account, check_break_process_fun)
+                    # self._update_addr_balances(account)
+                    account.read_from_db(db_cursor)
+                    account.evaluate_address_if_null(db_cursor, self.dash_network)
+                    self.set_account_status(account, 1)
+                    self._process_addresses_created(db_cursor)
+                finally:
+                    if db_cursor.connection.total_changes > 0:
+                        self.db_intf.commit()
+                    self.db_intf.release_cursor()
+            finally:
+                self.decrease_ext_call_level()
+        finally:
+            self.__cur_tx_fetch_prioriry = None
+            self.__tx_fetch_end_event.set()
+        return account
 
     def register_spending_transaction(self, inputs: List[UtxoType], outputs: List[TxOutputType], tx_json: Dict):
         """
@@ -1547,6 +1783,27 @@ class Bip44Wallet(QObject):
             if acc_loc:
                 acc_loc.label = label
             self.signal_account_data_changed(entry)
+
+    def set_account_status(self, account: Bip44AccountType, status: int):
+        if status not in (1, 2):
+            raise Exception('Invalid status: ' + str(status))
+
+        db_cursor = self.db_intf.get_cursor()
+        try:
+            account.status = status
+            db_cursor.execute('update address set status=? where id=?', (status, account.id))
+
+            # update status in the Bip44AccountType object maintained locally (its reference doesn't have to be the
+            # same as the object ref passed as an argument to this method
+            acc_loc = self.account_by_id.get(account.id)
+            if acc_loc:
+                acc_loc.status = status
+        finally:
+            if db_cursor.connection.total_changes > 0:
+                self.db_intf.commit()
+            self.db_intf.release_cursor()
+
+        self.signal_account_data_changed(account)
 
     def set_label_for_transaction(self, tx: TxType, label: str):
         db_cursor = self.db_intf.get_cursor()

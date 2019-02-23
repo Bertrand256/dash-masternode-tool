@@ -304,6 +304,9 @@
               <property name="wordWrap">
                <bool>true</bool>
               </property>
+              <property name="textInteractionFlags">
+               <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
+              </property>
              </widget>
             </item>
             <item>
@@ -372,7 +375,7 @@
             <string notr="true"/>
            </property>
            <property name="text">
-            <string>Start Masternode using hardware wallet (&lt;= v0.12)</string>
+            <string>Start Masternode using hardware wallet</string>
            </property>
           </widget>
          </item>
