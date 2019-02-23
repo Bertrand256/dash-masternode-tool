@@ -1860,7 +1860,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if not self.cur_masternode.collateralBip32Path:
                     self.errorMsg("Empty masternode's collateral BIP32 path")
                 else:
-                    ui = SignMessageDlg(self, self.cur_masternode.collateralBip32Path,
+                    ui = SignMessageDlg(self, self.hw_session, self.cur_masternode.collateralBip32Path,
                                         self.cur_masternode.collateralAddress)
                     ui.exec_()
         else:

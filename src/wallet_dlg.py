@@ -31,6 +31,7 @@ import thread_utils
 from app_config import MasternodeConfig
 from app_defs import HWType, DEBUG_MODE
 from bip44_wallet import Bip44Wallet, Bip44Entry, BreakFetchTransactionsException
+from sign_message_dlg import SignMessageDlg
 from ui.ui_wallet_dlg_options1 import Ui_WdgOptions1
 from ui.ui_wdg_wallet_txes_filter import Ui_WdgWalletTxesFilter
 from wallet_common import UtxoType, Bip44AccountType, Bip44AddressType, TxOutputType, TxType
@@ -265,7 +266,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         # context menu actions:
         # show address on hardware wallet
-        self.act_show_address_on_hw = QAction('Show address on hardware wallet', self)
+        self.act_show_address_on_hw = QAction('Show address', self)
         self.act_show_address_on_hw.triggered.connect(self.on_show_address_on_hw_triggered)
         self.main_ui.setIcon(self.act_show_address_on_hw, 'eye@16px.png')
         self.accountsListView.addAction(self.act_show_address_on_hw)
@@ -274,6 +275,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.act_copy_address.triggered.connect(self.on_act_copy_address_triggered)
         self.main_ui.setIcon(self.act_copy_address, 'content-copy@16px.png')
         self.accountsListView.addAction(self.act_copy_address)
+        # sign message
+        self.act_sign_message_for_address = QAction('Sign message', self)
+        self.act_sign_message_for_address.triggered.connect(self.on_act_sign_message_for_address_triggered)
+        self.main_ui.setIcon(self.act_sign_message_for_address, 'sign.png')
+        self.accountsListView.addAction(self.act_sign_message_for_address)
         # set label for address/account:
         self.act_set_entry_label = QAction('Set label', self)
         self.act_set_entry_label.triggered.connect(self.on_act_set_entry_label_triggered)
@@ -284,7 +290,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.act_show_account_next_fresh_address.triggered.connect(self.on_show_account_next_fresh_address_triggered)
         self.accountsListView.addAction(self.act_show_account_next_fresh_address)
         # show account
-        self.act_show_account = QAction('Show/activate account', self)
+        self.act_show_account = QAction('Add account', self)
         self.act_show_account.triggered.connect(self.on_act_show_account_triggered)
         self.main_ui.setIcon(self.act_show_account, 'eye@16px.png', force_color_change='#0066cc')
         self.accountsListView.addAction(self.act_show_account)
@@ -310,6 +316,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         self.update_ui_show_individual_addresses()
         self.update_ui_view_mode_options()
+        self.address_souce_update_ui()
         self.prepare_txes_filter()
         self.show_hide_txes_filter()
 
@@ -449,6 +456,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.mnListView.selectionModel().select(sel, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
         self.update_details_tab()
 
+    def address_souce_update_ui(self):
+        self.btnViewModeOptions.setEnabled(True if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS else False)
+
     @pyqtSlot(int)
     def on_cboAddressSourceMode_currentIndexChanged(self, index):
         self.swAddressSource.setCurrentIndex(index)
@@ -473,6 +483,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.on_utxo_src_hash_changed()
         self.display_thread_event.set()
         self.update_ui_view_mode_options()
+        self.address_souce_update_ui()
 
     def on_dest_addresses_resized(self):
         self.splitter.setSizes([1, self.wdg_dest_adresses.sizeHint().height()])
@@ -502,7 +513,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     @pyqtSlot(bool)
     def on_btnCheckAll_clicked(self):
         sel = self.utxoTableView.selectionModel()
-        # block_old = sel.blockSignals(True)
         sel_modified = False
         s = QItemSelection()
         with self.utxo_table_model:
@@ -718,6 +728,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         self.act_show_address_on_hw.setVisible(visible)
         self.act_copy_address.setVisible(visible)
+        self.act_sign_message_for_address.setVisible(visible)
 
         if self.hw_selected_account_id is not None or self.hw_selected_address_id is not None:
             enabled = True
@@ -760,6 +771,17 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         if not addr:
             WndUtils.warnMsg('Couldn\'t copy the selected address.')
 
+    def on_act_sign_message_for_address_triggered(self):
+        addr = None
+        if self.hw_selected_address_id is not None:
+            acc = self.account_list_model.account_by_id(self.hw_selected_account_id)
+            if acc:
+                addr = acc.address_by_id(self.hw_selected_address_id)
+                if addr and addr.bip32_path and addr.address:
+                    ui = SignMessageDlg(self, self.hw_session, addr.bip32_path, addr.address)
+                    ui.exec_()
+        if not addr:
+            WndUtils.warnMsg('Couldn\'t copy the selected address.')
 
     def on_delete_account_triggered(self):
         if self.hw_selected_account_id is not None:
@@ -1624,6 +1646,19 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def on_detailsTab_currentChanged(self, index):
         self.display_thread_event.set()
+
+    @pyqtSlot(bool)
+    def on_btnSelectAllMasternodes_clicked(self, checked):
+        sel = self.mnListView.selectionModel()
+        sel_modified = False
+        s = QItemSelection()
+        with self.mn_model:
+            for row_idx, mni in enumerate(self.mn_model.mn_items):
+                index = self.mn_model.index(row_idx, 0)
+                sel_modified = True
+                s.select(index, index)
+            if sel_modified:
+                sel.select(s, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
 
     def save_tx_comment(self, a):
         pass
