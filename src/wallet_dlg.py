@@ -1035,6 +1035,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         def connect():
             if self.main_ui.connect_hardware_wallet():
                 self.app_config.initialize_hw_encryption(self.main_ui.hw_session)
+
+                # break the fetching transactions process:
+                self.allow_fetch_transactions = False
+                self.enable_synch_with_main_thread = False
+
                 self.cur_hd_tree_id, _ = self.bip44_wallet.get_hd_identity_info()
                 log.debug('Connected HW, self.cur_hd_tree_id: %s', self.cur_hd_tree_id)
                 self.hw_connection_established = True
@@ -1048,6 +1053,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.dt_last_addr_selection_hash_for_utxo = ''
                 self.dt_last_addr_selection_hash_for_txes = ''
                 self.dt_last_hd_tree_id = None
+
+                self.allow_fetch_transactions = True
+                self.enable_synch_with_main_thread = True
                 self.display_thread_event.set()
                 self.fetch_transactions()
                 return True
