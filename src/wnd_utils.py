@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+import datetime
 import functools
 import logging
 import os
@@ -387,24 +388,50 @@ class ThreadWndUtils(QObject):
                 # if so, raise deadlock detected exception
                 dl_check = thread_utils.EnhRLock.detect_deadlock(threading.main_thread())
                 if dl_check is not None:
+                    waiter = dl_check[0]
+                    locker = dl_check[1]
 
                     # find a caller of the current method (skip callers from the current module)
-                    caller_file = ''
-                    caller_line = ''
-                    for si in reversed(traceback.extract_stack()):
+                    cur_caller_file = ''
+                    cur_caller_line = ''
+                    stack = traceback.extract_stack()
+                    for si in reversed(stack):
                         if si.name != 'call_in_main_thread':
-                            caller_file = si.filename
-                            caller_line = si.lineno
+                            cur_caller_file = si.filename
+                            cur_caller_line = si.lineno
                             break
-                    raise DeadlockException('Deadlock detected. Trying to synchronize with the main thread (c), which '
-                                            'is waiting (b) for a lock acquired by this thread (a).\n'
-                                            '  CURRENT_THREAD ->(a)[LOCK]--->(c)[MAIN_THREAD]\n'
-                                            '  MAIN_THREAD ---->(b)[LOCK]\n'
-                                            '    a. file "%s", line %s\n'
-                                            '    b. file "%s", line %s\n'
-                                            '    c. file "%s", line %s' %
-                                            (dl_check[2], dl_check[3], dl_check[0], dl_check[1], caller_file,
-                                             caller_line))
+                    a_date_str = str(datetime.datetime.fromtimestamp(locker.time))
+                    b_date_str = str(datetime.datetime.fromtimestamp(waiter.time))
+                    c_date_str = str(datetime.datetime.now())
+
+                    dl_message = 'Deadlock detected. Trying to synchronize with the main thread (c), which ' \
+                                 'is waiting (b) for a lock acquired by this thread (a).\n' \
+                                 '  CURRENT_THREAD ->(a)[LOCK]--->(c)[MAIN_THREAD]\n' \
+                                 '  MAIN_THREAD ---->(b)[LOCK]\n' \
+                                 f'    a. file "{locker.file_name}", line {locker.line_number}, time {a_date_str}\n' \
+                                 f'    b. file "{waiter.file_name}", line {waiter.line_number}, time {b_date_str}\n' \
+                                 f'    c. file "{cur_caller_file}", line {cur_caller_line}, time {c_date_str}'
+
+                    log_message = dl_message
+
+                    if locker.call_stack:
+                        log_message += '\n\na. Call stack (the first locker and the current thread):\n'
+                        for se in locker.call_stack:
+                            log_message += f'  File "{se.filename}", line {se.lineno} in {se.line}\n'
+
+                    if waiter.call_stack:
+                        log_message += '\n\nb. Call stack (the main thread waiting for the lock already locked):\n'
+                        for se in waiter.call_stack:
+                            log_message += f'  File "{se.filename}", line {se.lineno} in {se.line}\n'
+
+                    cur_call_stack = thread_utils.clean_call_stack(stack)
+                    if cur_call_stack:
+                        log_message += '\n\nc. Call stack (the current thread waiting for the main thread):\n'
+                        for se in cur_call_stack:
+                            log_message += f'  File "{se.filename}", line {se.lineno} in {se.line}\n'
+
+                    logging.error(log_message)
+                    raise DeadlockException(dl_message)
 
                 mutex = QtCore.QMutex()
                 mutex.lock()

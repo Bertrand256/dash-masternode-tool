@@ -5,7 +5,29 @@
 
 import logging
 import threading
+import time
 import traceback
+from typing import Dict, Tuple, Optional, List
+
+SAVE_CALL_STACK = True
+
+
+class LockCaller():
+    def __init__(self, thread, calling_filename, calling_line_number, call_stack):
+        self.thread = thread
+        self.file_name = calling_filename
+        self.line_number = calling_line_number
+        self.call_stack: List[traceback.FrameSummary] = call_stack
+        self.time = time.time()
+
+
+def clean_call_stack(stack):
+    """ Clean traceback call stack from entries related to the debugger used in the development. """
+    call_stack = []
+    for s in stack:
+        if s.filename.find('PyCharm') < 0:
+            call_stack.append(s)
+    return call_stack
 
 
 class EnhRLock():
@@ -45,23 +67,24 @@ class EnhRLock():
             calling_filename, calling_line_number = '', ''
 
         thread = threading.currentThread()
-        waiter = {
-            'thread': thread,
-            'file_name': calling_filename,
-            'line_number': calling_line_number
-        }
+
+        if SAVE_CALL_STACK:  # used in diagnostics
+            call_stack = clean_call_stack(stack)
+        else:
+            call_stack = []
+
+        waiter = LockCaller(thread, calling_filename, calling_line_number, call_stack)
         self.waiters.append(waiter)
         self.__lock.acquire()
+
         self.depth += 1
         self.waiters.remove(waiter)
-        self.blocker = {
-            'thread': thread,
-            'file_name': calling_filename,
-            'line_number': calling_line_number
-        }
+        del waiter
+
+        self.blocker = LockCaller(thread, calling_filename, calling_line_number, call_stack)
 
     def release(self):
-        if self.blocker is not None and self.blocker['thread'] != threading.currentThread():
+        if self.blocker is not None and self.blocker.thread != threading.currentThread():
             raise Exception('Cannot release not owned lock')
         self.depth -= 1
         if self.depth == 0:
@@ -73,15 +96,18 @@ class EnhRLock():
         threading.main_thread()
 
     @staticmethod
-    def detect_deadlock(checked_thread):
+    def detect_deadlock(checked_thread) -> Optional[Tuple[LockCaller, LockCaller]]:
+        """
+        :param checked_thread:
+        :return: Tuple[LockCaller (waiter), LockCaller (locker)]
+        """
         EnhRLock.int_lock.acquire()
         try:
             for lock in EnhRLock.lock_list:
                 for waiter in lock.waiters:
-                    if waiter['thread'] == checked_thread and \
-                       lock.blocker is not None and lock.blocker['thread'] == threading.currentThread():
-                        return waiter['file_name'], waiter['line_number'], \
-                               lock.blocker['file_name'], lock.blocker['line_number']
+                    if waiter.thread == checked_thread and \
+                       lock.blocker is not None and lock.blocker.thread == threading.currentThread():
+                        return waiter, lock.blocker
             return None
         finally:
             EnhRLock.int_lock.release()
