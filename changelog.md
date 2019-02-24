@@ -1,17 +1,20 @@
 ## [0.9.22] - 2019-02-24
 
 **Added**
-- DML registration wizard: the possibility of using the public key 
+- DML registration wizard: the possibility of using public keys 
 for the operator and Dash addresses for the owner and voting.
 - Main window: the possibility of displaying private keys in the form 
-of Dash address, public key and public key hash (for diagnostics).
-- Wallet: the possibility of adding/hiding any BIP44 account. Please 
-note, that if there is a gap between the account added and the last one 
-used (having a transaction history), the official client app for a 
-given hardware wallet (eg Trezor online wallet) will not show it.
+of: Dash address, public key and public key hash (for diagnostics).
+- Wallet: the possibility of adding/hiding any BIP44 account (use 
+context menu). Please note, that if there is a gap between the account 
+added and the last one used (having a transaction history), the 
+official client app for a given hardware wallet (eg Trezor online 
+wallet) will not show it.
 - Wallet: the possibility o hiding accounts.
 - Wallet: signing messages with any address.
-- Wallet: showing incoming and not yet confirmed UTXOs (from mempool_.
+- Wallet: showing incoming and not yet confirmed UTXOs (from mempool).
+- Wallet: initially select the masternode address ("Masternode address" 
+mode) that is currently selected in the main window.
 
 **Changed**
 - Main window: the user's role is morphed into three independent 
@@ -27,9 +30,12 @@ masternodes depends on the status of DIP3 and Spork 15.
 new transactions.
 
 **Fixed**
-- Proposals: fixed an issue that caused some proposals (e.g. from 
-DashNexus) to not be displayed. 
-- Several other minor issues.
+- Proposals: fixed an issue that caused some proposals to not be 
+displayed. 
+- Wallet: issues with fetching transactions and showing UTXOs for 
+BIP44 accounts that are beyond the scope of the standard BIP44 
+account discovery method.
+- Fixed several other minor issues.
 
 ## [0.9.21] - 2019-01-13
 
