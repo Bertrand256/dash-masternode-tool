@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>172</width>
-    <height>275</height>
+    <width>291</width>
+    <height>385</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -30,7 +30,7 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="spacing">
-    <number>3</number>
+    <number>6</number>
    </property>
    <property name="leftMargin">
     <number>6</number>
@@ -74,15 +74,21 @@
     <widget class="QWidget" name="wdgPinButtons" native="true">
      <layout class="QHBoxLayout" name="layPinButtons">
       <property name="spacing">
-       <number>0</number>
+       <number>6</number>
       </property>
       <property name="leftMargin">
        <number>1</number>
       </property>
+      <property name="topMargin">
+       <number>3</number>
+      </property>
+      <property name="bottomMargin">
+       <number>3</number>
+      </property>
       <item>
        <layout class="QVBoxLayout" name="verticalLayout_2">
         <property name="spacing">
-         <number>0</number>
+         <number>3</number>
         </property>
         <item>
          <layout class="QGridLayout" name="gridLayout">
@@ -90,7 +96,7 @@
            <enum>QLayout::SetDefaultConstraint</enum>
           </property>
           <property name="spacing">
-           <number>0</number>
+           <number>6</number>
           </property>
           <item row="2" column="0">
            <widget class="QPushButton" name="btnPin1">
@@ -102,14 +108,14 @@
             </property>
             <property name="minimumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="text">
@@ -130,14 +136,14 @@
             </property>
             <property name="minimumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="text">
@@ -158,14 +164,14 @@
             </property>
             <property name="minimumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="text">
@@ -186,14 +192,14 @@
             </property>
             <property name="minimumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="text">
@@ -214,14 +220,14 @@
             </property>
             <property name="minimumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="text">
@@ -242,14 +248,14 @@
             </property>
             <property name="minimumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="text">
@@ -273,14 +279,14 @@
             </property>
             <property name="minimumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="text">
@@ -304,14 +310,14 @@
             </property>
             <property name="minimumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="text">
@@ -332,14 +338,14 @@
             </property>
             <property name="minimumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
-              <width>60</width>
-              <height>60</height>
+              <width>90</width>
+              <height>90</height>
              </size>
             </property>
             <property name="text">
@@ -355,7 +361,7 @@
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout">
           <property name="spacing">
-           <number>3</number>
+           <number>6</number>
           </property>
           <property name="sizeConstraint">
            <enum>QLayout::SetDefaultConstraint</enum>

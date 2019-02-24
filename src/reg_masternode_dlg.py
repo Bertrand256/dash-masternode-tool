@@ -146,6 +146,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
     def closeEvent(self, event):
         self.finishing = True
+        if self.wait_for_confirmation_timer_id is not None:
+            self.killTimer(self.wait_for_confirmation_timer_id)
         self.save_cache_settings()
 
     def restore_cache_settings(self):
@@ -705,7 +707,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             text = '<table>'
             for l in self.summary_info:
                 lbl, val = l.split('\t')
-                text += f'<tr><td><b>{lbl}:</b> </td><td>{val}</td></tr>'
+                text += f'<tr><td style="white-space: nowrap"><b>{lbl}:</b> </td><td>{val}</td></tr>'
             text += '</table>'
             self.edtProtxSummary.setText(text)
             self.edtProtxSummary.show()

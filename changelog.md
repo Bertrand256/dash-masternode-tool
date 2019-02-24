@@ -1,3 +1,36 @@
+## [0.9.22] - 2019-02-24
+
+**Added**
+- DML registration wizard: the possibility of using the public key 
+for the operator and Dash addresses for the owner and voting.
+- Main window: the possibility of displaying private keys in the form 
+of Dash address, public key and public key hash (for diagnostics).
+- Wallet: the possibility of adding/hiding any BIP44 account. Please 
+note, that if there is a gap between the account added and the last one 
+used (having a transaction history), the official client app for a 
+given hardware wallet (eg Trezor online wallet) will not show it.
+- Wallet: the possibility o hiding accounts.
+- Wallet: signing messages with any address.
+- Wallet: showing incoming and not yet confirmed UTXOs (from mempool_.
+
+**Changed**
+- Main window: the user's role is morphed into three independent 
+roles - owner, operator and voter - one can choose any combination of 
+them.
+- DML registration wizard: support for the 'feeSourceAddress' field 
+in the `protx prepare` call (added in Dash Core rc11).
+- Main window: suport for deterministic masternodes in the masternode 
+status area.
+- Main window: the visibility of the buttons associated with starting 
+masternodes depends on the status of DIP3 and Spork 15.
+- Wallet: improved refreshing of the UTXO list as a result of reading 
+new transactions.
+
+**Fixed**
+- Proposals: fixed an issue that caused some proposals (e.g. from 
+DashNexus) to not be displayed. 
+- Several other minor issues.
+
 ## [0.9.21] - 2019-01-13
 
 **Added**

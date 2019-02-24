@@ -1719,11 +1719,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     if dmn_tx and not dmn_tx.get('confirmations'):
                         warnings.append('<td class="warning" colspan="2">ProRegTx not yet confirmed</td>')
                     if collateral_address_mismatch:
-                        errors.append('<td class="error" colspan="2">Collateral address missing/mismatch</td>')
+                        errors.append('<td class="error" colspan="2">Collateral address missing&frasl;mismatch</td>')
                     if collateral_tx_mismatch:
-                        errors.append('<td class="error" colspan="2">Collateral TX hash and/or index missing/mismatch</td>')
+                        errors.append('<td class="error" colspan="2">Collateral TX hash and&frasl;or index '
+                                      'missing&frasl;mismatch</td>')
                     if ip_port_mismatch:
-                        errors.append('<td class="error" colspan="2">Masternode IP and/or port number missing/mismatch</td>')
+                        errors.append('<td class="error" colspan="2">Masternode IP and&frasl;or port number '
+                                      'missing&frasl;mismatch</td>')
                     if owner_public_address_mismatch:
                         errors.append('<td class="error" colspan="2">Owner Dash address mismatch</td>')
                     if operator_pubkey_mismatch:

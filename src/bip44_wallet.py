@@ -418,8 +418,31 @@ class Bip44Wallet(QObject):
                     if row:
                         addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
                         if addr_info.get('parent_id') != parent_key_entry.id or \
-                            addr_info.get('address_index') != child_addr_index or addr_info.get('path') != bip32_path or \
-                            addr_info.get('tree_id') != parent_key_entry.tree_id:
+                                addr_info.get('address_index') != child_addr_index or \
+                                addr_info.get('path') != bip32_path or \
+                                addr_info.get('tree_id') != parent_key_entry.tree_id:
+
+                            if addr_info.get('tree_id') and addr_info.get('tree_id') != parent_key_entry.tree_id:
+                                log.warning('Address %s stored in cache has had incorrect tree_id: %s, but it'
+                                            ' should have: %s. Correcting...', addr_info.get('id'),
+                                            addr_info.get('tree_id'), parent_key_entry.tree_id)
+
+                            if addr_info.get('address_index') is not None and addr_info.get('address_index') != \
+                                    child_addr_index:
+                                log.warning('Address %s stored in cache has had incorrect address_index: %s, but it'
+                                            ' should have: %s. Correcting...', addr_info.get('id'),
+                                            addr_info.get('child_addr_index'), child_addr_index)
+
+                            if addr_info.get('path') and addr_info.get('path') != bip32_path:
+                                log.warning('Address %s stored in cache has had incorrect bip32_path: %s, but it'
+                                            ' should have: %s. Correcting...', addr_info.get('id'),
+                                            addr_info.get('path'), bip32_path)
+
+                            if addr_info.get('parent_id') and addr_info.get('parent_id') != parent_key_entry.id:
+                                log.warning('Address %s stored in cache has had incorrect parent_id: %s, but it'
+                                            ' should have: %s. Correcting...', addr_info.get('id'),
+                                            addr_info.get('parent_id'), parent_key_entry.id)
+
                             # address wasn't initially opened as a part of xpub account scan, so update its attrs
                             db_cursor.execute('update address set parent_id=?, address_index=?, path=?, tree_id=? '
                                               'where id=?',
@@ -588,10 +611,13 @@ class Bip44Wallet(QObject):
         return account
 
     def _read_account_addresses(self, account: Bip44AccountType, db_cursor):
+        correct_tree_id = []
+
         db_cursor.execute('select a.id, a.address_index, a.address, ac.path parent_path, a.balance, '
                           'a.received, ac.is_change, a.label, a.tree_id from address a '
                           'join address ac on a.parent_id=ac.id '
                           'where ac.parent_id=? order by ac.address_index, a.address_index', (account.id,))
+
         for add_row in db_cursor.fetchall():
             addr = account.address_by_id(add_row[0])
             if not addr:
@@ -603,10 +629,26 @@ class Bip44Wallet(QObject):
                         addr.bip32_path = pp + '/' + str(addr.address_index)
                 if not addr.tree_id:
                     addr.tree_id = account.tree_id
+
+                if addr_info.get('tree_id') and addr_info.get('tree_id') != account.tree_id:
+                    # there is an issue with switching tree_id to incorrect tree (cause to be found)
+                    # here we are correcting record values
+                    addr.tree_id = account.tree_id
+                    correct_tree_id.append(addr)
+                    log.warning('Address %s stored in cache has had incorrect tree_id: %s, but it'
+                                ' should have: %s. Correcting...', addr_info.get('id'),
+                                addr_info.get('tree_id'), account.tree_id)
+
                 account.add_address(addr)
                 self._address_loaded(addr)
             else:
                 addr.update_from_args(balance=add_row[4], received=add_row[5])
+
+        if correct_tree_id:
+            for a in correct_tree_id:
+                db_cursor.execute('update address set tree_id=? where id=?', (a.tree_id, a.id))
+
+            self.db_intf.commit()
 
     def _process_addresses_created(self, db_cursor):
         if self.addr_ids_created:
