@@ -352,7 +352,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             dir = os.path.dirname(self.config.app_config_file_name)
         else:
             dir = self.config.data_dir
-        file_name = self.open_config_file_query(dir, self)
+        file_name = self.open_config_file_query(dir, self, self.app_config)
 
         if file_name:
             if os.path.exists(file_name):
@@ -381,7 +381,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             dir = os.path.dirname(self.config.app_config_file_name)
         else:
             dir = self.config.data_dir
-        file_name = self.save_config_file_query(dir, self)
+        file_name = self.save_config_file_query(dir, self, self.app_config)
 
         if file_name:
             self.save_configuration(file_name)
@@ -903,7 +903,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         Imports masternodes configuration from masternode.conf file.
         """
 
-        file_name = self.open_file_query(self,
+        file_name = self.open_file_query(self, self.app_config,
                                          message='Enter the path to the masternode.conf configuration file',
                                          directory='', filter="All Files (*);;Conf files (*.conf)",
                                          initial_filter="Conf files (*.conf)")

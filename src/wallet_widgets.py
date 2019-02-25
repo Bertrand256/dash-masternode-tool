@@ -877,6 +877,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
 
         file_name = WndUtils.save_file_query(
             self.parent_dialog,
+            self.app_config,
             message='Enter the file name to save the data.',
             directory=dir,
             filter=file_filter,
@@ -923,6 +924,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
 
             file_name = WndUtils.open_file_query(
                 self.parent_dialog,
+                self.app_config,
                 message='Enter the file name to read the data.',
                 directory=dir,
                 filter=file_filter,

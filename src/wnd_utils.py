@@ -232,71 +232,69 @@ class WndUtils:
         widget.setIcon(icon)
 
     @staticmethod
-    def open_file_query(main_wnd, message, directory='', filter='', initial_filter=''):
+    def open_file_query(parent_wnd, app_config, message, directory='', filter='', initial_filter=''):
         """
         Creates an open file dialog for selecting a file or if the user configures not to use graphical dialogs
           (on some linuxes there are problems with graphic libs and app crashes) - normal input dialog for entering
           the full path to the file opens instead.
-        :param message:
-        :param directory:
         :param filter: example: "All Files (*);;Conf files (*.conf)"
         :param initial_filter: example: "Conf files (*.conf)"
         :return:
         """
-        if main_wnd:
-            sip_dialog = main_wnd.app_config.dont_use_file_dialogs if main_wnd.app_config else False
+        if parent_wnd:
+            sip_dialog = app_config.dont_use_file_dialogs if app_config else False
         else:
             sip_dialog = False
         file_name = ''
 
         if sip_dialog:
-            file_name, ok = QInputDialog.getText(main_wnd, 'File name query', message)
+            file_name, ok = QInputDialog.getText(parent_wnd, 'File name query', message)
             if not ok:
                 file_name = ''
         else:
-            file = QFileDialog.getOpenFileName(main_wnd, caption=message, directory=directory, filter=filter,
+            file = QFileDialog.getOpenFileName(parent_wnd, caption=message, directory=directory, filter=filter,
                                                initialFilter=initial_filter)
             if len(file) >= 2:
                 file_name = file[0]
         return file_name
 
     @staticmethod
-    def save_file_query(main_wnd, message, directory='', filter='', initial_filter=''):
+    def save_file_query(parent_wnd, app_config, message, directory='', filter='', initial_filter=''):
         """
         Creates an open file dialog for selecting a file or if the user configures not to use graphical dialogs
           (on some linuxes there are problems with graphic libs and app crashes) - normal input dialog for entering
           the full path to the file opens instead.
-        :param message:
-        :param directory:
         :param filter: example: "All Files (*);;Conf files (*.conf)"
         :param initial_filter: example: "Conf files (*.conf)"
         :return:
         """
-        sip_dialog = main_wnd.app_config.dont_use_file_dialogs if main_wnd.app_config else False
+        sip_dialog = app_config.dont_use_file_dialogs if app_config else False
         file_name = ''
 
         if sip_dialog:
-            file_name, ok = QInputDialog.getText(main_wnd, 'File name query', message)
+            file_name, ok = QInputDialog.getText(parent_wnd, 'File name query', message)
             if not ok:
                 file_name = ''
         else:
-            file = QFileDialog.getSaveFileName(main_wnd, caption=message, directory=directory, filter=filter,
+            file = QFileDialog.getSaveFileName(parent_wnd, caption=message, directory=directory, filter=filter,
                                                initialFilter=initial_filter)
             if len(file) >= 2:
                 file_name = file[0]
         return file_name
 
     @staticmethod
-    def open_config_file_query(dir, main_wnd):
-        file_name = WndUtils.open_file_query(main_wnd, message='Enter the path to the configuration file',
+    def open_config_file_query(dir, main_wnd, app_config):
+        file_name = WndUtils.open_file_query(main_wnd, app_config,
+                                             message='Enter the path to the configuration file',
                                              directory=dir,
                                              filter="All Files (*);;Configuration files (*.ini)",
                                              initial_filter="Configuration files (*.ini)")
         return file_name
 
     @staticmethod
-    def save_config_file_query(dir, main_wnd):
-        file_name = WndUtils.save_file_query(main_wnd, message='Enter the configuration file name/path to save',
+    def save_config_file_query(dir, parent_wnd, app_config):
+        file_name = WndUtils.save_file_query(parent_wnd, app_config,
+                                             message='Enter the configuration file name/path to save',
                                              directory=dir,
                                              filter="All Files (*);;Configuration files (*.ini)",
                                              initial_filter="Configuration files (*.ini)")

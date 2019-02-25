@@ -58,6 +58,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         ui_initialize_hw_dlg.Ui_HwInitializeDlg.__init__(self)
         WndUtils.__init__(self, parent.config)
         self.main_ui = parent
+        self.app_config = parent.config
         self.current_step = STEP_SELECT_DEVICE_TYPE
         self.action_type: Optional[int] = None  # numeric value represting the action type from the first step
         self.word_count: int = 24
@@ -1208,7 +1209,8 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         last_file = app_cache.get_value(CACHE_ITEM_LAST_FIRMWARE_FILE, '', str)
         dir = os.path.dirname(last_file)
 
-        file_name = WndUtils.open_file_query(self, message='Enter the path to the firmware file',
+        file_name = WndUtils.open_file_query(self, self.app_config,
+                                             message='Enter the path to the firmware file',
                                              directory=dir,
                                              filter="All Files (*);;BIN files (*.bin)",
                                              initial_filter="BIN files (*.bin)")

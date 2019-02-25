@@ -2701,7 +2701,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     @pyqtSlot()
     def on_btnProposalsSaveToCSV_clicked(self):
         """ Save the proposals' data to a CSV file. """
-        file_name = self.save_file_query('Enter name of the CSV file to save',
+        file_name = self.save_file_query(self, self.app_config, 'Enter name of the CSV file to save',
                                          filter="CSV files (*.csv);;All Files (*)",
                                          initial_filter="CSV files (*.csv)")
         if file_name:
@@ -2721,7 +2721,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def on_btnVotesSaveToCSV_clicked(self):
         """ Save the voting data of the current proposal to a CSV file. """
         if self.votesModel and self.current_proposal:
-            file_name = self.save_file_query('Enter name of the CSV file to save',
+            file_name = self.save_file_query(self, self.app_config, 'Enter name of the CSV file to save',
                                              filter="CSV files (*.csv);;All Files (*)",
                                              initial_filter="CSV files (*.csv)")
             if file_name:

@@ -635,7 +635,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
     @pyqtSlot(str)
     def save_summary_info(self, link: str):
-        file_name = WndUtils.save_file_query(self.main_dlg, 'Enter the file name',
+        file_name = WndUtils.save_file_query(self.main_dlg, self.app_config,
+                                             'Enter the file name',
                                              filter="TXT files (*.txt);;All Files (*)")
         if file_name:
             with open(file_name, 'wt') as fptr:

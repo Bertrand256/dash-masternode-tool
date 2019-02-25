@@ -436,7 +436,7 @@ class AppConfig(object):
                             else:
                                 dir = self.data_dir
 
-                            file_name = WndUtils.open_config_file_query(dir, None)
+                            file_name = WndUtils.open_config_file_query(dir, None, None)
                             if file_name:
                                 self.read_from_file(hw_session, file_name)
                                 return
@@ -641,7 +641,7 @@ class AppConfig(object):
                     else:
                         dir = self.data_dir
 
-                    file_name = WndUtils.open_config_file_query(dir, None)
+                    file_name = WndUtils.open_config_file_query(dir, None, None)
                     if file_name:
                         self.read_from_file(hw_session, file_name)
                         return
@@ -704,7 +704,7 @@ class AppConfig(object):
             else:
                 dir = self.data_dir
 
-            file_name = WndUtils.save_config_file_query(dir, None)
+            file_name = WndUtils.save_config_file_query(dir, None, None)
             if not file_name:
                 WndUtils.warnMsg('File not saved.')
                 return
