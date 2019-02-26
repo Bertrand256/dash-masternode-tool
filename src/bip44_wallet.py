@@ -1720,7 +1720,11 @@ class Bip44Wallet(QObject):
         try:
             txhash = tx_json.get('txid')
             self._process_tx(db_cursor, txhash, tx_json)
-            self._update_addr_balances(account=None, addr_ids=list(self.addr_bal_updated.keys()), db_cursor=db_cursor)
+            addr_ids = list(self.addr_bal_updated.keys())
+            if addr_ids:
+                # if the transaction fetch operation hasn't been completed yet, the list of addresses with updated
+                # balance may be empty
+                self._update_addr_balances(account=None, addr_ids=addr_ids, db_cursor=db_cursor)
         finally:
             self.db_intf.commit()
             self.db_intf.release_cursor()

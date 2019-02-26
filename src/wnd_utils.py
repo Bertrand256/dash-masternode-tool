@@ -196,7 +196,15 @@ class WndUtils:
 
     @staticmethod
     def call_in_main_thread(fun_to_call, *args, **kwargs):
+
         return thread_wnd_utils.call_in_main_thread(fun_to_call, *args, **kwargs)
+
+    @staticmethod
+    def call_in_main_thread_ext(fun_to_call, skip_if_main_thread_locked: bool,
+                                callback_if_main_thread_locked: Optional[Callable]=False, *args, **kwargs):
+
+        return thread_wnd_utils.call_in_main_thread_ext(fun_to_call, skip_if_main_thread_locked,
+                                                        callback_if_main_thread_locked, *args, **kwargs)
 
     def setIcon(self, widget, ico, rotate=0, force_color_change:str=None):
         if isinstance(ico, str):
@@ -370,12 +378,31 @@ class ThreadWndUtils(QObject):
             mutex.unlock()
 
     def call_in_main_thread(self, fun_to_call, *args, **kwargs):
+        """ See __call_in_main_thread."""
+        return self.__call_in_main_thread(fun_to_call, False, None, *args, **kwargs)
+
+    def call_in_main_thread_ext(self, fun_to_call, skip_if_main_thread_locked: bool,
+                                callback_if_main_thread_locked: Optional[Callable], *args, **kwargs):
+        """ See __call_in_main_thread."""
+
+        return self.__call_in_main_thread(fun_to_call, skip_if_main_thread_locked, callback_if_main_thread_locked,
+                                          *args, **kwargs)
+
+    def __call_in_main_thread(self, fun_to_call: Callable,
+                              skip_if_main_thread_locked: bool,
+                              callback_if_main_thread_locked: Optional[Callable],
+                              *args, **kwargs):
         """
         This method is called from BG threads. Its purpose is to run 'fun_to_call' from main thread (used for dialogs)
         and return values ruturned from it.
         :param fun_to_call: ref to a function which is to be called
-        :param args: args passed to the function fun_to_call
-        :return: return value from fun_to_call
+        :param skip_if_main_thread_locked: if the main thread is currently waiting on a lock and this argument is True,
+            don't try to call 'fun_to_call' within the main thread because it would cause deadlock
+        :param callback_if_main_thread_locked: ref to a function which will be called if the main thread is locked and
+            skip_if_main_thread_locked is True
+        :param args: args passed to 'fun_to_call'
+        :param kwargs: keyword argumetns passed to 'fun_to_call'
+        :return: return value from 'fun_to_call'
         """
         exception_to_rethrow = None
         ret = None
@@ -386,50 +413,58 @@ class ThreadWndUtils(QObject):
                 # if so, raise deadlock detected exception
                 dl_check = thread_utils.EnhRLock.detect_deadlock(threading.main_thread())
                 if dl_check is not None:
-                    waiter = dl_check[0]
-                    locker = dl_check[1]
+                    if not skip_if_main_thread_locked:
+                        waiter = dl_check[0]
+                        locker = dl_check[1]
 
-                    # find a caller of the current method (skip callers from the current module)
-                    cur_caller_file = ''
-                    cur_caller_line = ''
-                    stack = traceback.extract_stack()
-                    for si in reversed(stack):
-                        if si.name != 'call_in_main_thread':
-                            cur_caller_file = si.filename
-                            cur_caller_line = si.lineno
-                            break
-                    a_date_str = str(datetime.datetime.fromtimestamp(locker.time))
-                    b_date_str = str(datetime.datetime.fromtimestamp(waiter.time))
-                    c_date_str = str(datetime.datetime.now())
+                        # find a caller of the current method (skip callers from the current module)
+                        cur_caller_file = ''
+                        cur_caller_line = ''
+                        stack = traceback.extract_stack()
+                        for si in reversed(stack):
+                            if si.name != 'call_in_main_thread':
+                                cur_caller_file = si.filename
+                                cur_caller_line = si.lineno
+                                break
+                        a_date_str = str(datetime.datetime.fromtimestamp(locker.time))
+                        b_date_str = str(datetime.datetime.fromtimestamp(waiter.time))
+                        c_date_str = str(datetime.datetime.now())
 
-                    dl_message = 'Deadlock detected. Trying to synchronize with the main thread (c), which ' \
-                                 'is waiting (b) for a lock acquired by this thread (a).\n' \
-                                 '  CURRENT_THREAD ->(a)[LOCK]--->(c)[MAIN_THREAD]\n' \
-                                 '  MAIN_THREAD ---->(b)[LOCK]\n' \
-                                 f'    a. file "{locker.file_name}", line {locker.line_number}, time {a_date_str}\n' \
-                                 f'    b. file "{waiter.file_name}", line {waiter.line_number}, time {b_date_str}\n' \
-                                 f'    c. file "{cur_caller_file}", line {cur_caller_line}, time {c_date_str}'
+                        dl_message = 'Deadlock detected. Trying to synchronize with the main thread (c), which ' \
+                                     'is waiting (b) for a lock acquired by this thread (a).\n' \
+                                     '  CURRENT_THREAD ->(a)[LOCK]--->(c)[MAIN_THREAD]\n' \
+                                     '  MAIN_THREAD ---->(b)[LOCK]\n' \
+                                     f'    a. file "{locker.file_name}", line {locker.line_number}, time {a_date_str}\n' \
+                                     f'    b. file "{waiter.file_name}", line {waiter.line_number}, time {b_date_str}\n' \
+                                     f'    c. file "{cur_caller_file}", line {cur_caller_line}, time {c_date_str}'
 
-                    log_message = dl_message
+                        log_message = dl_message
 
-                    if locker.call_stack:
-                        log_message += '\n\na. Call stack (the first locker and the current thread):\n'
-                        for se in locker.call_stack:
-                            log_message += f'  File "{se.filename}", line {se.lineno} in {se.line}\n'
+                        if locker.call_stack:
+                            log_message += '\n\na. Call stack (the first locker and the current thread):\n'
+                            for se in locker.call_stack:
+                                log_message += f'  File "{se.filename}", line {se.lineno} in {se.line}\n'
 
-                    if waiter.call_stack:
-                        log_message += '\n\nb. Call stack (the main thread waiting for the lock already locked):\n'
-                        for se in waiter.call_stack:
-                            log_message += f'  File "{se.filename}", line {se.lineno} in {se.line}\n'
+                        if waiter.call_stack:
+                            log_message += '\n\nb. Call stack (the main thread waiting for the lock already locked):\n'
+                            for se in waiter.call_stack:
+                                log_message += f'  File "{se.filename}", line {se.lineno} in {se.line}\n'
 
-                    cur_call_stack = thread_utils.clean_call_stack(stack)
-                    if cur_call_stack:
-                        log_message += '\n\nc. Call stack (the current thread waiting for the main thread):\n'
-                        for se in cur_call_stack:
-                            log_message += f'  File "{se.filename}", line {se.lineno} in {se.line}\n'
+                        cur_call_stack = thread_utils.clean_call_stack(stack)
+                        if cur_call_stack:
+                            log_message += '\n\nc. Call stack (the current thread waiting for the main thread):\n'
+                            for se in cur_call_stack:
+                                log_message += f'  File "{se.filename}", line {se.lineno} in {se.line}\n'
 
-                    logging.error(log_message)
-                    raise DeadlockException(dl_message)
+                        logging.error(log_message)
+                        raise DeadlockException(dl_message)
+
+                    else:
+                        # the main thread is waiting for a lock so trying to synchronize with the main thread
+                        # would cause a deadlock
+                        if callback_if_main_thread_locked:
+                            callback_if_main_thread_locked()
+                        return
 
                 mutex = QtCore.QMutex()
                 mutex.lock()

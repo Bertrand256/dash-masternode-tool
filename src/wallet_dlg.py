@@ -669,7 +669,15 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             return self.finishing
 
         fun_to_call = partial(self.bip44_wallet.register_spending_transaction, inputs, outputs, tx_json)
-        self.call_fun_monitor_txs(fun_to_call, break_call)
+
+        try:
+            self.allow_fetch_transactions = False
+            self.enable_synch_with_main_thread = False
+
+            self.call_fun_monitor_txs(fun_to_call, break_call)
+        finally:
+            self.allow_fetch_transactions = True
+            self.enable_synch_with_main_thread = True
 
     @pyqtSlot()
     def on_btnClose_clicked(self):
@@ -1339,22 +1347,21 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             if not check_break_execution_callback():
                 if self.account_list_model.data_modified:
                     if self.enable_synch_with_main_thread:
-                        WndUtils.call_in_main_thread(invalidate_accounts_filter)
+                        WndUtils.call_in_main_thread_ext(invalidate_accounts_filter, skip_if_main_thread_locked=True)
 
                 list_utxos = self.get_utxo_list_generator(True)
                 if list_utxos:
                     self.utxo_table_model.set_block_height(self.bip44_wallet.get_block_height())
-
-                    # new_utxos = []
-                    # for utxo in list_utxos:
-                    #     new_utxos.append(utxo)
 
                     added_utxos = []
                     removed_utxos = []
                     modified_utxos = []
                     self.bip44_wallet.get_utxos_diff(added_utxos, modified_utxos, removed_utxos)
 
-                    if added_utxos or modified_utxos or removed_utxos:
+                    if (added_utxos or modified_utxos or removed_utxos) and \
+                            (self.enable_synch_with_main_thread or
+                             threading.current_thread() == threading.main_thread()):
+
                         with self.utxo_table_model:
                             WndUtils.call_in_main_thread(self.utxo_table_model.update_utxos, added_utxos,
                                                          modified_utxos, removed_utxos)
@@ -1381,7 +1388,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             log.debug('Adding account %s', account.id)
             if threading.current_thread() != threading.main_thread():
                 if self.enable_synch_with_main_thread:
-                    WndUtils.call_in_main_thread(fun)
+                    WndUtils.call_in_main_thread_ext(fun, skip_if_main_thread_locked=True)
             else:
                 fun()
 
@@ -1399,7 +1406,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             log.debug('Account modified %s', account.id)
             if threading.current_thread() != threading.main_thread():
                 if self.enable_synch_with_main_thread:
-                    WndUtils.call_in_main_thread(fun)
+                    WndUtils.call_in_main_thread_ext(fun, skip_if_main_thread_locked=True)
             else:
                 fun()
 
@@ -1411,7 +1418,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
             if threading.current_thread() != threading.main_thread():
                 if self.enable_synch_with_main_thread:
-                    WndUtils.call_in_main_thread(fun)
+                    WndUtils.call_in_main_thread_ext(fun, skip_if_main_thread_locked=True)
             else:
                 fun()
 
@@ -1424,7 +1431,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
             if threading.current_thread() != threading.main_thread():
                 if self.enable_synch_with_main_thread:
-                    WndUtils.call_in_main_thread(fun)
+                    WndUtils.call_in_main_thread_ext(fun, skip_if_main_thread_locked=True)
             else:
                 fun()
 
@@ -1468,7 +1475,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
             if threading.current_thread() != threading.main_thread():
                 if self.enable_synch_with_main_thread:
-                    WndUtils.call_in_main_thread(show)
+                    WndUtils.call_in_main_thread_ext(show, skip_if_main_thread_locked=True)
             else:
                 show()
 
@@ -1481,7 +1488,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
             if threading.current_thread() != threading.main_thread():
                 if self.enable_synch_with_main_thread:
-                    WndUtils.call_in_main_thread(hide)
+                    WndUtils.call_in_main_thread_ext(hide, skip_if_main_thread_locked=True)
             else:
                 hide()
 
