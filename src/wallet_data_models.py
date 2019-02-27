@@ -723,6 +723,15 @@ class TransactionTableModel(ExtSortFilterTableModel):
                         return True
         return False
 
+    def headerData(self, column, orientation, role=Qt.DisplayRole):
+        if role == Qt.DisplayRole and orientation == Qt.Vertical:
+            idx = self.index(column, 0)
+            if idx.isValid():
+                idx = self.mapFromSource(idx)
+                return str(idx.row() + 1)
+        else:
+            return ExtSortFilterTableModel.headerData(self, column, orientation, role)
+
     def set_blockheight(self, cur_blockheight):
         if self.__current_block_height != cur_blockheight:
             self.__current_block_height = cur_blockheight
