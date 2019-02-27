@@ -1556,7 +1556,7 @@ class Bip44Wallet(QObject):
             condition = ' where a.id in (select id from temp_ids) '
             self._fill_temp_ids_table(address_ids, db_cursor)
         else:
-            raise Exception('Both account_id and address_ids cannot be empty')
+            condition = ''
 
         sql_text = """
             select -1 type,

@@ -735,7 +735,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def update_context_actions(self):
 
-        if self.hw_selected_address_id is not None:
+        if self.hw_connection_established and self.hw_selected_address_id is not None:
             visible = True
         else:
             visible = False
@@ -744,13 +744,19 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.act_copy_address.setVisible(visible)
         self.act_sign_message_for_address.setVisible(visible)
 
-        if self.hw_selected_account_id is not None or self.hw_selected_address_id is not None:
+        if self.hw_connection_established and (self.hw_selected_account_id is not None or
+                                               self.hw_selected_address_id is not None):
             enabled = True
         else:
             enabled = False
         self.act_set_entry_label.setVisible(enabled)
-        self.act_hide_account.setVisible(self.hw_selected_account_id is not None and self.hw_selected_address_id is None)
-        self.act_show_account_next_fresh_address.setVisible(self.hw_selected_account_id is not None)
+
+        self.act_hide_account.setVisible(self.hw_connection_established and self.hw_selected_account_id is not None
+                                         and self.hw_selected_address_id is None)
+        self.act_show_account_next_fresh_address.setVisible(self.hw_connection_established and
+                                                            self.hw_selected_account_id is not None)
+
+        self.act_show_account.setVisible(self.hw_connection_established)
 
         # self.act_delete_address_data.setVisible(visible)
         # if self.hw_selected_account_id is not None:
@@ -1037,6 +1043,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.cur_utxo_src_hash = None
         self.enable_synch_with_main_thread = True
         self.hide_loading_tx_animation()
+        self.update_context_actions()
         self.set_message('')
 
     def connect_hw(self):
