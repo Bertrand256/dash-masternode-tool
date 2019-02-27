@@ -32,7 +32,7 @@
         "priority": 4
       },
       "testnet": {
-        "status": "disabled",
+        "status": "enabled",
         "priority": 4
       }
     },
