@@ -350,7 +350,7 @@ class Bip44Wallet(QObject):
             if addr:
                 break
         if not addr:
-            addr = self.addresses_by_id[addr_id]
+            addr = self.addresses_by_id.get(addr_id)
         return (addr, acc)
 
     def _get_bip44_entry_by_xpub(self, xpub) -> Bip44Entry:

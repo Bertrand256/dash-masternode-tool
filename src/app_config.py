@@ -1567,7 +1567,7 @@ class MasternodeConfig:
         self.__dmn_voting_key_type = type
 
     def get_current_key_for_voting(self, app_config: AppConfig, dashd_intf):
-        if app_config.is_dip3_active(dashd_intf) and self.is_deterministic:
+        if app_config.is_spork_15_active(dashd_intf) and self.is_deterministic:
             return self.dmn_voting_private_key
         else:
             return self.privateKey
