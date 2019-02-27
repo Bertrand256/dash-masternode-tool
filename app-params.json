@@ -32,13 +32,13 @@
         "priority": 4
       },
       "testnet": {
-        "status": "enabled",
+        "status": "disabled",
         "priority": 4
       }
     },
     "DETERMINISTIC_MNS": {
       "mainnet": {
-        "status": "disabled",
+        "status": "enabled",
         "priority": 4
       },
       "testnet": {
