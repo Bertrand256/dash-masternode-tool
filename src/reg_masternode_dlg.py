@@ -845,6 +845,15 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             if self.dmn_operator_key_type == InputKeyType.PRIVATE:
                 try:
                     self.dmn_operator_privkey = key
+
+                    try:
+                        b = bytes.fromhex(self.dmn_operator_privkey)
+                        if len(b) != 32:
+                            raise Exception('invalid length (' + str(len(b)) + ')')
+                    except Exception as e:
+                        self.edtOperatorKey.setFocus()
+                        self.operator_key_validation_err_msg = 'Invalid operator private key: ' + str(e)
+
                     self.dmn_operator_pubkey = bls_privkey_to_pubkey(self.dmn_operator_privkey)
                 except Exception as e:
                     self.edtOperatorKey.setFocus()
@@ -974,7 +983,11 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             return False
 
         if self.dmn_collateral_tx_address_path:
-            addr = hw_intf.get_address(self.main_dlg.hw_session, self.dmn_collateral_tx_address_path)
+            try:
+                addr = hw_intf.get_address(self.main_dlg.hw_session, self.dmn_collateral_tx_address_path)
+            except CancelException:
+                return False
+
             msg = ''
             if addr != self.dmn_collateral_tx_address:
                 log.warning(
