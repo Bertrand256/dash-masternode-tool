@@ -18,6 +18,7 @@
    * [Command line parameters](#command-line-parameters)
  * [Features](#features)
    * [Starting a masternode](#starting-a-masternode)
+   * [Registration of a deterministic masternode](doc/deterministic-mn-migration.md)
    * [Transferring masternode earnings](#transferring-masternode-earnings)
    * [Signing messages with a hardware wallet](#signing-messages-with-a-hardware-wallet)
    * [Changing a hardware wallet PIN/passphrase](#changing-a-hardware-wallet-pinpassphrase)
