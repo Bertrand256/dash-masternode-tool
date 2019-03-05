@@ -6,6 +6,7 @@
 import binascii
 import base64
 import logging
+import struct
 import typing
 from random import randint
 
@@ -235,19 +236,17 @@ def bls_privkey_to_pubkey(privkey: str) -> str:
     return pubkey_bin.hex()
 
 
-def num_to_varint(a):
-    """
-    Based on project: https://github.com/chaeplin/dashmnb
-    """
-    x = int(a)
-    if x < 253:
-        return x.to_bytes(1, byteorder='big')
-    elif x < 65536:
-        return int(253).to_bytes(1, byteorder='big') + x.to_bytes(2, byteorder='little')
-    elif x < 4294967296:
-        return int(254).to_bytes(1, byteorder='big') + x.to_bytes(4, byteorder='little')
+def num_to_varint(n):
+    if n == 0:
+        return b"\x00"
+    elif n < 253:
+        return struct.pack("<B", n)
+    elif n <= 65535:
+        return struct.pack("<BH", 253, n)
+    elif n <= 4294967295:
+        return struct.pack("<BL", 254, n)
     else:
-        return int(255).to_bytes(1, byteorder='big') + x.to_bytes(8, byteorder='little')
+        return struct.pack("<BQ", 255, n)
 
 
 def read_varint_from_buf(buffer, offset) -> typing.Tuple[int, int]:

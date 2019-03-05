@@ -5,7 +5,9 @@
 import json
 import binascii
 import logging
+import struct
 import unicodedata
+from decimal import Decimal
 from typing import Optional, Tuple, List, Dict
 from keepkeylib.client import TextUIMixin as keepkey_TextUIMixin
 from keepkeylib.client import ProtocolMixin as keepkey_ProtocolMixin
@@ -213,13 +215,66 @@ class MyTxApiInsight(TxApiInsight):
         TxApiInsight.__init__(self, network, url, zcash)
         self.dashd_inf = dashd_inf
         self.cache_dir = cache_dir
+        self.skip_cache = False
 
     def fetch_json(self, url, resource, resourceid):
-        try:
-            j = self.dashd_inf.getrawtransaction(resourceid, 1)
-            return j
-        except Exception as e:
-            raise
+        if resource == 'tx':
+            try:
+                j = self.dashd_inf.getrawtransaction(resourceid, 1, skip_cache=self.skip_cache)
+                return j
+            except Exception as e:
+                raise
+        else:
+            raise Exception('Invalid operation type: ' + resource)
+
+    def get_tx(self, txhash):
+        data = self.fetch_json(self.url, 'tx', txhash)
+
+        t = proto_types.TransactionType()
+        t.version = data['version']
+        t.lock_time = data['locktime']
+
+        for vin in data['vin']:
+            i = t.inputs.add()
+            if 'coinbase' in vin.keys():
+                i.prev_hash = b"\0"*32
+                i.prev_index = 0xffffffff # signed int -1
+                i.script_sig = binascii.unhexlify(vin['coinbase'])
+                i.sequence = vin['sequence']
+
+            else:
+                i.prev_hash = binascii.unhexlify(vin['txid'])
+                i.prev_index = vin['vout']
+                i.script_sig = binascii.unhexlify(vin['scriptSig']['hex'])
+                i.sequence = vin['sequence']
+
+        for vout in data['vout']:
+            o = t.bin_outputs.add()
+            o.amount = int(Decimal(str(vout['value'])) * 100000000)
+            o.script_pubkey = binascii.unhexlify(vout['scriptPubKey']['hex'])
+
+        dip2_type = data.get("type", 0)
+
+        if t.version == 3 and dip2_type != 0:
+            # It's a DIP2 special TX with payload
+
+            if "extraPayloadSize" not in data or "extraPayload" not in data:
+                raise ValueError("Payload data missing in DIP2 transaction")
+
+            if data["extraPayloadSize"] * 2 != len(data["extraPayload"]):
+                raise ValueError(
+                    "extra_data_len (%d) does not match calculated length (%d)"
+                    % (data["extraPayloadSize"], len(data["extraPayload"]) * 2)
+                )
+            t.extra_data = dash_utils.num_to_varint(data["extraPayloadSize"]) + bytes.fromhex(
+                data["extraPayload"]
+            )
+
+        # KeepKey firmware doesn't understand the split of version and type, so let's mimic the
+        # old serialization format
+        t.version |= dip2_type << 16
+
+        return t
 
 
 def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoType],

@@ -268,19 +268,6 @@ def is_dash(coin):
     return coin["coin_name"].lower().startswith("dash")
 
 
-def pack_varint(n):
-    if n == 0:
-        return b"\x00"
-    elif n < 253:
-        return struct.pack("<B", n)
-    elif n <= 65535:
-        return struct.pack("<BH", 253, n)
-    elif n <= 4294967295:
-        return struct.pack("<BL", 254, n)
-    else:
-        return struct.pack("<BQ", 255, n)
-
-
 def json_to_tx(coin, data):
     t = messages.TransactionType()
     t.version = data["version"]
@@ -321,7 +308,7 @@ def json_to_tx(coin, data):
                     "extra_data_len (%d) does not match calculated length (%d)"
                     % (data["extraPayloadSize"], len(data["extraPayload"]) * 2)
                 )
-            t.extra_data = pack_varint(data["extraPayloadSize"]) + bytes.fromhex(
+            t.extra_data = dash_utils.num_to_varint(data["extraPayloadSize"]) + bytes.fromhex(
                 data["extraPayload"]
             )
 
