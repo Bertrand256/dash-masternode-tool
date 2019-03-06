@@ -272,8 +272,7 @@ class AppConfig(object):
         if not os.path.exists(self.cfg_backup_dir):
             os.makedirs(self.cfg_backup_dir)
 
-        if not self.app_last_version or \
-           app_utils.version_str_to_number(self.app_last_version) < app_utils.version_str_to_number(self.app_version):
+        if not self.app_last_version or app_utils.is_version_bigger(self.app_version, self.app_last_version):
             app_cache.save_data()
 
         self.initialized = True
@@ -399,8 +398,7 @@ class AppConfig(object):
 
         # from v0.9.15 some public nodes changed its names and port numbers to the official HTTPS port number: 443
         # correct the configuration
-        if not self.app_last_version or \
-            (app_utils.version_str_to_number(self.app_last_version) < app_utils.version_str_to_number('0.9.16')):
+        if not self.app_last_version or app_utils.is_version_bigger('0.9.22-hotfix4', self.app_last_version):
             correct_public_nodes = True
         else:
             correct_public_nodes = False
@@ -594,7 +592,7 @@ class AppConfig(object):
                             cfg.ssh_conn_cfg.port = config.get(section, 'ssh_port', fallback='').strip()
                             cfg.ssh_conn_cfg.username = config.get(section, 'ssh_username', fallback='').strip()
                             cfg.testnet = self.value_to_bool(config.get(section, 'testnet', fallback='0'))
-                            self.dash_net_configs.append(cfg)
+                            skip_adding = False
                             if correct_public_nodes:
                                 if cfg.host.lower() == 'alice.dash-dmt.eu':
                                     cfg.host = 'alice.dash-masternode-tool.org'
@@ -604,6 +602,12 @@ class AppConfig(object):
                                     cfg.host = 'luna.dash-masternode-tool.org'
                                     cfg.port = '443'
                                     configuration_corrected = True
+                                elif cfg.host.lower() == 'test.stats.dash.org':
+                                    skip_adding = True
+                                    configuration_corrected = True
+                            if not skip_adding:
+                                self.dash_net_configs.append(cfg)
+
                     except Exception as e:
                         logging.exception(str(e))
 

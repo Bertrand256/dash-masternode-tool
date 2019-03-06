@@ -436,6 +436,13 @@
     <property name="title">
      <string>Tools</string>
     </property>
+    <widget class="QMenu" name="menuClear">
+     <property name="title">
+      <string>Clear</string>
+     </property>
+     <addaction name="action_clear_wallet_cache"/>
+     <addaction name="action_clear_proposals_cache"/>
+    </widget>
     <addaction name="action_transfer_funds_for_any_address"/>
     <addaction name="separator"/>
     <addaction name="action_sign_message_for_cur_mn"/>
@@ -447,6 +454,8 @@
     <addaction name="action_check_for_updates"/>
     <addaction name="action_command_console"/>
     <addaction name="action_open_log_file"/>
+    <addaction name="action_open_data_folder"/>
+    <addaction name="menuClear"/>
    </widget>
    <widget class="QMenu" name="menuFile">
     <property name="title">
@@ -655,6 +664,21 @@
    </property>
    <property name="toolTip">
     <string>Run Trezor T emulator</string>
+   </property>
+  </action>
+  <action name="action_open_data_folder">
+   <property name="text">
+    <string>Open Application Data Folder</string>
+   </property>
+  </action>
+  <action name="action_clear_wallet_cache">
+   <property name="text">
+    <string>Wallet Cache</string>
+   </property>
+  </action>
+  <action name="action_clear_proposals_cache">
+   <property name="text">
+    <string>Proposals Cache</string>
    </property>
   </action>
  </widget>

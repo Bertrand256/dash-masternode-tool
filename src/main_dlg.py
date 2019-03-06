@@ -391,7 +391,45 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if os.path.exists(self.config.log_file):
             ret = QDesktopServices.openUrl(QUrl("file:///%s" % self.config.log_file))
             if not ret:
-                self.warnMsg('Could not open "%s" file in a default OS application.' % self.config.log_file)
+                self.warnMsg('Could not open "%s" file using a default OS application.' % self.config.log_file)
+
+    @pyqtSlot(bool)
+    def on_action_open_data_folder_triggered(self, checked):
+        if os.path.exists(self.config.data_dir):
+            ret = QDesktopServices.openUrl(QUrl("file:///%s" % self.config.data_dir))
+            if not ret:
+                self.warnMsg('Could not open "%s" folder using a default OS application.' % self.config.data_dir)
+
+    @pyqtSlot(bool)
+    def on_action_clear_wallet_cache_triggered(self, checked):
+        if self.queryDlg('Do you really want to clear the wallet cache?',
+                         buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                         default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
+            db_cursor = self.config.db_intf.get_cursor()
+            try:
+                db_cursor.execute('drop table address')
+                db_cursor.execute('drop table hd_tree')
+                db_cursor.execute('drop table tx_input')
+                db_cursor.execute('drop table tx_output')
+                db_cursor.execute('drop table tx')
+                self.config.db_intf.create_structures()
+            finally:
+                self.config.db_intf.release_cursor()
+            self.infoMsg('Wallet cache cleared.')
+
+    @pyqtSlot(bool)
+    def on_action_clear_proposals_cache_triggered(self, checked):
+        if self.queryDlg('Do you really want to clear the proposals cache?',
+                         buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                         default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
+            db_cursor = self.config.db_intf.get_cursor()
+            try:
+                db_cursor.execute('drop table proposals')
+                db_cursor.execute('drop table voting_results')
+                self.config.db_intf.create_structures()
+            finally:
+                self.config.db_intf.release_cursor()
+            self.infoMsg('Proposals cache cleared.')
 
     @pyqtSlot(bool)
     def on_action_check_for_updates_triggered(self, checked, force_check=True):
@@ -425,10 +463,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if self.config.check_for_updates:
                     remote_version_str = remote_app_params.get("appCurrentVersion")
                     if remote_version_str:
-                        remote_ver = app_utils.version_str_to_number(remote_version_str)
-                        local_ver = app_utils.version_str_to_number(self.config.app_version)
-
-                        if remote_ver > local_ver:
+                        if app_utils.is_version_bigger(remote_version_str, self.config.app_version):
                             if sys.platform == 'win32':
                                 item_name = 'win'
                                 no_bits = platform.architecture()[0].replace('bit', '')

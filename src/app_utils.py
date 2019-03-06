@@ -3,6 +3,7 @@
 # Author: Bertrand256
 # Created on: 2017-10
 import decimal
+import logging
 from functools import partial
 import hashlib
 import os
@@ -37,23 +38,87 @@ def extract_app_version(lines):
     return ''
 
 
-def version_str_to_number(version_str):
-    elems = re.split('\W+', version_str)
+def parse_version_str(version_str) -> Tuple[List[int], Optional[str]]:
+    """
+    :return: Tuple[List[str]<List of numbers being part of the version str>, str<the remaining part of the version str>
+      Example: version_str: 0.9.22-hotfix1
+               return: [0, 9, 22], 'hotfix1'
+    """
     elems_dest = []
-    if elems:
-        # find last element being a number - strip version suffix
-        for e in elems:
-            res = re.findall(r'^\d+', e)
-            if res:
-                elems_dest.append(e)
-            else:
-                break
+    pos_begin = 0
+    remainder = None
+    while True:
+        found_pos = [x for x in (version_str.find('.', pos_begin), version_str.find('-', pos_begin)) if x >= 0]
+        if found_pos:
+            pos_end = min(found_pos)
+        else:
+            if pos_begin < len(version_str):
+                elem = version_str[pos_begin:]
 
-    ver_list = [n.zfill(4) for n in elems_dest]
+                if re.findall(r'^\d+$', elem):
+                    elems_dest.append(int(elem))
+                else:
+                    remainder = version_str[pos_begin:]
+            break
+        elem = version_str[pos_begin : pos_end].strip()
+        if not elem:
+            break
+
+        res = re.findall(r'^\d+$', elem)
+        if res:
+            elems_dest.append(int(elem))
+        else:
+            remainder = version_str[pos_begin:]
+            break
+        pos_begin = pos_end + 1
+
+    return elems_dest, remainder
+
+
+def version_str_to_number(version_str):
+    version_nrs,_ = parse_version_str(version_str)
+
+    ver_list = [str(n).zfill(4) for n in version_nrs]
     version_nr_str = ''.join(ver_list)
     version_nr = int(version_nr_str)
     return version_nr
 
+
+def is_version_bigger(checked_version: str, ref_version: str) -> bool:
+    cmp = False
+    try:
+        version_nrs, ref_suffix = parse_version_str(ref_version)
+        ver_list = [str(n).zfill(4) for n in version_nrs]
+        ref_version_str = ''.join(ver_list)
+
+        version_nrs, checked_suffix = parse_version_str(checked_version)
+        ver_list = [str(n).zfill(4) for n in version_nrs]
+        checked_version_str = ''.join(ver_list)
+
+        if checked_suffix:
+            if ref_suffix:
+                ref_match = re.match('(\d+)(\D+)', ref_suffix[::-1])
+            else:
+                ref_match = None
+
+            verified_match = re.match('(\d+)(\D+)', checked_suffix[::-1])
+            if verified_match and len(verified_match.groups()) == 2 and \
+                    (not ref_match or (ref_match and len(ref_match.groups()) == 2 and
+                                       ref_match.group(2) == verified_match.group(2))):
+
+                if ref_match:
+                    ref_version_str += '.' + ref_match.group(1)[::-1]
+
+                checked_version_str += '.' + verified_match.group(1)[::-1]
+
+        if checked_version_str and ref_version_str:
+            cmp = float(checked_version_str) > float(ref_version_str)
+        else:
+            cmp = False
+    except Exception:
+        logging.exception('Exception occurred while comparing app versions')
+
+    return cmp
 
 def write_bytes_buf(data: ByteString) -> bytearray:
     return num_to_varint(len(data)) + data
