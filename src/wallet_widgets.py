@@ -1153,14 +1153,9 @@ class WalletAccountItemDelegate(QItemDelegate):
         QItemDelegate.__init__(self, parent)
 
     def createEditor(self, parent, option, index):
-        e = None
-        if index.isValid():
-            data = index.data()
-            if isinstance(data, Bip44AddressType):
-                e = QLineEdit(parent)
-                e.setReadOnly(True)
-                e.setText(data.address)
-        return e
+        # don't show editor allowing to copy an address for security reasons we have to compare it with
+        # the address read from hardware wallet
+        return None
 
     def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
         if index.isValid():

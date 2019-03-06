@@ -199,7 +199,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             LineEditTableCellDelegate(self.txesTableView, self.app_config.get_app_img_dir()))
         self.tx_table_model.set_view(self.txesTableView)
 
-        # self.accountsListView.setModel(self.account_list_model)
         self.account_list_model.set_view(self.accountsListView)
 
         self.mn_model.set_view(self.mnListView)
@@ -789,6 +788,13 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             if a:
                 addr = a.address_by_id(self.hw_selected_address_id)
                 if addr:
+                    # for security purposes get the address from hardware wallet and compare it to the one
+                    # read from db cache
+                    addr_hw = hw_intf.get_address(self.hw_session, addr.bip32_path, False)
+                    if addr_hw != addr.address:
+                        self.errorMsg('Inconsistency between the wallet cache and the hardware wallet data occurred. '
+                                      'Please clear the wallet cache.')
+                        return
                     clipboard = QApplication.clipboard()
                     clipboard.setText(addr.address)
         if not addr:
@@ -1044,6 +1050,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.enable_synch_with_main_thread = True
         self.hide_loading_tx_animation()
         self.update_context_actions()
+        self.update_details_tab()
         self.set_message('')
 
     def connect_hw(self):
@@ -1526,6 +1533,13 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         addr_str = addr.address
                         balance = addr.balance
                         received = addr.received
+
+                        # for security reasons get the address from hardware wallet and compare it to the one
+                        # read from db cache
+                        addr_hw = hw_intf.get_address(self.hw_session, addr.bip32_path, False)
+                        if addr_hw != addr.address:
+                            addr_str = 'Address inconsistency. Please clear the wallet cache.'
+
             elif self.hw_selected_account_id:
                 addr_lbl = 'XPUB'
                 addr = self.account_list_model.account_by_id(self.hw_selected_account_id)
