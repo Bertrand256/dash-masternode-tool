@@ -11,6 +11,8 @@ import json
 import threading
 import time
 import logging
+from typing import Optional
+
 from PyQt5.QtWidgets import QSplitter, QDialog
 from PyQt5.QtCore import Qt
 from wnd_utils import WndUtils
@@ -145,12 +147,12 @@ def save_window_size(window):
         log.warning('AppCache not initialized')
 
 
-def restore_window_size(window):
+def restore_window_size(window, default_width:Optional[int] = None, default_height:Optional[int] = None):
     global cache
     if cache:
         symbol = window.__class__.__name__ + '_'
-        w = cache.get_value(symbol + '_Width', None, int)
-        h = cache.get_value(symbol + '_Height', None, int)
+        w = cache.get_value(symbol + '_Width', default_width, int)
+        h = cache.get_value(symbol + '_Height', default_height, int)
         if w and h:
             window.resize(w, h)
     else:

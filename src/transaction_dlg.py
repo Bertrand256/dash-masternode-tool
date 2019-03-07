@@ -10,6 +10,7 @@ import simplejson
 import logging
 
 from PyQt5.QtCore import pyqtSlot
+from PyQt5.QtGui import QTextDocument
 from PyQt5.QtWidgets import QDialog, QMessageBox
 from decimal import Decimal
 
@@ -67,7 +68,29 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
         self.apply_word_wrap(self.chb_word_wrap.isChecked())
         self.edt_recipients.setOpenExternalLinks(True)
         self.edt_recipients.viewport().setAutoFillBackground(False)
+
+        if sys.platform == 'win32':
+            self.base_font_size = '11'
+            self.title_font_size = '15'
+        elif sys.platform == 'linux':
+            self.base_font_size = '11'
+            self.title_font_size = '17'
+        else:  # mac
+            self.base_font_size = '13'
+            self.title_font_size = '20'
+
+        self.edt_raw_transaction.setStyleSheet(f'font: {self.base_font_size}pt "Courier New";')
+        doc = QTextDocument(self)
+        doc.setDocumentMargin(0)
+        doc.setHtml(f'<span style=" font-size:{self.title_font_size}pt;white-space:nowrap">AAAAAAAAAAAAAAAAAA')
+        default_width = int(doc.size().width()) * 3
+        default_height = int(default_width / 2)
+
+        app_cache.restore_window_size(self, default_width=default_width, default_height=default_height)
         self.prepare_tx_view()
+
+    def closeEvent(self, event):
+        app_cache.save_window_size(self)
 
     def on_chb_word_wrap_toggled(self, checked):
         app_cache.set_value(CACHE_ITEM_DETAILS_WORD_WRAP, checked)
@@ -197,33 +220,26 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                                 url = url.replace('%TXID%', self.tx_id)
                                 send_tx_row = f'<tr><td class="lbl"><p class="lbl">Transaction ID:</p></td><td><a href="{url}">{self.tx_id}</a></td></tr>'
 
-                        if sys.platform in ('win32', 'linux'):
-                            base_font_size = '11'
-                            title_font_size = '17'
-                        else:
-                            base_font_size = '13'
-                            title_font_size = '20'
-
                         if self.transaction_sent:
                             title = 'Transaction summary - sent'
                             subtitle = '<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; ' \
                                        'margin-right:0px; -qt-block-indent:0; text-indent:0px; ' \
                                        'background-color:#2eb82e;color:white; padding: 1px 3px 1px 3px; ' \
-                                       f'border-radius: 3px;"><span style=" font-size:{base_font_size}pt;">' \
+                                       f'border-radius: 3px;"><span style=" font-size:{self.base_font_size}pt;">' \
                                        'Transaction successfully sent...</span></p>'
                         else:
                             title = 'Transaction summary - ready to send'
                             subtitle = '<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; ' \
                                        'margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=' \
-                                       f'"font-size:{base_font_size}pt;">Click the <b>&lt;Send transaction&gt;</b> button to ' \
+                                       f'"font-size:{self.base_font_size}pt;">Click the <b>&lt;Send transaction&gt;</b> button to ' \
                                        'broadcast the transaction.</span></p>'
 
                         summary = f"""<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">
 <html><head><meta name="qrichtext" content="1" /><style type="text/css">
 td.lbl{{text-align: right;vertical-align: top}} p.lbl{{margin: 0 5px 0 0; font-weight: bold}} p.val{{margin: 0 0 0 8px; color: navy}}
-</style></head><body style="font-size:{base_font_size}pt; font-weight:400; font-style:normal; margin-left:10px;margin-right:10px;">
-<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:{title_font_size}pt; font-weight:600;">{title}</span></p>
-<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:{base_font_size}pt;"><br /></p>
+</style></head><body style="font-size:{self.base_font_size}pt; font-weight:400; font-style:normal; margin-left:10px;margin-right:10px;">
+<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:{self.title_font_size}pt; font-weight:600;">{title}</span></p>
+<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:{self.base_font_size}pt;"><br /></p>
 {subtitle}
 <p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">
  <table>
@@ -277,4 +293,4 @@ td.lbl{{text-align: right;vertical-align: top}} p.lbl{{margin: 0 5px 0 0; font-w
             self.accept()
         else:
             self.reject()
-
+        self.closeEvent(None)
