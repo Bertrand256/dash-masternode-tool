@@ -1,9 +1,12 @@
+import logging
+
 from bitcoin import compress, bin_hash160
 from btchip.btchip import *
 from btchip.btchipComm import getDongle
 from btchip.btchipUtils import compress_public_key
 from typing import List
 
+import dash_utils
 from common import CancelException
 from hw_common import clean_bip32_path, HwSessionInfo
 import wallet_common
@@ -12,6 +15,95 @@ from dash_utils import *
 from PyQt5.QtWidgets import QMessageBox
 import unicodedata
 from bip32utils import Base58
+
+
+class btchip_dmt(btchip):
+    def __init__(self, dongle):
+        btchip.__init__(self, dongle)
+
+
+    def getTrustedInput(self, transaction, index):
+        result = {}
+        # Header
+        apdu = [self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x00, 0x00]
+        params = bytearray.fromhex("%.8x" % (index))
+        params.extend(transaction.version)
+        writeVarint(len(transaction.inputs), params)
+        apdu.append(len(params))
+        apdu.extend(params)
+        self.dongle.exchange(bytearray(apdu))
+        # Each input
+        for trinput in transaction.inputs:
+            apdu = [self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00]
+            params = bytearray(trinput.prevOut)
+            writeVarint(len(trinput.script), params)
+            apdu.append(len(params))
+            apdu.extend(params)
+            self.dongle.exchange(bytearray(apdu))
+            offset = 0
+            while True:
+                blockLength = 251
+                if ((offset + blockLength) < len(trinput.script)):
+                    dataLength = blockLength
+                else:
+                    dataLength = len(trinput.script) - offset
+                params = bytearray(trinput.script[offset: offset + dataLength])
+                if ((offset + dataLength) == len(trinput.script)):
+                    params.extend(trinput.sequence)
+                apdu = [self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00, len(params)]
+                apdu.extend(params)
+                self.dongle.exchange(bytearray(apdu))
+                offset += dataLength
+                if (offset >= len(trinput.script)):
+                    break
+        # Number of outputs
+        apdu = [self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00]
+        params = []
+        writeVarint(len(transaction.outputs), params)
+        apdu.append(len(params))
+        apdu.extend(params)
+        self.dongle.exchange(bytearray(apdu))
+        # Each output
+        indexOutput = 0
+        for troutput in transaction.outputs:
+            apdu = [self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00]
+            params = bytearray(troutput.amount)
+            writeVarint(len(troutput.script), params)
+            apdu.append(len(params))
+            apdu.extend(params)
+            self.dongle.exchange(bytearray(apdu))
+            offset = 0
+            while (offset < len(troutput.script)):
+                blockLength = 255
+                if ((offset + blockLength) < len(troutput.script)):
+                    dataLength = blockLength
+                else:
+                    dataLength = len(troutput.script) - offset
+                apdu = [self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00, dataLength]
+                apdu.extend(troutput.script[offset: offset + dataLength])
+                self.dongle.exchange(bytearray(apdu))
+                offset += dataLength
+
+        params = []
+        if transaction.extra_data:
+            # Dash DIP2 extra data: By appending data to the 'lockTime' transfer we force the device into the
+            # BTCHIP_TRANSACTION_PROCESS_EXTRA mode, which gives us the opportunity to sneak with an additional
+            # data block.
+            if len(transaction.extra_data) > 255 - len(transaction.lockTime):
+                # for now the size should be sufficient
+                raise Exception('The size of the DIP2 extra data block has exceeded the limit.')
+
+            writeVarint(len(transaction.extra_data), params)
+            params.extend(transaction.extra_data)
+
+        apdu = [self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00, len(transaction.lockTime) + len(params)]
+        # Locktime
+        apdu.extend(transaction.lockTime)
+        apdu.extend(params)
+        response = self.dongle.exchange(bytearray(apdu))
+        result['trustedInput'] = True
+        result['value'] = response
+        return result
 
 
 def process_ledger_exceptions(func):
@@ -41,7 +133,7 @@ def connect_ledgernano():
         logging.info('Ledger Nano S connected. Firmware version: %s, specialVersion: %s, compressedKeys: %s' %
                      (str(ver.get('version')), str(ver.get('specialVersion')), ver.get('compressedKeys')))
 
-        client = btchip(dongle)
+        client = btchip_dmt(dongle)
         return client
     except:
         dongle.close()
@@ -251,6 +343,7 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
             tx_outputs: List[wallet_common.TxOutputType], tx_fee):
     client = hw_session.hw_client
     rawtransactions = {}
+    decodedtransactions = {}
 
     # Each of the UTXOs will become an input in the new transaction. For each of those inputs, create
     # a Ledger's 'trusted input', that will be used by the the device to sign a transaction.
@@ -288,6 +381,7 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
 
             if tx_raw:
                 rawtransactions[utxo.txid] = tx_raw
+            decodedtransactions[utxo.txid] = tx
 
     amount = 0
     starting = True
@@ -302,6 +396,24 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
 
         # parse the raw transaction, so that we can extract the UTXO locking script we refer to
         prev_transaction = bitcoinTransaction(raw_tx)
+
+        data = decodedtransactions[utxo.txid]
+        dip2_type = data.get("type", 0)
+        if data['version'] == 3 and dip2_type != 0:
+            # It's a DIP2 special TX with payload
+
+            if "extraPayloadSize" not in data or "extraPayload" not in data:
+                raise ValueError("Payload data missing in DIP2 transaction")
+
+            if data["extraPayloadSize"] * 2 != len(data["extraPayload"]):
+                raise ValueError(
+                    "extra_data_len (%d) does not match calculated length (%d)"
+                    % (data["extraPayloadSize"], len(data["extraPayload"]) * 2)
+                )
+            prev_transaction.extra_data = dash_utils.num_to_varint(data["extraPayloadSize"]) + bytes.fromhex(
+                data["extraPayload"])
+        else:
+            prev_transaction.extra_data = bytes()
 
         utxo_tx_index = utxo.output_index
         if utxo_tx_index < 0 or utxo_tx_index > len(prev_transaction.outputs):
