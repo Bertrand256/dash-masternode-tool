@@ -127,10 +127,13 @@ def validate_address(address: str, dash_network: typing.Optional[str]) -> bool:
         if len(data) > 5:
             prefix = data[0]
             if dash_network:
-                prefix_valid = (prefix == get_chain_params(dash_network).PREFIX_PUBKEY_ADDRESS)
+                prefix_valid = (prefix == get_chain_params(dash_network).PREFIX_PUBKEY_ADDRESS or
+                                prefix == get_chain_params(dash_network).PREFIX_SCRIPT_ADDRESS)
             else:
                 prefix_valid = (prefix == ChainParamsMainNet.PREFIX_PUBKEY_ADDRESS or
-                                prefix == ChainParamsTestNet.PREFIX_PUBKEY_ADDRESS)
+                                prefix == ChainParamsMainNet.PREFIX_SCRIPT_ADDRESS or
+                                prefix == ChainParamsTestNet.PREFIX_PUBKEY_ADDRESS or
+                                prefix == ChainParamsTestNet.PREFIX_SCRIPT_ADDRESS)
             if prefix_valid:
                 pubkey_hash = data[:-4]
                 checksum = data[-4:]
