@@ -28,7 +28,7 @@
   "features": {
     "NON_DETERMINISTIC_MNS": {
       "mainnet": {
-        "status": "enabled",
+        "status": "disabled",
         "priority": 4
       },
       "testnet": {
