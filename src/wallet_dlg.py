@@ -543,123 +543,130 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         """
         Sends funds to Dash address specified by user.
         """
-        amount, tx_inputs = self.get_selected_utxos()
-        if len(tx_inputs):
-            try:
-                connected = self.connect_hw()
-                if not connected:
+        try:
+            self.allow_fetch_transactions = False
+            self.enable_synch_with_main_thread = False
+
+            amount, tx_inputs = self.get_selected_utxos()
+            if len(tx_inputs):
+                try:
+                    connected = self.connect_hw()
+                    if not connected:
+                        return
+                except CancelException:
                     return
-            except CancelException:
-                return
 
-            bip32_to_address = {}  # for saving addresses read from HW by BIP32 path
-            total_satoshis_inputs = 0
-            coinbase_locked_exist = False
+                bip32_to_address = {}  # for saving addresses read from HW by BIP32 path
+                total_satoshis_inputs = 0
+                coinbase_locked_exist = False
 
-            # verify if:
-            #  - utxo is the masternode collateral transation
-            #  - the utxo Dash (signing) address matches the hardware wallet address for a given path
-            for utxo_idx, utxo in enumerate(tx_inputs):
-                total_satoshis_inputs += utxo.satoshis
-                log.info(f'UTXO satosis: {utxo.satoshis}')
-                if utxo.is_collateral:
-                    if self.queryDlg(
-                            "Warning: you are going to transfer masternode's collateral (1000 Dash) transaction "
-                            "output. Proceeding will result in broken masternode.\n\n"
-                            "Do you really want to continue?",
+                # verify if:
+                #  - utxo is the masternode collateral transation
+                #  - the utxo Dash (signing) address matches the hardware wallet address for a given path
+                for utxo_idx, utxo in enumerate(tx_inputs):
+                    total_satoshis_inputs += utxo.satoshis
+                    log.info(f'UTXO satosis: {utxo.satoshis}')
+                    if utxo.is_collateral:
+                        if self.queryDlg(
+                                "Warning: you are going to transfer masternode's collateral (1000 Dash) transaction "
+                                "output. Proceeding will result in broken masternode.\n\n"
+                                "Do you really want to continue?",
+                                buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
+                            return
+                    if utxo.coinbase_locked:
+                        coinbase_locked_exist = True
+
+                    bip32_path = utxo.bip32_path
+                    if not bip32_path:
+                        self.errorMsg(f'No BIP32 path for UTXO: {utxo.txid}. Cannot continue.')
+                        return
+
+                    addr_hw = bip32_to_address.get(bip32_path, None)
+                    if not addr_hw:
+                        addr_hw = get_address(self.main_ui.hw_session, bip32_path)
+                        bip32_to_address[bip32_path] = addr_hw
+                    if addr_hw != utxo.address:
+                        self.errorMsg("<html style=\"font-weight:normal\">Dash address inconsistency between UTXO "
+                                      f"({utxo_idx+1}) and HW path: {bip32_path}.<br><br>"
+                                      f"<b>HW address</b>: {addr_hw}<br>"
+                                      f"<b>UTXO address</b>: {utxo.address}<br><br>"
+                                      "Cannot continue.</html>")
+                        return
+
+                if coinbase_locked_exist:
+                    if self.queryDlg("Warning: you have selected at least one coinbase transaction without the "
+                                     "required number of confirmations (100). Your transaction will be "
+                                     "rejected by the network.\n\n"
+                                     "Do you really want to continue?",
                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
                             default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
                         return
-                if utxo.coinbase_locked:
-                    coinbase_locked_exist = True
+                try:
+                    tx_outputs = self.wdg_dest_adresses.get_tx_destination_data()
+                    if tx_outputs:
+                        total_satoshis_outputs = 0
+                        for dd in tx_outputs:
+                            total_satoshis_outputs += dd.satoshis
+                            dd.address_ref = self.bip44_wallet.get_address_item(dd.address, False)
 
-                bip32_path = utxo.bip32_path
-                if not bip32_path:
-                    self.errorMsg(f'No BIP32 path for UTXO: {utxo.txid}. Cannot continue.')
-                    return
-
-                addr_hw = bip32_to_address.get(bip32_path, None)
-                if not addr_hw:
-                    addr_hw = get_address(self.main_ui.hw_session, bip32_path)
-                    bip32_to_address[bip32_path] = addr_hw
-                if addr_hw != utxo.address:
-                    self.errorMsg("<html style=\"font-weight:normal\">Dash address inconsistency between UTXO "
-                                  f"({utxo_idx+1}) and HW path: {bip32_path}.<br><br>"
-                                  f"<b>HW address</b>: {addr_hw}<br>"
-                                  f"<b>UTXO address</b>: {utxo.address}<br><br>"
-                                  "Cannot continue.</html>")
-                    return
-
-            if coinbase_locked_exist:
-                if self.queryDlg("Warning: you have selected at least one coinbase transaction without the "
-                                 "required number of confirmations (100). Your transaction will be "
-                                 "rejected by the network.\n\n"
-                                 "Do you really want to continue?",
-                        buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                        default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
-                    return
-            try:
-                tx_outputs = self.wdg_dest_adresses.get_tx_destination_data()
-                if tx_outputs:
-                    total_satoshis_outputs = 0
-                    for dd in tx_outputs:
-                        total_satoshis_outputs += dd.satoshis
-                        dd.address_ref = self.bip44_wallet.get_address_item(dd.address, False)
-
-                    fee = self.wdg_dest_adresses.get_tx_fee()
-                    change = round(total_satoshis_inputs - total_satoshis_outputs - fee, 0)
-                    if change:
-                        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
-                            # find first unused address of the change for the current account
-                            acc = None
-                            if self.hw_selected_account_id:
-                                acc = self.account_list_model.account_by_id(self.hw_selected_account_id)
-                            if not acc:
-                                raise Exception('Cannot find the current account')
+                        fee = self.wdg_dest_adresses.get_tx_fee()
+                        change = round(total_satoshis_inputs - total_satoshis_outputs - fee, 0)
+                        if change:
+                            if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+                                # find first unused address of the change for the current account
+                                acc = None
+                                if self.hw_selected_account_id:
+                                    acc = self.account_list_model.account_by_id(self.hw_selected_account_id)
+                                if not acc:
+                                    raise Exception('Cannot find the current account')
+                                else:
+                                    change_addr = self.bip44_wallet.find_xpub_first_unused_address(acc, 1)
+                                    if not change_addr:
+                                        raise Exception('Cannot find the account change address')
+                            elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
+                                # in the masternode view, address for the change will be taken fron the first input
+                                change_addr = self.bip44_wallet.get_address_item(tx_inputs[0].address, True)
                             else:
-                                change_addr = self.bip44_wallet.find_xpub_first_unused_address(acc, 1)
-                                if not change_addr:
-                                    raise Exception('Cannot find the account change address')
-                        elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
-                            # in the masternode view, address for the change will be taken fron the first input
-                            change_addr = self.bip44_wallet.get_address_item(tx_inputs[0].address, True)
+                                raise Exception('Implement')
+
+                            if change_addr:
+                                out = TxOutputType()
+                                out.address = change_addr.address
+                                out.bip32_path = change_addr.bip32_path
+                                out.satoshis = change
+                                out.address_ref = change_addr
+                                tx_outputs.append(out)
+
+                        use_is = self.wdg_dest_adresses.get_use_instant_send()
+
+                        try:
+                            serialized_tx, amount_to_send = sign_tx(
+                                self.main_ui.hw_session, tx_inputs, tx_outputs, fee)
+                        except CancelException:
+                            # user cancelled the operations
+                            return
+                        except Exception:
+                            log.exception('Exception when preparing the transaction.')
+                            raise
+
+                        tx_hex = serialized_tx.hex()
+                        log.info('Raw signed transaction: ' + tx_hex)
+                        if len(tx_hex) > 90000:
+                            self.errorMsg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
                         else:
-                            raise Exception('Implement')
-
-                        if change_addr:
-                            out = TxOutputType()
-                            out.address = change_addr.address
-                            out.bip32_path = change_addr.bip32_path
-                            out.satoshis = change
-                            out.address_ref = change_addr
-                            tx_outputs.append(out)
-
-                    use_is = self.wdg_dest_adresses.get_use_instant_send()
-
-                    try:
-                        serialized_tx, amount_to_send = sign_tx(
-                            self.main_ui.hw_session, tx_inputs, tx_outputs, fee)
-                    except CancelException:
-                        # user cancelled the operations
-                        return
-                    except Exception:
-                        log.exception('Exception when preparing the transaction.')
-                        raise
-
-                    tx_hex = serialized_tx.hex()
-                    log.info('Raw signed transaction: ' + tx_hex)
-                    if len(tx_hex) > 90000:
-                        self.errorMsg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
-                    else:
-                        after_send_tx_fun = partial(self.process_after_sending_transaction, tx_inputs, tx_outputs)
-                        tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex, use_is, tx_inputs,
-                                                tx_outputs, after_send_tx_fun)
-                        tx_dlg.exec_()
-            except Exception as e:
-                log.exception('Unknown error occurred.')
-                self.errorMsg(str(e))
-        else:
-            self.errorMsg('No UTXO to send.')
+                            after_send_tx_fun = partial(self.process_after_sending_transaction, tx_inputs, tx_outputs)
+                            tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex, use_is, tx_inputs,
+                                                    tx_outputs, after_send_tx_fun)
+                            tx_dlg.exec_()
+                except Exception as e:
+                    log.exception('Unknown error occurred.')
+                    self.errorMsg(str(e))
+            else:
+                self.errorMsg('No UTXO to send.')
+        finally:
+            self.allow_fetch_transactions = True
+            self.enable_synch_with_main_thread = True
 
     def process_after_sending_transaction(self, inputs: List[UtxoType], outputs: List[TxOutputType], tx_json: Dict):
         def break_call():
