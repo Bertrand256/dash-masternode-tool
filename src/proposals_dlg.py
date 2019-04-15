@@ -1120,7 +1120,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         if not ident in users_mn_configs_by_ident:
                             users_mn_configs_by_ident[ident] = mn_cfg
 
-                    mns = self.dashd_intf.get_masternodelist('full')
+                    mns = self.dashd_intf.get_masternodelist('json')
                     self.masternodes = mns
                     self.mn_count = 0
                     statuses = {}

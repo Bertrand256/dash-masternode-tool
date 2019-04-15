@@ -973,21 +973,18 @@ class DashdInterface(WndUtils):
             tm_begin = time.time()
             ret_list = []
             for mn_id in mns_raw.keys():
-                mn_raw = mns_raw.get(mn_id)
-                mn_raw = mn_raw.strip()
-                elems = mn_raw.split()
-                if len(elems) >= 8:
-                    mn = Masternode()
-                    # (status, protocol, payee, lastseen, activeseconds, lastpaidtime, pastpaidblock, ip)
-                    mn.status, mn.protocol, mn.payee, mn.lastseen, mn.activeseconds, mn.lastpaidtime, \
-                        mn.lastpaidblock, mn.ip = elems
-
-                    mn.lastseen = int(mn.lastseen)
-                    mn.activeseconds = int(mn.activeseconds)
-                    mn.lastpaidtime = int(mn.lastpaidtime)
-                    mn.lastpaidblock = int(mn.lastpaidblock)
-                    mn.ident = mn_id
-                    ret_list.append(mn)
+                mn_json = mns_raw.get(mn_id)
+                mn = Masternode()
+                mn.status = mn_json.get('status')
+                mn.protocol = mn_json.get('protocol')
+                mn.payee = mn_json.get('payee')
+                mn.lastseen = mn_json.get('lastseen', 0)
+                mn.activeseconds = mn_json.get('activeseconds', 0)
+                mn.lastpaidtime = mn_json.get('lastpaidtime', 0)
+                mn.lastpaidblock = mn_json.get('lastpaidblock', 0)
+                mn.ip = mn_json.get('address')
+                mn.ident = mn_id
+                ret_list.append(mn)
             duration = time.time() - tm_begin
             log.info('Parse masternodelist time: ' + str(duration))
             return ret_list
@@ -1018,7 +1015,7 @@ class DashdInterface(WndUtils):
 
         if self.open():
 
-            if len(args) == 1 and args[0] == 'full':
+            if len(args) == 1 and args[0] == 'json':
                 last_read_time = app_cache.get_value(f'MasternodesLastReadTime_{self.app_config.dash_network}', 0, int)
                 log.info("MasternodesLastReadTime: %d" % last_read_time)
 

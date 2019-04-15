@@ -1440,7 +1440,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
         if self.dashd_connection_ok:
             collateral_id = masternode.collateralTx + '-' + masternode.collateralTxIndex
-            mns_info = self.dashd_intf.get_masternodelist('full', collateral_id)
+            mns_info = self.dashd_intf.get_masternodelist('json', collateral_id)
             if len(mns_info):
                 protocol_version = mns_info[0].protocol
                 if isinstance(protocol_version, str):
@@ -1526,7 +1526,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if not masternode.collateralTx:
                     return '<span style="color:red">Enter the collateral TX hash + index or IP + port</span>'
 
-            self.dashd_intf.get_masternodelist('full', data_max_age=30)  # read new data from the network
+            self.dashd_intf.get_masternodelist('json', data_max_age=30)  # read new data from the network
                                                                                     # every 30 seconds
             if collateral_id:
                 mn_info = self.dashd_intf.masternodes_by_ident.get(collateral_id)
