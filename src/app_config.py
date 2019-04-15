@@ -352,6 +352,15 @@ class AppConfig(object):
             self.db_intf = DBCache()
             self.db_intf.open(new_db_cache_file_name)
             self.db_cache_file_name = new_db_cache_file_name
+
+            if app_utils.is_version_bigger('0.9.22-hotfix7', self.app_last_version):
+                # reset the cached user votes because of the network votes reset caused by spork 15
+                try:
+                    cur = self.db_intf.get_cursor()
+                    cur.execute('delete from VOTING_RESULTS')
+                    self.db_intf.commit()
+                except Exception as e:
+                    logging.error()
         self.restore_cache_settings()
 
     def clear_configuration(self):
