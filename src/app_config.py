@@ -353,14 +353,27 @@ class AppConfig(object):
             self.db_intf.open(new_db_cache_file_name)
             self.db_cache_file_name = new_db_cache_file_name
 
-            if app_utils.is_version_bigger('0.9.22-hotfix7', self.app_last_version):
-                # reset the cached user votes because of the network votes reset caused by spork 15
-                try:
-                    cur = self.db_intf.get_cursor()
-                    cur.execute('delete from VOTING_RESULTS')
-                    self.db_intf.commit()
-                except Exception as e:
-                    logging.error()
+            # reset the cached user votes because of the network votes reset caused by spork 15
+            try:
+                cur = self.db_intf.get_cursor()
+                cur.execute('select voting_time from VOTING_RESULTS where id=(select min(id) from VOTING_RESULTS)')
+                row = cur.fetchone()
+                if row and row[0]:
+                    d = datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
+                    vts = int(d.strftime('%s'))
+                    if vts < 1554246129:  # timestamp of the block (1047200) that activated spork 15
+                        logging.info('Cleared the cached votes because of the spork 15 activation')
+                        cur.execute('delete from VOTING_RESULTS')
+                        cur.execute('delete from LIVE_CONFIG')
+                        cur.execute('update proposals set dmt_voting_last_read_time=0')
+                        self.db_intf.commit()
+                        WndUtils.warnMsg('Some of your voting results have been reset due to the activation of '
+                                         'Spork 15. Please verify this in the voting window and vote again '
+                                         'if it\'s needed.')
+            except Exception as e:
+                logging.error('Error while clearing voting results. Details: ' + str(e))
+            finally:
+                self.db_intf.release_cursor()
         self.restore_cache_settings()
 
     def clear_configuration(self):
