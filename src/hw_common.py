@@ -6,6 +6,8 @@ import threading
 from functools import partial
 from PyQt5 import QtWidgets, QtCore
 from typing import List, Optional, Callable, ByteString, Tuple
+
+from PyQt5.QtCore import QObject
 from PyQt5.QtWidgets import QDialog, QCheckBox, QRadioButton
 import hw_pass_dlg
 import hw_pin_dlg
@@ -19,6 +21,13 @@ from wnd_utils import WndUtils
 class HardwareWalletPinException(Exception):
     def __init__(self, msg):
         self.msg = msg
+
+
+class HWNotConnectedException(Exception):
+    def __init__(self, msg: str = None):
+        if not msg:
+            msg = 'Not connected to a hardware wallet'
+        Exception.__init__(self, msg)
 
 
 def get_hw_type(hw_client):
@@ -40,13 +49,18 @@ def get_hw_type(hw_client):
         raise Exception('Hardware wallet not connected')
 
 
-class HwSessionInfo(object):
+class HwSessionInfo(QObject):
+    hw_connected = QtCore.pyqtSignal()
+    hw_disconnected = QtCore.pyqtSignal()
+
     def __init__(self,
                  get_hw_client_function: Callable[[], object],
                  hw_connect_function: Callable[[object], None],
                  hw_disconnect_function: Callable[[], None],
                  app_config: object,
                  dashd_intf: object):
+        QObject.__init__(self)
+
         self.__locks = {}  # key: hw_client, value: EnhRLock
         self.__app_config = app_config
         self.__dashd_intf = dashd_intf
@@ -68,6 +82,12 @@ class HwSessionInfo(object):
     @property
     def hw_disconnect(self):
         return self.__hw_disconnect_function
+
+    def signal_hw_connected(self):
+        self.hw_connected.emit()
+
+    def signal_hw_disconnected(self):
+        self.hw_disconnected.emit()
 
     @property
     def hw_type(self):
@@ -120,7 +140,7 @@ class HwSessionInfo(object):
         if not coin_name:
             raise Exception('Missing coin name')
         if not self.__hd_tree_ident:
-            raise Exception('Not connected to hardware wallet')
+            raise HWNotConnectedException()
         return self.__hd_tree_ident + bytes(coin_name, 'ascii').hex()
 
 

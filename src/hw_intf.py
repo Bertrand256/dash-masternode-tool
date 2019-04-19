@@ -9,12 +9,13 @@ from functools import partial
 from typing import Optional, Tuple, List, ByteString, Callable, Dict
 import sys
 
+import usb1
 from PyQt5 import QtWidgets
 
 import dash_utils
 from common import CancelException
 from dash_utils import bip32_path_n_to_string
-from hw_common import HardwareWalletPinException, HwSessionInfo, get_hw_type
+from hw_common import HardwareWalletPinException, HwSessionInfo, get_hw_type, HWNotConnectedException
 import logging
 from app_defs import HWType
 from wallet_common import UtxoType, TxOutputType
@@ -57,7 +58,7 @@ def control_hw_call(func):
         if not client:
             client = hw_session.hw_connect()
         if not client:
-            raise Exception('Not connected to a hardware wallet')
+            raise HWNotConnectedException()
         try:
             try:
                 # protect against simultaneous access to the same device from different threads
@@ -93,11 +94,12 @@ def control_hw_call(func):
             finally:
                 hw_session.release_client()
 
-        except OSError as e:
+        except (OSError, usb1.USBErrorNoDevice) as e:
             logging.exception('Exception calling %s function' % func.__name__)
             logging.info('Disconnecting HW after OSError occurred')
             hw_session.hw_disconnect()
-            raise
+            raise HWNotConnectedException('The hardware wallet device has been disconnected with the '
+                                          'following error: ' + str(e))
 
         except HardwareWalletPinException:
             raise
@@ -637,7 +639,7 @@ def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemon
             else:
                 raise Exception('Not supported by Ledger Nano S.')
         else:
-            raise Exception('Not connected to a hardware wallet')
+            raise HWNotConnectedException()
 
     if hw_type == HWType.ledger_nano_s:
         import hw_intf_ledgernano
@@ -687,7 +689,7 @@ def recovery_device(hw_type: HWType, hw_device_id: str, word_count: int, passphr
             else:
                 raise Exception('Not supported by Ledger Nano S.')
         else:
-            raise Exception('Not connected to a hardware wallet')
+            raise HWNotConnectedException()
 
     if hw_type == HWType.ledger_nano_s:
         raise Exception('Not supported by Ledger Nano S.')
@@ -735,7 +737,7 @@ def reset_device(hw_type: HWType, hw_device_id: str, word_count: int, passphrase
             else:
                 raise Exception('Not supported by Ledger Nano S.')
         else:
-            raise Exception('Not connected to a hardware wallet')
+            raise HWNotConnectedException()
 
     if hw_type == HWType.ledger_nano_s:
         raise Exception('Not supported by Ledger Nano S.')

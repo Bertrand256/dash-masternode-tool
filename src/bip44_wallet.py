@@ -16,12 +16,12 @@ import hw_intf
 from common import CancelException
 from dash_utils import bip32_path_string_to_n, pubkey_to_address, bip32_path_n_to_string, bip32_path_string_append_elem
 from dashd_intf import DashdInterface
-from hw_common import HwSessionInfo
+from hw_common import HwSessionInfo, HWNotConnectedException
 from db_intf import DBCache
 from thread_fun_dlg import CtrlObject
 from thread_utils import EnhRLock
 from wallet_common import Bip44AccountType, Bip44AddressType, UtxoType, TxOutputType, xpub_to_hash, Bip44Entry, \
-    address_to_hash, TxType
+    address_to_hash, TxType, CacheInconsistencyException
 from wnd_utils import WndUtils
 
 TX_QUERY_ADDR_CHUNK_SIZE = 10
@@ -38,6 +38,11 @@ log = logging.getLogger('dmt.bip44_wallet')
 
 
 class BreakFetchTransactionsException(Exception):
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, *kwargs)
+
+
+class SwitchedHDIdentityException(Exception):
     def __init__(self, *args, **kwargs):
         Exception.__init__(self, *args, *kwargs)
 
@@ -188,6 +193,7 @@ class Bip44Wallet(QObject):
             # user switched to another hw identity (e.g. enter bip39 different passphrase)
             log.info('Switching HD identity')
             self.clear()
+            raise SwitchedHDIdentityException()
 
     def get_block_height(self):
         if self.cur_block_height is None or \
@@ -424,24 +430,28 @@ class Bip44Wallet(QObject):
 
                             if addr_info.get('tree_id') and addr_info.get('tree_id') != parent_key_entry.tree_id:
                                 log.warning('Address %s stored in cache has had incorrect tree_id: %s, but it'
-                                            ' should have: %s. Correcting...', addr_info.get('id'),
+                                            ' should have: %s.', addr_info.get('id'),
                                             addr_info.get('tree_id'), parent_key_entry.tree_id)
+                                raise CacheInconsistencyException()
 
                             if addr_info.get('address_index') is not None and addr_info.get('address_index') != \
                                     child_addr_index:
                                 log.warning('Address %s stored in cache has had incorrect address_index: %s, but it'
-                                            ' should have: %s. Correcting...', addr_info.get('id'),
+                                            ' should have: %s.', addr_info.get('id'),
                                             addr_info.get('child_addr_index'), child_addr_index)
+                                raise CacheInconsistencyException()
 
                             if addr_info.get('path') and addr_info.get('path') != bip32_path:
                                 log.warning('Address %s stored in cache has had incorrect bip32_path: %s, but it'
-                                            ' should have: %s. Correcting...', addr_info.get('id'),
+                                            ' should have: %s.', addr_info.get('id'),
                                             addr_info.get('path'), bip32_path)
+                                raise CacheInconsistencyException()
 
                             if addr_info.get('parent_id') and addr_info.get('parent_id') != parent_key_entry.id:
                                 log.warning('Address %s stored in cache has had incorrect parent_id: %s, but it'
-                                            ' should have: %s. Correcting...', addr_info.get('id'),
+                                            ' should have: %s.', addr_info.get('id'),
                                             addr_info.get('parent_id'), parent_key_entry.id)
+                                raise CacheInconsistencyException()
 
                             # address wasn't initially opened as a part of xpub account scan, so update its attrs
                             db_cursor.execute('update address set parent_id=?, address_index=?, path=?, tree_id=? '
@@ -553,7 +563,7 @@ class Bip44Wallet(QObject):
             if row:
                 id, path = row
                 if path != account_bip32_path:
-                    # correct the bip32 path since this account could be opened as a xpub address before
+                    # fill the bip32 path - this entry was possibly created as a xpub address
                     db_cursor.execute('update address set path=? where id=?', (account_bip32_path, id))
                     self.db_intf.commit()
 
@@ -577,6 +587,20 @@ class Bip44Wallet(QObject):
 
             log.debug('get_account_base_address_by_index exec time: %s', time.time() - tm_begin)
         else:
+            idx = account_index - 0x80000000
+            if 0 <= idx <= 25:
+                try:
+                    # use xpub_hash to verify if the user didn't switch the wallet identity (eg. passphrase)
+                    xpub = hw_intf.get_xpub(self.hw_session, account_bip32_path)
+                    if account.xpub != xpub:
+                        raise SwitchedHDIdentityException()
+
+                except ConnectionRefusedError:
+                    raise HWNotConnectedException()
+
+                except Exception as e:
+                    raise
+
             log.debug('get_account_base_address_by_index (used cache) exec time: %s', time.time() - tm_begin)
 
         return account
@@ -631,22 +655,15 @@ class Bip44Wallet(QObject):
                     addr.tree_id = account.tree_id
 
                 if addr_info.get('tree_id') and addr_info.get('tree_id') != account.tree_id:
-                    # there is an issue with switching tree_id to incorrect tree (cause to be found)
-                    # here we are correcting record values
-                    addr.tree_id = account.tree_id
-                    correct_tree_id.append(addr)
                     log.warning('Address %s stored in cache has had incorrect tree_id: %s, but it'
-                                ' should have: %s. Correcting...', addr_info.get('id'),
+                                ' should have: %s.', addr_info.get('id'),
                                 addr_info.get('tree_id'), account.tree_id)
+                    raise CacheInconsistencyException()
 
                 account.add_address(addr)
                 self._address_loaded(addr)
             else:
                 addr.update_from_args(balance=add_row[4], received=add_row[5])
-
-        if correct_tree_id:
-            for a in correct_tree_id:
-                db_cursor.execute('update address set tree_id=? where id=?', (a.tree_id, a.id))
 
             self.db_intf.commit()
 

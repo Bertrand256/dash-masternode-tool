@@ -29,6 +29,11 @@ def address_to_hash(address):
     return hash.decode('ascii')
 
 
+class CacheInconsistencyException(Exception):
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, *kwargs)
+
+
 class TxType(AttrsProtected):
     def __init__(self):
         super(TxType, self).__init__()
@@ -38,12 +43,12 @@ class TxType(AttrsProtected):
         self.recipient_addrs: List[Union[Bip44AddressType, str]] = []
         # self.rcp_address: Optional[Bip44AddressType] = None  # != None if recipient is our own address
         # self.rcp_address_str: str = None
-        self.direction: int = None  # 1: incoming, -1: outgoing
+        self.direction: Optional[int] = None  # 1: incoming, -1: outgoing
         self.satoshis: int = 0
         self.tx_hash: str = ''
         self.block_height: int = 0
         self.block_timestamp: int = 0
-        self.block_time_str: str = None
+        self.block_time_str: Optional[str] = None
         self.label: str = ''
         self.set_attr_protection()
 
@@ -54,7 +59,7 @@ class UtxoType(AttrsProtected):
         self.id = None
         # self.address: str = None
         # self.address_id: int = None
-        self.address_obj: 'Bip44AddressType' = None
+        self.address_obj: Optional['Bip44AddressType'] = None
         self.txid = None
         self.output_index = None
         self.satoshis = None
@@ -65,7 +70,7 @@ class UtxoType(AttrsProtected):
         self.is_collateral = False
         self.coinbase = False
         self.masternode = None
-        self.get_cur_block_height_fun: Callable[[], int] = None
+        self.get_cur_block_height_fun: Optional[Callable[[], int]] = None
         self.set_attr_protection()
 
     @property
@@ -104,9 +109,9 @@ class TxOutputType(AttrsProtected):
     def __init__(self):
         super(TxOutputType, self).__init__()
         self.__address: str = ''
-        self.address_ref: Bip44AddressType = None  # not null if the recipient of the output is the user's own address
-        self.satoshis: int = None
-        self.__bip32_path: str = None  # required only for change output
+        self.address_ref: Optional[Bip44AddressType] = None  # not null if the recipient of the output is the user's own address
+        self.satoshis: Optional[int] = None
+        self.__bip32_path: Optional[str] = None  # required only for change output
         self.is_change = False
         self.set_attr_protection()
 
@@ -139,9 +144,9 @@ class Bip44Entry(object):
         self.tree_id: int = tree_id
         self.id: Optional[int] = id
         self.xpub: str = xpub
-        self.address: str = None
-        self.label: str = None
-        self.__bip32_path: Optional[int] = ''
+        self.address: Optional[str] = None
+        self.label: Optional[str] = None
+        self.__bip32_path: Optional[str] = ''
         self.set_bip32_path(bip32_path)
         self.address_index: Optional[int] = address_index
         self.__bip32_key: BIP32Key = bip32_key
@@ -238,6 +243,9 @@ class Bip44Entry(object):
                 self.id = row[len(self.db_fields)]  # id is an additional field read from db when using xpub_hash as a
                                                     # key
             if self.__parent and (not self.__parent_id or self.__parent.id != self.__parent_id):
+                if self.__parent_id:
+                    raise CacheInconsistencyException()
+
                 self.__parent_id = self.__parent.id
                 # corrent parent_id in the database
                 db_cursor.execute('update address set parent_id=? where id=?', (self.__parent.id, self.id))

@@ -353,9 +353,10 @@ class AppConfig(object):
             self.db_intf.open(new_db_cache_file_name)
             self.db_cache_file_name = new_db_cache_file_name
 
-            # reset the cached user votes because of the network votes reset caused by spork 15
             try:
                 cur = self.db_intf.get_cursor()
+
+                # reset the cached user votes because of the network votes reset caused by spork 15
                 cur.execute('select voting_time from VOTING_RESULTS where id=(select min(id) from VOTING_RESULTS)')
                 row = cur.fetchone()
                 if row and row[0]:
@@ -370,6 +371,20 @@ class AppConfig(object):
                         WndUtils.warnMsg('Some of your voting results have been reset due to the activation of '
                                          'Spork 15. Please verify this in the voting window and vote again '
                                          'if it\'s needed.')
+
+                # check and clean the wallet addresses inconsistency
+                cur.execute('select parent_id, address_index, count(*) from address where parent_id is not null '
+                            'group by parent_id, address_index having count(*)>1')
+                row = cur.fetchone()
+                if row:
+                    bck_name = 'address_' + datetime.datetime.now().strftime('%Y%m%d_%H%M')
+                    cur.execute(f'create table {bck_name} as select * from address')
+                    cur.execute('delete from address')
+                    cur.execute('delete from tx_input')
+                    cur.execute('delete from tx_output')
+                    cur.execute('delete from tx')
+                    self.db_intf.commit()
+                    logging.warning('Cleared the wallet address cache because of inconsistencies found.')
             except Exception as e:
                 logging.error('Error while clearing voting results. Details: ' + str(e))
             finally:

@@ -27,10 +27,8 @@ import app_cache
 import app_utils
 import dash_utils
 import hw_intf
-import thread_utils
-from app_config import MasternodeConfig
 from app_defs import HWType, DEBUG_MODE
-from bip44_wallet import Bip44Wallet, Bip44Entry, BreakFetchTransactionsException
+from bip44_wallet import Bip44Wallet, Bip44Entry, BreakFetchTransactionsException, SwitchedHDIdentityException
 from common import CancelException
 from sign_message_dlg import SignMessageDlg
 from ui.ui_wallet_dlg_options1 import Ui_WdgOptions1
@@ -38,9 +36,7 @@ from ui.ui_wdg_wallet_txes_filter import Ui_WdgWalletTxesFilter
 from wallet_common import UtxoType, Bip44AccountType, Bip44AddressType, TxOutputType, TxType
 from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
-from hw_common import HwSessionInfo
-from hw_intf import sign_tx, get_address
-from ext_item_model import ExtSortFilterTableModel, TableModelColumn
+from hw_common import HwSessionInfo, HWNotConnectedException
 from thread_fun_dlg import WorkerThread, CtrlObject
 from wallet_data_models import UtxoTableModel, MnAddressTableModel, AccountListModel, MnAddressItem, \
     TransactionTableModel, FILTER_AND, FILTER_OR, FILTER_OPER_EQ, FILTER_OPER_GTEQ, FILTER_OPER_LTEQ
@@ -130,10 +126,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         # 2: masternode collateral address
         self.utxo_src_mode: Optional[int] = None
         self.cur_utxo_src_hash = None  # hash of the currently selected utxo source mode
-        if self.hw_connected():
-            self.cur_hd_tree_id,_ = self.bip44_wallet.get_hd_identity_info()
-        else:
-            self.cur_hd_tree_id = None
+        self.cur_hd_tree_id = None
+        self.cur_hd_tree_ident = None
 
         # for self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST
         self.selected_mns: List[MnAddressItem] = []
@@ -319,8 +313,14 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.address_souce_update_ui()
         self.prepare_txes_filter()
         self.show_hide_txes_filter()
-
         self.update_context_actions()
+
+        self.hw_session.hw_connected.connect(self.on_connect_hw)
+        self.hw_session.hw_disconnected.connect(self.on_disconnect_hw)
+        if self.hw_session.hw_type is not None and self.hw_session.hw_client is not None:
+            # hw is initially connected
+            self.on_connect_hw()
+
         self.start_threads()
 
     def closeEvent(self, event):
@@ -464,6 +464,17 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def address_souce_update_ui(self):
         self.btnViewModeOptions.setEnabled(True if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS else False)
 
+    def hw_call_wrapper(self, func):
+        def call(*args, **kwargs):
+            try:
+                ret = func(*args, **kwargs)
+            except HWNotConnectedException:
+                self.on_disconnect_hw()
+                raise
+            return ret
+
+        return call
+
     @pyqtSlot(int)
     def on_cboAddressSourceMode_currentIndexChanged(self, index):
         self.swAddressSource.setCurrentIndex(index)
@@ -584,8 +595,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                     addr_hw = bip32_to_address.get(bip32_path, None)
                     if not addr_hw:
-                        addr_hw = get_address(self.main_ui.hw_session, bip32_path)
+                        addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.main_ui.hw_session, bip32_path)
                         bip32_to_address[bip32_path] = addr_hw
+
                     if addr_hw != utxo.address:
                         self.errorMsg("<html style=\"font-weight:normal\">Dash address inconsistency between UTXO "
                                       f"({utxo_idx+1}) and HW path: {bip32_path}.<br><br>"
@@ -641,8 +653,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         use_is = self.wdg_dest_adresses.get_use_instant_send()
 
                         try:
-                            serialized_tx, amount_to_send = sign_tx(
-                                self.main_ui.hw_session, tx_inputs, tx_outputs, fee)
+                            serialized_tx, amount_to_send = self.hw_call_wrapper(hw_intf.sign_tx)\
+                                (self.main_ui.hw_session, tx_inputs, tx_outputs, fee)
+                        except HWNotConnectedException:
+                            raise
                         except CancelException:
                             # user cancelled the operations
                             return
@@ -709,6 +723,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.hw_selected_account_id = None
             self.hw_selected_address_id = None
 
+        self.update_context_actions()
         self.update_details_tab()
         self.on_utxo_src_hash_changed()
 
@@ -725,9 +740,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def on_accountsListView_selectionChanged(self):
         """Selected BIP44 account or address changed. """
-        self.display_thread_event.set()
         self.reflect_ui_account_selection()
-        self.update_context_actions()
+        self.display_thread_event.set()
 
     def on_viewMasternodes_selectionChanged(self):
         with self.mn_model:
@@ -772,11 +786,13 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def show_address_on_hw(self, addr: Bip44AddressType):
         try:
-            _a = hw_intf.get_address(self.hw_session, addr.bip32_path, True,
-                                     f'Displaying address <b>{addr.address}</b>.<br>Click the confirmation button on'
-                                     f' your device.')
+            _a = self.hw_call_wrapper(hw_intf.get_address)\
+                (self.hw_session, addr.bip32_path, True,
+                 f'Displaying address <b>{addr.address}</b>.<br>Click the confirmation button on your device.')
             if _a != addr.address:
                 raise Exception('Address inconsistency between db cache and device')
+        except HWNotConnectedException:
+            raise
         except CancelException:
             return
 
@@ -797,7 +813,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 if addr:
                     # for security purposes get the address from hardware wallet and compare it to the one
                     # read from db cache
-                    addr_hw = hw_intf.get_address(self.hw_session, addr.bip32_path, False)
+                    addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, addr.bip32_path, False)
                     if addr_hw != addr.address:
                         self.errorMsg('Inconsistency between the wallet cache and the hardware wallet data occurred. '
                                       'Please clear the wallet cache.')
@@ -976,6 +992,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.delete_hd_identity()
         elif link == 'tx-fetch':
             self.fetch_transactions()
+        elif link == 'hw-alter-identity':
+            if self.hw_connected():
+                self.main_ui.disconnect_hardware_wallet()
+                self.main_ui.connect_hardware_wallet()
         self.update_hw_info()
 
     @pyqtSlot(bool)
@@ -1016,91 +1036,123 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         else:
             return False
 
-    def disconnect_hw(self):
-        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
-            reset_details_pane = True
-        else:
-            reset_details_pane = False
+    def on_connect_hw(self):
+        if self.hw_session.hw_type is not None and self.hw_session.hw_client:
+            aft_saved = self.allow_fetch_transactions
+            esmt_saved = self.enable_synch_with_main_thread
+            self.allow_fetch_transactions = False
+            self.enable_synch_with_main_thread = False
 
+            try:
+                tree_ident = self.hw_session.get_hd_tree_ident(self.app_config.hw_coin_name)
+                if self.cur_hd_tree_ident != tree_ident:
+                    if self.cur_hd_tree_ident:
+                        self.on_disconnect_hw()  #hw identity has been changed
+
+                    self.cur_hd_tree_ident = tree_ident
+                    self.cur_hd_tree_id, _ = self.bip44_wallet.get_hd_identity_info()
+                    self.hw_connection_established = True
+                    self.update_hw_info()
+                    self.on_utxo_src_hash_changed()
+                    self.hw_selected_account_id = None
+                    self.hw_selected_address_id = None
+                    self.update_context_actions()
+                    self.cur_utxo_src_hash = None
+                    self.enable_synch_with_main_thread = True
+                    self.dt_last_addr_selection_hash_for_utxo = ''
+                    self.dt_last_addr_selection_hash_for_txes = ''
+                    self.dt_last_hd_tree_id = None
+            finally:
+                self.allow_fetch_transactions = aft_saved
+                self.enable_synch_with_main_thread = esmt_saved
+
+    def on_disconnect_hw(self):
+        aft_saved = self.allow_fetch_transactions
         self.allow_fetch_transactions = False
+        esmt_saved = self.enable_synch_with_main_thread
         self.enable_synch_with_main_thread = False
 
-        if reset_details_pane:
-            # clear the utxo model data
-            with self.utxo_table_model:
-                self.utxo_table_model.beginResetModel()
-                self.utxo_table_model.clear_utxos()
-                self.utxo_table_model.endResetModel()
+        try:
+            if self.cur_hd_tree_ident:
+                if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+                    # clear the utxo model data
+                    with self.utxo_table_model:
+                        self.utxo_table_model.beginResetModel()
+                        self.utxo_table_model.clear_utxos()
+                        self.utxo_table_model.endResetModel()
 
-            # and the txes model data
-            with self.tx_table_model:
-                self.tx_table_model.beginResetModel()
-                self.tx_table_model.clear_txes()
-                self.tx_table_model.endResetModel()
+                    # and the txes model data
+                    with self.tx_table_model:
+                        self.tx_table_model.beginResetModel()
+                        self.tx_table_model.clear_txes()
+                        self.tx_table_model.endResetModel()
 
-        # clear the account model data
-        with self.account_list_model:
-            self.account_list_model.beginResetModel()
-            self.account_list_model.clear_accounts()
-            self.account_list_model.endResetModel()
+                # clear the account model data
+                with self.account_list_model:
+                    self.account_list_model.beginResetModel()
+                    self.account_list_model.clear_accounts()
+                    self.account_list_model.endResetModel()
 
-        self.hw_connection_established = False
-        self.main_ui.disconnect_hardware_wallet()
-        self.bip44_wallet.clear()
-        # reload mn addresses into the address cache cleared by the call ^
-        self.mn_model.load_mn_addresses_in_bip44_wallet(self.bip44_wallet)
-        self.allow_fetch_transactions = True
-        self.hw_selected_account_id = None
-        self.hw_selected_address_id = None
-        self.cur_hd_tree_id = None
-        self.cur_utxo_src_hash = None
-        self.enable_synch_with_main_thread = True
-        self.hide_loading_tx_animation()
-        self.update_context_actions()
-        self.update_details_tab()
-        self.set_message('')
+                self.hw_connection_established = False
+                self.bip44_wallet.clear()
+                # reload mn addresses into the address cache cleared by the call ^
+                self.mn_model.load_mn_addresses_in_bip44_wallet(self.bip44_wallet)
+                self.hw_selected_account_id = None
+                self.hw_selected_address_id = None
+                self.cur_hd_tree_id = None
+                self.cur_hd_tree_ident = None
+                self.cur_utxo_src_hash = None
+                self.hide_loading_tx_animation()
+                self.update_context_actions()
+                self.update_details_tab()
+                self.update_hw_info()
+                self.set_message('')
+        finally:
+            self.allow_fetch_transactions = aft_saved
+            self.enable_synch_with_main_thread = esmt_saved
 
     def connect_hw(self):
         def connect():
             if self.main_ui.connect_hardware_wallet():
-                self.app_config.initialize_hw_encryption(self.main_ui.hw_session)
-
-                # break the fetching transactions process:
+                aft_saved = self.allow_fetch_transactions
+                esmt_saved = self.enable_synch_with_main_thread
                 self.allow_fetch_transactions = False
                 self.enable_synch_with_main_thread = False
 
-                self.cur_hd_tree_id, _ = self.bip44_wallet.get_hd_identity_info()
-                log.debug('Connected HW, self.cur_hd_tree_id: %s', self.cur_hd_tree_id)
-                self.hw_connection_established = True
-                self.update_hw_info()
-                self.on_utxo_src_hash_changed()
-                self.hw_selected_account_id = None
-                self.hw_selected_address_id = None
-                self.update_context_actions()
-                self.cur_utxo_src_hash = None
-                self.enable_synch_with_main_thread = True
-                self.dt_last_addr_selection_hash_for_utxo = ''
-                self.dt_last_addr_selection_hash_for_txes = ''
-                self.dt_last_hd_tree_id = None
+                try:
+                    self.on_connect_hw()
+                finally:
+                    self.allow_fetch_transactions = aft_saved
+                    self.enable_synch_with_main_thread = esmt_saved
 
-                self.allow_fetch_transactions = True
-                self.enable_synch_with_main_thread = True
                 self.display_thread_event.set()
                 self.fetch_transactions()
                 return True
             else:
-                self.hw_connection_established = False
+                if self.hw_connected():
+                    self.on_disconnect_hw()
                 return False
-        if not self.hw_connected():
-            if threading.current_thread() != threading.main_thread():
-                if self.enable_synch_with_main_thread:
-                    return WndUtils.call_in_main_thread(connect)
-                else:
-                    return False
+
+        if threading.current_thread() != threading.main_thread():
+            if self.enable_synch_with_main_thread:
+                return WndUtils.call_in_main_thread(connect)
             else:
-                return connect()
+                return False
         else:
-            return True
+            return connect()
+
+    def disconnect_hw(self):
+        aft_saved = self.allow_fetch_transactions
+        self.allow_fetch_transactions = False
+        esmt_saved = self.enable_synch_with_main_thread
+        self.enable_synch_with_main_thread = False
+
+        try:
+            self.on_disconnect_hw()
+            self.main_ui.disconnect_hardware_wallet()
+        finally:
+            self.allow_fetch_transactions = aft_saved
+            self.enable_synch_with_main_thread = esmt_saved
 
     def get_utxo_list_generator(self, only_new) -> Generator[UtxoType, None, None]:
         list_utxos = None
@@ -1389,6 +1441,16 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         except BreakFetchTransactionsException:
             raise
+        except HWNotConnectedException as e:
+            log.error('Hardware wallet has been disconnected.')
+            if not self.finishing:
+                WndUtils.call_in_main_thread(self.disconnect_hw)
+                WndUtils.warnMsg(str(e))
+        except SwitchedHDIdentityException:
+            if self.hw_connection_established and not self.finishing:
+                # reconnect if the hw was connected before and the hd identity has changed in the meantime
+                WndUtils.warnMsg('The window data will be reloaded because the hardware wallet identity has changed.')
+                WndUtils.call_in_main_thread(self.connect_hw)
         except Exception as e:
             log.exception('Exception occurred')
             WndUtils.errorMsg(str(e))
@@ -1543,7 +1605,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                         # for security reasons get the address from hardware wallet and compare it to the one
                         # read from db cache
-                        addr_hw = hw_intf.get_address(self.hw_session, addr.bip32_path, False)
+                        addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, addr.bip32_path, False)
                         if addr_hw != addr.address:
                             addr_str = 'Address inconsistency. Please clear the wallet cache.'
 

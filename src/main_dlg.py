@@ -805,6 +805,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.setStatus2Text('<b>HW status:</b> connected to %s' % hw_intf.get_hw_label(self.hw_client),
                                         'green')
                     self.update_edit_controls_state()
+                    self.hw_session.signal_hw_connected()
                 except CancelException:
                     raise
                 except Exception as e:
@@ -869,6 +870,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.hw_client = None
             self.setStatus2Text('<b>HW status:</b> idle', 'black')
             self.update_edit_controls_state()
+            self.hw_session.signal_hw_disconnected()
 
     @pyqtSlot(bool)
     def on_action_disconnect_hw_triggered(self):
