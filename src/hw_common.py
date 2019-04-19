@@ -50,8 +50,8 @@ def get_hw_type(hw_client):
 
 
 class HwSessionInfo(QObject):
-    hw_connected = QtCore.pyqtSignal()
-    hw_disconnected = QtCore.pyqtSignal()
+    sig_hw_connected = QtCore.pyqtSignal()
+    sig_hw_disconnected = QtCore.pyqtSignal()
 
     def __init__(self,
                  get_hw_client_function: Callable[[], object],
@@ -84,10 +84,10 @@ class HwSessionInfo(QObject):
         return self.__hw_disconnect_function
 
     def signal_hw_connected(self):
-        self.hw_connected.emit()
+        self.sig_hw_connected.emit()
 
     def signal_hw_disconnected(self):
-        self.hw_disconnected.emit()
+        self.sig_hw_disconnected.emit()
 
     @property
     def hw_type(self):

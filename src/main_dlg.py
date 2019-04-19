@@ -53,6 +53,20 @@ from wnd_utils import WndUtils
 from ui import ui_main_dlg
 
 
+class DispMessage(object):
+    NEW_VERSION = 1
+    DASH_NET_CONNECTION = 2
+
+    def __init__(self, message: str, type: str):
+        """
+        :param type: 'warn'|'error'|'info'
+        :param message: a message
+        """
+        self.message = message
+        self.type = type
+        self.hidden = False
+
+
 class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     update_status_signal = QtCore.pyqtSignal(str, str)  # signal for updating status text from inside thread
 
@@ -63,8 +77,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         self.hw_client = None
         self.finishing = False
+        self.app_messages: Dict[int, DispMessage] = {}
         self.config = AppConfig()
         self.config.init(app_dir)
+        self.config.sig_display_message.connect(self.add_app_message)
         WndUtils.set_app_config(self, self.config)
 
         self.dashd_intf = DashdInterface(window=None,
@@ -116,7 +132,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.lblStatus2.setText('')
         self.lblStatus2.setOpenExternalLinks(True)
         self.show_connection_disconnected()
-        self.setStatus2Text('<b>HW status:</b> idle', 'black')
+        self.set_status_text2('<b>HW status:</b> idle', 'black')
 
         # set stylesheet for editboxes, supporting different colors for read-only and edting mode
         self.styleSheet = "QLineEdit{background-color: white} QLineEdit:read-only{background-color: lightgray}"
@@ -174,7 +190,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.dashd_intf.initialize(self.config)
 
         self.update_edit_controls_state()
-        self.setMessage("", None)
 
         self.run_thread(self, self.get_project_config_params_thread, (False,))
 
@@ -184,6 +199,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         self.inside_setup_ui = False
         self.configuration_to_ui()
+        self.display_app_messages()
         logging.info('Finished setup of the main dialog.')
 
     def closeEvent(self, event):
@@ -460,7 +476,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
             if remote_app_params:
                 logging.info('Loaded the project configuration params: ' + str(remote_app_params))
-                if self.config.check_for_updates:
+                if self.config.check_for_updates or force_check:
                     remote_version_str = remote_app_params.get("appCurrentVersion")
                     if remote_version_str:
                         if app_utils.is_version_bigger(remote_version_str, self.config.app_version):
@@ -485,12 +501,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 msg = "New version (" + remote_version_str + ') available. Go to the project website: <a href="' + \
                                       PROJECT_URL + '">open</a>.'
 
-                            self.setMessage(msg, 'green')
+                            self.add_app_message(DispMessage.NEW_VERSION, msg, 'info')
                         else:
                             if force_check:
-                                self.setMessage("You have the latest version of %s." % APP_NAME_SHORT, 'green')
+                                self.add_app_message(DispMessage.NEW_VERSION, "You have the latest version of %s."
+                                                     % APP_NAME_SHORT, 'info')
                     elif force_check:
-                        self.setMessage("Could not read the remote version number.", 'orange')
+                        self.add_app_message(DispMessage.NEW_VERSION, "Could not read the remote version number.",
+                                              'warn')
 
         except Exception:
             logging.exception('Exception occurred while loading/processing the project remote configuration')
@@ -530,20 +548,20 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def show_connection_initiated(self):
         """Shows status information related to a initiated process of connection to a dash RPC. """
-        self.setStatus1Text('<b>RPC network status:</b> trying %s...' % self.dashd_intf.get_active_conn_description(), 'black')
+        self.set_status_text1('<b>RPC network status:</b> trying %s...' % self.dashd_intf.get_active_conn_description(), 'black')
 
     def show_connection_failed(self):
         """Shows status information related to a failed connection attempt. There can be more attempts to connect
         to another nodes if there are such in configuration."""
-        self.setStatus1Text('<b>RPC network status:</b> failed connection to %s' % self.dashd_intf.get_active_conn_description(), 'red')
+        self.set_status_text1('<b>RPC network status:</b> failed connection to %s' % self.dashd_intf.get_active_conn_description(), 'red')
 
     def show_connection_successful(self):
         """Shows status information after successful connetion to a Dash RPC node."""
-        self.setStatus1Text('<b>RPC network status:</b> OK (%s)' % self.dashd_intf.get_active_conn_description(), 'green')
+        self.set_status_text1('<b>RPC network status:</b> OK (%s)' % self.dashd_intf.get_active_conn_description(), 'green')
 
     def show_connection_disconnected(self):
         """Shows status message related to disconnection from Dash RPC node."""
-        self.setStatus1Text('<b>RPC network status:</b> not connected', 'black')
+        self.set_status_text1('<b>RPC network status:</b> not connected', 'black')
 
     def connect_dash_network(self, wait_for_check_finish=False, call_on_check_finished=None):
         """
@@ -577,17 +595,16 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         self.show_connection_successful()
                         break
                     mnsync = self.dashd_intf.mnsync()
-                    self.setMessage('Dashd is synchronizing: AssetID: %s, AssetName: %s' %
-                                        (str(mnsync.get('AssetID', '')),
-                                         str(mnsync.get('AssetName', ''))
-                                         ), style='{background-color:rgb(255,128,0);color:white;padding:3px 5px 3px 5px; border-radius:3px}')
+                    self.add_app_message(
+                        DispMessage.DASH_NET_CONNECTION,
+                        'Dashd is synchronizing: AssetID: %s, AssetName: %s' %
+                        (str(mnsync.get('AssetID', '')), str(mnsync.get('AssetName', ''))), 'warn')
                     cond.wait(mtx, 5000)
-                self.setMessage('')
+                self.del_app_message(DispMessage.DASH_NET_CONNECTION)
             except Exception as e:
                 self.is_dashd_syncing = False
                 self.dashd_connection_ok = False
-                self.setMessage(str(e),
-                                style='{background-color:red;color:white;padding:3px 5px 3px 5px; border-radius:3px}')
+                self.add_app_message(DispMessage.DASH_NET_CONNECTION, str(e), 'error')
             finally:
                 mtx.unlock()
                 self.wait_for_dashd_synced_thread = None
@@ -610,7 +627,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                                                             on_thread_finish=connect_finished)
                 else:
                     self.is_dashd_syncing = False
-                self.setMessage('')
+                self.del_app_message(DispMessage.DASH_NET_CONNECTION)
             except Exception as e:
                 err = str(e)
                 if not err:
@@ -618,8 +635,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.is_dashd_syncing = False
                 self.dashd_connection_ok = False
                 self.show_connection_failed()
-                self.setMessage(err,
-                                style='{background-color:red;color:white;padding:3px 5px 3px 5px; border-radius:3px}')
+                self.add_app_message(DispMessage.DASH_NET_CONNECTION, err, 'error')
 
         def connect_finished():
             """
@@ -689,7 +705,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             # configuration not complete: show config window
             self.errorMsg("There are no (enabled) connections to an RPC node in your configuration.")
 
-    def setStatus1Text(self, text, color):
+    def set_status_text1(self, text, color):
         def set_status(text, color):
             self.lblStatus1.setText(text)
             if not color:
@@ -701,7 +717,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             set_status(text, color)
 
-    def setStatus2Text(self, text, color):
+    def set_status_text2(self, text, color):
         def set_status(text, color):
             self.lblStatus2.setText(text)
             if not color:
@@ -713,31 +729,76 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             set_status(text, color)
 
-    def setMessage(self, text, color=None, style=None):
+    def display_app_messages(self):
+        left, top, right, bottom = self.layMessage.getContentsMargins()
+        img_path = os.path.join(self.app_config.app_dir if self.app_config.app_dir else '', 'img')
+        h = int(self.lblMasternodeStatus.height() * 0.6)
+
+        t = ''
+        for m_id in self.app_messages:
+            m = self.app_messages[m_id]
+            if not m.hidden:
+                if m.type == 'info':
+                    s = 'color:green'
+                elif m.type == 'warn':
+                    s = 'background-color:rgb(255,128,0);color:white;'
+                else:
+                    s = 'background-color:red;color:white;'
+
+                if t:
+                    t += '<br>'
+                # t += f'<span style="{s}">{m.message}</span><a href="{str(m_id)}"><img height={h} src="{img_path+"/highlight-off@16px"}"></img></a>'
+                t += f'<span style="{s}">{m.message}</span>&nbsp;' \
+                    f'<span style="display:inline-box"><a style="text-decoration:none;color:black;" href="{str(m_id)}">\u274E</img></a><span>'
+
+        if not t:
+            self.lblMessage.setVisible(False)
+            self.layMessage.setContentsMargins(left, top, right, 0)
+        else:
+            self.lblMessage.setVisible(True)
+            self.lblMessage.setText(t)
+            self.layMessage.setContentsMargins(left, top, right, 4)
+
+    def add_app_message(self, msg_id: int, text: str, type: str):
         """
         Display message in the app message area.
         :param text: Text to be displayed. If Text is empty, message area will be hidden. 
         :param color: Color of thext.
         """
-        def set_message(text, color, style):
-            left, top, right, bottom = self.layMessage.getContentsMargins()
-
-            if not text:
-                self.lblMessage.setVisible(False)
-                self.layMessage.setContentsMargins(left, top, right, 0)
-            else:
-                self.lblMessage.setVisible(True)
-                self.lblMessage.setText(text)
-                self.layMessage.setContentsMargins(left, top, right, 4)
-                if color:
-                    style = '{color:%s}' % color
-                if style:
-                    self.lblMessage.setStyleSheet('QLabel%s' % style)
+        def set_message(msg_id: int, text, type):
+            m = self.app_messages.get(msg_id)
+            if not m:
+                m = DispMessage(text, type)
+                self.app_messages[msg_id] = m
+            m.message = text
+            m.type = type
+            m.hidden = False
+            self.display_app_messages()
 
         if threading.current_thread() != threading.main_thread():
-            self.call_in_main_thread(set_message, text, color, style)
+            self.call_in_main_thread(set_message, msg_id, text, type)
         else:
-            set_message(text, color, style)
+            set_message(msg_id, text, type)
+
+    def del_app_message(self, msg_id: int):
+        def hide(msg_id: int):
+            if msg_id in self.app_messages:
+                self.app_messages[msg_id].hidden = True
+                self.display_app_messages()
+
+        if threading.current_thread() != threading.main_thread():
+            self.call_in_main_thread(hide, msg_id)
+        else:
+            hide(msg_id)
+
+    def on_lblMessage_linkActivated(self, link):
+        if link.lower().find('http') >= 0:
+            QDesktopServices.openUrl(QUrl(link))
+        else:
+            for m_id in self.app_messages:
+                if str(m_id) == link:
+                    self.del_app_message(int(link))
+                    break
 
     def getHwName(self):
         if self.config.hw_type == HWType.trezor:
@@ -798,11 +859,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 self.disconnect_hardware_wallet()
                             except Exception:
                                 pass
-                            self.setStatus2Text(msg, 'red')
+                            self.set_status_text2(msg, 'red')
                             return
 
                     logging.info('Connected to a hardware wallet')
-                    self.setStatus2Text('<b>HW status:</b> connected to %s' % hw_intf.get_hw_label(self.hw_client),
+                    self.set_status_text2('<b>HW status:</b> connected to %s' % hw_intf.get_hw_label(self.hw_client),
                                         'green')
                     self.update_edit_controls_state()
                     self.hw_session.signal_hw_connected()
@@ -815,7 +876,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     except Exception:
                         pass
                     logging.info('Could not connect to a hardware wallet')
-                    self.setStatus2Text('<b>HW status:</b> cannot connect to %s device' % self.getHwName(), 'red')
+                    self.set_status_text2('<b>HW status:</b> cannot connect to %s device' % self.getHwName(), 'red')
                     self.errorMsg(str(e))
 
                 ret = self.hw_client
@@ -868,7 +929,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             hw_intf.disconnect_hw(self.hw_client)
             del self.hw_client
             self.hw_client = None
-            self.setStatus2Text('<b>HW status:</b> idle', 'black')
+            self.set_status_text2('<b>HW status:</b> idle', 'black')
             self.update_edit_controls_state()
             self.hw_session.signal_hw_disconnected()
 

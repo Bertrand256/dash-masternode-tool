@@ -315,8 +315,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.show_hide_txes_filter()
         self.update_context_actions()
 
-        self.hw_session.hw_connected.connect(self.on_connect_hw)
-        self.hw_session.hw_disconnected.connect(self.on_disconnect_hw)
+        self.hw_session.sig_hw_connected.connect(self.on_connect_hw)
+        self.hw_session.sig_hw_disconnected.connect(self.on_disconnect_hw)
         if self.hw_session.hw_type is not None and self.hw_session.hw_client is not None:
             # hw is initially connected
             self.on_connect_hw()

@@ -34,7 +34,7 @@ class Ui_MainWindow(object):
         self.lblMessage.setSizePolicy(sizePolicy)
         self.lblMessage.setText("")
         self.lblMessage.setWordWrap(True)
-        self.lblMessage.setOpenExternalLinks(True)
+        self.lblMessage.setOpenExternalLinks(False)
         self.lblMessage.setObjectName("lblMessage")
         self.layMessage.addWidget(self.lblMessage)
         self.verticalLayout.addLayout(self.layMessage)

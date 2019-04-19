@@ -97,8 +97,11 @@ class AppFeatueStatus(QObject):
         self.__priority = None
 
 
-class AppConfig(object):
+class AppConfig(QObject):
+    sig_display_message = QtCore.pyqtSignal(int, str, str)  # message id, message text, message type ('info'|'warn'|'error'
+
     def __init__(self):
+        QObject.__init__(self)
         self.initialized = False
         self.app_dir = ''  # will be passed in the init method
         self.app_version = ''
@@ -360,17 +363,18 @@ class AppConfig(object):
                 cur.execute('select voting_time from VOTING_RESULTS where id=(select min(id) from VOTING_RESULTS)')
                 row = cur.fetchone()
                 if row and row[0]:
+                    print('row: ' + str(row[0]))
                     d = datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
-                    vts = int(d.strftime('%s'))
+                    vts = d.timestamp()
                     if vts < 1554246129:  # timestamp of the block (1047200) that activated spork 15
                         logging.info('Cleared the cached votes because of the spork 15 activation')
                         cur.execute('delete from VOTING_RESULTS')
                         cur.execute('delete from LIVE_CONFIG')
                         cur.execute('update proposals set dmt_voting_last_read_time=0')
                         self.db_intf.commit()
-                        WndUtils.warnMsg('Some of your voting results have been reset due to the activation of '
-                                         'Spork 15. Please verify this in the voting window and vote again '
-                                         'if it\'s needed.')
+                        self.sig_display_message.emit(1000, 'Some of your voting results have been reset due to '
+                                                            'the activation of Spork 15. Please verify this in the '
+                                                            'voting window and vote again if it\'s needed.', 'warn')
 
                 # check and clean the wallet addresses inconsistency
                 cur.execute('select parent_id, address_index, count(*) from address where parent_id is not null '
@@ -385,6 +389,8 @@ class AppConfig(object):
                     cur.execute('delete from tx')
                     self.db_intf.commit()
                     logging.warning('Cleared the wallet address cache because of inconsistencies found.')
+                    self.sig_display_message.emit(1001, 'Cleared the wallet address cache because of inconsistencies '
+                                                        'found.', 'warn')
             except Exception as e:
                 logging.error('Error while clearing voting results. Details: ' + str(e))
             finally:

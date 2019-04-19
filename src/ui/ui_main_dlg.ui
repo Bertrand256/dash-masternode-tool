@@ -53,7 +53,7 @@
          <number>0</number>
         </property>
         <property name="openExternalLinks">
-         <bool>true</bool>
+         <bool>false</bool>
         </property>
        </widget>
       </item>
