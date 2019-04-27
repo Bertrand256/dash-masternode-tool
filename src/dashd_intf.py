@@ -44,6 +44,7 @@ except ImportError:
 # how many seconds cached masternodes data are valid; cached masternode data is used only for non-critical
 # features
 MASTERNODES_CACHE_VALID_SECONDS = 60 * 60  # 60 minutes
+PROTX_CACHE_VALID_SECONDS = 3 * 60 * 60  # 60 minutes
 TX_SEND_SIMULATION_MODE = False
 
 
@@ -448,13 +449,14 @@ class Masternode(AttrsProtected):
         AttrsProtected.__init__(self)
         self.ident = None
         self.status = None
-        self.protocol = None
         self.payee = None
         self.lastseen = None
         self.activeseconds = None
         self.lastpaidtime = None
         self.lastpaidblock = None
         self.ip = None
+        self.protx_hash: Optional[str] = None
+        self.registered_height: Optional[int] = None
         self.db_id = None
         self.marker = None
         self.modified = False
@@ -531,7 +533,7 @@ class DashdInterface(WndUtils):
         self.masternodes = []  # cached list of all masternodes (Masternode object)
         self.masternodes_by_ident = {}
         self.masternodes_by_ip_port = {}
-        self.payment_queue = []
+        self.protx_by_mn_ident: Dict[str, Dict] = {}
 
         self.ssh = None
         self.window = window
@@ -589,7 +591,7 @@ class DashdInterface(WndUtils):
             tm_start = time.time()
             db_correction_duration = 0.0
             log.debug("Reading masternodes' data from DB")
-            cur.execute("SELECT id, ident, status, protocol, payee, last_seen, active_seconds,"
+            cur.execute("SELECT id, ident, status, payee, last_seen, active_seconds,"
                         " last_paid_time, last_paid_block, IP from MASTERNODES where dmt_active=1")
             for row in cur.fetchall():
                 db_id = row[0]
@@ -611,13 +613,12 @@ class DashdInterface(WndUtils):
                 mn.db_id = db_id
                 mn.ident = ident
                 mn.status = row[2]
-                mn.protocol = row[3]
-                mn.payee = row[4]
-                mn.lastseen = row[5]
-                mn.activeseconds = row[6]
-                mn.lastpaidtime = row[7]
-                mn.lastpaidblock = row[8]
-                mn.ip = row[9]
+                mn.payee = row[3]
+                mn.lastseen = row[4]
+                mn.activeseconds = row[5]
+                mn.lastpaidtime = row[6]
+                mn.lastpaidblock = row[7]
+                mn.ip = row[8]
                 self.masternodes.append(mn)
                 self.masternodes_by_ident[mn.ident] = mn
                 self.masternodes_by_ip_port[mn.ip] = mn
@@ -625,7 +626,6 @@ class DashdInterface(WndUtils):
             tm_diff = time.time() - tm_start
             log.info('DB read time of %d MASTERNODES: %s s, db fix time: %s' %
                          (len(self.masternodes), str(tm_diff), str(db_correction_duration)))
-            self.update_mn_queue_values()
         except Exception as e:
             log.exception('SQLite initialization error')
         finally:
@@ -918,44 +918,55 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
+    def read_protx_list(self):
+        last_read_time = app_cache.get_value(f'ProtxLastReadTime_{self.app_config.dash_network}', 0, int)
+
+        if not self.protx_by_mn_ident or (int(time.time()) - last_read_time) >= PROTX_CACHE_VALID_SECONDS:
+
+            self.protx_by_mn_ident.clear()
+            protx_list = self.proxy.protx('list', 'registered', True)
+            for protx in protx_list:
+                ident = protx.get('collateralHash') + '-' + str(protx.get('collateralIndex'))
+                s = protx.get('state',{})
+                p = {
+                    'protx_hash': protx.get('proTxHash'),
+                    'registered_height': s.get('registeredHeight'),
+                    'pose_pelanlty': s.get('PoSePenalty'),
+                    'pose_received_height': s.get('PoSeRevivedHeight'),
+                    'pose_ban_height': s.get('PoSeBanHeight')
+                }
+                self.protx_by_mn_ident[ident] = p
+        return self.protx_by_mn_ident
+
     def update_mn_queue_values(self):
         """
         Updates masternode payment queue order values.
         """
 
-        start_tm = time.time()
-        self.payment_queue = []
-        d = datetime.datetime.utcnow()
-        now = int(time.mktime((d.year, d.month, d.day, d.hour, d.minute, d.second, 0, 0, 0)))
-
+        payment_queue = []
         for mn in self.masternodes:
             if mn.status == 'ENABLED':
-                # estimate payment queue position: after loading all masternodes
-                # queue_position will be used to sort mn list and count the real queue position
-                if mn.lastpaidtime == 0:
-                    mn.queue_position = mn.activeseconds
+                if mn.lastpaidblock > 0:
+                    mn.queue_position = mn.lastpaidblock
                 else:
-                    lastpaid_ago = now - mn.lastpaidtime
-                    mn.queue_position = min(lastpaid_ago, mn.activeseconds)
-                self.payment_queue.append(mn)
+                    protx = self.protx_by_mn_ident.get(mn.ident)
+                    if protx:
+                        mn.queue_position = protx.get('registered_height')
+                    else:
+                        mn.queue_position = None
+                payment_queue.append(mn)
             else:
                 mn.queue_position = None
 
-        duration1 = time.time() - start_tm
-        self.payment_queue.sort(key=lambda x: x.queue_position, reverse=True)
-        duration2 = time.time() - start_tm
+        payment_queue.sort(key=lambda x: x.queue_position, reverse=False)
 
         for mn in self.masternodes:
             if mn.status == 'ENABLED':
-                mn.queue_position = self.payment_queue.index(mn)
-            else:
-                mn.queue_position = None
-        duration3 = time.time() - start_tm
-        log.info('Masternode queue build time1: %s, time2: %s, time3: %s' %
-                     (str(duration1), str(duration2), str(duration3)))
+                mn.queue_position = payment_queue.index(mn)
 
     @control_rpc_call
-    def get_masternodelist(self, *args, data_max_age=MASTERNODES_CACHE_VALID_SECONDS) -> List[Masternode]:
+    def get_masternodelist(self, *args, data_max_age=MASTERNODES_CACHE_VALID_SECONDS,
+                           protx_data_max_age=PROTX_CACHE_VALID_SECONDS) -> List[Masternode]:
         """
         Returns masternode list, read from the Dash network or from the internal cache.
         :param args: arguments passed to the 'masternodelist' RPC call
@@ -964,19 +975,18 @@ class DashdInterface(WndUtils):
             value of 0 forces reading of the new data from the network
         :return: list of Masternode objects, matching the 'args' arguments
         """
-        def parse_mns(mns_raw) -> List[Masternode]:
+        def parse_mns(mns: Dict[str, Dict]) -> List[Masternode]:
             """
             Parses dictionary of strings returned from the RPC to Masternode object list.
-            :param mns_raw: Dict of masternodes in format of RPC masternodelist command
+            :param mns: Dict of masternodes in format of RPC masternodelist command
             :return: list of Masternode object
             """
-            tm_begin = time.time()
+            self.read_protx_list()
             ret_list = []
-            for mn_id in mns_raw.keys():
-                mn_json = mns_raw.get(mn_id)
+            for mn_id in mns.keys():
+                mn_json = mns.get(mn_id)
                 mn = Masternode()
                 mn.status = mn_json.get('status')
-                mn.protocol = mn_json.get('protocol')
                 mn.payee = mn_json.get('payee')
                 mn.lastseen = mn_json.get('lastseen', 0)
                 mn.activeseconds = mn_json.get('activeseconds', 0)
@@ -984,50 +994,26 @@ class DashdInterface(WndUtils):
                 mn.lastpaidblock = mn_json.get('lastpaidblock', 0)
                 mn.ip = mn_json.get('address')
                 mn.ident = mn_id
+
+                protx = self.protx_by_mn_ident.get(mn.ident)
+                if protx:
+                    mn.protx_hash = protx.get('protx_hash')
+                    mn.registered_height = protx.get('registered_height')
+
                 ret_list.append(mn)
-            duration = time.time() - tm_begin
-            log.info('Parse masternodelist time: ' + str(duration))
             return ret_list
-
-        def update_masternode_data(existing_mn, new_data, cursor):
-            # update cached masternode's properties
-            existing_mn.modified = False
-            existing_mn.monitor_changes = True
-            existing_mn.ident = new_data.ident
-            existing_mn.status = new_data.status
-            existing_mn.protocol = new_data.protocol
-            existing_mn.payee = new_data.payee
-            existing_mn.lastseen = new_data.lastseen
-            existing_mn.activeseconds = new_data.activeseconds
-            existing_mn.lastpaidtime = new_data.lastpaidtime
-            existing_mn.lastpaidblock = new_data.lastpaidblock
-            existing_mn.ip = new_data.ip
-
-            # ... and finally update MN db record
-            if cursor and existing_mn.modified:
-                cursor.execute("UPDATE MASTERNODES set ident=?, status=?, protocol=?, payee=?,"
-                               " last_seen=?, active_seconds=?, last_paid_time=?, "
-                               " last_paid_block=?, ip=?"
-                               "WHERE id=?",
-                               (new_data.ident, new_data.status, new_data.protocol, new_data.payee,
-                                new_data.lastseen, new_data.activeseconds, new_data.lastpaidtime,
-                                new_data.lastpaidblock, new_data.ip, existing_mn.db_id))
 
         if self.open():
 
             if len(args) == 1 and args[0] == 'json':
                 last_read_time = app_cache.get_value(f'MasternodesLastReadTime_{self.app_config.dash_network}', 0, int)
-                log.info("MasternodesLastReadTime: %d" % last_read_time)
 
                 if self.masternodes and data_max_age > 0 and \
                    int(time.time()) - last_read_time < data_max_age:
-                    log.info('Using cached masternodelist (data age: %s)' % str(int(time.time()) - last_read_time))
                     return self.masternodes
                 else:
-                    log.info('Loading masternode list from Dash daemon...')
                     mns = self.proxy.masternodelist(*args)
                     mns = parse_mns(mns)
-                    log.info('Finished loading masternode list')
 
                     # mark already cached masternodes to identify those to delete
                     for mn in self.masternodes:
@@ -1050,19 +1036,41 @@ class DashdInterface(WndUtils):
                                 self.masternodes_by_ip_port[mn.ip] = mn
 
                                 if self.db_intf.db_active:
-                                    cur.execute("INSERT INTO MASTERNODES(ident, status, protocol, payee, last_seen,"
-                                            " active_seconds, last_paid_time, last_paid_block, ip, dmt_active,"
-                                            " dmt_create_time) "
-                                            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                                            (mn.ident, mn.status, mn.protocol, mn.payee, mn.lastseen,
-                                             mn.activeseconds, mn.lastpaidtime, mn.lastpaidblock, mn.ip, 1,
-                                             datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                                    cur.execute(
+                                        "INSERT INTO MASTERNODES(ident, status, payee, last_seen,"
+                                        " active_seconds, last_paid_time, last_paid_block, ip, protx_hash, "
+                                        " registered_height, dmt_active, dmt_create_time) "
+                                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                                        (mn.ident, mn.status, mn.payee, mn.lastseen,
+                                         mn.activeseconds, mn.lastpaidtime, mn.lastpaidblock, mn.ip, mn.protx_hash,
+                                         mn.registered_height, 1, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
                                     mn.db_id = cur.lastrowid
                                     db_modified = True
                             else:
                                 existing_mn.marker = True
-                                update_masternode_data(existing_mn, mn, cur)
-                                db_modified = True
+                                existing_mn.modified = False
+                                existing_mn.monitor_changes = True
+                                existing_mn.ident = mn.ident
+                                existing_mn.status = mn.status
+                                existing_mn.payee = mn.payee
+                                existing_mn.lastseen = mn.lastseen
+                                existing_mn.activeseconds = mn.activeseconds
+                                existing_mn.lastpaidtime = mn.lastpaidtime
+                                existing_mn.lastpaidblock = mn.lastpaidblock
+                                existing_mn.ip = mn.ip
+                                existing_mn.protx_hash = mn.protx_hash
+                                existing_mn.registered_height = mn.registered_height
+
+                                # ... and finally update MN db record
+                                if existing_mn.modified:
+                                    cur.execute(
+                                        "UPDATE MASTERNODES set ident=?, status=?, payee=?, last_seen=?, "
+                                        "active_seconds=?, last_paid_time=?, last_paid_block=?, ip=?, protx_hash=?, "
+                                        "registered_height=? WHERE id=?",
+                                        (mn.ident, mn.status, mn.payee, mn.lastseen, mn.activeseconds,
+                                         mn.lastpaidtime, mn.lastpaidblock, mn.ip, mn.protx_hash, mn.registered_height,
+                                         existing_mn.db_id))
+                                    db_modified = True
 
                         # remove from the cache masternodes that no longer exist
                         for mn_index in reversed(range(len(self.masternodes))):
@@ -1072,14 +1080,14 @@ class DashdInterface(WndUtils):
                                 if self.db_intf.db_active:
                                     cur.execute("UPDATE MASTERNODES set dmt_active=0, dmt_deactivation_time=?"
                                                 "WHERE ID=?",
-                                                (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                                mn.db_id))
+                                                (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), mn.db_id))
                                     db_modified = True
                                 self.masternodes_by_ident.pop(mn.ident,0)
                                 del self.masternodes[mn_index]
 
-                        app_cache.set_value(f'MasternodesLastReadTime_{self.app_config.dash_network}', int(time.time()))
                         self.update_mn_queue_values()
+                        app_cache.set_value(f'MasternodesLastReadTime_{self.app_config.dash_network}', int(time.time()))
+
                     finally:
                         if db_modified:
                             self.db_intf.commit()
@@ -1089,7 +1097,6 @@ class DashdInterface(WndUtils):
                     return self.masternodes
             else:
                 mns = self.proxy.masternodelist(*args)
-                mns = parse_mns(mns)
                 return mns
         else:
             raise Exception('Not connected')

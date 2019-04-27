@@ -75,12 +75,12 @@
         <number>12</number>
        </property>
        <item>
-        <layout class="QHBoxLayout" name="layMasternodesControl" stretch="0,3,0,0,0,0,0,0">
+        <layout class="QHBoxLayout" name="layMasternodesControl" stretch="0,3,0,0,0,0,0,0,0,0">
          <property name="spacing">
           <number>8</number>
          </property>
          <property name="leftMargin">
-          <number>0</number>
+          <number>12</number>
          </property>
          <property name="topMargin">
           <number>0</number>
@@ -95,13 +95,13 @@
           <widget class="QLabel" name="label_5">
            <property name="minimumSize">
             <size>
-             <width>140</width>
+             <width>0</width>
              <height>0</height>
             </size>
            </property>
            <property name="maximumSize">
             <size>
-             <width>140</width>
+             <width>16777215</width>
              <height>16777215</height>
             </size>
            </property>
@@ -109,7 +109,7 @@
             <string>Masternodes</string>
            </property>
            <property name="alignment">
-            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
            </property>
           </widget>
          </item>
@@ -138,6 +138,49 @@
            </property>
            <property name="editable">
             <bool>false</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnMoveMnUp">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>16777215</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>Move up in the masternode list</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">padding-left: 0px;
+padding-right: 0px;</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="flat">
+            <bool>false</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnMoveMnDown">
+           <property name="toolTip">
+            <string>Move down in the masternode list</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">padding-left: 0px;
+padding-right: 0px;</string>
+           </property>
+           <property name="text">
+            <string/>
            </property>
           </widget>
          </item>
@@ -304,6 +347,9 @@
               <property name="wordWrap">
                <bool>true</bool>
               </property>
+              <property name="openExternalLinks">
+               <bool>true</bool>
+              </property>
               <property name="textInteractionFlags">
                <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
               </property>
@@ -327,82 +373,89 @@
             </item>
            </layout>
           </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_2">
+            <property name="spacing">
+             <number>-1</number>
+            </property>
+            <item>
+             <widget class="QPushButton" name="btnRegisterDmn">
+              <property name="toolTip">
+               <string>Register new/update existing masternode by sending a ProRegTx transaction.</string>
+              </property>
+              <property name="text">
+               <string>Register masternode</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnUpdMnPayoutAddr">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>0</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>16777215</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="toolTip">
+               <string>Update the masternode payout address on the network.</string>
+              </property>
+              <property name="styleSheet">
+               <string notr="true"/>
+              </property>
+              <property name="text">
+               <string>Update payout addr.</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnUpdMnOperatorKey">
+              <property name="toolTip">
+               <string>Update the masternode operator key on the network.</string>
+              </property>
+              <property name="text">
+               <string>Update operator key</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnUpdMnVotingKey">
+              <property name="toolTip">
+               <string>Update the masternode voting key on the network.</string>
+              </property>
+              <property name="text">
+               <string>Update voting key</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="horizontalSpacer_3">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
          </layout>
         </widget>
-       </item>
-       <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_2">
-         <property name="spacing">
-          <number>-1</number>
-         </property>
-         <item>
-          <spacer name="horizontalSpacer_2">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>40</width>
-             <height>20</height>
-            </size>
-           </property>
-          </spacer>
-         </item>
-         <item>
-          <widget class="QPushButton" name="btnBroadcastMn">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="minimumSize">
-            <size>
-             <width>0</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>16777215</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="toolTip">
-            <string>Broadcast information about the Masternode</string>
-           </property>
-           <property name="styleSheet">
-            <string notr="true"/>
-           </property>
-           <property name="text">
-            <string>Start Masternode using hardware wallet</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="btnMigrateToDMN">
-           <property name="toolTip">
-            <string>Register new/update existing deterministic (DIP-3) masternode or migrate from non-deterministic to deterministic masternode. </string>
-           </property>
-           <property name="text">
-            <string>Send ProRegTx</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <spacer name="horizontalSpacer_3">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>40</width>
-             <height>20</height>
-            </size>
-           </property>
-          </spacer>
-         </item>
-        </layout>
        </item>
        <item>
         <spacer name="verticalSpacer">
@@ -468,6 +521,7 @@
     </widget>
     <addaction name="action_load_config_file"/>
     <addaction name="action_open_recent_files"/>
+    <addaction name="action_restore_config_from_backup"/>
     <addaction name="action_save_config_file"/>
     <addaction name="action_save_config_file_as"/>
     <addaction name="separator"/>
@@ -541,15 +595,24 @@
    <property name="toolTip">
     <string>Open configuration file</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+O</string>
+   </property>
   </action>
   <action name="action_save_config_file_as">
    <property name="text">
     <string>Save Configuration As...</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+S</string>
+   </property>
   </action>
   <action name="action_save_config_file">
    <property name="text">
     <string>Save Configuration</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+S</string>
    </property>
   </action>
   <action name="action_check_network_connection">
@@ -679,6 +742,17 @@
   <action name="action_clear_proposals_cache">
    <property name="text">
     <string>Proposals Cache</string>
+   </property>
+  </action>
+  <action name="action_restore_config_from_backup">
+   <property name="text">
+    <string>Restore Configuration from Backup...</string>
+   </property>
+   <property name="toolTip">
+    <string>Restore Configuration from Backup...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+R</string>
    </property>
   </action>
  </widget>

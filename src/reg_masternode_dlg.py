@@ -69,7 +69,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.current_step = STEP_MN_DATA
         self.step_stack: List[int] = []
         self.proregtx_prepare_thread_ref = None
-        self.deterministic_mns_spork_active = self.app_config.is_spork_15_active(self.dashd_intf)
+        self.deterministic_mns_spork_active = True
         self.dmn_collateral_tx: str = None
         self.dmn_collateral_tx_index: int = None
         self.dmn_collateral_tx_address: str = None
@@ -1074,21 +1074,27 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             self.errorMsg('Invalid step')
             return
 
+        prev_step = self.current_step
         self.current_step = cs
         self.update_step_tab_ui()
 
-        if self.current_step == STEP_AUTOMATIC_RPC_NODE:
-            self.start_automatic_process()
-        elif self.current_step == STEP_MANUAL_OWN_NODE:
-            self.start_manual_process()
-        elif self.current_step == STEP_SUMMARY:
-            self.lblProtxSummary1.setText('<b><span style="color:green">Congratultions! The transaction for your DIP-3 '
-                                          'masternode has been submitted and is currently awaiting confirmations.'
-                                          '</b></span>')
-            if self.on_proregtx_success_callback:
-                self.on_proregtx_success_callback(self.masternode)
-            if not self.check_tx_confirmation():
-                self.wait_for_confirmation_timer_id = self.startTimer(5000)
+        try:
+            if self.current_step == STEP_AUTOMATIC_RPC_NODE:
+                self.start_automatic_process()
+            elif self.current_step == STEP_MANUAL_OWN_NODE:
+                self.start_manual_process()
+            elif self.current_step == STEP_SUMMARY:
+                self.lblProtxSummary1.setText('<b><span style="color:green">Congratultions! The transaction for your DIP-3 '
+                                              'masternode has been submitted and is currently awaiting confirmations.'
+                                              '</b></span>')
+                if self.on_proregtx_success_callback:
+                    self.on_proregtx_success_callback(self.masternode)
+                if not self.check_tx_confirmation():
+                    self.wait_for_confirmation_timer_id = self.startTimer(5000)
+        except Exception:
+            self.current_step = prev_step
+            self.update_step_tab_ui()
+            raise
 
     def previous_step(self):
         if self.step_stack:
@@ -1131,6 +1137,16 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             return payload_sig_str
 
     def start_automatic_process(self):
+        if self.dashd_intf.is_current_connection_public():
+            active = self.app_config.feature_register_dmn_automatic.get_value()
+            if not active:
+                msg = self.app_config.feature_register_dmn_automatic.get_message()
+                if not msg:
+                    msg = 'The functionality of the automatic execution of the ProRegTx command on the ' \
+                          '"public" RPC nodes is inactive. Use the manual method or contact the program author ' \
+                          'for details.'
+                raise Exception(msg)
+
         self.lblProtxTransaction1.hide()
         self.lblProtxTransaction2.hide()
         self.lblProtxTransaction3.hide()

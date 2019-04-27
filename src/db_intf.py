@@ -138,8 +138,13 @@ class DBCache(object):
                         " dmt_active INTEGER, dmt_create_time TEXT, dmt_deactivation_time TEXT)")
 
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_DMT_ACTIVE ON masternodes(dmt_active)")
-
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_IDENT ON masternodes(ident)")
+
+            if not self.table_columns_exist('masternodes', ['protx_hash']):
+                cur.execute("ALTER TABLE masternodes ADD COLUMN protx_hash TEXT")
+
+            if not self.table_columns_exist('masternodes', ['registered_height']):
+                cur.execute("ALTER TABLE masternodes ADD COLUMN registered_height INTEGER")
 
             # create structures for proposals:
             cur.execute("CREATE TABLE IF NOT EXISTS proposals(id INTEGER PRIMARY KEY, name TEXT, payment_start TEXT,"

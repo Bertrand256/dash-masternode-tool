@@ -175,7 +175,7 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         #     width = self.max_width
         # self.lblText.setFixedWidth(width)
 
-        QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)
+        # QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)
         self.centerByWindow(self.center_by_window)
 
     def setProgressValue(self, value):

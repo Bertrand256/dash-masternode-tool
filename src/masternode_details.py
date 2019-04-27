@@ -144,87 +144,78 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     def showEvent(self, QShowEvent):
         self.update_key_controls_state()  # qt 0.9.2: control styles aren't updated properly without reapplying
                                           # them here
-
         self.lblOwnerKey.fontMetrics()
+        h = self.edtName.height()
+        self.btnCopyMnKey.setFixedHeight(h)
+        self.btnShowMnPrivateKey.setFixedHeight(h)
+        self.btnGenerateMnPrivateKey.setFixedHeight(h)
+
+        self.btnCopyOwnerKey.setFixedHeight(h)
+        self.btnShowOwnerPrivateKey.setFixedHeight(h)
+        self.btnGenerateOwnerPrivateKey.setFixedHeight(h)
+
+        self.btnCopyOperatorKey.setFixedHeight(h)
+        self.btnShowOperatorPrivateKey.setFixedHeight(h)
+        self.btnGenerateOperatorPrivateKey.setFixedHeight(h)
+
+        self.btnCopyVotingKey.setFixedHeight(h)
+        self.btnShowVotingPrivateKey.setFixedHeight(h)
+        self.btnGenerateVotingPrivateKey.setFixedHeight(h)
+
+        self.btnFindDMNTxHash.setFixedHeight(h)
+        self.btnShowCollateralPathAddress.setFixedHeight(h)
+        self.btnBip32PathToAddress.setFixedHeight(h)
+        self.btnLocateCollateral.setFixedHeight(h)
+
 
     def update_ui_controls_state(self):
         """Update visibility and enabled/disabled state of the UI controls.
         """
-        if self.masternode:
-            is_deterministic = self.masternode.is_deterministic
-        else:
-            is_deterministic = False
-
-        if self.masternode:
-            self.lblTitle.setVisible(True)
-            self.lblAction.setVisible(self.edit_mode is True)
-            if is_deterministic:
-                lbl = '<span>Deterministic masternode</span>'
-                lbl_action = '<a href="change-to-non-dmn">Alter configuration to non-deterministic</a>'
-                color = '#2eb82e'
-            else:
-                lbl = '<span>Non-deterministic masternode</span>'
-                lbl_action = '<a href="change-to-dmn">Alter configuration to deterministic</a>'
-                color = 'navy'
-            self.lblTitle.setText(lbl)
-            self.lblTitle.setStyleSheet(
-                f'QLabel{{background-color:{color};color:white;padding:3px 5px 3px 5px; border-radius:3px}}')
-            self.lblAction.setText(lbl_action)
-        else:
-            self.lblTitle.setVisible(False)
-            self.lblAction.setVisible(False)
-
-        self.lblDMNTxHash.setVisible(self.masternode is not None and is_deterministic)
-        self.edtDMNTxHash.setVisible(self.masternode is not None and is_deterministic)
-        self.btnFindDMNTxHash.setVisible(self.masternode is not None and self.edit_mode and is_deterministic)
+        self.lblDMNTxHash.setVisible(self.masternode is not None)
+        self.edtDMNTxHash.setVisible(self.masternode is not None)
+        self.btnFindDMNTxHash.setVisible(self.masternode is not None and self.edit_mode)
 
         self.lblCollateral.setVisible(self.masternode is not None and
-                                      ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0) or not is_deterministic))
+                                      (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
         self.btnLocateCollateral.setVisible(self.masternode is not None and self.edit_mode and
-                                            ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
-                                          or not is_deterministic))
+                                            (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
         self.btnBip32PathToAddress.setVisible(self.masternode is not None and self.edit_mode and
-                                              ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
-                                               or not is_deterministic))
+                                              (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
         self.btnShowCollateralPathAddress.setVisible(self.masternode is not None and
-                                                    ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
-                                               or not is_deterministic))
+                                                    (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
         self.edtCollateralAddress.setVisible(self.masternode is not None and
-                                             ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
-                                              or not is_deterministic))
+                                             (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
         self.lblCollateralPath.setVisible(self.masternode is not None and
-                                          ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
-                                           or not is_deterministic))
+                                          (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
         self.edtCollateralPath.setVisible(self.masternode is not None and
-                                          ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
-                                           or not is_deterministic))
+                                          (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
 
-        self.lblOwnerKey.setVisible(self.masternode is not None and is_deterministic and
+        self.lblOwnerKey.setVisible(self.masternode is not None and
                                     (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
-        self.edtOwnerKey.setVisible(self.masternode is not None and is_deterministic and
+        self.edtOwnerKey.setVisible(self.masternode is not None and
                                     (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
-        self.btnShowOwnerPrivateKey.setVisible(self.masternode is not None and is_deterministic and
+        self.btnShowOwnerPrivateKey.setVisible(self.masternode is not None and
                                                self.edit_mode is False and
                                                (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
-        self.btnCopyOwnerKey.setVisible(self.masternode is not None and is_deterministic and
+        self.btnCopyOwnerKey.setVisible(self.masternode is not None and
                                         (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
-        self.lblOperatorKey.setVisible(self.masternode is not None and is_deterministic and
+        self.lblOperatorKey.setVisible(self.masternode is not None and
                                        (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
-        self.edtOperatorKey.setVisible(self.masternode is not None and is_deterministic and
+        self.edtOperatorKey.setVisible(self.masternode is not None and
                                        (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
-        self.btnShowOperatorPrivateKey.setVisible(self.masternode is not None and is_deterministic and
+        self.btnShowOperatorPrivateKey.setVisible(self.masternode is not None and
                                                   self.edit_mode is False and
                                                   (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
-        self.btnCopyOperatorKey.setVisible(self.masternode is not None and is_deterministic and
+        self.btnCopyOperatorKey.setVisible(self.masternode is not None and
                                            (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
-        self.lblVotingKey.setVisible(self.masternode is not None and is_deterministic and
+        self.lblVotingKey.setVisible(self.masternode is not None and
                                      (self.masternode.dmn_user_roles & DMN_ROLE_VOTING > 0))
-        self.edtVotingKey.setVisible(self.masternode is not None and is_deterministic and
+        self.edtVotingKey.setVisible(self.masternode is not None and
                                      (self.masternode.dmn_user_roles & DMN_ROLE_VOTING > 0))
-        self.btnShowVotingPrivateKey.setVisible(self.masternode is not None and is_deterministic and
+        self.btnShowVotingPrivateKey.setVisible(self.masternode is not None and
                                                 self.edit_mode is False and
                                                 (self.masternode.dmn_user_roles & DMN_ROLE_VOTING > 0))
-        self.btnCopyVotingKey.setVisible(self.masternode is not None and is_deterministic and
+        self.btnCopyVotingKey.setVisible(self.masternode is not None and
                                          (self.masternode.dmn_user_roles & DMN_ROLE_VOTING > 0))
 
         self.act_view_as_owner_private_key.setVisible(self.masternode is not None and
@@ -240,27 +231,27 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
         self.btnGenerateMnPrivateKey.setVisible(
             self.masternode is not None and self.edit_mode and
-            ((self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0) or not is_deterministic))
+            (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
 
         self.btnGenerateOwnerPrivateKey.setVisible(
-            self.masternode is not None and is_deterministic and self.edit_mode and
+            self.masternode is not None and self.edit_mode and
             self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE and
             self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
 
         self.btnGenerateOperatorPrivateKey.setVisible(
-            self.masternode is not None and is_deterministic and self.edit_mode and
+            self.masternode is not None and self.edit_mode and
             self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE and
             self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0)
 
         self.btnGenerateVotingPrivateKey.setVisible(
-            self.masternode is not None and is_deterministic and self.edit_mode and
+            self.masternode is not None and self.edit_mode and
             self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE and
             self.masternode.dmn_user_roles & DMN_ROLE_VOTING > 0)
 
-        self.lblUserRole.setVisible(self.masternode is not None and is_deterministic)
-        self.chbRoleOwner.setVisible(self.masternode is not None and is_deterministic)
-        self.chbRoleOperator.setVisible(self.masternode is not None and is_deterministic)
-        self.chbRoleVoting.setVisible(self.masternode is not None and is_deterministic)
+        self.lblUserRole.setVisible(self.masternode is not None)
+        self.chbRoleOwner.setVisible(self.masternode is not None)
+        self.chbRoleOperator.setVisible(self.masternode is not None)
+        self.chbRoleVoting.setVisible(self.masternode is not None)
 
         self.lblMasternodePrivateKey.setVisible(self.masternode is not None and
                                                 self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
@@ -276,8 +267,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.edtIP.setVisible(self.masternode is not None)
         self.lblPort.setVisible(self.masternode is not None)
         self.edtPort.setVisible(self.masternode is not None)
-        self.lblProtocolVersion.setVisible(self.masternode is not None and not is_deterministic)
-        self.edtProtocolVersion.setVisible(self.masternode is not None and not is_deterministic)
         self.lblName.setVisible(self.masternode is not None)
         self.edtName.setVisible(self.masternode is not None)
         self.lblCollateralTxHash.setVisible(self.masternode is not None)
@@ -291,7 +280,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.edtName.setReadOnly(self.edit_mode is False)
         self.edtIP.setReadOnly(self.edit_mode is False)
         self.edtPort.setReadOnly(self.edit_mode is False)
-        self.edtProtocolVersion.setReadOnly(self.edit_mode is False)
         self.edtCollateralAddress.setReadOnly(self.edit_mode is False)
         self.edtCollateralPath.setReadOnly(self.edit_mode is False)
         self.edtCollateralTxHash.setReadOnly(self.edit_mode is False)
@@ -432,8 +420,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             self.chbRoleVoting.setChecked(self.masternode.dmn_user_roles & DMN_ROLE_VOTING)
             self.edtName.setText(self.masternode.name)
             self.edtIP.setText(self.masternode.ip)
-            self.edtProtocolVersion.setText(self.masternode.protocol_version if
-                                            self.masternode.use_default_protocol_version is False else '')
             self.edtPort.setText(self.masternode.port)
             self.edtCollateralAddress.setText(self.masternode.collateralAddress)
             self.edtCollateralPath.setText(self.masternode.collateralBip32Path)
@@ -717,23 +703,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             self.masternode.set_modified()
             self.data_changed.emit(self.masternode)
 
-    @pyqtSlot(str)
-    def on_lblAction_linkActivated(self, str):
-        if self.masternode:
-            determ = None
-            if str == 'change-to-dmn' and self.masternode.is_deterministic is False:
-                determ = True
-            elif str == 'change-to-non-dmn' and self.masternode.is_deterministic:
-                determ = False
-
-            if determ is not None:
-                self.set_deterministic(determ)
-
-    def set_deterministic(self, deterministic: bool):
-        self.masternode.is_deterministic = deterministic
-        self.update_ui_controls_state()
-        self.set_modified()
-
     @pyqtSlot(bool)
     def on_chbRoleOwner_toggled(self, checked):
         if not self.updating_ui:
@@ -785,16 +754,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         if self.masternode and not self.updating_ui:
             self.set_modified()
             self.masternode.port = text.strip()
-
-    @pyqtSlot(str)
-    def on_edtProtocolVersion_textEdited(self, text):
-        if self.masternode and not self.updating_ui:
-            self.set_modified()
-            self.masternode.protocol_version = text.strip()
-            if not self.masternode.protocol_version:
-                self.masternode.use_default_protocol_version = True
-            else:
-                self.masternode.use_default_protocol_version = False
 
     @pyqtSlot(str)
     def on_edtCollateralAddress_textEdited(self, text):

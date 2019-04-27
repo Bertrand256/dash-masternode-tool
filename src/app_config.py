@@ -21,7 +21,7 @@ from configparser import ConfigParser
 from random import randint
 from shutil import copyfile
 import logging
-from typing import Optional, Callable, Dict, Tuple
+from typing import Optional, Callable, Dict, Tuple, List
 import bitcoin
 from logging.handlers import RotatingFileHandler
 
@@ -46,7 +46,7 @@ from hw_common import HwSessionInfo
 from wnd_utils import WndUtils
 
 
-CURRENT_CFG_FILE_VERSION = 4
+CURRENT_CFG_FILE_VERSION = 5
 CACHE_ITEM_LOGGERS_LOGLEVEL = 'LoggersLogLevel'
 CACHE_ITEM_LOG_FORMAT = 'LogFormat'
 
@@ -73,24 +73,29 @@ class AppFeatueStatus(QObject):
 
     value_changed = QtCore.pyqtSignal(object, int)  # args: object being changed, new value
 
-    def __init__(self, initial_value, initial_priority):
+    def __init__(self, initial_value, initial_priority, initial_message: str = ''):
         QObject.__init__(self)
         self.__value = initial_value
         self.__priority = initial_priority
+        self.__message = initial_message
 
-    def set_value(self, value, priority):
-        if (self.__priority is None or priority >= self.__priority) and value is not None:
+    def set_value(self, value, priority, message: str = ''):
+        if priority is not None and (self.__priority is None or priority >= self.__priority) and value is not None:
             if self.__value != value:
                 changed = True
             else:
                 changed = False
             self.__value = value
             self.__priority = priority
+            self.__message = message
             if changed:
                 self.value_changed.emit(self, value)
 
     def get_value(self):
         return self.__value
+
+    def get_message(self):
+        return self.__message
 
     def reset(self):
         self.__value = None
@@ -129,10 +134,8 @@ class AppConfig(QObject):
         # the contents of the app-params.json configuration file read from the project GitHub repository
         self._remote_app_params = {}
         self._dash_blockchain_info = {}
-        self.non_deterministic_mns_status = AppFeatueStatus(True, 0)
-        self.deterministic_mns_status = AppFeatueStatus(False, 0)
-        self.__dip3_active = None
-        self.__spork15_active = None
+        self.feature_register_dmn_automatic = AppFeatueStatus(True, 0, '')
+        self.feature_update_registrar_automatic = AppFeatueStatus(True, 0, '')
 
         self.hw_type = None  # TREZOR, KEEPKEY, LEDGERNANOS
         self.hw_keepkey_psw_encoding = 'NFC'  # Keepkey passphrase UTF8 chars encoding:
@@ -219,22 +222,91 @@ class AppConfig(QObject):
                 WndUtils.errorMsg('--data-dir parameter doesn\'t point to an existing directory. Using the default '
                                   'data directory.')
 
+        migrate_config = False
+        old_user_data_dir = ''
         if not app_user_dir:
             home_dir = os.path.expanduser('~')
-
-            app_user_dir = os.path.join(home_dir, APP_DATA_DIR_NAME)
+            app_user_dir = os.path.join(home_dir, APP_DATA_DIR_NAME + '-v' + str(CURRENT_CFG_FILE_VERSION))
             if not os.path.exists(app_user_dir):
-                # check if there exists directory used by app versions prior to 0.9.18
-                app_user_dir_old = os.path.join(home_dir, APP_NAME_SHORT)
-                if os.path.exists(app_user_dir_old):
-                    shutil.copytree(app_user_dir_old, app_user_dir)
+                prior_version_dirs = ['.dmt']
+                # look for the data dir of the previous version
+                for d in prior_version_dirs:
+                    old_user_data_dir = os.path.join(home_dir, d)
+                    if os.path.exists(old_user_data_dir):
+                        migrate_config = True
+                        break
 
         self.data_dir = app_user_dir
-        self.cache_dir = os.path.join(app_user_dir, 'cache')
+        self.cache_dir = os.path.join(self.data_dir, 'cache')
+        cache_file_name = os.path.join(self.cache_dir, 'dmt_cache_v2.json')
+
+        if migrate_config:
+            try:
+                dirs_do_copy_later:List[Tuple[str, str]] = []
+
+                def ignore_fun(cur_dir:str, items: List):
+                    """In the first stage, ignore directories with a lot of files inside."""
+                    nonlocal dirs_do_copy_later
+                    to_ignore = []
+                    if cur_dir == os.path.join(old_user_data_dir, 'cache'):
+                        # subfolders with the cached tx data will be copied in the background to not delay
+                        # the app startup
+                        for item in items:
+                            item_path = os.path.join(cur_dir, item)
+                            if os.path.isdir(item_path):
+                                to_ignore.append(item)
+                                dest_path = item_path.replace(old_user_data_dir, self.data_dir)
+                                dirs_do_copy_later.append((item_path, dest_path))
+                    elif cur_dir == os.path.join(old_user_data_dir, 'logs'):
+                        to_ignore.extend(items)
+                    return to_ignore
+
+                def delayed_copy_thread(ctrl, dirs_to_copy:List[Tuple[str, str]]):
+                    """Directories with a possible large number of files copy in the background."""
+                    try:
+                        logging.info('Beginning to copy data in the background')
+                        for (src_dir, dest_dir) in dirs_to_copy:
+                            shutil.copytree(src_dir, dest_dir)
+                        logging.info('Finished copying data in the background')
+                    except Exception as e:
+                        logging.exception('Exception while copying data in the background')
+
+                shutil.copytree(old_user_data_dir, self.data_dir, ignore=ignore_fun)
+                if dirs_do_copy_later:
+                    WndUtils.run_thread(None, delayed_copy_thread, (dirs_do_copy_later,))
+
+                if os.path.exists(cache_file_name):
+                    # correct the configuration file paths stored in the cache file using the
+                    # newly created data folder
+                    cache_data = json.load(open(cache_file_name))
+                    fn = cache_data.get('AppConfig_ConfigFileName')
+                    if fn.find(old_user_data_dir) >= 0 and len(fn) > len(old_user_data_dir) \
+                            and fn[len(old_user_data_dir)] in ('/','\\'):
+                        fn = self.data_dir + fn[len(old_user_data_dir):]
+                        cache_data['AppConfig_ConfigFileName'] = fn
+
+                    mru = cache_data.get('MainWindow_ConfigFileMRUList')
+                    modified = False
+                    for idx, fn in enumerate(mru):
+                        if fn.find(old_user_data_dir) >= 0 and len(fn) > len(old_user_data_dir) \
+                                and fn[len(old_user_data_dir)] in ('/', '\\'):
+                            fn = self.data_dir + fn[len(old_user_data_dir):]
+                            mru[idx] = fn
+                            modified = True
+                    if modified:
+                        cache_data['MainWindow_ConfigFileMRUList'] = mru
+
+                    json.dump(cache_data, open(cache_file_name, 'w'))
+            except Exception as e:
+                logging.exception('Exception occurred while copying the data directory')
+                # if there was an error when migrating to a new configuration, use the old data directory
+                self.data_dir = old_user_data_dir
+                self.cache_dir = os.path.join(self.data_dir, 'cache')
+                cache_file_name = os.path.join(self.cache_dir, 'dmt_cache_v2.json')
+
         if not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir)
 
-        cache_file_name = os.path.join(self.cache_dir, 'dmt_cache_v2.json')
         app_cache.init(cache_file_name, self.app_version)
         self.app_last_version = app_cache.get_value('app_version', '', str)
         self.app_config_file_name = ''
@@ -252,10 +324,10 @@ class AppConfig(QObject):
             # last time the application was running (use cache data); if there is no information in cache, use the
             # default name 'config.ini'
             self.app_config_file_name = app_cache.get_value(
-                'AppConfig_ConfigFileName', default_value=os.path.join(app_user_dir, 'config.ini'), type=str)
+                'AppConfig_ConfigFileName', default_value=os.path.join(self.data_dir, 'config.ini'), type=str)
 
         # setup logging
-        self.log_dir = os.path.join(app_user_dir, 'logs')
+        self.log_dir = os.path.join(self.data_dir, 'logs')
         self.log_file = os.path.join(self.log_dir, 'dmt.log')
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
@@ -271,7 +343,7 @@ class AppConfig(QObject):
         self.restore_loggers_config()
 
         # directory for configuration backups:
-        self.cfg_backup_dir = os.path.join(app_user_dir, 'backup')
+        self.cfg_backup_dir = os.path.join(self.data_dir, 'backup')
         if not os.path.exists(self.cfg_backup_dir):
             os.makedirs(self.cfg_backup_dir)
 
@@ -287,18 +359,16 @@ class AppConfig(QObject):
         self.db_intf.close()
 
     def save_cache_settings(self):
-        if self.non_deterministic_mns_status.get_value() is not None:
-            app_cache.set_value('NON_DETERMINISTIC_MNS_' + self.dash_network,
-                                self.non_deterministic_mns_status.get_value())
-        if self.deterministic_mns_status.get_value() is not None:
-            app_cache.set_value('DETERMINISTIC_MNS_' + self.dash_network, self.deterministic_mns_status.get_value())
+        if self.feature_register_dmn_automatic.get_value() is not None:
+            app_cache.set_value('FEATURE_REGISTER_DMN_AUTOMATIC_' + self.dash_network, self.feature_register_dmn_automatic.get_value())
+        if self.feature_update_registrar_automatic.get_value() is not None:
+            app_cache.set_value('FEATURE_UPDATE_AUTOMATIC_REGISTRAR_' + self.dash_network, self.feature_update_registrar_automatic.get_value())
 
     def restore_cache_settings(self):
-        ena = app_cache.get_value('NON_DETERMINISTIC_MNS_' + self.dash_network, True, bool)
-        self.non_deterministic_mns_status.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
-
-        ena = app_cache.get_value('DETERMINISTIC_MNS_' + self.dash_network, False, bool)
-        self.deterministic_mns_status.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
+        ena = app_cache.get_value('FEATURE_REGISTER_AUTOMATIC_DMN_' + self.dash_network, True, bool)
+        self.feature_register_dmn_automatic.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
+        ena = app_cache.get_value('FEATURE_UPDATE_AUTOMATIC_REGISTRAR_' + self.dash_network, True, bool)
+        self.feature_update_registrar_automatic.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
 
     def copy_from(self, src_config):
         self.dash_network = src_config.dash_network
@@ -437,7 +507,7 @@ class AppConfig(QObject):
         return encrypt(str_to_encrypt, APP_NAME_LONG, iterations=5)
 
     def read_from_file(self, hw_session: HwSessionInfo, file_name: Optional[str] = None,
-                       create_config_file: bool = False):
+                       create_config_file: bool = False, update_current_file_name = True):
         if not file_name:
             file_name = self.app_config_file_name
 
@@ -481,7 +551,8 @@ class AppConfig(QObject):
 
                             file_name = WndUtils.open_config_file_query(dir, None, None)
                             if file_name:
-                                self.read_from_file(hw_session, file_name)
+                                self.read_from_file(hw_session, file_name,
+                                                    update_current_file_name=update_current_file_name)
                                 return
                             else:
                                 raise Exception('Couldn\'t read the configuration. Exiting...')
@@ -497,6 +568,11 @@ class AppConfig(QObject):
                     ini_version = int(ini_version)
                 except Exception:
                     ini_version = CURRENT_CFG_FILE_VERSION
+
+                if ini_version > CURRENT_CFG_FILE_VERSION:
+                    self.sig_display_message.emit(1002, 'The configuration file is created by a newer app version. '
+                                                        'If you save any changes, you may lose some settings '
+                                                        'that are not supported in this version.', 'warn')
 
                 log_level_str = config.get(section, 'log_level', fallback='WARNING')
                 if log_level_str not in ('CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'):
@@ -571,8 +647,6 @@ class AppConfig(QObject):
                                 mn.use_default_protocol_version = self.value_to_bool(
                                     config.get(section, 'use_default_protocol_version', fallback='1'))
                                 mn.protocol_version = config.get(section, 'protocol_version', fallback='').strip()
-                                mn.is_deterministic = self.value_to_bool(
-                                    config.get(section, 'is_deterministic', fallback='0'))
 
                                 roles = int(config.get(section, 'dmn_user_roles', fallback='0').strip())
                                 if not roles:
@@ -656,13 +730,9 @@ class AppConfig(QObject):
                     except Exception as e:
                         logging.exception(str(e))
 
-                # set the new config file name
-                if ini_version < 4:
-                    file_part, ext_part = os.path.splitext(file_name)
-                    file_name = file_part + f'-v{CURRENT_CFG_FILE_VERSION}' + ext_part
-
-                self.app_config_file_name = file_name
-                app_cache.set_value('AppConfig_ConfigFileName', self.app_config_file_name)
+                if update_current_file_name:
+                    self.app_config_file_name = file_name
+                    app_cache.set_value('AppConfig_ConfigFileName', self.app_config_file_name)
                 self.config_file_encrypted = config_file_encrypted
 
                 if was_error:
@@ -696,7 +766,8 @@ class AppConfig(QObject):
                         return
                     else:
                         raise Exception('Couldn\'t read the configuration. Exiting...')
-                self.app_config_file_name = None
+                if update_current_file_name:
+                    self.app_config_file_name = None
                 self.modified = True
 
         elif file_name:
@@ -722,7 +793,7 @@ class AppConfig(QObject):
                     else:
                         self.public_conns_testnet[c.get_conn_id()] = c
 
-            if not errors_while_reading:
+            if not errors_while_reading and update_current_file_name:
                 # if there were errors while reading configuration, don't save the file automatically but
                 # let the user change the new file name instead
                 if configuration_corrected:
@@ -805,7 +876,6 @@ class AppConfig(QObject):
             config.set(section, 'collateral_tx_index', str(mn.collateralTxIndex))
             config.set(section, 'use_default_protocol_version', '1' if mn.use_default_protocol_version else '0')
             config.set(section, 'protocol_version', str(mn.protocol_version))
-            config.set(section, 'is_deterministic', '1' if mn.is_deterministic else '0')
             config.set(section, 'dmn_user_roles', str(mn.dmn_user_roles))
             config.set(section, 'dmn_tx_hash', mn.dmn_tx_hash)
             config.set(section, 'dmn_owner_private_key', self.simple_encrypt(mn.dmn_owner_private_key))
@@ -865,10 +935,6 @@ class AppConfig(QObject):
         app_cache.set_value('AppConfig_ConfigFileName', self.app_config_file_name)
 
     def reset_network_dependent_dyn_params(self):
-        self.non_deterministic_mns_status.reset()
-        self.deterministic_mns_status.reset()
-        self.__dip3_active = None
-        self.__spork15_active = None
         self.apply_remote_app_params()
 
     def set_remote_app_params(self, params: Dict):
@@ -879,7 +945,7 @@ class AppConfig(QObject):
         self.apply_remote_app_params()
 
     def apply_remote_app_params(self):
-        def get_feature_config_remote(symbol) -> Tuple[Optional[bool], Optional[int]]:
+        def get_feature_config_remote(symbol) -> Tuple[Optional[bool], Optional[int], Optional[str]]:
             features = self._remote_app_params.get('features')
             if features:
                 feature = features.get(symbol)
@@ -888,61 +954,19 @@ class AppConfig(QObject):
                     if a:
                         prio = a.get('priority', 0)
                         status = a.get('status')
+                        message = a.get('message', '')
                         if status in ('enabled', 'disabled'):
-                            return (True if status == 'enabled' else False, prio)
-            return None, None
+                            return (True if status == 'enabled' else False, prio, message)
+            return None, None, None
 
         if self._remote_app_params:
-            self.non_deterministic_mns_status.set_value(*get_feature_config_remote('NON_DETERMINISTIC_MNS'))
-            self.deterministic_mns_status.set_value(*get_feature_config_remote('DETERMINISTIC_MNS'))
+            self.feature_register_dmn_automatic.set_value(*get_feature_config_remote('REGISTER_DMN_AUTOMATIC'))
+            self.feature_update_registrar_automatic.set_value(*get_feature_config_remote('UPDATE_REGISTRAR_AUTOMATIC'))
 
     def read_dash_network_app_params(self, dashd_intf):
         """ Read parameters having impact on the app's behavior (sporks/dips) from the Dash network. Called
         after connecting to the network. """
-
-        if self.__dip3_active is None:
-            try:
-                self._dash_blockchain_info = dashd_intf.getblockchaininfo()
-                bip9 = self._dash_blockchain_info.get("bip9_softforks")
-                if bip9:
-                    dip3 = bip9.get('dip0003')
-                    if dip3:
-                        status = dip3.get('status')
-                        if status == 'active':
-                            self.__dip3_active = True
-                        else:
-                            self.__dip3_active = False
-                        self.deterministic_mns_status.set_value(self.__dip3_active, AppFeatueStatus.PRIORITY_NETWORK)
-            except Exception as e:
-                logging.error(str(e))
-
-        if self.__spork15_active is None:
-            try:
-                spork_block = dashd_intf.get_spork_value('SPORK_15_DETERMINISTIC_MNS_ENABLED')
-                if isinstance(spork_block, int):
-                    height = dashd_intf.getblockcount()
-                    self.__spork15_active = (height >= spork_block)
-                else:
-                    self.__spork15_active = False
-                self.non_deterministic_mns_status.set_value(not self.__spork15_active, AppFeatueStatus.PRIORITY_NETWORK)
-            except Exception as e:
-                logging.error(str(e))
-
-    def is_non_deterministic_mns_enabled(self):
-        return self.non_deterministic_mns_status.get_value() is True
-
-    def is_deterministic_mns_enabled(self):
-        return self.deterministic_mns_status.get_value() is True
-
-    def is_dip3_active(self, dashd_intf):
-        if self.__dip3_active is None:
-            self.read_dash_network_app_params(dashd_intf)
-        return self.__dip3_active is True
-
-    def is_spork_15_active(self, dashd_intf):
-        if self.__spork15_active is None:
-            self.read_dash_network_app_params(dashd_intf)
-        return self.__spork15_active is True
+        pass
 
     def get_default_protocol(self) -> int:
         prot = None
@@ -951,18 +975,6 @@ class AppConfig(QObject):
             if dp:
                 prot = dp.get(self.dash_network.lower())
         return prot
-
-    def get_spork_state_from_config(self, spork_nr: int, dash_network: str, default_state: bool):
-        state = default_state
-        if self._remote_app_params:
-            sporks = self._remote_app_params.get('sporks')
-            if sporks and isinstance(sporks, list):
-                for spork in sporks:
-                    name = spork.get('name', '')
-                    active = spork.get('active')
-                    if name.find('SPORK_' + str(spork_nr) + '_') == 0:
-                        state = active.get(dash_network.lower(), state)
-        return state
 
     def value_to_bool(self, value, default=None):
         """
@@ -1355,7 +1367,6 @@ class MasternodeConfig:
         self.__collateralTxIndex = ''
         self.use_default_protocol_version = True
         self.__protocol_version = ''
-        self.is_deterministic = False
         self.__dmn_user_roles = DMN_ROLE_OWNER | DMN_ROLE_OPERATOR | DMN_ROLE_VOTING
         self.__dmn_tx_hash = ''
         self.__dmn_owner_key_type = InputKeyType.PRIVATE
@@ -1385,7 +1396,6 @@ class MasternodeConfig:
         self.collateralTxIndex = src_mn.collateralTxIndex
         self.use_default_protocol_version = src_mn.use_default_protocol_version
         self.protocol_version = src_mn.protocol_version
-        self.is_deterministic = src_mn.is_deterministic
         self.dmn_user_roles = src_mn.dmn_user_roles
         self.dmn_tx_hash = src_mn.dmn_tx_hash
         self.dmn_owner_key_type = src_mn.dmn_owner_key_type
@@ -1616,10 +1626,7 @@ class MasternodeConfig:
         self.__dmn_voting_key_type = type
 
     def get_current_key_for_voting(self, app_config: AppConfig, dashd_intf):
-        if app_config.is_spork_15_active(dashd_intf) and self.is_deterministic:
-            return self.dmn_voting_private_key
-        else:
-            return self.privateKey
+        return self.dmn_voting_private_key
 
     def get_dmn_owner_public_address(self, dash_network) -> Optional[str]:
         if self.__dmn_owner_key_type == InputKeyType.PRIVATE:

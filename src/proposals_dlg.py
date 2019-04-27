@@ -128,10 +128,15 @@ class VotingMasternode(AttrsProtected):
 
 class Proposal(AttrsProtected):
     def __init__(self, data_model, vote_columns_by_mn_ident, next_superblock_time,
-                 user_masternodes: List[VotingMasternode], get_governance_info_fun: Callable):
+                 user_masternodes: List[VotingMasternode],
+                 get_governance_info_fun: Callable,
+                 find_prev_superblock: Callable,
+                 find_next_superblock: Callable):
         super().__init__()
         self.visible = True
         self.get_governance_info: Callable = get_governance_info_fun
+        self.find_prev_superblock = find_prev_superblock
+        self.find_next_superblock = find_next_superblock
         self.budget_cycle_hours: int = None
         self.data_model: ExtSortFilterTableModel = data_model
         self.values: Dict[ProposalColumn, Any] = {}  # dictionary of proposal values (key: ProposalColumn)
@@ -221,6 +226,7 @@ class Proposal(AttrsProtected):
 
         gi = self.get_governance_info()
         cycle_blocks = gi.get('superblockcycle', 16616)
+        last_superblock = gi.get('lastsuperblock', 0)
         cycle_seconds = cycle_blocks * 2.5 * 60
         self.budget_cycle_hours = round(cycle_blocks * 2.5)
 
@@ -243,17 +249,16 @@ class Proposal(AttrsProtected):
         else:
             self.voting_in_progress = False
 
-        payment_cycles = floor((payment_end - payment_start) / cycle_seconds)
+        start_sb = self.find_next_superblock(payment_start)
+        end_sb = self.find_prev_superblock(payment_end)
 
-        # calculate number of payment-months that passed already fot the proposal
-        if time.time() > payment_end:
-            cur_cycle = None
+        payment_cycles = int((end_sb - start_sb) / cycle_blocks) + 1
+
+        # calculate number of payment-months that passed already for the proposal
+        if start_sb > last_superblock:
+            cur_cycle = 0
         else:
-            # number of days between next superblock and the payment start
-            if payment_start > self.next_superblock_time:
-                cur_cycle = 0
-            else:
-                cur_cycle = floor((self.next_superblock_time - payment_start) / cycle_seconds)
+            cur_cycle = int(((last_superblock - start_sb) / cycle_blocks)) + 1
 
         self.set_value('cycles', payment_cycles)
         self.set_value('current_cycle', cur_cycle)
@@ -343,8 +348,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.users_masternodes_by_ident = {}
 
         self.mn_count = None
+        self.block_timestamps: Dict[int, int] = {}
         self.governanceinfo = {}
         self.budget_cycle_days = 28.8
+        self.cur_block_height = 0
+        self.cur_block_timestamp = 0
+        self.superblock_cycle = None
+        self.last_superblock = None
+        self.next_superblock = None
         self.last_superblock_time = None
         self.next_superblock_time = None
         self.voting_deadline_passed = True  # True when current block number is >= next superblock - 1662
@@ -855,7 +866,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     if not prop:
                         is_new = True
                         prop = Proposal(self.propsModel, self.vote_columns_by_mn_ident, self.next_superblock_time,
-                                        self.users_masternodes, self.get_governance_info)
+                                        self.users_masternodes, self.get_governance_info,
+                                        self.find_prev_superblock, self.find_next_superblock)
                     else:
                         is_new = False
                     prop.marker = True
@@ -1056,32 +1068,29 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             # get the date-time of the last superblock and calculate the date-time of the next one
             self.governanceinfo = self.dashd_intf.getgovernanceinfo()
-            cycle_blocks = self.governanceinfo.get('superblockcycle', 16616)
-            self.budget_cycle_days = round(cycle_blocks * 2.5 / 60 /24, 3)
+            self.superblock_cycle = self.governanceinfo.get('superblockcycle', 16616)
+            self.budget_cycle_days = round(self.superblock_cycle * 2.5 / 60 /24, 3)
             self.propsModel.set_budget_cycle_days(self.budget_cycle_days)
 
-            sb_last = self.governanceinfo.get('lastsuperblock')
-            sb_next = self.governanceinfo.get('nextsuperblock')
+            self.last_superblock = self.governanceinfo.get('lastsuperblock')
+            self.next_superblock = self.governanceinfo.get('nextsuperblock')
             sb_cycle = round(self.governanceinfo.get('superblockcycle') / 10)
-            self.next_budget_amount = float(self.dashd_intf.getsuperblockbudget(sb_next))
+            self.next_budget_amount = float(self.dashd_intf.getsuperblockbudget(self.next_superblock))
 
             # superblocks occur every 16616 blocks (approximately 28.8 days)
-            cur_block = self.dashd_intf.getblockcount()
+            self.cur_block_height = self.dashd_intf.getblockcount()
+            self.cur_block_timestamp = int(time.time())
 
-            sb_last_hash = self.dashd_intf.getblockhash(sb_last)
-            last_bh = self.dashd_intf.getblockheader(sb_last_hash)
-            self.last_superblock_time = last_bh['time']
+            self.last_superblock_time = self.get_block_timestamp(self.last_superblock)
             self.next_superblock_time = 0
-            if cur_block > 0 and cur_block <= sb_next:
-                cur_hash = self.dashd_intf.getblockhash(cur_block)
-                cur_bh = self.dashd_intf.getblockheader(cur_hash)
-                self.next_superblock_time = cur_bh['time'] + (sb_next - cur_block) * 2.5 * 60
+            if self.cur_block_height > 0 and self.cur_block_height <= self.next_superblock:
+                self.next_superblock_time = self.get_block_timestamp(self.cur_block_height) + (self.next_superblock - self.cur_block_height) * 2.5 * 60
 
             if self.next_superblock_time == 0:
-                self.next_superblock_time = last_bh['time'] + (sb_next - sb_last) * 2.5 * 60
+                self.next_superblock_time = self.last_superblock_time + (self.next_superblock - self.last_superblock) * 2.5 * 60
 
-            deadline_block = sb_next - sb_cycle
-            self.voting_deadline_passed = deadline_block <= cur_block < sb_next
+            deadline_block = self.next_superblock - sb_cycle
+            self.voting_deadline_passed = deadline_block <= self.cur_block_height < self.next_superblock
 
             self.next_voting_deadline = self.next_superblock_time - (sb_cycle * 2.5 * 60)
             self.display_budget_summary()
@@ -1090,6 +1099,53 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             log.exception('Exception while reading governance info.')
             self.errorMsg("Coundn't read governanceinfo from the Dash network. "
                       "Some features may not work correctly because of this. Details: " + str(e))
+
+    def get_block_timestamp(self, superblock: int):
+        ts = self.block_timestamps.get(superblock)
+        if ts is None:
+            bhash = self.dashd_intf.getblockhash(superblock)
+            bh = self.dashd_intf.getblockheader(bhash)
+            ts = bh['time']
+            self.block_timestamps[superblock] = ts
+        return ts
+
+    def find_prev_superblock(self, timestamp: int):
+        if timestamp < self.last_superblock_time:
+            superblock = self.last_superblock
+            while True:
+                prev_sb_ts = self.get_block_timestamp(superblock - self.superblock_cycle)
+                if timestamp > prev_sb_ts:
+                    return superblock - self.superblock_cycle
+                else:
+                    superblock -= self.superblock_cycle
+        else:
+            superblock = self.last_superblock
+            sb_ts = self.last_superblock_time
+            while True:
+                if sb_ts + (self.superblock_cycle * 2.5 * 60) > timestamp:
+                    return superblock
+                else:
+                    superblock += self.superblock_cycle
+                    sb_ts += (self.superblock_cycle * 2.5 * 60)
+
+    def find_next_superblock(self, timestamp: int):
+        if timestamp < self.last_superblock_time:
+            superblock = self.last_superblock
+            while True:
+                prev_sb_ts = self.get_block_timestamp(superblock - self.superblock_cycle)
+                if timestamp > prev_sb_ts:
+                    return superblock
+                else:
+                    superblock -= self.superblock_cycle
+        else:
+            superblock = self.last_superblock
+            sb_ts = self.last_superblock_time
+            while True:
+                if sb_ts + (self.superblock_cycle * 2.5 * 60) > timestamp:
+                    return superblock + self.superblock_cycle
+                else:
+                    superblock += self.superblock_cycle
+                    sb_ts += (self.superblock_cycle * 2.5 * 60)
 
     def refresh_filter(self):
         self.propsModel.invalidateFilter()
@@ -1193,8 +1249,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                     log.warning('Deleted duplicated proposal from DB. ID: %s, HASH: %s' %
                                                     (str(fix_row[0]), row[12]))
 
-                                prop = Proposal(self.propsModel, self.vote_columns_by_mn_ident, self.next_superblock_time,
-                                    self.users_masternodes, self.get_governance_info)
+                                log.debug('Reading proposal: ' + row[0])
+                                prop = Proposal(self.propsModel, self.vote_columns_by_mn_ident,
+                                                self.next_superblock_time, self.users_masternodes,
+                                                self.get_governance_info,
+                                                self.find_prev_superblock, self.find_next_superblock)
                                 prop.set_value('name', row[0])
                                 prop.set_value('payment_start', datetime.datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S'))
                                 prop.set_value('payment_end',  datetime.datetime.strptime(row[2], '%Y-%m-%d %H:%M:%S'))
