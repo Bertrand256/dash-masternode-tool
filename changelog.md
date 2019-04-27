@@ -1,3 +1,18 @@
+## [0.9.23] - 2019-04-27
+
+**Added**
+- The feature of restoring configuration from backup.
+- GUI for update_registrar (changing payout address, operator/voting key).
+- Extending the status area with additional information, including
+the estimated date of the next payment.
+
+**Changed**
+- Removed the pre-spork 15 code.
+- Fixes in the proposals dialog: support for v0.14-beta, issues with number of payment cycles. 
+- Clearing the pre-spork 15 voting results from the app cache to suggest 
+users the need to re-submit their votes.
+- Fixed some stability issues in the wallet dialog.
+
 ## [0.9.22] - 2019-02-24
 
 **Added**
