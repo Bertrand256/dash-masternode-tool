@@ -145,6 +145,9 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.update_key_controls_state()  # qt 0.9.2: control styles aren't updated properly without reapplying
                                           # them here
         self.lblOwnerKey.fontMetrics()
+        self.set_buttons_height()
+
+    def set_buttons_height(self):
         h = self.edtName.height()
         self.btnCopyMnKey.setFixedHeight(h)
         self.btnShowMnPrivateKey.setFixedHeight(h)
@@ -431,6 +434,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             self.edtVotingKey.setText(self.get_voting_key_to_display())
             self.edtOperatorKey.setText(self.get_operator_key_to_display())
             self.updating_ui = False
+            self.set_buttons_height()
         else:
             for e in self.findChildren(QLineEdit):
                 e.setText('')

@@ -280,17 +280,27 @@ class AppConfig(QObject):
                     # newly created data folder
                     cache_data = json.load(open(cache_file_name))
                     fn = cache_data.get('AppConfig_ConfigFileName')
-                    if fn.find(old_user_data_dir) >= 0 and len(fn) > len(old_user_data_dir) \
-                            and fn[len(old_user_data_dir)] in ('/','\\'):
-                        fn = self.data_dir + fn[len(old_user_data_dir):]
+
+                    old_dir = old_user_data_dir.replace('\\', '/')  # windows: paths stored in the cache file
+                                                                    # have possibly '/' characters instead od '\'
+                    fn = fn.replace('\\', '/')
+
+                    if fn.find(old_dir) >= 0 and len(fn) > len(old_dir) \
+                            and fn[len(old_dir)] in ('/','\\'):
+                        fn = self.data_dir + fn[len(old_dir):]
+                        if sys.platform == 'win32':
+                            fn = fn.replace('/', '\\')
                         cache_data['AppConfig_ConfigFileName'] = fn
 
                     mru = cache_data.get('MainWindow_ConfigFileMRUList')
                     modified = False
                     for idx, fn in enumerate(mru):
-                        if fn.find(old_user_data_dir) >= 0 and len(fn) > len(old_user_data_dir) \
-                                and fn[len(old_user_data_dir)] in ('/', '\\'):
-                            fn = self.data_dir + fn[len(old_user_data_dir):]
+                        fn = fn.replace('\\', '/')
+                        if fn.find(old_dir) >= 0 and len(fn) > len(old_dir) \
+                                and fn[len(old_dir)] in ('/', '\\'):
+                            fn = self.data_dir + fn[len(old_dir):]
+                            if sys.platform == 'win32':
+                                fn = fn.replace('/', '\\')
                             mru[idx] = fn
                             modified = True
                     if modified:

@@ -107,6 +107,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         # load most recently used config files from the data cache
         mru_cf = app_cache.get_value('MainWindow_ConfigFileMRUList', default_value=[], type=list)
         if isinstance(mru_cf, list):
+            mru_cf = list(set(mru_cf))  # eliminate duplicates
             for file_name in mru_cf:
                 if os.path.exists(file_name):
                     self.recent_config_files.append(file_name)
@@ -420,6 +421,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         input = QInputDialog(self)
         input.setComboBoxEditable(False)
         input.setOption(QInputDialog.UseListViewForComboBoxItems, True)
+        input.setWindowTitle('Restore from backup')
         file_dates:List[Tuple[str, int, str]] = []
 
         for fname in os.listdir(self.config.cfg_backup_dir):
