@@ -1,5 +1,12 @@
 ## [0.9.23] - 2019-04-27
 
+**Fixed**
+- Issue with "Locate collateral" feature (an empty error message).
+- Switching the active RPC connection to another after encountering "Unknown error" and "401 Unauthorized" 
+errors.
+
+## [0.9.23] - 2019-04-27
+
 **Added**
 - The feature of restoring configuration from backup.
 - GUI for update_registrar (changing payout address, operator/voting key).
