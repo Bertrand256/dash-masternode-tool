@@ -44,7 +44,10 @@ class BreakFetchTransactionsException(Exception):
 
 class SwitchedHDIdentityException(Exception):
     def __init__(self, *args, **kwargs):
-        Exception.__init__(self, *args, *kwargs)
+        if args or kwargs:
+            Exception.__init__(self, *args, *kwargs)
+        else:
+            Exception.__init__(self, "SwitchedHDIdentityException")
 
 
 class Bip44Wallet(QObject):
@@ -189,11 +192,14 @@ class Bip44Wallet(QObject):
         return id
 
     def validate_hd_tree(self):
-        if self.__tree_ident != self.hw_session.get_hd_tree_ident(self.__coin_name):
-            # user switched to another hw identity (e.g. enter bip39 different passphrase)
-            log.info('Switching HD identity')
-            self.clear()
-            raise SwitchedHDIdentityException()
+        if not self.__tree_ident:
+            self.get_hd_identity_info()
+        else:
+            if self.__tree_ident != self.hw_session.get_hd_tree_ident(self.__coin_name):
+                # user switched to another hw identity (e.g. enter bip39 different passphrase)
+                log.info('Switching HD identity')
+                self.clear()
+                raise SwitchedHDIdentityException()
 
     def get_block_height(self):
         if self.cur_block_height is None or \
@@ -386,10 +392,10 @@ class Bip44Wallet(QObject):
         addr.last_scan_block_height = address_dict.get('last_scan_block_height', 0)
         return addr
 
-    def _fill_temp_ids_table(self, ids: List[int], db_cursor):
-        db_cursor.execute("CREATE TEMPORARY TABLE IF NOT EXISTS temp_ids(id INTEGER PRIMARY KEY)")
-        db_cursor.execute('delete from temp_ids')
-        db_cursor.executemany('insert into temp_ids(id) values(?)',
+    def _fill_temp_ids_table(self, ids: List[int], db_cursor, tab_sufix: str = ''):
+        db_cursor.execute(f"CREATE TEMPORARY TABLE IF NOT EXISTS temp_ids{tab_sufix}(id INTEGER PRIMARY KEY)")
+        db_cursor.execute(f'delete from temp_ids{tab_sufix}')
+        db_cursor.executemany(f'insert into temp_ids{tab_sufix}(id) values(?)',
                               [(id,) for id in ids])
 
     def _get_child_address(self, parent_key_entry: Bip44Entry, child_addr_index: int) -> Bip44AddressType:
@@ -1260,7 +1266,7 @@ class Bip44Wallet(QObject):
         return None
 
     def scan_wallet_for_address(self, addr: str, check_break_process_fun: Callable,
-                                feedback_fun: Callable[[str], None]) -> Optional[Bip44AddressType]:
+                                feedback_fun: Callable[[int], None]) -> Optional[Bip44AddressType]:
         """
         Scans for a specific address. If necessary, the method fetches transactions to reveal the all used addresses.
         :param addr: the address being searched.
@@ -1456,8 +1462,8 @@ class Bip44Wallet(QObject):
         utxo.get_cur_block_height_fun = self.get_block_height_nofetch
         return utxo
 
-    def list_utxos_for_account(self, account_id: Optional[int], only_new = False, filter_by_satoshis: int = None) -> \
-            Generator[UtxoType, None, None]:
+    def list_utxos_for_account(self, account_id: Optional[int], only_new = False,
+                               filter_by_satoshis: Optional[int] = None) -> Generator[UtxoType, None, None]:
         """
         :param account_id: database id of the account's record or None if listing for all accounts of the current
           hd tree if.
@@ -1508,22 +1514,30 @@ class Bip44Wallet(QObject):
         diff = time.time() - tm_begin
         log.debug('list_utxos_for_account exec time: %ss', diff)
 
-    def list_utxos_for_addresses(self, address_ids: List[int], only_new = False) -> Generator[UtxoType, None, None]:
+    def list_utxos_for_addresses(self, address_ids: List[int], only_new = False,
+                                 filter_by_satoshis: Optional[int] = None) -> Generator[UtxoType, None, None]:
         db_cursor = self.db_intf.get_cursor()
         try:
-            in_part = ','.join(['?'] * len(address_ids))
             sql_text = "select o.id, tx.block_height, tx.coinbase,tx.block_timestamp, tx.tx_hash, o.output_index, " \
                        "o.satoshis, o.address_id from tx_output o join address a" \
                        " on a.id=o.address_id join tx on tx.id=o.tx_id where (spent_tx_id is null " \
-                       " or spent_input_index is null) and a.id in (" + in_part + ')'
+                       " or spent_input_index is null) and a.id in (select id from temp_ids2)"
+
+            params = []
+            self._fill_temp_ids_table(address_ids, db_cursor, tab_sufix='2')
 
             if only_new:
                 # limit returned utxos only to those existing in the self.utxos_added list
                 self._fill_temp_ids_table([id for id in self.utxos_added], db_cursor)
                 sql_text += ' and o.id in (select id from temp_ids)'
+
+            if filter_by_satoshis:
+                sql_text += ' and o.satoshis=?'
+                params.append(filter_by_satoshis)
+
             sql_text += " order by tx.block_height desc"
 
-            db_cursor.execute(sql_text, address_ids)
+            db_cursor.execute(sql_text, params)
 
             for id, block_height, coinbase, block_timestamp, tx_hash, \
                 output_index, satoshis, address_id in db_cursor.fetchall():

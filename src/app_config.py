@@ -470,7 +470,7 @@ class AppConfig(QObject):
                 cur.execute('delete from tx')
                 self.db_intf.commit()
                 logging.warning('Cleared the wallet address cache because of inconsistencies found.')
-                self.sig_display_message.emit(1001, 'The wallet cache cache has been cleared because of '
+                self.sig_display_message.emit(1001, 'The wallet cache has been cleared because of '
                                                     'inconsistencies found.', 'warn')
         except Exception as e:
             logging.error('Error while clearing voting results. Details: ' + str(e))

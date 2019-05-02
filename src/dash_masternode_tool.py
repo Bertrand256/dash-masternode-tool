@@ -19,7 +19,13 @@ if __name__ == '__main__':
             if isinstance(fh, logging.FileHandler):
                 traceback.print_exception(type, value, tback, file=fh.stream)
                 fh.flush()
-        WndUtils.errorMsg(str(value))
+        msg = str(value)
+        if not msg:
+            try:
+                msg = 'An unhandled exception accurred: ' + value.__class__.__name__ + '.'
+            except:
+                msg = 'An unhandled exception accurred.'
+        WndUtils.errorMsg(msg)
 
     sys.excepthook = my_excepthook
 

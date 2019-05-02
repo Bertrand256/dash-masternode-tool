@@ -996,19 +996,18 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.main_dlg.hw_session,
                                    self.app_config.db_intf, self.dashd_intf, self.app_config.dash_network)
 
-        utxos = WndUtils.run_thread_dialog(self.get_collateral_tx_address_thread, (bip44_wallet, check_break_scanning),
-                                           True, force_close_dlg_callback=do_break_scanning)
+        utxos = WndUtils.run_thread_dialog(
+            self.get_collateral_tx_address_thread,
+            (bip44_wallet, check_break_scanning, self.edtCollateralAddress.text()),
+            True, force_close_dlg_callback=do_break_scanning)
+
         if utxos:
-            if len(utxos) == 1 and not self.masternode.collateralAddress and not self.masternode.collateralTx:
-                used = False
-                for mn in self.app_config.masternodes:
-                    if utxos[0].address == mn.collateralAddress or mn.collateralTx + '-' + str(mn.collateralTxIndex) == \
-                       utxos[0].txid + '-' + str(utxos[0].output_index):
-                        used = True
-                        break
-                if not used:
-                    apply_utxo(utxos[0])
-                    return
+            if len(utxos) == 1 and \
+                    (not self.masternode.collateralAddress or
+                     (utxos[0].address_obj and self.masternode.collateralAddress == utxos[0].address_obj.address)) \
+                    and (not self.masternode.collateralTx or utxos[0].txid == self.masternode.collateralTx):
+                apply_utxo(utxos[0])
+                return
 
             dlg = ListCollateralTxsDlg(self, self.masternode, self.app_config, False, utxos)
             if dlg.exec_():
@@ -1019,8 +1018,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             if utxos is not None:
                 WndUtils.warnMsg('Couldn\'t find any 1000 Dash UTXO in your wallet.')
 
-    def get_collateral_tx_address_thread(self, ctrl: CtrlObject, bip44_wallet: Bip44Wallet,
-                                         check_break_scanning_ext: Callable[[], bool]):
+    def get_collateral_tx_address_thread(self, ctrl: CtrlObject,
+                                         bip44_wallet: Bip44Wallet,
+                                         check_break_scanning_ext: Callable[[], bool],
+                                         src_address: str):
         utxos = []
         break_scanning = False
         txes_cnt = 0
@@ -1059,10 +1060,21 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
         try:
             bip44_wallet.on_fetch_account_txs_feedback = fetch_txes_feeback
-            bip44_wallet.fetch_all_accounts_txs(check_break_scanning)
+            if src_address:
+                # limit transactions only to the specific address
+                # addr = bip44_wallet.get_address_item(src_address, False)
+                addr = bip44_wallet.scan_wallet_for_address(src_address, check_break_scanning,
+                                                            feedback_fun=fetch_txes_feeback)
 
-            for utxo in bip44_wallet.list_utxos_for_account(account_id=None, filter_by_satoshis=1e11):
-                utxos.append(utxo)
+                if addr and addr.tree_id == bip44_wallet.get_tree_id():
+                    bip44_wallet.fetch_addresses_txs([addr], check_break_scanning)
+                    for utxo in bip44_wallet.list_utxos_for_addresses([addr.id], filter_by_satoshis=int(1e11)):
+                        utxos.append(utxo)
+
+            if not utxos:
+                bip44_wallet.fetch_all_accounts_txs(check_break_scanning)
+                for utxo in bip44_wallet.list_utxos_for_account(account_id=None, filter_by_satoshis=int(1e11)):
+                    utxos.append(utxo)
 
         except BreakFetchTransactionsException:
             return None

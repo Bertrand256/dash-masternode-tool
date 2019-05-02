@@ -921,8 +921,11 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             return False
 
         self.btnContinue.setEnabled(False)
-        ret = WndUtils.run_thread_dialog(self.get_collateral_tx_address_thread, (check_break_scanning,), True,
-                                         force_close_dlg_callback=do_break_scanning)
+        try:
+            ret = WndUtils.run_thread_dialog(self.get_collateral_tx_address_thread, (check_break_scanning,), True,
+                                             force_close_dlg_callback=do_break_scanning)
+        except Exception as e:
+            pass
         self.btnContinue.setEnabled(True)
         return ret
 
