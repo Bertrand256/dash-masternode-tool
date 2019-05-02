@@ -394,27 +394,15 @@ def control_rpc_call(func):
 
                     except (ConnectionResetError, ConnectionAbortedError, httplib.CannotSendRequest,
                             BrokenPipeError) as e:
+                        # this exceptions occur usually when the established connection gets disconnected after
+                        # some time of inactivity; try to reconnect within the same connection configuration
                         log.warning('Error while calling of "' + str(func) + ' (1)". Details: ' + str(e))
                         if last_conn_reset_time:
                             raise DashdConnectionError(e)  # switch to another config if possible
                         else:
                             last_exception = e
-                            self.reset_connection()  # rettry with the same connection
-
-                    except JSONRPCException as e:
-                        log.error('Error while calling of "' + str(func) + ' (2)". Details: ' + str(e))
-                        if e.code == -5 and e.message == 'No information available for address':
-                            raise DashdIndexException(e)
-                        elif e.error.get('message','').find('403 Forbidden') >= 0 or \
-                             e.error.get('message', '').find('502 Bad Gateway') >= 0:
-                            self.http_conn.close()
-                            raise DashdConnectionError(e)
-                        elif e.code in (-32603,):
-                            # for these error codes don't retry the request with another rpc connetion
-                            #  -32603: failure to verify vote
-                            raise
-                        else:
-                            raise
+                            last_conn_reset_time = time.time()
+                            self.reset_connection()  # retry with the same connection
 
                     except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout,
                             NoValidConnectionsError) as e:
@@ -422,6 +410,22 @@ def control_rpc_call(func):
                         # if there is any in the config
                         log.warning('Error while calling of "' + str(func) + ' (3)". Details: ' + str(e))
                         raise DashdConnectionError(e)
+
+                    except JSONRPCException as e:
+                        log.error('Error while calling of "' + str(func) + ' (2)". Details: ' + str(e))
+                        err_message = e.error.get('message','').lower()
+                        if e.code == -5 and e.message == 'No information available for address':
+                            raise DashdIndexException(e)
+                        elif err_message.find('403 forbidden') >= 0 or err_message.find('401 unauthorized') >= 0 or \
+                             err_message.find('502 bad gateway') >= 0 or err_message.find('unknown error') >= 0:
+                            self.http_conn.close()
+                            raise DashdConnectionError(e)
+                        # elif e.code in (-32603,):
+                        #     # for these error codes don't retry the request with another rpc connetion
+                        #     #  -32603: failure to verify vote
+                        #     raise
+                        else:
+                            raise
 
                 except DashdConnectionError as e:
                     # try another net config if possible
