@@ -306,7 +306,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                 self.dmn_new_operator_pubkey = key
                 self.dmn_new_operator_privkey = ''
                 try:
-                    b = bytes.fromhex(self.dmn_operator_pubkey)
+                    b = bytes.fromhex(self.dmn_new_operator_pubkey)
                     if len(b) != 48:
                         raise Exception('invalid length (' + str(len(b)) + ')')
                 except Exception as e:
