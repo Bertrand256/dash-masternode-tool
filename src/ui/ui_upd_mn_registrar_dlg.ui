@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>685</width>
-    <height>318</height>
+    <height>350</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -283,7 +283,7 @@
       <bool>true</bool>
      </property>
      <property name="openLinks">
-      <bool>false</bool>
+      <bool>true</bool>
      </property>
     </widget>
    </item>

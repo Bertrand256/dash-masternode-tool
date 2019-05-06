@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_UpdMnRegistrarDlg(object):
     def setupUi(self, UpdMnRegistrarDlg):
         UpdMnRegistrarDlg.setObjectName("UpdMnRegistrarDlg")
-        UpdMnRegistrarDlg.resize(685, 318)
+        UpdMnRegistrarDlg.resize(685, 350)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -147,7 +147,7 @@ class Ui_UpdMnRegistrarDlg(object):
         self.verticalLayout.addWidget(self.lblManualCommands)
         self.edtManualCommands = QtWidgets.QTextBrowser(UpdMnRegistrarDlg)
         self.edtManualCommands.setOpenExternalLinks(True)
-        self.edtManualCommands.setOpenLinks(False)
+        self.edtManualCommands.setOpenLinks(True)
         self.edtManualCommands.setObjectName("edtManualCommands")
         self.verticalLayout.addWidget(self.edtManualCommands)
         self.line = QtWidgets.QFrame(UpdMnRegistrarDlg)

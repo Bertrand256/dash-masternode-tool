@@ -344,7 +344,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                       (self.show_upd_voting and bool(self.edtVotingKey.text()))
 
             if changed:
-                cmd = f'update_registrar "{self.dmn_protx_hash}" "{self.dmn_new_operator_pubkey}" ' \
+                cmd = f'protx update_registrar "{self.dmn_protx_hash}" "{self.dmn_new_operator_pubkey}" ' \
                     f'"{self.dmn_new_voting_address}" "{self.dmn_new_payout_address}" ' \
                     f'"<span style="color:green">feeSourceAddress</span>"'
                 msg = "<ol>" \
