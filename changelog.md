@@ -3,7 +3,7 @@
 **Fixed**
 - Fix of the "invalid operator public key" error occurring in the
 "Update operator key" window when using the public key option (Kudos to 
-@Thiago from Node40 for precise hints).
+@Thiagokroger from Node40 for precise hints).
 
 ## [0.9.23-hotfix1] - 2019-05-02
 
