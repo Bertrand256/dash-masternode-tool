@@ -670,8 +670,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                             self.errorMsg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
                         else:
                             after_send_tx_fun = partial(self.process_after_sending_transaction, tx_inputs, tx_outputs)
-                            tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex, use_is, tx_inputs,
-                                                    tx_outputs, after_send_tx_fun)
+                            tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex, use_is,
+                                                    tx_inputs, tx_outputs, self.cur_hd_tree_id, after_send_tx_fun,
+                                                    fn_show_address_on_hw=self.show_address_on_hw)
                             tx_dlg.exec_()
                 except Exception as e:
                     log.exception('Unknown error occurred.')
@@ -1260,7 +1261,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                     self.utxo_table_model.beginResetModel()
                                     self.utxo_table_model.clear_utxos()
                                     self.utxo_table_model.endResetModel()
-                                    log.info('Did reset utxo table')
                             finally:
                                 self.allow_fetch_transactions = True
 

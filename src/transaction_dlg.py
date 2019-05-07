@@ -10,7 +10,7 @@ import simplejson
 import logging
 
 from PyQt5.QtCore import pyqtSlot
-from PyQt5.QtGui import QTextDocument
+from PyQt5.QtGui import QTextDocument, QDesktopServices
 from PyQt5.QtWidgets import QDialog, QMessageBox
 from decimal import Decimal
 
@@ -39,10 +39,11 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                  use_instant_send: bool,
                  tx_inputs: List[UtxoType],
                  tx_outputs: List[TxOutputType],
+                 cur_hd_tree_id: int,
                  after_send_tx_callback: Callable[[dict], None],
                  decoded_transaction: Optional[dict] = None,
                  dependent_transactions: Optional[dict] = None,
-                 ):
+                 fn_show_address_on_hw: Callable[['Bip44AddressType'], None] = None):
         QDialog.__init__(self, parent=parent)
         Ui_TransactionDlg.__init__(self)
         WndUtils.__init__(self, config)
@@ -56,9 +57,11 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
         self.tx_outputs = tx_outputs
         self.tx_id = None  # will be decoded from rawtransaction
         self.tx_size = None  # as above
+        self.cur_hd_tree_id = cur_hd_tree_id
         self.decoded_transaction: Optional[dict] = decoded_transaction
         self.dependent_transactions = dependent_transactions  # key: txid, value: transaction dict
         self.after_send_tx_callback: Callable[[Dict], None] = after_send_tx_callback
+        self.fn_show_address_on_hw = fn_show_address_on_hw
         self.setupUi()
 
     def setupUi(self):
@@ -66,7 +69,6 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
         self.setWindowTitle('Transaction')
         self.chb_word_wrap.setChecked(app_cache.get_value(CACHE_ITEM_DETAILS_WORD_WRAP, False, bool))
         self.apply_word_wrap(self.chb_word_wrap.isChecked())
-        self.edt_recipients.setOpenExternalLinks(True)
         self.edt_recipients.viewport().setAutoFillBackground(False)
 
         if sys.platform == 'win32':
@@ -202,14 +204,29 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                                 tx_out = self.tx_outputs[row_idx]
                                 if tx_out.address_ref:
                                     if tx_out.address_ref.is_change:
-                                        address_info = f' (the change {tx_out.address_ref.bip32_path})'
+                                        address_info = f'the change address, path: {tx_out.address_ref.bip32_path}'
+                                        if self.fn_show_address_on_hw:
+                                            address_info += f' (<a href="{row_idx}">show on device</a>)'
                                     elif tx_out.address_ref.tree_id:
-                                        address_info = f' (yours)'
+                                        if self.cur_hd_tree_id == tx_out.address_ref.tree_id:
+                                            address_info = f'your address in this wallet'
+                                            if tx_out.address_ref.bip32_path and self.fn_show_address_on_hw:
+                                                address_info += f' (<a href="{row_idx}">show on device</a>)'
+                                        else:
+                                            address_info = f'your address in other wallet identity'
+                                    else:
+                                        address_info = 'external address'
+                                else:
+                                    address_info = 'external address'
+
+                            if address_info:
+                                address_info = f'<br><span style="color:gray">{address_info}</span><hr>'
 
                             if row_idx == 0:
-                                recipients = f'<tr><td class="lbl"><p class="lbl">Recipients:</p></td><td>{address} {address_info}</td><td><p class="val">{app_utils.to_string(val)} Dash</p></td><td></td></tr>'
+                                lbl = f'<p class="lbl">Recipients:</p>'
                             else:
-                                recipients += f'<tr><td></td><td>{address} {address_info}</td><td><p class="val">{app_utils.to_string(val)} Dash</p></td><td></td></tr>'
+                                lbl = ''
+                            recipients += f'<tr><td class="lbl">{lbl}</td><td>{address}{address_info}</td><td><p class="val">{app_utils.to_string(val)} Dash</p></td></tr>'
 
                         fee = round(inputs_total - outputs_total, 8)
 
@@ -218,7 +235,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                             url = self.config.get_block_explorer_tx()
                             if url:
                                 url = url.replace('%TXID%', self.tx_id)
-                                send_tx_row = f'<tr><td class="lbl"><p class="lbl">Transaction ID:</p></td><td><a href="{url}">{self.tx_id}</a></td></tr>'
+                                send_tx_row = f'<tr><td class="lbl"><p class="lbl">Transaction ID:</p></td><td colspan="2"><a href="{url}">{self.tx_id}</a></td></tr>'
 
                         if self.transaction_sent:
                             title = 'Transaction summary - sent'
@@ -244,10 +261,10 @@ td.lbl{{text-align: right;vertical-align: top}} p.lbl{{margin: 0 5px 0 0; font-w
 <p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">
  <table>
     {send_tx_row}
-    <tr><td class="lbl"><p class="lbl">Total amount:</p></td><td>{app_utils.to_string(inputs_total)} Dash</td><td></td></tr>
-    <tr><td class="lbl"><p class="lbl">Fee:</p></td><td>{app_utils.to_string(fee)} Dash</td><td></td></tr>
-    <tr><td class="lbl"><p class="lbl">Transaction size:</p></td><td>{tx_size_str}</td><td></td></tr>
-    <tr><td class="lbl"><p class="lbl">InstantSend:</p></td><td>{'YES' if self.use_instant_send else 'NO'}</td><td></td></tr>
+    <tr><td class="lbl"><p class="lbl">Total amount:</p></td><td>{app_utils.to_string(inputs_total)} Dash</td></tr>
+    <tr><td class="lbl"><p class="lbl">Fee:</p></td><td>{app_utils.to_string(fee)} Dash</td></tr>
+    <tr><td class="lbl"><p class="lbl">Transaction size:</p></td><td>{tx_size_str}</td></tr>
+    <tr><td class="lbl"><p class="lbl">InstantSend:</p></td><td>{'YES' if self.use_instant_send else 'NO'}</td></tr>
     {recipients}
  </table></p></body></html>"""
 
@@ -261,6 +278,16 @@ td.lbl{{text-align: right;vertical-align: top}} p.lbl{{margin: 0 5px 0 0; font-w
         except Exception as e:
             log.exception("Unhandled exception occurred.")
             raise
+
+    def on_edt_recipients_anchorClicked(self, link):
+        if self.fn_show_address_on_hw:
+            url = link.url()
+            if re.match('^\d+$', url):
+                row_idx = int(url)
+                if 0 <= row_idx < len(self.tx_outputs):
+                    self.fn_show_address_on_hw(self.tx_outputs[row_idx].address_ref)
+            else:
+                QDesktopServices.openUrl(link)
 
     @pyqtSlot(bool)
     def on_btn_details_clicked(self, enabled):
