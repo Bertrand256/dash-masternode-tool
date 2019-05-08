@@ -9,9 +9,10 @@ from typing import Optional, Callable, Dict, List
 import simplejson
 import logging
 
+from PyQt5 import QtWidgets
 from PyQt5.QtCore import pyqtSlot
 from PyQt5.QtGui import QTextDocument, QDesktopServices
-from PyQt5.QtWidgets import QDialog, QMessageBox
+from PyQt5.QtWidgets import QDialog, QMessageBox, QProxyStyle, QStyle
 from decimal import Decimal
 
 from bitcoinrpc.authproxy import JSONRPCException
@@ -19,11 +20,12 @@ from bitcoinrpc.authproxy import JSONRPCException
 import app_cache
 import app_utils
 from app_config import AppConfig
+from app_defs import HWType
 from dashd_intf import DashdInterface
+from hw_common import HwSessionInfo
 from ui.ui_transaction_dlg import Ui_TransactionDlg
-from wallet_common import UtxoType, TxOutputType
-from wnd_utils import WndUtils
-
+from wallet_common import UtxoType, TxOutputType, Bip44AddressType
+from wnd_utils import WndUtils, ProxyStyleNoFocusRect
 
 CACHE_ITEM_DETAILS_WORD_WRAP = 'TransactionDlg_DetailsWordWrap'
 
@@ -40,10 +42,11 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                  tx_inputs: List[UtxoType],
                  tx_outputs: List[TxOutputType],
                  cur_hd_tree_id: int,
+                 hw_session: HwSessionInfo,
                  after_send_tx_callback: Callable[[dict], None],
                  decoded_transaction: Optional[dict] = None,
                  dependent_transactions: Optional[dict] = None,
-                 fn_show_address_on_hw: Callable[['Bip44AddressType'], None] = None):
+                 fn_show_address_on_hw: Callable[[Bip44AddressType], None] = None):
         QDialog.__init__(self, parent=parent)
         Ui_TransactionDlg.__init__(self)
         WndUtils.__init__(self, config)
@@ -58,6 +61,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
         self.tx_id = None  # will be decoded from rawtransaction
         self.tx_size = None  # as above
         self.cur_hd_tree_id = cur_hd_tree_id
+        self.hw_session = hw_session
         self.decoded_transaction: Optional[dict] = decoded_transaction
         self.dependent_transactions = dependent_transactions  # key: txid, value: transaction dict
         self.after_send_tx_callback: Callable[[Dict], None] = after_send_tx_callback
@@ -85,9 +89,9 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
         doc = QTextDocument(self)
         doc.setDocumentMargin(0)
         doc.setHtml(f'<span style=" font-size:{self.title_font_size}pt;white-space:nowrap">AAAAAAAAAAAAAAAAAA')
+        self.edt_recipients.setStyle(ProxyStyleNoFocusRect())
         default_width = int(doc.size().width()) * 3
         default_height = int(default_width / 2)
-
         app_cache.restore_window_size(self, default_width=default_width, default_height=default_height)
         self.prepare_tx_view()
 
@@ -111,6 +115,11 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
             return float(val)
 
         try:
+            if self.hw_session and self.hw_session.hw_type:
+                hw_type_desc = HWType.get_desc(self.hw_session.hw_type)
+            else:
+                hw_type_desc = 'device'
+
             self.edt_recipients.clear()
             if not self.decoded_transaction:
                 try:
@@ -206,14 +215,14 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                                     if tx_out.address_ref.is_change:
                                         address_info = f'the change address, path: {tx_out.address_ref.bip32_path}'
                                         if self.fn_show_address_on_hw:
-                                            address_info += f' (<a href="{row_idx}">show on device</a>)'
+                                            address_info += f' (<a href="{row_idx}">show on {hw_type_desc}</a>)'
                                     elif tx_out.address_ref.tree_id:
                                         if self.cur_hd_tree_id == tx_out.address_ref.tree_id:
                                             address_info = f'your address in this wallet'
                                             if tx_out.address_ref.bip32_path and self.fn_show_address_on_hw:
-                                                address_info += f' (<a href="{row_idx}">show on device</a>)'
+                                                address_info += f' (<a href="{row_idx}">show on {hw_type_desc}</a>)'
                                         else:
-                                            address_info = f'your address in other wallet identity'
+                                            address_info = f'your address in this wallet, under a different identity'
                                     else:
                                         address_info = 'external address'
                                 else:
@@ -253,7 +262,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
 
                         summary = f"""<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">
 <html><head><meta name="qrichtext" content="1" /><style type="text/css">
-td.lbl{{text-align: right;vertical-align: top}} p.lbl{{margin: 0 5px 0 0; font-weight: bold}} p.val{{margin: 0 0 0 8px; color: navy}}
+td.lbl{{text-align: right;vertical-align: top;}} p.lbl{{margin: 0 5px 0 0; font-weight: bold;}} p.val{{margin: 0 0 0 8px; color: navy;}}
 </style></head><body style="font-size:{self.base_font_size}pt; font-weight:400; font-style:normal; margin-left:10px;margin-right:10px;">
 <p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:{self.title_font_size}pt; font-weight:600;">{title}</span></p>
 <p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:{self.base_font_size}pt;"><br /></p>

@@ -21,7 +21,8 @@ from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEven
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap, QTextDocument, QCursor, \
     QAbstractTextDocumentLayout, QFontMetrics, QTransform, QKeySequence
 from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit, \
-    QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView, QAction, QMenu, QApplication
+    QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView, QAction, QMenu, QApplication, \
+    QProxyStyle
 import math
 import message_dlg
 from thread_fun_dlg import ThreadFunDlg, WorkerThread, CtrlObject
@@ -748,3 +749,16 @@ class HyperlinkItemDelegate(QStyledItemDelegate):
     def on_action_copy_text_triggered(self):
         clipboard = QApplication.clipboard()
         clipboard.setText(self.last_text)
+
+
+class ProxyStyleNoFocusRect(QProxyStyle):
+    """
+    Dedicated to hide a dotted focus rectangle surrounding HTML elements (especially hypelinks) rendered inside
+    controls like QTextBrowser.
+    Usage: widget.setStyle(ProxyStyleNoFocusRect())
+    """
+    def styleHint(self, hint, option=None, widget=None, returnData=None):
+        if hint == QProxyStyle.SH_TextControl_FocusIndicatorTextCharFormat:
+            return False
+        return QProxyStyle.styleHint(self, hint, option, widget, returnData)
+

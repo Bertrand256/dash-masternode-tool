@@ -671,8 +671,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         else:
                             after_send_tx_fun = partial(self.process_after_sending_transaction, tx_inputs, tx_outputs)
                             tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex, use_is,
-                                                    tx_inputs, tx_outputs, self.cur_hd_tree_id, after_send_tx_fun,
-                                                    fn_show_address_on_hw=self.show_address_on_hw)
+                                                    tx_inputs, tx_outputs, self.cur_hd_tree_id, self.hw_session,
+                                                    after_send_tx_fun, fn_show_address_on_hw=self.show_address_on_hw)
                             tx_dlg.exec_()
                 except Exception as e:
                     log.exception('Unknown error occurred.')

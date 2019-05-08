@@ -12,8 +12,7 @@ from dash_utils import wif_privkey_to_address, generate_wif_privkey, generate_bl
     bls_privkey_to_pubkey, validate_wif_privkey
 from dashd_intf import DashdInterface
 from ui import ui_upd_mn_registrar_dlg
-from wnd_utils import WndUtils
-
+from wnd_utils import WndUtils, ProxyStyleNoFocusRect
 
 CACHE_ITEM_SHOW_COMMANDS = 'UpdMnRegistrarDlg_ShowCommands'
 
@@ -57,6 +56,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
     def setupUi(self):
         ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg.setupUi(self, self)
         self.btnClose.hide()
+        self.edtManualCommands.setStyle(ProxyStyleNoFocusRect())
         self.restore_cache_settings()
         self.update_ctrls_state()
         self.minimize_dialog_height()
@@ -351,8 +351,8 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                       "<li>Start a Dash Core wallet with sufficient funds to cover a transaction fee.</li>"
                 msg += "<li>Import the owner private key into the Dash Core wallet if you haven't done this " \
                        "before (<a href=\"https://github.com/Bertrand256/dash-masternode-tool/blob/master/doc/" \
-                       "deterministic-mn-migration.md#can-i-register-deterministic-masternode-more-than-once-" \
-                       "for-the-same-collateral-transaction\">details</a>).</li>"
+                       "deterministic-mn-migration.md#can-i-modify-the-payout-address-without-resetting-the-" \
+                       "place-in-the-payment-queue\">details</a>).</li>"
                 msg += "<li>Execute the following command in the Dash Core debug console:<br><br>"
                 msg += "  <code style=\"background-color:#e6e6e6\">" + cmd + '</code></li><br>'
                 msg += 'Replace <span style="color:green">feeSourceAddress</span> with the address being the ' \

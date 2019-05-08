@@ -1,3 +1,12 @@
+## [0.9.23-hotfix3] - 2019-05-08
+
+**Fixed**
+- Malfunctioning/incorrect "details" link in the "Update payout address" dialog (the manual commands area).
+- Issue occurring during sending a transaction after switching hw identities (an empty message box).
+
+**Changed**
+- Extended information about transaction recipients in the transaction window.
+
 ## [0.9.23-hotfix2] - 2019-05-03
 
 **Fixed**
