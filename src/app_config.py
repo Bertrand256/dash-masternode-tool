@@ -1358,12 +1358,6 @@ class AppConfig(QObject):
     def get_app_img_dir(self):
         return os.path.join(self.app_dir, '', 'img')
 
-    def is_connection_public(self, conn: 'DashNetworkConnectionCfg'):
-        conns = self.public_conns_mainnet if self.is_mainnet() else self.public_conns_testnet
-        if conn.get_conn_id() in conns:
-            return True
-        return False
-
 
 class MasternodeConfig:
     def __init__(self):
