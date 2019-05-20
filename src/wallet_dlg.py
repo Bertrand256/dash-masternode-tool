@@ -1260,7 +1260,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                     self.utxo_table_model.beginResetModel()
                                     self.utxo_table_model.clear_utxos()
                                     self.utxo_table_model.endResetModel()
-                                    log.info('Did reset utxo table')
                             finally:
                                 self.allow_fetch_transactions = True
 

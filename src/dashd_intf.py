@@ -6,11 +6,9 @@ import decimal
 import functools
 import json
 
-import bitcoin
 import os
 import re
 import socket
-import sqlite3
 import ssl
 import threading
 import time
@@ -18,20 +16,20 @@ import datetime
 import logging
 from PyQt5.QtCore import QThread
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException, EncodeDecimal
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
 from paramiko import AuthenticationException, PasswordRequiredException, SSHException
 from paramiko.ssh_exception import NoValidConnectionsError
 from typing import List, Dict, Union, Callable, Optional
 import app_cache
-import app_defs
-import app_utils
 from app_config import AppConfig
 from random import randint
 from wnd_utils import WndUtils
 import socketserver
 import select
-from PyQt5.QtWidgets import QMessageBox
 from psw_cache import SshPassCache
 from common import AttrsProtected, CancelException
+
 
 log = logging.getLogger('dmt.dashd_intf')
 
@@ -367,15 +365,14 @@ class DashdIndexException(JSONRPCException):
 
 def control_rpc_call(_func=None, *, encrypt=False):
     """
+    Decorator dedicated to functions related to RPC calls, taking care of switching an active connection if the
+    current one becomes faulty. It also performs argument encryption for configured RPC calls.
     """
 
     def control_rpc_call_inner(func):
+
         @functools.wraps(func)
         def catch_timeout_wrapper(*args, **kwargs):
-
-            def encrypt_arguments(args, kwargs):
-                return args, kwargs
-
             ret = None
             last_exception = None
             self = args[0]
@@ -387,11 +384,31 @@ def control_rpc_call(_func=None, *, encrypt=False):
                     try:
                         try:
                             if encrypt:
-                                dest_args, dest_kwargs = encrypt_arguments(args, kwargs)
-                            else:
-                                dest_args, dest_kwargs = args, kwargs
+                                if self.cur_conn_def:
+                                    pubkey = self.cur_conn_def.get_rpc_encryption_pubkey_object()
+                                else:
+                                    pubkey = None
 
-                            ret = func(*dest_args, **dest_kwargs)
+                                if pubkey:
+                                    args_str = json.dumps(args[1:])
+                                    max_chunk_size = int(pubkey.key_size / 8) - 75
+
+                                    encrypted_parts = []
+                                    while args_str:
+                                        data_chunk = args_str[:max_chunk_size]
+                                        args_str = args_str[max_chunk_size:]
+                                        ciphertext = pubkey.encrypt(data_chunk.encode('ascii'),
+                                                                    padding.OAEP(
+                                                                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                                                                        algorithm=hashes.SHA256(),
+                                                                        label=None))
+                                        encrypted_parts.append(ciphertext.hex())
+                                    args = (args[0], 'DMTENCRYPTEDV1') + tuple(encrypted_parts)
+                                    log.info(
+                                        'Arguments of the "%s" call have been encrypted with the RSA public key of '
+                                        'the RPC node.', func.__name__)
+
+                            ret = func(*args, **kwargs)
 
                             last_exception = None
                             self.mark_cur_conn_cfg_is_ok()
@@ -432,12 +449,7 @@ def control_rpc_call(_func=None, *, encrypt=False):
                         # try another net config if possible
                         log.error('Error while calling of "' + str(func) + '" (4). Details: ' + str(e))
 
-                        if encrypt:
-                            encrypt_if_needed = encrypt_arguments
-                        else:
-                            encrypt_if_needed = None
-
-                        if not self.switch_to_next_config(call_after_switching_connection=encrypt_if_needed):
+                        if not self.switch_to_next_config():
                             self.last_error_message = str(e.org_exception)
                             raise e.org_exception  # couldn't use another conn config, raise last exception
                         else:
@@ -668,7 +680,7 @@ class DashdInterface(WndUtils):
     def mark_call_begin(self):
         self.starting_conn = self.cur_conn_def
 
-    def switch_to_next_config(self, call_after_switching_connection: Callable[[object], None]):
+    def switch_to_next_config(self):
         """
         If there is another dashd config not used recently, switch to it. Called only when there was a problem
         with current connection config.
@@ -690,11 +702,9 @@ class DashdInterface(WndUtils):
             self.disconnect()
             self.cur_conn_index = idx
             self.cur_conn_def = conn
-            if not self.open(call_after_switching_connection):
-                return self.switch_to_next_config(call_after_switching_connection)
+            if not self.open():
+                return self.switch_to_next_config()
             else:
-                if call_after_switching_connection:
-                    call_after_switching_connection(self.cur_conn_def)
                 return True
         else:
             log.warning('Failed to connect: no another connection configurations.')
@@ -710,7 +720,7 @@ class DashdInterface(WndUtils):
         if self.cur_conn_def:
             self.config.conn_cfg_success(self.cur_conn_def)
 
-    def open(self, call_after_switching_connection: Callable[[object], None]=None):
+    def open(self):
         """
         Opens connection to dash RPC. If it fails, then the next enabled conn config will be used, if any exists.
         :return: True if successfully connected, False if user cancelled the operation. If all of the attempts 
@@ -725,7 +735,7 @@ class DashdInterface(WndUtils):
                     if self.open_internal():
                         break
                     else:
-                        if not self.switch_to_next_config(call_after_switching_connection):
+                        if not self.switch_to_next_config():
                             return False
                 except CancelException:
                     return False
@@ -1264,6 +1274,18 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
+    def rpc_call_enc(self, encrypt, command, *args):
+        def call_command(self, *args):
+            c = self.proxy.__getattr__(command)
+            return c(*args)
+
+        if self.open():
+            fun = control_rpc_call(call_command, encrypt=encrypt)
+            c = fun(self, *args)
+            return c
+        else:
+            raise Exception('Not connected')
+
     @control_rpc_call
     def listaddressbalances(self, minfee):
         if self.open():
@@ -1279,7 +1301,7 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
-    def checkfeaturesupport(self, feature_name: str, dmt_version: str) -> Dict:
+    def checkfeaturesupport(self, feature_name: str, dmt_version: str, *args) -> Dict:
         if self.open():
             return self.proxy.checkfeaturesupport(feature_name, dmt_version)
         else:
