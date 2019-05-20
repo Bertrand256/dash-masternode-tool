@@ -387,15 +387,6 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
             self.dmn_prev_voting_address == self.dmn_new_voting_address:
             WndUtils.warnMsg('Nothing is changed compared to the data stored in the Dash network.')
         else:
-            if self.dashd_intf.is_current_connection_public():
-                active = self.app_config.feature_update_registrar_automatic.get_value()
-                if not active:
-                    msg = self.app_config.feature_update_registrar_automatic.get_message()
-                    if not msg:
-                        msg = 'The functionality of the automatic execution of the update_registrar command on the ' \
-                              '"public" RPC nodes is inactive. Use the manual method or contact the program author ' \
-                              'for details.'
-                    raise Exception(msg)
             self.send_upd_tx()
 
     def send_upd_tx(self):
@@ -419,7 +410,30 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                       self.dmn_new_payout_address,
                       funding_address]
 
-            if not self.dashd_intf.is_current_connection_public():
+            try:
+                upd_reg_support = self.dashd_intf.checkfeaturesupport('protx_update_registrar',
+                                                                      self.app_config.app_version)
+                if not upd_reg_support.get('enabled'):
+                    if upd_reg_support.get('message'):
+                        raise Exception(upd_reg_support.get('message'))
+                    else:
+                        raise Exception('The \'protx_update_registrar\' function is not supported by the RPC node '
+                                        'you are connected to.')
+                public_proxy_node = True
+
+                active = self.app_config.feature_update_registrar_automatic.get_value()
+                if not active:
+                    msg = self.app_config.feature_update_registrar_automatic.get_message()
+                    if not msg:
+                        msg = 'The functionality of the automatic execution of the update_registrar command on the ' \
+                              '"public" RPC nodes is inactive. Use the manual method or contact the program author ' \
+                              'for details.'
+                    raise Exception(msg)
+
+            except JSONRPCException as e:
+                public_proxy_node = False
+
+            if not public_proxy_node:
                 try:
                     # find an address to be used as the source of the transaction fees
                     min_fee = round(1024 * FEE_DUFF_PER_BYTE / 1e8, 8)

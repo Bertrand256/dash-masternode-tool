@@ -9,6 +9,7 @@ import datetime
 import glob
 import json
 import os
+import pickle
 import re
 import copy
 import shutil
@@ -24,11 +25,16 @@ import logging
 from typing import Optional, Callable, Dict, Tuple, List
 import bitcoin
 from logging.handlers import RotatingFileHandler
+import hashlib
 
 from PyQt5 import QtCore
 from PyQt5.QtCore import QLocale, QObject
 from PyQt5.QtWidgets import QMessageBox
 from cryptography.fernet import Fernet
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import (padding, rsa, utils)
+from cryptography.hazmat.primitives import serialization
 
 import app_defs
 import base58
@@ -188,6 +194,12 @@ class AppConfig(QObject):
         self.hw_encryption_key = None
         self.fernet = None
         self.log_handler = None
+
+        try:
+            self.default_rpc_connections = self.decode_connections(default_config.dashd_default_connections)
+        except Exception:
+            self.default_rpc_connections = []
+            logging.exception('Exception while parsing default RPC connections.')
 
     def init(self, app_dir):
         """ Initialize configuration after openning the application. """
@@ -443,7 +455,6 @@ class AppConfig(QObject):
             cur.execute('select voting_time from VOTING_RESULTS where id=(select min(id) from VOTING_RESULTS)')
             row = cur.fetchone()
             if row and row[0]:
-                print('row: ' + str(row[0]))
                 d = datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
                 vts = d.timestamp()
                 if vts < 1554246129:  # timestamp of the block (1047200) that activated spork 15
@@ -521,12 +532,6 @@ class AppConfig(QObject):
         if not file_name:
             file_name = self.app_config_file_name
 
-        # from v0.9.15 some public nodes changed its names and port numbers to the official HTTPS port number: 443
-        # correct the configuration
-        if not self.app_last_version or app_utils.is_version_bigger('0.9.22-hotfix4', self.app_last_version):
-            correct_public_nodes = True
-        else:
-            correct_public_nodes = False
         configuration_corrected = False
         errors_while_reading = False
         hw_type_sav = self.hw_type
@@ -722,18 +727,40 @@ class AppConfig(QObject):
                             cfg.ssh_conn_cfg.username = config.get(section, 'ssh_username', fallback='').strip()
                             cfg.testnet = self.value_to_bool(config.get(section, 'testnet', fallback='0'))
                             skip_adding = False
-                            if correct_public_nodes:
-                                if cfg.host.lower() == 'alice.dash-dmt.eu':
-                                    cfg.host = 'alice.dash-masternode-tool.org'
-                                    cfg.port = '443'
-                                    configuration_corrected = True
-                                elif cfg.host.lower() == 'luna.dash-dmt.eu':
-                                    cfg.host = 'luna.dash-masternode-tool.org'
-                                    cfg.port = '443'
-                                    configuration_corrected = True
-                                elif cfg.host.lower() == 'test.stats.dash.org':
-                                    skip_adding = True
-                                    configuration_corrected = True
+
+                            if cfg.host.lower() == 'test.stats.dash.org':
+                                skip_adding = True
+                                configuration_corrected = True
+                            elif cfg.get_conn_id() == '9b73e3fad66e8d07597c3afcf14f8f3513ed63dfc903b5d6e02c46f59c2ffadc':
+                                # delete obsolete "public" connection to luna.dash-masternode-tool.org
+                                skip_adding = True
+                                configuration_corrected = True
+
+                            if config.has_option(section, 'rpc_encryption_pubkey'):
+                                pubkey = config.get(section, 'rpc_encryption_pubkey', fallback='')
+                                if pubkey:
+                                    try:
+                                        cfg.set_rpc_encryption_pubkey(pubkey)
+                                    except Exception as e:
+                                        logging.warning('Error while setting RPC encryption key: ' + str(e))
+                            else:
+                                # not existent rpc_encryption_pubkey parameter in the configuration file could mean
+                                # we are opwnninf the old configuration file or the parameter was deleted by the old
+                                # dmt version; if the connection belongs to the default connections, restore
+                                # the RPC encryption key
+                                for c in self.default_rpc_connections:
+                                    if c.get_conn_id() == cfg.get_conn_id():
+                                        matching_default_conn = c
+                                        break
+                                else:
+                                    matching_default_conn = None
+
+                                if matching_default_conn:
+                                    cfg.set_rpc_encryption_pubkey(
+                                        matching_default_conn.get_rpc_encryption_pubkey_str('DER'))
+                                    if cfg.is_rpc_encryption_configured():
+                                        configuration_corrected = True
+
                             if not skip_adding:
                                 self.dash_net_configs.append(cfg)
 
@@ -788,16 +815,16 @@ class AppConfig(QObject):
             # else: file will be created while saving
 
         try:
-            cfgs = self.decode_connections(default_config.dashd_default_connections)
-            if cfgs:
+            if self.default_rpc_connections:
                 # force import default connecticons if there is no any in the configuration
                 force_import = (self.app_last_version == '0.9.15')
 
-                added, updated = self.import_connections(cfgs, force_import=force_import, limit_to_network=None)
+                added, updated = self.import_connections(self.default_rpc_connections, force_import=force_import,
+                                                         limit_to_network=None)
                 if added or updated:
                     configuration_corrected = True
 
-                for c in cfgs:
+                for c in self.default_rpc_connections:
                     if c.mainnet:
                         self.public_conns_mainnet[c.get_conn_id()] = c
                     else:
@@ -917,6 +944,7 @@ class AppConfig(QObject):
                 config.set(section, 'ssh_username', cfg.ssh_conn_cfg.username)
                 # SSH password is not saved until HW encrypting feature will be finished
             config.set(section, 'testnet', '1' if cfg.testnet else '0')
+            config.set(section, 'rpc_encryption_pubkey', cfg.get_rpc_encryption_pubkey_str('DER'))
 
         # ret_info = {}
         # read_file_encrypted(file_name, ret_info, hw_session)
@@ -1113,7 +1141,7 @@ class AppConfig(QObject):
         """
         self.defective_net_configs.append(cfg)
 
-    def decode_connections(self, raw_conn_list):
+    def decode_connections(self, raw_conn_list) -> List['DashNetworkConnectionCfg']:
         """
         Decodes list of dicts describing connection to a list of DashNetworkConnectionCfg objects.
         :param raw_conn_list: 
@@ -1131,6 +1159,7 @@ class AppConfig(QObject):
                     cfg.username = conn_raw['username']
                     cfg.set_encrypted_password(conn_raw['password'], config_version=CURRENT_CFG_FILE_VERSION)
                     cfg.use_ssl = conn_raw['use_ssl']
+                    cfg.set_rpc_encryption_pubkey(conn_raw.get('rpc_encryption_pubkey'))
                     if cfg.use_ssh_tunnel:
                         if 'ssh_host' in conn_raw:
                             cfg.ssh_conn_cfg.host = conn_raw['ssh_host']
@@ -1139,6 +1168,7 @@ class AppConfig(QObject):
                         if 'ssh_user' in conn_raw:
                             cfg.ssh_conn_cfg.port = conn_raw['ssh_user']
                     cfg.testnet = conn_raw.get('testnet', False)
+                    cfg.set_rpc_encryption_pubkey(conn_raw.get('rpc_encryption_pubkey'))
                     connn_list.append(cfg)
             except Exception as e:
                 logging.exception('Exception while decoding connections.')
@@ -1156,9 +1186,10 @@ class AppConfig(QObject):
                 'username': str,
                 'password': str,
                 'use_ssl': bool,
+                'rpc_encryption_pubkey': str,
                 'ssh_host': str, non-mandatory
                 'ssh_port': str, non-mandatory
-                'ssh_user': str non-mandatory
+                'ssh_user': str, non-mandatory
             },
         ]
         :return: list of DashNetworkConnectionCfg objects or None if there was an error while importing
@@ -1185,7 +1216,8 @@ class AppConfig(QObject):
                 'port': conn.port,
                 'username': conn.username,
                 'password': conn.get_password_encrypted(),
-                'use_ssl': conn.use_ssl
+                'use_ssl': conn.use_ssl,
+                'rpc_encryption_pubkey': conn.get_rpc_encryption_pubkey_str('DER')
             }
             if conn.use_ssh_tunnel:
                 ec['ssh_host'] = conn.ssh_conn_cfg.host
@@ -1357,12 +1389,6 @@ class AppConfig(QObject):
 
     def get_app_img_dir(self):
         return os.path.join(self.app_dir, '', 'img')
-
-    def is_connection_public(self, conn: 'DashNetworkConnectionCfg'):
-        conns = self.public_conns_mainnet if self.is_mainnet() else self.public_conns_testnet
-        if conn.get_conn_id() in conns:
-            return True
-        return False
 
 
 class MasternodeConfig:
@@ -1748,6 +1774,8 @@ class DashNetworkConnectionCfg(object):
         self.__use_ssh_tunnel = False
         self.__ssh_conn_cfg = SSHConnectionCfg()
         self.__testnet = False
+        self.__rpc_encryption_pubkey_der = ''
+        self.__rpc_encryption_pubkey_object = None
 
     def get_description(self):
         if self.__use_ssh_tunnel:
@@ -1779,12 +1807,18 @@ class DashNetworkConnectionCfg(object):
         :return: True, if objects have identical attributes.
         """
         return self.host == cfg2.host and self.port == cfg2.port and self.username == cfg2.username and \
-               self.password == cfg2.password and self.use_ssl == cfg2.use_ssl and \
-               self.use_ssh_tunnel == cfg2.use_ssh_tunnel and \
-               (not self.use_ssh_tunnel or (self.ssh_conn_cfg.host == cfg2.ssh_conn_cfg.host and
-                                            self.ssh_conn_cfg.port == cfg2.ssh_conn_cfg.port and
-                                            self.ssh_conn_cfg.username == cfg2.ssh_conn_cfg.username)) and \
-               self.testnet == cfg2.testnet
+            self.password == cfg2.password and self.use_ssl == cfg2.use_ssl and \
+            self.use_ssh_tunnel == cfg2.use_ssh_tunnel and \
+            (not self.use_ssh_tunnel or (self.ssh_conn_cfg.host == cfg2.ssh_conn_cfg.host and
+                                         self.ssh_conn_cfg.port == cfg2.ssh_conn_cfg.port and
+                                         self.ssh_conn_cfg.username == cfg2.ssh_conn_cfg.username)) and \
+            self.testnet == cfg2.testnet and \
+            self.__rpc_encryption_pubkey_der == cfg2.__rpc_encryption_pubkey_der
+
+    def __deepcopy__(self, memodict):
+        newself = DashNetworkConnectionCfg(self.method)
+        newself.copy_from(self)
+        return newself
 
     def copy_from(self, cfg2):
         """
@@ -1797,11 +1831,15 @@ class DashNetworkConnectionCfg(object):
         self.password = cfg2.password
         self.use_ssh_tunnel = cfg2.use_ssh_tunnel
         self.use_ssl = cfg2.use_ssl
-        self.testnet = self.testnet
+        self.testnet = cfg2.testnet
+        self.enabled = cfg2.enabled
         if self.use_ssh_tunnel:
             self.ssh_conn_cfg.host = cfg2.ssh_conn_cfg.host
             self.ssh_conn_cfg.port = cfg2.ssh_conn_cfg.port
             self.ssh_conn_cfg.username = cfg2.ssh_conn_cfg.username
+        if self.__rpc_encryption_pubkey_object and self.__rpc_encryption_pubkey_der != cfg2.__rpc_encryption_pubkey_der:
+            self.__rpc_encryption_pubkey_object = None
+        self.__rpc_encryption_pubkey_der = cfg2.__rpc_encryption_pubkey_der
 
     def is_http_proxy(self):
         """
@@ -1932,3 +1970,59 @@ class DashNetworkConnectionCfg(object):
         if not isinstance(testnet, bool):
             raise Exception('Ivalid type of "testnet" argument')
         self.__testnet = testnet
+
+    def set_rpc_encryption_pubkey(self, key: str):
+        """
+        AES public key for additional RPC encryption, dedicated for calls transmitting sensitive information
+        like protx. Accepted formats: PEM, DER.
+        """
+        try:
+            if key:
+                # validate public key by deserializing it
+                if re.fullmatch(r'^([0-9a-fA-F]{2})+$', key):
+                    serialization.load_der_public_key(bytes.fromhex(key), backend=default_backend())
+                else:
+                    pubkey = serialization.load_pem_public_key(key.encode('ascii'), backend=default_backend())
+                    raw = pubkey.public_bytes(serialization.Encoding.DER,
+                                              format=serialization.PublicFormat.SubjectPublicKeyInfo)
+                    key = raw.hex()
+
+            if self.__rpc_encryption_pubkey_object and (self.__rpc_encryption_pubkey_der != key or not key):
+                self.__rpc_encryption_pubkey_der = None
+
+            self.__rpc_encryption_pubkey_der = key
+        except Exception as e:
+            logging.exception('Exception occurred')
+            raise
+
+    def get_rpc_encryption_pubkey_str(self, format: str):
+        """
+        :param format: PEM | DER
+        """
+        if self.__rpc_encryption_pubkey_der:
+            if format == 'DER':
+                return self.__rpc_encryption_pubkey_der
+            elif format == 'PEM':
+                pubkey = self.get_rpc_encryption_pubkey_object()
+                pem = pubkey.public_bytes(encoding=serialization.Encoding.PEM,
+                                          format=serialization.PublicFormat.SubjectPublicKeyInfo)
+                return pem.decode('ascii')
+            else:
+                raise Exception('Invalid key format')
+        else:
+            return ''
+
+    def get_rpc_encryption_pubkey_object(self):
+        if self.__rpc_encryption_pubkey_der:
+            if not self.__rpc_encryption_pubkey_object:
+                self.__rpc_encryption_pubkey_object = serialization.load_der_public_key(
+                    bytes.fromhex(self.__rpc_encryption_pubkey_der), backend=default_backend())
+            return self.__rpc_encryption_pubkey_object
+        else:
+            return None
+
+    def is_rpc_encryption_configured(self):
+        if self.__rpc_encryption_pubkey_der:
+            return True
+        else:
+            return False

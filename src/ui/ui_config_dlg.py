@@ -228,7 +228,7 @@ class Ui_ConfigDlg(object):
         self.verticalLayout.addWidget(self.buttonBox)
 
         self.retranslateUi(ConfigDlg)
-        self.tabWidget.setCurrentIndex(1)
+        self.tabWidget.setCurrentIndex(0)
         self.buttonBox.accepted.connect(ConfigDlg.accept)
         self.buttonBox.rejected.connect(ConfigDlg.reject)
         QtCore.QMetaObject.connectSlotsByName(ConfigDlg)

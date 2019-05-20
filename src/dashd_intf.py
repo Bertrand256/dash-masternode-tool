@@ -3,13 +3,12 @@
 # Author: Bertrand256
 # Created on: 2017-03
 import decimal
+import functools
 import json
 
-import bitcoin
 import os
 import re
 import socket
-import sqlite3
 import ssl
 import threading
 import time
@@ -17,20 +16,20 @@ import datetime
 import logging
 from PyQt5.QtCore import QThread
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException, EncodeDecimal
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
 from paramiko import AuthenticationException, PasswordRequiredException, SSHException
 from paramiko.ssh_exception import NoValidConnectionsError
 from typing import List, Dict, Union, Callable, Optional
 import app_cache
-import app_defs
-import app_utils
 from app_config import AppConfig
 from random import randint
 from wnd_utils import WndUtils
 import socketserver
 import select
-from PyQt5.QtWidgets import QMessageBox
 from psw_cache import SshPassCache
 from common import AttrsProtected, CancelException
+
 
 log = logging.getLogger('dmt.dashd_intf')
 
@@ -45,7 +44,6 @@ except ImportError:
 # features
 MASTERNODES_CACHE_VALID_SECONDS = 60 * 60  # 60 minutes
 PROTX_CACHE_VALID_SECONDS = 3 * 60 * 60  # 60 minutes
-TX_SEND_SIMULATION_MODE = False
 
 
 class ForwardServer (socketserver.ThreadingTCPServer):
@@ -365,87 +363,113 @@ class DashdIndexException(JSONRPCException):
                        'Changing these parameters requires to execute dashd with "-reindex" option (linux: ./dashd -reindex)'
 
 
-def control_rpc_call(func):
+def control_rpc_call(_func=None, *, encrypt=False):
     """
-    Decorator function for catching HTTPConnection timeout and then resetting the connection.
-    :param func: DashdInterface's method decorated
+    Decorator dedicated to functions related to RPC calls, taking care of switching an active connection if the
+    current one becomes faulty. It also performs argument encryption for configured RPC calls.
     """
-    def catch_timeout_wrapper(*args, **kwargs):
-        ret = None
-        last_exception = None
-        self = args[0]
-        self.mark_call_begin()
-        try:
-            log.debug('Trying to acquire http_lock')
-            self.http_lock.acquire()
-            log.debug('Acquired http_lock')
-            last_conn_reset_time = None
-            for try_nr in range(1, 5):
-                try:
+
+    def control_rpc_call_inner(func):
+
+        @functools.wraps(func)
+        def catch_timeout_wrapper(*args, **kwargs):
+            ret = None
+            last_exception = None
+            self = args[0]
+            self.mark_call_begin()
+            try:
+                self.http_lock.acquire()
+                last_conn_reset_time = None
+                for try_nr in range(1, 5):
                     try:
-                        log.debug('Beginning call of "' + str(func) + '"')
-                        begin_time = time.time()
-                        ret = func(*args, **kwargs)
-                        log.debug('Finished call of "' + str(func) + '". Call time: ' +
-                                      str(time.time() - begin_time) + 's.')
-                        last_exception = None
-                        self.mark_cur_conn_cfg_is_ok()
-                        break
+                        try:
+                            if encrypt:
+                                if self.cur_conn_def:
+                                    pubkey = self.cur_conn_def.get_rpc_encryption_pubkey_object()
+                                else:
+                                    pubkey = None
 
-                    except (ConnectionResetError, ConnectionAbortedError, httplib.CannotSendRequest,
-                            BrokenPipeError) as e:
-                        # this exceptions occur usually when the established connection gets disconnected after
-                        # some time of inactivity; try to reconnect within the same connection configuration
-                        log.warning('Error while calling of "' + str(func) + ' (1)". Details: ' + str(e))
-                        if last_conn_reset_time:
-                            raise DashdConnectionError(e)  # switch to another config if possible
-                        else:
-                            last_exception = e
-                            last_conn_reset_time = time.time()
-                            self.reset_connection()  # retry with the same connection
+                                if pubkey:
+                                    args_str = json.dumps(args[1:])
+                                    max_chunk_size = int(pubkey.key_size / 8) - 75
 
-                    except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout,
-                            NoValidConnectionsError) as e:
-                        # exceptions raised most likely by not functioning dashd node; try to switch to another node
-                        # if there is any in the config
-                        log.warning('Error while calling of "' + str(func) + ' (3)". Details: ' + str(e))
-                        raise DashdConnectionError(e)
+                                    encrypted_parts = []
+                                    while args_str:
+                                        data_chunk = args_str[:max_chunk_size]
+                                        args_str = args_str[max_chunk_size:]
+                                        ciphertext = pubkey.encrypt(data_chunk.encode('ascii'),
+                                                                    padding.OAEP(
+                                                                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                                                                        algorithm=hashes.SHA256(),
+                                                                        label=None))
+                                        encrypted_parts.append(ciphertext.hex())
+                                    args = (args[0], 'DMTENCRYPTEDV1') + tuple(encrypted_parts)
+                                    log.info(
+                                        'Arguments of the "%s" call have been encrypted with the RSA public key of '
+                                        'the RPC node.', func.__name__)
 
-                    except JSONRPCException as e:
-                        log.error('Error while calling of "' + str(func) + ' (2)". Details: ' + str(e))
-                        err_message = e.error.get('message','').lower()
-                        if e.code == -5 and e.message == 'No information available for address':
-                            raise DashdIndexException(e)
-                        elif err_message.find('403 forbidden') >= 0 or err_message.find('401 unauthorized') >= 0 or \
-                             err_message.find('502 bad gateway') >= 0 or err_message.find('unknown error') >= 0:
-                            self.http_conn.close()
+                            ret = func(*args, **kwargs)
+
+                            last_exception = None
+                            self.mark_cur_conn_cfg_is_ok()
+                            break
+
+                        except (ConnectionResetError, ConnectionAbortedError, httplib.CannotSendRequest,
+                                BrokenPipeError) as e:
+                            # this exceptions occur usually when the established connection gets disconnected after
+                            # some time of inactivity; try to reconnect within the same connection configuration
+                            log.warning('Error while calling of "' + str(func) + ' (1)". Details: ' + str(e))
+                            if last_conn_reset_time:
+                                raise DashdConnectionError(e)  # switch to another config if possible
+                            else:
+                                last_exception = e
+                                last_conn_reset_time = time.time()
+                                self.reset_connection()  # retry with the same connection
+
+                        except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout,
+                                NoValidConnectionsError) as e:
+                            # exceptions raised most likely by not functioning dashd node; try to switch to another node
+                            # if there is any in the config
+                            log.warning('Error while calling of "' + str(func) + ' (3)". Details: ' + str(e))
                             raise DashdConnectionError(e)
-                        # elif e.code in (-32603,):
-                        #     # for these error codes don't retry the request with another rpc connetion
-                        #     #  -32603: failure to verify vote
-                        #     raise
+
+                        except JSONRPCException as e:
+                            log.error('Error while calling of "' + str(func) + ' (2)". Details: ' + str(e))
+                            err_message = e.error.get('message','').lower()
+                            if e.code == -5 and e.message == 'No information available for address':
+                                raise DashdIndexException(e)
+                            elif err_message.find('403 forbidden') >= 0 or err_message.find('401 unauthorized') >= 0 or \
+                                 err_message.find('502 bad gateway') >= 0 or err_message.find('unknown error') >= 0:
+                                self.http_conn.close()
+                                raise DashdConnectionError(e)
+                            else:
+                                raise
+
+                    except DashdConnectionError as e:
+                        # try another net config if possible
+                        log.error('Error while calling of "' + str(func) + '" (4). Details: ' + str(e))
+
+                        if not self.switch_to_next_config():
+                            self.last_error_message = str(e.org_exception)
+                            raise e.org_exception  # couldn't use another conn config, raise last exception
                         else:
-                            raise
+                            try_nr -= 1  # another config retries do not count
+                            last_exception = e.org_exception
+                    except Exception:
+                        raise
+            finally:
+                self.http_lock.release()
+                log.debug('Released http_lock')
 
-                except DashdConnectionError as e:
-                    # try another net config if possible
-                    log.error('Error while calling of "' + str(func) + '" (4). Details: ' + str(e))
-                    if not self.switch_to_next_config():
-                        self.last_error_message = str(e.org_exception)
-                        raise e.org_exception  # couldn't use another conn config, raise last exception
-                    else:
-                        try_nr -= 1  # another config retries do not count
-                        last_exception = e.org_exception
-                except Exception:
-                    raise
-        finally:
-            self.http_lock.release()
-            log.debug('Released http_lock')
+            if last_exception:
+                raise last_exception
+            return ret
+        return catch_timeout_wrapper
 
-        if last_exception:
-            raise last_exception
-        return ret
-    return catch_timeout_wrapper
+    if _func is None:
+        return control_rpc_call_inner
+    else:
+        return control_rpc_call_inner(_func)
 
 
 class Masternode(AttrsProtected):
@@ -527,7 +551,7 @@ class DashdInterface(WndUtils):
         self.db_intf = None
         self.connections = []
         self.cur_conn_index = 0
-        self.cur_conn_def = None
+        self.cur_conn_def: Optional['DashNetworkConnectionCfg'] = None
         self.conf_switch_locked = False
 
         # below is the connection with which particular RPC call has started; if connection is switched because of
@@ -550,11 +574,6 @@ class DashdInterface(WndUtils):
         self.on_connection_successful_callback = on_connection_successful_callback
         self.on_connection_disconnected_callback = on_connection_disconnected_callback
         self.last_error_message = None
-
-        # test transaction entries to be returned by the calls of the self.getaddressdeltas method
-        self.test_txs_endpoints_by_address: Dict[str, List[Dict]] = {}
-        self.test_txs_by_txid: Dict[str, Dict] = {}
-
         self.http_lock = threading.RLock()
 
     def initialize(self, config: AppConfig, connection=None, for_testing_connections_only=False):
@@ -578,11 +597,6 @@ class DashdInterface(WndUtils):
 
         if not for_testing_connections_only:
             self.load_data_from_db_cache()
-
-    def is_current_connection_public(self):
-        if self.cur_conn_def and self.config:
-            return self.config.is_connection_public(self.cur_conn_def)
-        return False
 
     def load_data_from_db_cache(self):
         self.masternodes.clear()
@@ -1136,11 +1150,6 @@ class DashdInterface(WndUtils):
             return False
 
         if self.open():
-            if TX_SEND_SIMULATION_MODE:
-                tx = self.test_txs_by_txid.get(txid)
-                if tx:
-                    return tx
-
             tx_json = json_cache_wrapper(self.proxy.getrawtransaction, self, 'tx-' + str(verbose) + '-' + txid,
                                          skip_cache=skip_cache, accept_cache_data_fun=check_if_tx_confirmed)\
                 (txid, verbose)
@@ -1179,58 +1188,10 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
-    def simulate_send_transaction(self, tx):
-        def get_test_tx_entry(address: str) -> List[Dict]:
-            txe = self.test_txs_endpoints_by_address.get(address)
-            if not txe:
-                txe = []
-                self.test_txs_endpoints_by_address[address] = txe
-            return txe
-
-        dts = self.decoderawtransaction(tx)
-        if dts:
-            txid = dts.get('txid')
-            block_height = self.getblockcount()
-
-            for idx, vin in enumerate(dts['vin']):
-                _tx = self.getrawtransaction(vin['txid'], 1)
-                if _tx:
-                    o = _tx['vout'][vin['vout']]
-                    for a in o['scriptPubKey']['addresses']:
-                        tx_in = {
-                            'txid': txid,
-                            'index': idx,
-                            'height': block_height,
-                            'satoshis': -o['valueSat'],
-                            'address': a
-                        }
-                        get_test_tx_entry(a).append(tx_in)
-
-            for idx, vin in enumerate(dts['vout']):
-                for a in vin['scriptPubKey']['addresses']:
-                    tx_out = {
-                        'txid': txid,
-                        'index': idx,
-                        'height': block_height,
-                        'satoshis': vin['valueSat'],
-                        'address': a
-                    }
-                    get_test_tx_entry(a).append(tx_out)
-
-            _tx = dict(dts)
-            _tx['hex'] = tx
-            _tx['height'] = block_height
-            self.test_txs_by_txid[txid] = _tx
-
-            return dts['txid']
-
     @control_rpc_call
     def sendrawtransaction(self, tx, use_instant_send):
         if self.open():
-            if TX_SEND_SIMULATION_MODE:
-                return self.simulate_send_transaction(tx)
-            else:
-                return self.proxy.sendrawtransaction(tx, False, use_instant_send)
+            return self.proxy.sendrawtransaction(tx, False, use_instant_send)
         else:
             raise Exception('Not connected')
 
@@ -1280,15 +1241,7 @@ class DashdInterface(WndUtils):
     @control_rpc_call
     def getaddressdeltas(self, *args):
         if self.open():
-            deltas_list = self.proxy.getaddressdeltas(*args)
-            if TX_SEND_SIMULATION_MODE and len(args) > 0 and isinstance(args[0], dict):
-                addrs = args[0].get('addresses')
-                if addrs:
-                    for a in addrs:
-                        tep = self.test_txs_endpoints_by_address.get(a)
-                        if tep:
-                            deltas_list.extend(tep)
-            return deltas_list
+            return self.proxy.getaddressdeltas(*args)
         else:
             raise Exception('Not connected')
 
@@ -1299,7 +1252,7 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
-    @control_rpc_call
+    @control_rpc_call(encrypt=True)
     def protx(self, *args):
         if self.open():
             return self.proxy.protx(*args)
@@ -1321,27 +1274,17 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
-    def get_spork_value(self, spork: Union[int, str]):
-        if isinstance(spork, int):
-            name = 'SPORK_' + str(spork)
-        else:
-            name = spork
-        sporks = self.spork('show')
-        for spk in sporks:
-            if spk.find(name) >= 0:
-                return sporks[spk]
-        return None
+    def rpc_call_enc(self, encrypt, command, *args):
+        def call_command(self, *args):
+            c = self.proxy.__getattr__(command)
+            return c(*args)
 
-    def get_spork_active(self, spork: Union[int, str]):
-        if isinstance(spork, int):
-            name = 'SPORK_' + str(spork)
+        if self.open():
+            fun = control_rpc_call(call_command, encrypt=encrypt)
+            c = fun(self, *args)
+            return c
         else:
-            name = spork
-        sporks = self.spork('active')
-        for spk in sporks:
-            if spk.find(name) >= 0:
-                return sporks[spk]
-        return None
+            raise Exception('Not connected')
 
     @control_rpc_call
     def listaddressbalances(self, minfee):
@@ -1356,4 +1299,12 @@ class DashdInterface(WndUtils):
             return self.proxy.getblockchaininfo()
         else:
             raise Exception('Not connected')
+
+    @control_rpc_call
+    def checkfeaturesupport(self, feature_name: str, dmt_version: str, *args) -> Dict:
+        if self.open():
+            return self.proxy.checkfeaturesupport(feature_name, dmt_version)
+        else:
+            raise Exception('Not connected')
+
 

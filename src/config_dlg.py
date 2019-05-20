@@ -3,17 +3,22 @@
 # Author: Bertrand256
 # Created on: 2017-05
 import copy
+import hashlib
 import sys
 import logging
 from typing import Optional
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt, pyqtSlot, QPoint
+from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QInputDialog, QDialog, QLayout, QListWidgetItem, QPushButton, QCheckBox, QWidget, \
-    QHBoxLayout, QMessageBox, QLineEdit, QMenu, QApplication, QDialogButtonBox, QAbstractButton
+    QHBoxLayout, QMessageBox, QLineEdit, QMenu, QApplication, QDialogButtonBox, QAbstractButton, QPlainTextEdit, QLabel, \
+    QAction
+from cryptography.hazmat.primitives import serialization
+
 import app_config
 import app_cache
 from app_config import AppConfig, DashNetworkConnectionCfg
-from dashd_intf import DashdInterface
+from dashd_intf import DashdInterface, control_rpc_call
 from psw_cache import SshPassCache
 from ui.ui_config_dlg import Ui_ConfigDlg
 from ui.ui_conn_rpc_wdg import Ui_RpcConnection
@@ -99,15 +104,26 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.rpc_cfg_widget = RpcConnectionWidget(self.detailsFrame)
         layout_details.addWidget(self.rpc_cfg_widget)
 
+        # layout for controls related to setting up an additional encryption
+        hl = QHBoxLayout()
+        self.btnEncryptionPublicKey = QPushButton("RPC encryption public key")
+        self.btnEncryptionPublicKey.clicked.connect(self.on_btnEncryptionPublicKey_clicked)
+        hl.addWidget(self.btnEncryptionPublicKey)
+        self.lblEncryptionPublicKey = QLabel(self)
+        self.lblEncryptionPublicKey.setText('')
+        hl.addWidget(self.lblEncryptionPublicKey)
+        hl.addStretch()
+        layout_details.addLayout(hl)
+
         # layout for the 'test connection' button:
         hl = QHBoxLayout()
         self.btnTestConnection = QPushButton("\u2705 Test connection")
         self.btnTestConnection.clicked.connect(self.on_btnTestConnection_clicked)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.btnTestConnection.sizePolicy().hasHeightForWidth())
-        self.btnTestConnection.setSizePolicy(sizePolicy)
+        sp = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)
+        sp.setHorizontalStretch(0)
+        sp.setVerticalStretch(0)
+        sp.setHeightForWidth(self.btnTestConnection.sizePolicy().hasHeightForWidth())
+        self.btnTestConnection.setSizePolicy(sp)
         hl.addWidget(self.btnTestConnection)
         hl.addStretch()
         layout_details.addLayout(hl)
@@ -124,31 +140,40 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
 
         self.lstConns.setContextMenuPolicy(Qt.CustomContextMenu)
         self.popMenu = QMenu(self)
-        # add new connection action
-        self.action_new_connection = self.popMenu.addAction("\u2795 Add new connection")
+
+        self.action_new_connection = self.popMenu.addAction("Add new connection")
         self.action_new_connection.triggered.connect(self.on_action_new_connection_triggered)
+        self.setIcon(self.action_new_connection, 'add@16px.png')
         self.btnNewConn.setDefaultAction(self.action_new_connection)
 
-        # delete connection(s) action
-        self.action_delete_connections = self.popMenu.addAction("\u2796 Delete selected connection(s)")
+        self.action_delete_connections = self.popMenu.addAction("Delete selected connection(s)")
         self.action_delete_connections.triggered.connect(self.on_action_delete_connections_triggered)
+        self.setIcon(self.action_delete_connections, 'remove@16px.png')
         self.btnDeleteConn.setDefaultAction(self.action_delete_connections)
 
-        # copy connection(s) to clipboard
-        self.action_copy_connections = self.popMenu.addAction("\u274f Copy connection(s) to clipboard")
-        self.action_copy_connections.triggered.connect(self.on_action_copy_connections_triggered)
+        self.action_copy_connections = self.popMenu.addAction("Copy connection(s) to clipboard",
+                                                              self.on_action_copy_connections_triggered,
+                                                              QKeySequence("Ctrl+C"))
+        self.setIcon(self.action_copy_connections, 'content-copy@16px.png')
+        self.addAction(self.action_copy_connections)
 
-        # paste connection(s) from clipboard
-        self.action_paste_connections = self.popMenu.addAction("\u23ce Paste connection(s) from clipboard")
-        self.action_paste_connections.triggered.connect(self.on_action_paste_connections_triggered)
+        self.action_paste_connections = self.popMenu.addAction("Paste connection(s) from clipboard",
+                                                               self.on_action_paste_connections_triggered,
+                                                               QKeySequence("Ctrl+V"))
+        self.setIcon(self.action_paste_connections, 'content-paste@16px.png')
+        self.addAction(self.action_paste_connections)
 
-        # set icons on the connection toolbar buttons
-        self.btnNewConn.setText("\u2795")
-        self.btnDeleteConn.setText("\u2796")
-        self.btnMoveDownConn.setText("\u2B07")
-        self.btnMoveUpConn.setText("\u2B06")
-        self.btnRestoreDefault.setText('\u2606')
-        self.rpc_cfg_widget.btnShowPassword.setText("\u29BF")
+        self.btnNewConn.setText("")
+        self.btnDeleteConn.setText("")
+        self.btnMoveDownConn.setText("")
+        self.btnMoveUpConn.setText("")
+        self.btnRestoreDefault.setText("")
+        self.setIcon(self.btnMoveDownConn, "arrow-downward@16px.png")
+        self.setIcon(self.btnMoveUpConn, "arrow-downward@16px.png", rotate=180)
+        self.setIcon(self.btnRestoreDefault, "star@16px.png")
+        self.setIcon(self.rpc_cfg_widget.btnShowPassword, "eye@16px.png")
+
+        self.rpc_cfg_widget.btnShowPassword.setText("")
         self.rpc_cfg_widget.btnShowPassword.pressed.connect(
             lambda: self.rpc_cfg_widget.edtRpcPassword.setEchoMode(QLineEdit.Normal))
         self.rpc_cfg_widget.btnShowPassword.released.connect(
@@ -209,6 +234,9 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
 
     def closeEvent(self, event):
         self.on_close()
+
+    def showEvent(self, QShowEvent):
+        self.rpc_cfg_widget.btnShowPassword.setFixedHeight(self.rpc_cfg_widget.edtRpcPassword.height())
 
     def done(self, result_code):
         self.on_close()
@@ -272,7 +300,6 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.action_paste_connections.setEnabled(False)
         self.popMenu.exec_(self.lstConns.mapToGlobal(point))
 
-    @pyqtSlot(bool)
     def on_action_copy_connections_triggered(self):
         """Action 'copy connections' executed from the context menu associated with the connection list."""
         ids = self.lstConns.selectedIndexes()
@@ -285,7 +312,6 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                 clipboard = QApplication.clipboard()
                 clipboard.setText(text)
 
-    @pyqtSlot(bool)
     def on_action_paste_connections_triggered(self):
         """Action 'paste connections' from the clipboard JSON text containing a list of connection definitions."""
 
@@ -321,8 +347,8 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         except Exception as e:
             self.errorMsg(str(e))
 
-    @pyqtSlot()
-    def on_btnRestoreDefault_clicked(self):
+    @pyqtSlot(bool)
+    def on_btnRestoreDefault_clicked(self, enabled):
         if self.queryDlg('Do you really want to restore default connection(s)?',
                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
                          default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
@@ -580,6 +606,20 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                 self.rpc_cfg_widget.edtRpcUsername.setText(self.current_network_cfg.username)
                 self.rpc_cfg_widget.edtRpcPassword.setText(self.current_network_cfg.password)
                 self.rpc_cfg_widget.chbRpcSSL.setChecked(self.current_network_cfg.use_ssl)
+
+                self.btnEncryptionPublicKey.setVisible(True)
+                self.lblEncryptionPublicKey.setVisible(True)
+                pubkey_der = self.current_network_cfg.get_rpc_encryption_pubkey_str('DER')
+                if pubkey_der:
+                    try:
+                        pub_bytes = bytearray.fromhex(pubkey_der)
+                        hash = hashlib.sha256(pub_bytes).hexdigest()
+                        self.lblEncryptionPublicKey.setText(f'[pubkey hash: {hash[0:8]}]')
+                    except Exception as e:
+                        self.lblEncryptionPublicKey.setText(f'[pubkey not set]')
+                else:
+                    self.lblEncryptionPublicKey.setText(f'[pubkey not set]')
+
                 self.rpc_cfg_widget.setVisible(True)
             else:
                 self.chbConnEnabled.setVisible(False)
@@ -588,6 +628,8 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                 self.ssh_tunnel_widget.setVisible(False)
                 self.btnSshReadRpcConfig.setVisible(False)
                 self.rpc_cfg_widget.setVisible(False)
+                self.btnEncryptionPublicKey.setVisible(False)
+                self.lblEncryptionPublicKey.setVisible(False)
             self.chbRandomConn.setChecked(self.local_config.random_dash_net_config)
         finally:
             self.disable_cfg_update = dis_old
@@ -755,10 +797,12 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             try:
                 info = dashd_intf.getinfo(verify_node=True)
                 if info:
-                    if info.get('protocolversion'):
-                        self.infoMsg('Connection successful')
+                    ret = dashd_intf.rpc_call_enc(True, "checkfeaturesupport", "enhanced_proxy")
+                    if ret and type(ret) is dict:
+                        self.infoMsg('Connection successful.\n\n'
+                                     'Additional info: this node supports message encryption.')
                     else:
-                        self.errorMsg('Connection error. Details: no \'protocolversion\' attibute in the reponse.')
+                        self.infoMsg('Connection successful.')
                 else:
                     self.errorMsg('Connection error. Details: empty return message.')
             except Exception as e:
@@ -788,3 +832,23 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.config.set_log_level(self.local_config.log_level_str)
             self.config.modified = True
 
+    def on_btnEncryptionPublicKey_clicked(self):
+        updated = False
+        key_str = self.current_network_cfg.get_rpc_encryption_pubkey_str('PEM')
+        while True:
+            key_str, ok = QInputDialog.getMultiLineText(self, "RPC encryption public key",
+                                                        "RSA public key (PEM/DER):",
+                                                        key_str)
+            if ok:
+                try:
+                    self.current_network_cfg.set_rpc_encryption_pubkey(key_str)
+                    updated = True
+                    break
+                except Exception as e:
+                    self.errorMsg(str(e))
+            else:
+                break
+
+        if updated:
+            self.set_modified()
+            self.update_connection_details_ui()

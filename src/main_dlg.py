@@ -1352,7 +1352,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if protx:
                     protx_state = protx.get('state')
             except Exception as e:
-                pass
+                logging.exception('Cannot read protx info')
 
             if not protx:
                 try:
@@ -1429,6 +1429,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 dmn_tx_state = dmn_tx.get('state')
             else:
                 dmn_tx_state = {}
+                dmn_tx = {}
 
             next_payment_block = None
             next_payout_ts = None
@@ -1579,7 +1580,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if masternode == self.cur_masternode:
                     # get balance
                     collateral_address = masternode.collateralAddress.strip()
-                    payout_address = dmn_tx_state.get('payoutAddress')
+                    payout_address = dmn_tx_state.get('payoutAddress','')
                     payment_url = self.config.get_block_explorer_addr().replace('%ADDRESS%', payout_address)
                     payout_link = '<a href="%s">%s</a>' % (payment_url, payout_address)
                     payout_entry = f'<tr><td class="title">Payout address:</td><td class="value" colspan="2">' \
@@ -1600,7 +1601,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 balance_entry = f'<tr><td class="title">Collateral addr. balance:</td><td class="value">' \
                                             f'{app_utils.to_string(collateral_bal)}</td><td></td></tr>'
 
-                        if collateral_address != payout_address:
+                        if collateral_address != payout_address and payout_address:
                             payout_bal = self.dashd_intf.getaddressbalance([payout_address])
                             payout_bal = round(payout_bal.get('balance') / 1e8, 5)
                             balance_entry += f'<tr><td class="title">Payout addr. balance:</td><td class="value" ' \
@@ -1670,6 +1671,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         errors.append('<td class="error" colspan="2">Operator public key mismatch</td>')
                     if voting_public_address_mismatch:
                         errors.append('<td class="error" colspan="2">Voting Dash address mismatch</td>')
+                    if not dmn_tx:
+                        warnings.append('<td class="warning" colspan="2">Couldn\'d read protx info for this masternode'
+                                        ' (look into the logfile for details)</td>')
 
                     errors_msg = ''
                     if errors:
