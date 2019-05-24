@@ -160,7 +160,7 @@ class Ui_UpdMnServiceDlg(object):
 
     def retranslateUi(self, UpdMnServiceDlg):
         _translate = QtCore.QCoreApplication.translate
-        UpdMnServiceDlg.setWindowTitle(_translate("UpdMnServiceDlg", "Update masternode registrar"))
+        UpdMnServiceDlg.setWindowTitle(_translate("UpdMnServiceDlg", "Update service"))
         self.label.setText(_translate("UpdMnServiceDlg", "The transaction type associated with this action (ProUpServTx) is used to update information relating to the operator (<a href=\"https://docs.dash.org/en/stable/masternodes/maintenance.html#proupservtx\">details</a>)."))
         self.lblOperatorPayout.setText(_translate("UpdMnServiceDlg", "<b>Operator Payout address</b> "))
         self.lblIP.setText(_translate("UpdMnServiceDlg", "IP"))
