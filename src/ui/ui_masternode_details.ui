@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>741</width>
-    <height>308</height>
+    <height>312</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -410,6 +410,16 @@
          <widget class="QLineEdit" name="edtDMNTxHash">
           <property name="clearButtonEnabled">
            <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnCopyProtxHash">
+          <property name="toolTip">
+           <string>Copy protx hash to clipboard</string>
+          </property>
+          <property name="text">
+           <string/>
           </property>
          </widget>
         </item>

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>UpdMnRegistrarDlg</class>
- <widget class="QDialog" name="UpdMnRegistrarDlg">
+ <class>UpdMnServiceDlg</class>
+ <widget class="QDialog" name="UpdMnServiceDlg">
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>671</width>
-    <height>348</height>
+    <width>600</width>
+    <height>311</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -30,9 +30,9 @@
     <number>0</number>
    </property>
    <item>
-    <widget class="QLabel" name="lblDescription">
+    <widget class="QLabel" name="label">
      <property name="text">
-      <string>The transaction type associated with this action (ProUpRegTx) is used to update information relating to the owner (&lt;a href=&quot;https://docs.dash.org/en/stable/masternodes/maintenance.html#proupregtx&quot;&gt;details&lt;/a&gt;).</string>
+      <string>The transaction type associated with this action (ProUpServTx) is used to update information relating to the operator (&lt;a href=&quot;https://docs.dash.org/en/stable/masternodes/maintenance.html#proupservtx&quot;&gt;details&lt;/a&gt;).</string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>
@@ -62,12 +62,12 @@
      </property>
      <widget class="QWidget" name="page0">
       <property name="sizePolicy">
-       <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+       <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
         <horstretch>0</horstretch>
         <verstretch>0</verstretch>
        </sizepolicy>
       </property>
-      <layout class="QGridLayout" name="gridLayout" rowstretch="0,0,0,0,0">
+      <layout class="QGridLayout" name="gridLayout" rowstretch="0,0,0,0">
        <property name="sizeConstraint">
         <enum>QLayout::SetMinimumSize</enum>
        </property>
@@ -86,37 +86,68 @@
        <property name="verticalSpacing">
         <number>8</number>
        </property>
+       <item row="2" column="0">
+        <widget class="QLabel" name="lblOperatorPayout">
+         <property name="text">
+          <string>&lt;b&gt;Operator Payout address&lt;/b&gt; </string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+         </property>
+        </widget>
+       </item>
        <item row="2" column="1">
-        <layout class="QHBoxLayout" name="layOperatorKey">
+        <layout class="QHBoxLayout" name="layOperatorPayout">
          <property name="spacing">
           <number>8</number>
          </property>
          <item>
-          <widget class="QLineEdit" name="edtOperatorKey">
+          <widget class="QLineEdit" name="edtOperatorPayoutAddress">
            <property name="placeholderText">
-            <string>&lt;unchanged&gt;</string>
+            <string/>
            </property>
            <property name="clearButtonEnabled">
             <bool>true</bool>
            </property>
           </widget>
          </item>
-         <item>
-          <widget class="QToolButton" name="btnGenerateOperatorKey">
-           <property name="text">
-            <string>Generate new</string>
-           </property>
-          </widget>
-         </item>
         </layout>
        </item>
-       <item row="3" column="0">
-        <widget class="QLabel" name="lblVotingKey">
+       <item row="1" column="0">
+        <widget class="QLabel" name="lblIP">
+         <property name="font">
+          <font>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
          <property name="text">
-          <string>&lt;b&gt;Voting private key&lt;/b&gt;</string>
+          <string>IP</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="1">
+        <widget class="QLabel" name="lblOperatorPayoutMsg">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+         <property name="openExternalLinks">
+          <bool>true</bool>
+         </property>
+         <property name="textInteractionFlags">
+          <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
          </property>
         </widget>
        </item>
@@ -126,52 +157,9 @@
           <number>8</number>
          </property>
          <item>
-          <widget class="QLineEdit" name="edtPayoutAddress">
+          <widget class="QLineEdit" name="edtIP">
            <property name="placeholderText">
-            <string>&lt;unchanged&gt;</string>
-           </property>
-           <property name="clearButtonEnabled">
-            <bool>true</bool>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item row="2" column="0">
-        <widget class="QLabel" name="lblOperatorKey">
-         <property name="text">
-          <string>&lt;b&gt;Operator private key&lt;/b&gt; </string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="0">
-        <widget class="QLabel" name="lblPayoutAddress">
-         <property name="font">
-          <font>
-           <weight>75</weight>
-           <bold>true</bold>
-          </font>
-         </property>
-         <property name="text">
-          <string>Payout address</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-         </property>
-        </widget>
-       </item>
-       <item row="3" column="1">
-        <layout class="QHBoxLayout" name="layVotingKey">
-         <property name="spacing">
-          <number>8</number>
-         </property>
-         <item>
-          <widget class="QLineEdit" name="edtVotingKey">
-           <property name="placeholderText">
-            <string>&lt;unchanged&gt;</string>
+            <string/>
            </property>
            <property name="clearButtonEnabled">
             <bool>true</bool>
@@ -179,9 +167,28 @@
           </widget>
          </item>
          <item>
-          <widget class="QToolButton" name="btnGenerateVotingKey">
+          <widget class="QLabel" name="label_2">
+           <property name="font">
+            <font>
+             <weight>75</weight>
+             <bold>true</bold>
+            </font>
+           </property>
            <property name="text">
-            <string>Generate new</string>
+            <string>Port</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="edtPort">
+           <property name="maximumSize">
+            <size>
+             <width>100</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="clearButtonEnabled">
+            <bool>true</bool>
            </property>
           </widget>
          </item>
@@ -211,19 +218,6 @@
       <bool>true</bool>
      </property>
      <property name="openLinks">
-      <bool>true</bool>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QLabel" name="lblMessage">
-     <property name="text">
-      <string/>
-     </property>
-     <property name="wordWrap">
-      <bool>true</bool>
-     </property>
-     <property name="openExternalLinks">
       <bool>true</bool>
      </property>
     </widget>
@@ -305,12 +299,12 @@
   </layout>
  </widget>
  <tabstops>
-  <tabstop>edtPayoutAddress</tabstop>
-  <tabstop>edtOperatorKey</tabstop>
-  <tabstop>btnGenerateOperatorKey</tabstop>
-  <tabstop>edtVotingKey</tabstop>
-  <tabstop>btnGenerateVotingKey</tabstop>
+  <tabstop>edtIP</tabstop>
+  <tabstop>edtPort</tabstop>
+  <tabstop>edtOperatorPayoutAddress</tabstop>
+  <tabstop>edtManualCommands</tabstop>
   <tabstop>btnSendUpdateTx</tabstop>
+  <tabstop>btnClose</tabstop>
   <tabstop>btnCancel</tabstop>
  </tabstops>
  <resources/>

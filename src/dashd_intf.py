@@ -363,7 +363,7 @@ class DashdIndexException(JSONRPCException):
                        'Changing these parameters requires to execute dashd with "-reindex" option (linux: ./dashd -reindex)'
 
 
-def control_rpc_call(_func=None, *, encrypt=False):
+def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching_conns=True):
     """
     Decorator dedicated to functions related to RPC calls, taking care of switching an active connection if the
     current one becomes faulty. It also performs argument encryption for configured RPC calls.
@@ -383,7 +383,7 @@ def control_rpc_call(_func=None, *, encrypt=False):
                 for try_nr in range(1, 5):
                     try:
                         try:
-                            if encrypt:
+                            if encrypt_rpc_arguments:
                                 if self.cur_conn_def:
                                     pubkey = self.cur_conn_def.get_rpc_encryption_pubkey_object()
                                 else:
@@ -436,11 +436,10 @@ def control_rpc_call(_func=None, *, encrypt=False):
                         except JSONRPCException as e:
                             log.error('Error while calling of "' + str(func) + ' (2)". Details: ' + str(e))
                             err_message = e.error.get('message','').lower()
+                            self.http_conn.close()
                             if e.code == -5 and e.message == 'No information available for address':
                                 raise DashdIndexException(e)
-                            elif err_message.find('403 forbidden') >= 0 or err_message.find('401 unauthorized') >= 0 or \
-                                 err_message.find('502 bad gateway') >= 0 or err_message.find('unknown error') >= 0:
-                                self.http_conn.close()
+                            elif err_message.find('502 bad gateway') >= 0 or err_message.find('unknown error') >= 0:
                                 raise DashdConnectionError(e)
                             else:
                                 raise
@@ -449,7 +448,7 @@ def control_rpc_call(_func=None, *, encrypt=False):
                         # try another net config if possible
                         log.error('Error while calling of "' + str(func) + '" (4). Details: ' + str(e))
 
-                        if not self.switch_to_next_config():
+                        if not allow_switching_conns or not self.switch_to_next_config():
                             self.last_error_message = str(e.org_exception)
                             raise e.org_exception  # couldn't use another conn config, raise last exception
                         else:
@@ -552,7 +551,6 @@ class DashdInterface(WndUtils):
         self.connections = []
         self.cur_conn_index = 0
         self.cur_conn_def: Optional['DashNetworkConnectionCfg'] = None
-        self.conf_switch_locked = False
 
         # below is the connection with which particular RPC call has started; if connection is switched because of
         # problems with some nodes, switching stops if we close round and return to the starting connection
@@ -574,6 +572,7 @@ class DashdInterface(WndUtils):
         self.on_connection_successful_callback = on_connection_successful_callback
         self.on_connection_disconnected_callback = on_connection_disconnected_callback
         self.last_error_message = None
+        self.mempool_txes:Dict[str, Dict] = {}
         self.http_lock = threading.RLock()
 
     def initialize(self, config: AppConfig, connection=None, for_testing_connections_only=False):
@@ -686,9 +685,6 @@ class DashdInterface(WndUtils):
         with current connection config.
         :return: True if successfully switched or False if there was no another config
         """
-        if self.conf_switch_locked:
-            return False
-
         if self.cur_conn_def:
             self.config.conn_cfg_failure(self.cur_conn_def)  # mark connection as defective
         if self.cur_conn_index < len(self.connections)-1:
@@ -709,12 +705,6 @@ class DashdInterface(WndUtils):
         else:
             log.warning('Failed to connect: no another connection configurations.')
             return False
-
-    def enable_conf_switching(self):
-        self.conf_switch_locked = True
-
-    def disable_conf_switching(self):
-        self.conf_switch_locked = False
 
     def mark_cur_conn_cfg_is_ok(self):
         if self.cur_conn_def:
@@ -909,12 +899,15 @@ class DashdInterface(WndUtils):
     @control_rpc_call
     def issynchronized(self):
         if self.open():
-            # if connecting to HTTP(S) proxy do not check if dash daemon is synchronized
-            if self.cur_conn_def.is_http_proxy():
-                return True
-            else:
+            try:
                 syn = self.proxy.mnsync('status')
                 return syn.get('IsSynced')
+            except JSONRPCException as e:
+                if str(e).lower().find('403 forbidden') >= 0:
+                    self.http_conn.close()
+                    return True
+                else:
+                    raise
         else:
             raise Exception('Not connected')
 
@@ -951,7 +944,8 @@ class DashdInterface(WndUtils):
                     'registered_height': s.get('registeredHeight'),
                     'pose_pelanlty': s.get('PoSePenalty'),
                     'pose_received_height': s.get('PoSeRevivedHeight'),
-                    'pose_ban_height': s.get('PoSeBanHeight')
+                    'pose_ban_height': s.get('PoSeBanHeight'),
+                    'pose_revived_height': s.get('PoSeRevivedHeight', 0)
                 }
                 self.protx_by_mn_ident[ident] = p
         return self.protx_by_mn_ident
@@ -964,10 +958,15 @@ class DashdInterface(WndUtils):
         payment_queue = []
         for mn in self.masternodes:
             if mn.status == 'ENABLED':
+                protx = self.protx_by_mn_ident.get(mn.ident)
+
                 if mn.lastpaidblock > 0:
                     mn.queue_position = mn.lastpaidblock
+                    if protx:
+                        pose_revived_height = protx.get('pose_revived_height', 0)
+                        if pose_revived_height > 0:
+                            mn.queue_position = pose_revived_height
                 else:
-                    protx = self.protx_by_mn_ident.get(mn.ident)
                     if protx:
                         mn.queue_position = protx.get('registered_height')
                     else:
@@ -1141,6 +1140,23 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
+    def getrawmempool(self):
+        if self.open():
+            cur_mempool_txes = self.proxy.getrawmempool()
+
+            txes_to_purge = []
+            for tx_hash in self.mempool_txes:
+                if tx_hash not in cur_mempool_txes:
+                    txes_to_purge.append(tx_hash)
+
+            for tx_hash in txes_to_purge:
+                del self.mempool_txes[tx_hash]
+
+            return cur_mempool_txes
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
     def getrawtransaction(self, txid, verbose, skip_cache=False):
 
         def check_if_tx_confirmed(tx_json):
@@ -1252,7 +1268,6 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
-    @control_rpc_call(encrypt=True)
     def protx(self, *args):
         if self.open():
             return self.proxy.protx(*args)
@@ -1266,21 +1281,15 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
-    @control_rpc_call
-    def rpc_call(self, command, *args):
-        if self.open():
-            c = self.proxy.__getattr__(command)
-            return c(*args)
-        else:
-            raise Exception('Not connected')
-
-    def rpc_call_enc(self, encrypt, command, *args):
+    def rpc_call(self, encrypt_rpc_arguments: bool, allow_switching_conns: bool, command: str, *args):
         def call_command(self, *args):
             c = self.proxy.__getattr__(command)
             return c(*args)
 
         if self.open():
-            fun = control_rpc_call(call_command, encrypt=encrypt)
+            call_command.__setattr__('__name__', command)
+            fun = control_rpc_call(call_command, encrypt_rpc_arguments=encrypt_rpc_arguments,
+                                   allow_switching_conns=allow_switching_conns)
             c = fun(self, *args)
             return c
         else:
@@ -1307,4 +1316,28 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
+    def is_protx_update_pending(self, proregtx_hash:str) -> bool:
+        """
+        Check whether a protx transaction related to the proregtx passed as an argument exists in mempool.
+        :param protx_hash: Hash of the ProRegTx transaction
+        :return:
+        """
+
+        try:
+            cur_mempool_txes = self.getrawmempool()
+            for tx_hash in cur_mempool_txes:
+                tx = self.mempool_txes.get(tx_hash)
+                if not tx:
+                    tx = self.getrawtransaction(tx_hash, True, skip_cache=True)
+                    self.mempool_txes[tx_hash] = tx
+                protx = tx.get('proUpRegTx')
+                if not protx:
+                    protx = tx.get('proUpRevTx')
+                if not protx:
+                    protx = tx.get('proUpServTx')
+                if protx and protx.get('proTxHash') == proregtx_hash:
+                    return True
+            return False
+        except Exception as e:
+            return False
 

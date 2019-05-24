@@ -196,25 +196,22 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
 
         self.lblPayoutAddress.setVisible(self.show_upd_payout)
         self.edtPayoutAddress.setVisible(self.show_upd_payout)
-        self.lblPayoutAddressMsg.setVisible(self.show_upd_payout and bool(self.lblPayoutAddressMsg.text()))
-        self.linePayoutAddress.setVisible(self.show_upd_payout and bool(self.lblPayoutAddressMsg.text()))
 
         self.lblOperatorKey.setVisible(self.show_upd_operator)
         self.edtOperatorKey.setVisible(self.show_upd_operator)
-        self.lblOperatorKeyMsg.setVisible(self.show_upd_operator and bool(self.lblOperatorKeyMsg.text()))
-        self.lineOperatorKey.setVisible(self.show_upd_operator and bool(self.lblOperatorKeyMsg.text()))
         self.btnGenerateOperatorKey.setVisible(self.show_upd_operator and
                                                self.dmn_operator_key_type == InputKeyType.PRIVATE)
 
         self.lblVotingKey.setVisible(self.show_upd_voting)
         self.edtVotingKey.setVisible(self.show_upd_voting)
-        self.lblVotingKeyMsg.setVisible(self.show_upd_voting and bool(self.lblVotingKeyMsg.text()))
         self.btnGenerateVotingKey.setVisible(self.show_upd_voting and self.dmn_voting_key_type == InputKeyType.PRIVATE)
 
         if self.show_manual_commands:
-            self.lblManualCommands.setText('<a href="hide">Hide commands for manual execution</a>')
+            self.lblManualCommands.setText('<a style="text-decoration:none" '
+                                           'href="hide">Hide commands for manual execution</a>')
         else:
-            self.lblManualCommands.setText('<a href="show">Show commands for manual execution</a>')
+            self.lblManualCommands.setText('<a style="text-decoration:none" '
+                                           'href="show">Show commands for manual execution</a>')
 
         self.edtManualCommands.setVisible(self.show_manual_commands)
 
@@ -446,7 +443,6 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                         raise Exception("No address can be found in the node's wallet with sufficient funds to "
                                         "cover the transaction fees.")
                     params[5] = bal_list[0]['address']
-                    self.dashd_intf.disable_conf_switching()
                 except JSONRPCException as e:
                     logging.warning("Couldn't list the node address balances. We assume you are using a "
                                     "public RPC node and the funding address for the transaction fee will "
@@ -454,8 +450,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
             else:
                 params.append(self.masternode.dmn_owner_private_key)
 
-            upd_tx_hash = self.dashd_intf.protx(*params)
-            logging.info('executed protx ' + str(params))
+            upd_tx_hash = self.dashd_intf.rpc_call(True, False, 'protx', *params)
 
             if upd_tx_hash:
                 logging.info('update_registrar successfully executed, tx hash: ' + upd_tx_hash)
@@ -490,6 +485,11 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                 self.btnGenerateOperatorKey.setDisabled(True)
                 self.btnGenerateVotingKey.setDisabled(True)
                 self.btnClose.show()
+
+                url = self.app_config.get_block_explorer_tx()
+                if url:
+                    url = url.replace('%TXID%', upd_tx_hash)
+                    upd_tx_hash = f'<a href="{url}">{upd_tx_hash}</a>'
 
                 msg = 'The update_registrar transaction has been successfully sent. ' \
                      f'Tx hash: {upd_tx_hash}. <br><br>' \

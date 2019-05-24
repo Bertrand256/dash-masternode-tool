@@ -797,7 +797,11 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             try:
                 info = dashd_intf.getinfo(verify_node=True)
                 if info:
-                    ret = dashd_intf.rpc_call_enc(True, "checkfeaturesupport", "enhanced_proxy")
+                    try:
+                        ret = dashd_intf.rpc_call(True, False, "checkfeaturesupport", "enhanced_proxy")
+                    except Exception as e:
+                        ret = None
+
                     if ret and type(ret) is dict:
                         self.infoMsg('Connection successful.\n\n'
                                      'Additional info: this node supports message encryption.')

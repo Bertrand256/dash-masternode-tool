@@ -295,7 +295,7 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
 
     def rpc_command(self, command: str, *args):
         if self.main_dlg.dashd_intf:
-            ret = self.main_dlg.dashd_intf.rpc_call(command, *args)
+            ret = self.main_dlg.dashd_intf.rpc_call(False, True, command, *args)
             try:
                 if isinstance(ret, str):
                     ret = json.loads(ret)

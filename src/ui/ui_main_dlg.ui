@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>906</width>
+    <width>977</width>
     <height>499</height>
    </rect>
   </property>
@@ -440,6 +440,26 @@ padding-right: 0px;</string>
              </widget>
             </item>
             <item>
+             <widget class="QPushButton" name="btnUpdMnService">
+              <property name="toolTip">
+               <string>Update the masternode IP:port and/or the operator reward Dash address.</string>
+              </property>
+              <property name="text">
+               <string>Update service</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnRevokeMn">
+              <property name="toolTip">
+               <string>Revoke the masternode operator key.</string>
+              </property>
+              <property name="text">
+               <string>Revoke operator</string>
+              </property>
+             </widget>
+            </item>
+            <item>
              <spacer name="horizontalSpacer_3">
               <property name="orientation">
                <enum>Qt::Horizontal</enum>
@@ -481,7 +501,7 @@ padding-right: 0px;</string>
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>906</width>
+     <width>977</width>
      <height>22</height>
     </rect>
    </property>

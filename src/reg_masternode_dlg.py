@@ -59,7 +59,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.main_dlg = main_dlg
         self.masternode = masternode
         self.app_config = config
-        self.dashd_intf = dashd_intf
+        self.dashd_intf:DashdInterface = dashd_intf
         self.on_proregtx_success_callback = on_proregtx_success_callback
         self.style = '<style>.info{color:darkblue} .warning{color:#ff6600} .error{background-color:red;color:white}</style>'
         self.operator_reward_saved = None
@@ -703,7 +703,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                  f'Operator public key\t{self.dmn_operator_pubkey}',
                  f'Voting private key\t{voting_privkey}',
                  f'Voting public address\t{self.dmn_voting_address}',
-                 f'Deterministic MN tx hash\t{self.dmn_reg_tx_hash}']
+                 f'Protx hash\t{self.dmn_reg_tx_hash}']
 
             text = '<table>'
             for l in self.summary_info:
@@ -1209,7 +1209,6 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                             raise Exception("No address can be found in the node's wallet with sufficient funds to "
                                             "cover the transaction fees.")
                         funding_address = bal_list[0]['address']
-                        self.dashd_intf.disable_conf_switching()
                     except JSONRPCException as e:
                         log.info("Couldn't list the node address balances. We assume you are using a public RPC node and "
                                  "the funding address for the transaction fees will be estimated during the "
@@ -1228,7 +1227,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                           self.dmn_owner_payout_addr]
                 if funding_address:
                     params.append(funding_address)
-                call_ret = self.dashd_intf.protx(*params)
+
+                call_ret = self.dashd_intf.rpc_call(True, False, 'protx', *tuple(params))
 
                 call_ret_str = json.dumps(call_ret, default=EncodeDecimal)
                 msg_to_sign = call_ret.get('signMessage', '')
@@ -1244,9 +1244,6 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                     '<b>1. Preparing a ProRegTx transaction on a remote node.</b> <span style="color:red">Failed '
                     f'with the following error: {str(e)}</span>')
                 return
-
-            # diable config switching since the protx transaction has input associated with the specific node/wallet
-            self.dashd_intf.disable_conf_switching()
 
             set_text(self.lblProtxTransaction2, '<b>Message to be signed:</b><br><code>' + msg_to_sign + '</code>')
 
@@ -1271,8 +1268,9 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             # submitting signed transaction
             set_text(self.lblProtxTransaction4, '<b>3. Submitting the signed protx transaction to the remote node...</b>')
             try:
-                self.dmn_reg_tx_hash = self.dashd_intf.protx('register_submit', protx_tx, payload_sig_str)
-                # self.dmn_reg_tx_hash = 'dfb396d84373b305f7186984a969f92469d66c58b02fb3269a2ac8b67247dfe3'
+                self.dmn_reg_tx_hash = self.dashd_intf.rpc_call(True, False, 'protx', 'register_submit', protx_tx,
+                                                                payload_sig_str)
+
                 log.debug('protx register_submit returned: ' + str(self.dmn_reg_tx_hash))
                 set_text(self.lblProtxTransaction4,
                          '<b>3. Submitting the signed protx transaction to the remote node.</b> <span style="'
@@ -1287,9 +1285,6 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         except Exception as e:
             log.exception('Exception occurred')
             set_text(self.lblProtxTransaction1, f'<span style="color:red">{str(e)}</span>')
-
-        finally:
-            self.dashd_intf.enable_conf_switching()
 
     @pyqtSlot(bool)
     def on_btnManualSignProtx_clicked(self):

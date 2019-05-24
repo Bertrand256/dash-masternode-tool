@@ -48,6 +48,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.main_dlg.setIcon(self.btnCopyOwnerKey, 'content-copy@16px.png')
         self.main_dlg.setIcon(self.btnCopyOperatorKey, 'content-copy@16px.png')
         self.main_dlg.setIcon(self.btnCopyVotingKey, 'content-copy@16px.png')
+        self.main_dlg.setIcon(self.btnCopyProtxHash, 'content-copy@16px.png')
         self.main_dlg.setIcon(self.btnShowCollateralPathAddress, 'eye@16px.png')
 
         self.act_view_as_mn_private_key = QAction('View as private key', self)
@@ -164,6 +165,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.btnCopyVotingKey.setFixedHeight(h)
         self.btnShowVotingPrivateKey.setFixedHeight(h)
         self.btnGenerateVotingPrivateKey.setFixedHeight(h)
+        self.btnCopyProtxHash.setFixedHeight(h)
 
         self.btnFindDMNTxHash.setFixedHeight(h)
         self.btnShowCollateralPathAddress.setFixedHeight(h)
@@ -264,6 +266,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                                             self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
         self.btnCopyMnKey.setVisible(self.masternode is not None and
                                      self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
+        self.btnCopyProtxHash.setVisible(self.masternode is not None)
 
         # self.btnFindCollateral.setVisible(self.masternode is not None)
         self.lblIP.setVisible(self.masternode is not None)
@@ -1100,19 +1103,28 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.update_key_controls_state()
         self.edtOperatorKey.setText(self.get_operator_key_to_display())
 
+    @pyqtSlot()
     def on_btnCopyMnKey_clicked(self):
         cl = QApplication.clipboard()
         cl.setText(self.edtMasternodePrivateKey.text())
 
+    @pyqtSlot()
     def on_btnCopyOwnerKey_clicked(self):
         cl = QApplication.clipboard()
         cl.setText(self.edtOwnerKey.text())
 
+    @pyqtSlot()
     def on_btnCopyVotingKey_clicked(self):
         cl = QApplication.clipboard()
         cl.setText(self.edtVotingKey.text())
 
+    @pyqtSlot()
     def on_btnCopyOperatorKey_clicked(self):
         cl = QApplication.clipboard()
         cl.setText(self.edtOperatorKey.text())
+
+    @pyqtSlot()
+    def on_btnCopyProtxHash_clicked(self):
+        cl = QApplication.clipboard()
+        cl.setText(self.edtDMNTxHash.text())
 

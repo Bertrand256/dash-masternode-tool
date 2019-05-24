@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_masternode_details.ui'
+# Form implementation generated from reading ui file '/Users/blogin/Projects/dash-masternode-tool/src/ui/ui_masternode_details.ui'
 #
 # Created by: PyQt5 UI code generator 5.9.2
 #
@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_WdgMasternodeDetails(object):
     def setupUi(self, WdgMasternodeDetails):
         WdgMasternodeDetails.setObjectName("WdgMasternodeDetails")
-        WdgMasternodeDetails.resize(741, 308)
+        WdgMasternodeDetails.resize(741, 312)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -181,6 +181,10 @@ class Ui_WdgMasternodeDetails(object):
         self.edtDMNTxHash.setClearButtonEnabled(True)
         self.edtDMNTxHash.setObjectName("edtDMNTxHash")
         self.horizontalLayout_10.addWidget(self.edtDMNTxHash)
+        self.btnCopyProtxHash = QtWidgets.QToolButton(self.widget_2)
+        self.btnCopyProtxHash.setText("")
+        self.btnCopyProtxHash.setObjectName("btnCopyProtxHash")
+        self.horizontalLayout_10.addWidget(self.btnCopyProtxHash)
         self.btnFindDMNTxHash = QtWidgets.QToolButton(self.widget_2)
         self.btnFindDMNTxHash.setObjectName("btnFindDMNTxHash")
         self.horizontalLayout_10.addWidget(self.btnFindDMNTxHash)
@@ -346,6 +350,7 @@ class Ui_WdgMasternodeDetails(object):
         self.lblCollateralTxHash.setText(_translate("WdgMasternodeDetails", "Collateral TX hash"))
         self.lblCollateralTxIndex.setText(_translate("WdgMasternodeDetails", "index"))
         self.lblDMNTxHash.setText(_translate("WdgMasternodeDetails", "Protx hash"))
+        self.btnCopyProtxHash.setToolTip(_translate("WdgMasternodeDetails", "Copy protx hash to clipboard"))
         self.btnFindDMNTxHash.setToolTip(_translate("WdgMasternodeDetails", "Find DMN TX hash based on the ip/port or collateral tx"))
         self.btnFindDMNTxHash.setText(_translate("WdgMasternodeDetails", "Find"))
         self.lblMasternodePrivateKey.setText(_translate("WdgMasternodeDetails", "Masternode private key"))

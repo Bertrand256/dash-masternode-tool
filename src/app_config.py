@@ -142,6 +142,8 @@ class AppConfig(QObject):
         self._dash_blockchain_info = {}
         self.feature_register_dmn_automatic = AppFeatueStatus(True, 0, '')
         self.feature_update_registrar_automatic = AppFeatueStatus(True, 0, '')
+        self.feature_update_service_automatic = AppFeatueStatus(True, 0, '')
+        self.feature_revoke_operator_automatic = AppFeatueStatus(True, 0, '')
 
         self.hw_type = None  # TREZOR, KEEPKEY, LEDGERNANOS
         self.hw_keepkey_psw_encoding = 'NFC'  # Keepkey passphrase UTF8 chars encoding:
@@ -382,15 +384,27 @@ class AppConfig(QObject):
 
     def save_cache_settings(self):
         if self.feature_register_dmn_automatic.get_value() is not None:
-            app_cache.set_value('FEATURE_REGISTER_DMN_AUTOMATIC_' + self.dash_network, self.feature_register_dmn_automatic.get_value())
+            app_cache.set_value('FEATURE_REGISTER_DMN_AUTOMATIC_' + self.dash_network,
+                                self.feature_register_dmn_automatic.get_value())
         if self.feature_update_registrar_automatic.get_value() is not None:
-            app_cache.set_value('FEATURE_UPDATE_AUTOMATIC_REGISTRAR_' + self.dash_network, self.feature_update_registrar_automatic.get_value())
+            app_cache.set_value('FEATURE_UPDATE_REGISTRAR_AUTOMATIC_' + self.dash_network,
+                                self.feature_update_registrar_automatic.get_value())
+        if self.feature_update_service_automatic.get_value() is not None:
+            app_cache.set_value('FEATURE_UPDATE_SERVICE_AUTOMATIC_' + self.dash_network,
+                                self.feature_update_service_automatic.get_value())
+        if self.feature_revoke_operator_automatic.get_value() is not None:
+            app_cache.set_value('FEATURE_REVOKE_OPERATOR_AUTOMATIC_' + self.dash_network,
+                                self.feature_revoke_operator_automatic.get_value())
 
     def restore_cache_settings(self):
         ena = app_cache.get_value('FEATURE_REGISTER_AUTOMATIC_DMN_' + self.dash_network, True, bool)
         self.feature_register_dmn_automatic.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
-        ena = app_cache.get_value('FEATURE_UPDATE_AUTOMATIC_REGISTRAR_' + self.dash_network, True, bool)
+        ena = app_cache.get_value('FEATURE_UPDATE_REGISTRAR_AUTOMATIC_' + self.dash_network, True, bool)
         self.feature_update_registrar_automatic.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
+        ena = app_cache.get_value('FEATURE_UPDATE_SERVICE_AUTOMATIC_' + self.dash_network, True, bool)
+        self.feature_update_service_automatic.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
+        ena = app_cache.get_value('FEATURE_REVOKE_OPERATOR_AUTOMATIC_' + self.dash_network, True, bool)
+        self.feature_revoke_operator_automatic.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
 
     def copy_from(self, src_config):
         self.dash_network = src_config.dash_network
@@ -1000,6 +1014,8 @@ class AppConfig(QObject):
         if self._remote_app_params:
             self.feature_register_dmn_automatic.set_value(*get_feature_config_remote('REGISTER_DMN_AUTOMATIC'))
             self.feature_update_registrar_automatic.set_value(*get_feature_config_remote('UPDATE_REGISTRAR_AUTOMATIC'))
+            self.feature_update_service_automatic.set_value(*get_feature_config_remote('UPDATE_SERVICE_AUTOMATIC'))
+            self.feature_revoke_operator_automatic.set_value(*get_feature_config_remote('REVOKE_OPERATOR_AUTOMATIC'))
 
     def read_dash_network_app_params(self, dashd_intf):
         """ Read parameters having impact on the app's behavior (sporks/dips) from the Dash network. Called

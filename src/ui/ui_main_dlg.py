@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_main_dlg.ui'
+# Form implementation generated from reading ui file '/Users/blogin/Projects/dash-masternode-tool/src/ui/ui_main_dlg.ui'
 #
 # Created by: PyQt5 UI code generator 5.9.2
 #
@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(906, 499)
+        MainWindow.resize(977, 499)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(1)
@@ -186,6 +186,12 @@ class Ui_MainWindow(object):
         self.btnUpdMnVotingKey = QtWidgets.QPushButton(self.frmMasternodeDetails)
         self.btnUpdMnVotingKey.setObjectName("btnUpdMnVotingKey")
         self.horizontalLayout_2.addWidget(self.btnUpdMnVotingKey)
+        self.btnUpdMnService = QtWidgets.QPushButton(self.frmMasternodeDetails)
+        self.btnUpdMnService.setObjectName("btnUpdMnService")
+        self.horizontalLayout_2.addWidget(self.btnUpdMnService)
+        self.btnRevokeMn = QtWidgets.QPushButton(self.frmMasternodeDetails)
+        self.btnRevokeMn.setObjectName("btnRevokeMn")
+        self.horizontalLayout_2.addWidget(self.btnRevokeMn)
         spacerItem1 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout_2.addItem(spacerItem1)
         self.verticalLayout_3.addLayout(self.horizontalLayout_2)
@@ -199,7 +205,7 @@ class Ui_MainWindow(object):
         self.statusBar.setObjectName("statusBar")
         MainWindow.setStatusBar(self.statusBar)
         self.menuBar = QtWidgets.QMenuBar(MainWindow)
-        self.menuBar.setGeometry(QtCore.QRect(0, 0, 906, 22))
+        self.menuBar.setGeometry(QtCore.QRect(0, 0, 977, 22))
         self.menuBar.setObjectName("menuBar")
         self.menuTools = QtWidgets.QMenu(self.menuBar)
         self.menuTools.setObjectName("menuTools")
@@ -346,6 +352,10 @@ class Ui_MainWindow(object):
         self.btnUpdMnOperatorKey.setText(_translate("MainWindow", "Update operator key"))
         self.btnUpdMnVotingKey.setToolTip(_translate("MainWindow", "Update the masternode voting key on the network."))
         self.btnUpdMnVotingKey.setText(_translate("MainWindow", "Update voting key"))
+        self.btnUpdMnService.setToolTip(_translate("MainWindow", "Update the masternode IP:port and/or the operator reward Dash address."))
+        self.btnUpdMnService.setText(_translate("MainWindow", "Update service"))
+        self.btnRevokeMn.setToolTip(_translate("MainWindow", "Revoke the masternode operator key."))
+        self.btnRevokeMn.setText(_translate("MainWindow", "Revoke operator"))
         self.menuTools.setTitle(_translate("MainWindow", "Tools"))
         self.menuClear.setTitle(_translate("MainWindow", "Clear"))
         self.menuFile.setTitle(_translate("MainWindow", "File"))

@@ -25,7 +25,9 @@ from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle
 from PyQt5.QtWidgets import QMessageBox
 
 import reg_masternode_dlg
+import revoke_mn_dlg
 import upd_mn_registrar_dlg
+import upd_mn_service_dlg
 from bip44_wallet import find_wallet_addresses, Bip44Wallet
 from cmd_console_dlg import CmdConsoleDlg
 from common import CancelException
@@ -107,9 +109,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         # load most recently used config files from the data cache
         mru_cf = app_cache.get_value('MainWindow_ConfigFileMRUList', default_value=[], type=list)
         if isinstance(mru_cf, list):
-            mru_cf = list(set(mru_cf))  # eliminate duplicates
             for file_name in mru_cf:
-                if os.path.exists(file_name):
+                if os.path.exists(file_name) and file_name not in self.recent_config_files:
                     self.recent_config_files.append(file_name)
 
         self.cmd_console_dlg = None
@@ -1217,9 +1218,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.action_disconnect_hw.setEnabled(True if self.hw_client else False)
             self.btnRefreshMnStatus.setEnabled(self.cur_masternode is not None)
             self.btnRegisterDmn.setEnabled(self.cur_masternode is not None)
-            self.btnUpdMnPayoutAddr.setEnabled(self.cur_masternode is not None)
-            self.btnUpdMnOperatorKey.setEnabled(self.cur_masternode is not None)
-            self.btnUpdMnVotingKey.setEnabled(self.cur_masternode is not None)
+            self.update_mn_controls_state()
         if threading.current_thread() != threading.main_thread():
             self.call_in_main_thread(update_fun)
         else:
@@ -1239,6 +1238,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.btnUpdMnPayoutAddr.setEnabled(enabled)
         self.btnUpdMnOperatorKey.setEnabled(enabled)
         self.btnUpdMnVotingKey.setEnabled(enabled)
+
+        if self.cur_masternode:
+            enabled = self.cur_masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0
+        else:
+            enabled = False
+        self.btnUpdMnService.setEnabled(enabled)
+        self.btnRevokeMn.setEnabled(enabled)
 
         if self.cur_masternode:
             idx = self.config.masternodes.index(self.cur_masternode)
@@ -1449,20 +1455,33 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     mn_ip_port = None
 
             if mn_info or dmn_tx:
+                mn_status = ''
+                no_operator_pub_key = False
+
                 if mn_info:
                     if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
                         status_color = 'green'
                     else:
                         status_color = 'red'
                     mn_status = mn_info.status
-                else:
-                    s = dmn_tx_state.get('PoSePenalty', 0)
-                    if s:
-                        mn_status = 'PoSeBan (' + str(s) + ')'
+
+                if dmn_tx:
+                    pose = dmn_tx_state.get('PoSePenalty', 0)
+                    if pose:
+                        mn_status += (', ' if mn_status else '') + 'PoSePenalty: ' + str(pose)
                         status_color = 'red'
-                    else:
-                        mn_status = 'ENABLED'
-                        status_color = 'green'
+
+                    oper_pub_key = dmn_tx_state.get('pubKeyOperator', '')
+                    if re.match('^0+$', oper_pub_key):
+                        no_operator_pub_key = True
+
+                    service = dmn_tx_state.get('service', '')
+                    if service == '[0:0:0:0:0:0:0:0]:0':
+                        if no_operator_pub_key:
+                            mn_status += (', ' if mn_status else '') + 'operator key update required'
+                        else:
+                            mn_status += (', ' if mn_status else '') + 'service update required'
+                        status_color = 'red'
 
                 update_mn_info = False
                 collateral_address_mismatch = False
@@ -1561,14 +1580,16 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 f'address from the app configuration: {voting_address_cfg}, address from the Dash '
                                 f'network: {voting_address_network}')
 
-                        operator_pubkey_network = dmn_tx_state.get('pubKeyOperator')
-                        operator_pubkey_cfg = masternode.get_dmn_operator_pubkey()
-                        if operator_pubkey_network and operator_pubkey_cfg and operator_pubkey_network != operator_pubkey_cfg:
-                            operator_pubkey_mismatch = True
-                            logging.warning(
-                                f'The operator public key mismatch for masternode: {masternode.name}. '
-                                f'pubkey from the app configuration: {operator_pubkey_cfg}, pubkey from the Dash '
-                                f'network: {operator_pubkey_network}')
+                        if not no_operator_pub_key:
+                            operator_pubkey_network = dmn_tx_state.get('pubKeyOperator')
+                            operator_pubkey_cfg = masternode.get_dmn_operator_pubkey()
+                            if operator_pubkey_network and operator_pubkey_cfg and \
+                                    operator_pubkey_network != operator_pubkey_cfg:
+                                operator_pubkey_mismatch = True
+                                logging.warning(
+                                    f'The operator public key mismatch for masternode: {masternode.name}. '
+                                    f'pubkey from the app configuration: {operator_pubkey_cfg}, pubkey from the Dash '
+                                    f'network: {operator_pubkey_network}')
 
                 if mn_data_modified:
                     def update():
@@ -1588,6 +1609,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     balance_entry = ''
                     last_paid_entry = ''
                     next_payment_entry = ''
+                    operator_payout_entry = ''
 
                     try:
                         if collateral_address:
@@ -1606,6 +1628,18 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                             payout_bal = round(payout_bal.get('balance') / 1e8, 5)
                             balance_entry += f'<tr><td class="title">Payout addr. balance:</td><td class="value" ' \
                                 f'colspan="2">{app_utils.to_string(payout_bal)}</td></tr>'
+
+                        operator_reward = float(dmn_tx.get('operatorReward', 0))
+                        if operator_reward:
+                            operator_payout_addr = dmn_tx_state.get('operatorPayoutAddress', '')
+                            if operator_payout_addr:
+                                addr_info = operator_payout_addr
+                            else:
+                                addr_info = 'not claimed'
+
+                            operator_payout_entry = \
+                                f'<tr><td class="title">Operator payout:</td><td class="value" ' \
+                                f'colspan="2">{app_utils.to_string(operator_reward)}%, {addr_info}</td></tr>'
 
                         lastpaid_ts = 0
                         if mn_info:
@@ -1655,21 +1689,28 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                     errors = []
                     warnings  = []
+                    skip_data_mismatch = False
                     if dmn_tx and not dmn_tx.get('confirmations'):
                         warnings.append('<td class="warning" colspan="2">ProRegTx not yet confirmed</td>')
+                    else:
+                        if self.dashd_intf.is_protx_update_pending(self.cur_masternode.dmn_tx_hash):
+                            warnings.append('<td class="warning" colspan="2">The related protx update transaction '
+                                            'is awaiting confirmations</td>')
+                            skip_data_mismatch = True
+
                     if collateral_address_mismatch:
                         errors.append('<td class="error" colspan="2">Collateral address missing&frasl;mismatch</td>')
                     if collateral_tx_mismatch:
                         errors.append('<td class="error" colspan="2">Collateral TX hash and&frasl;or index '
                                       'missing&frasl;mismatch</td>')
-                    if ip_port_mismatch:
-                        errors.append('<td class="error" colspan="2">Masternode IP and&frasl;or port number '
+                    if ip_port_mismatch and not skip_data_mismatch:
+                        errors.append('<td class="error" colspan="2">Masternode IP and&frasl;or TCP port number '
                                       'missing&frasl;mismatch</td>')
-                    if owner_public_address_mismatch:
+                    if owner_public_address_mismatch and not skip_data_mismatch:
                         errors.append('<td class="error" colspan="2">Owner Dash address mismatch</td>')
-                    if operator_pubkey_mismatch:
+                    if operator_pubkey_mismatch and not skip_data_mismatch:
                         errors.append('<td class="error" colspan="2">Operator public key mismatch</td>')
-                    if voting_public_address_mismatch:
+                    if voting_public_address_mismatch and not skip_data_mismatch:
                         errors.append('<td class="error" colspan="2">Voting Dash address mismatch</td>')
                     if not dmn_tx:
                         warnings.append('<td class="warning" colspan="2">Couldn\'d read protx info for this masternode'
@@ -1707,6 +1748,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                              last_seen_html + \
                              f'{payout_entry}' + \
                              f'{balance_entry}' + \
+                             f'{operator_payout_entry}' + \
                              f'{last_paid_entry}' + \
                              f'{next_payment_entry}' + \
                              errors_msg + warnings_msg + '</table>'
@@ -1741,6 +1783,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.btnUpdMnPayoutAddr.setEnabled(False)
         self.btnUpdMnOperatorKey.setEnabled(False)
         self.btnUpdMnVotingKey.setEnabled(False)
+        self.btnUpdMnService.setEnabled(False)
+        self.btnRevokeMn.setEnabled(False)
 
         self.connect_dash_network(wait_for_check_finish=True)
         if self.dashd_connection_ok:
@@ -1932,15 +1976,51 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             WndUtils.errorMsg('No masternode selected')
 
-    @pyqtSlot(bool)
-    def on_btnUpdMnPayoutAddr_clicked(self, enabled):
+    def update_service(self):
+        def on_mn_config_updated(masternode: MasternodeConfig):
+            try:
+                if self.cur_masternode == masternode:
+                    self.wdg_masternode.masternode_data_to_ui()
+                if self.config.is_modified():
+                    self.wdg_masternode.set_modified()
+                else:
+                    self.save_configuration()
+            except Exception as e:
+                logging.exception(str(e))
+
+        if self.cur_masternode:
+            upd_dlg = upd_mn_service_dlg.UpdMnServiceDlg(
+                self, self.app_config, self.dashd_intf, self.cur_masternode,
+                on_mn_config_updated_callback=on_mn_config_updated)
+            upd_dlg.exec_()
+        else:
+            WndUtils.errorMsg('No masternode selected')
+
+    def revoke_mn_operator(self):
+        if self.cur_masternode:
+            revoke_dlg = revoke_mn_dlg.RevokeMnDlg(
+                self, self.app_config, self.dashd_intf, self.cur_masternode)
+            revoke_dlg.exec_()
+        else:
+            WndUtils.errorMsg('No masternode selected')
+
+    @pyqtSlot()
+    def on_btnUpdMnPayoutAddr_clicked(self):
         self.update_registrar(show_upd_payout=True, show_upd_operator=False, show_upd_voting=False)
 
-    @pyqtSlot(bool)
-    def on_btnUpdMnOperatorKey_clicked(self, enabled):
+    @pyqtSlot()
+    def on_btnUpdMnOperatorKey_clicked(self):
         self.update_registrar(show_upd_payout=False, show_upd_operator=True, show_upd_voting=False)
 
-    @pyqtSlot(bool)
-    def on_btnUpdMnVotingKey_clicked(self, enabled):
+    @pyqtSlot()
+    def on_btnUpdMnVotingKey_clicked(self):
         self.update_registrar(show_upd_payout=False, show_upd_operator=False, show_upd_voting=True)
+
+    @pyqtSlot()
+    def on_btnUpdMnService_clicked(self):
+        self.update_service()
+
+    @pyqtSlot()
+    def on_btnRevokeMn_clicked(self):
+        self.revoke_mn_operator()
 
