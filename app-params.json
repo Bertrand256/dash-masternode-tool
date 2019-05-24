@@ -1,13 +1,13 @@
 {
-  "appCurrentVersion": "0.9.23-hotfix3",
+  "appCurrentVersion": "0.9.24",
   "exeDownloads": {
-    "mac": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.23/DashMasternodeTool_0.9.23-hotfix3.mac.dmg",
-    "win64": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.23/DashMasternodeTool_0.9.23-hotfix3.win64.zip",
-    "linux": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.23/DashMasternodeTool_0.9.23-hotfix3.linux.tar.gz"
+    "mac": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.24/DashMasternodeTool_0.9.24.mac.dmg",
+    "win64": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.24/DashMasternodeTool_0.9.24.win64.zip",
+    "linux": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.24/DashMasternodeTool_0.9.24.linux.tar.gz"
   },
   "defaultDashdProtocol": {
-    "mainnet": 70213,
-    "testnet": 70213
+    "mainnet": 70214,
+    "testnet": 70214
   },
   "sporks": [
     {
@@ -20,7 +20,7 @@
     {
       "name": "SPORK_15_DETERMINISTIC_MNS_ENABLED",
       "active": {
-        "mainnet": false,
+        "mainnet": true,
         "testnet": true
       }
     }
@@ -59,6 +59,30 @@
       }
     },
     "UPDATE_REGISTRAR_AUTOMATIC": {
+      "mainnet": {
+        "status": "enabled",
+        "priority": 4,
+        "message": ""
+      },
+      "testnet": {
+        "status": "enabled",
+        "priority": 4,
+        "message": ""
+      }
+    },
+    "UPDATE_SERVICE_AUTOMATIC": {
+      "mainnet": {
+        "status": "enabled",
+        "priority": 4,
+        "message": ""
+      },
+      "testnet": {
+        "status": "enabled",
+        "priority": 4,
+        "message": ""
+      }
+    },
+    "REVOKE_OPERATOR_AUTOMATIC": {
       "mainnet": {
         "status": "enabled",
         "priority": 4,

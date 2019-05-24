@@ -1,3 +1,14 @@
+## [0.9.24] - 2019-05-24
+
+**Added**
+- Support for the "update service" feature (mn IP/port, operator payout address).
+- Support for the "revoke operator" feature.
+- Additional encryption (RSA) of data sent over the Internet for protx RPC calls.
+
+**Changed**
+- Additional information in the status area, mainly concerning diagnosis of problems with masternode.
+
+
 ## [0.9.23-hotfix3] - 2019-05-08
 
 **Fixed**
