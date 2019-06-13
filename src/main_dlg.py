@@ -891,7 +891,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 path += "/0'/0/0"
                                 path_n = dash_utils.bip32_path_string_to_n(path)
                                 addr = hw_intf.get_address(self.hw_session, path_n, False)
-                                if dash_utils.validate_address(addr, self.config.dash_network):
+                                if addr and dash_utils.validate_address(addr, self.config.dash_network):
                                     found_testnet_support = True
                             except Exception as e:
                                 if str(e).find('Invalid coin name') < 0:
