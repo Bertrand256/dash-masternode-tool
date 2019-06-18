@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>977</width>
+    <width>1027</width>
     <height>499</height>
    </rect>
   </property>
@@ -501,7 +501,7 @@ padding-right: 0px;</string>
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>977</width>
+     <width>1027</width>
      <height>22</height>
     </rect>
    </property>
@@ -518,7 +518,10 @@ padding-right: 0px;</string>
     </widget>
     <addaction name="action_transfer_funds_for_any_address"/>
     <addaction name="separator"/>
-    <addaction name="action_sign_message_for_cur_mn"/>
+    <addaction name="action_sign_message_with_collateral_addr"/>
+    <addaction name="action_sign_message_with_owner_key"/>
+    <addaction name="action_sign_message_with_voting_key"/>
+    <addaction name="separator"/>
     <addaction name="action_hw_configuration"/>
     <addaction name="action_hw_initialization_recovery"/>
     <addaction name="separator"/>
@@ -581,7 +584,6 @@ padding-right: 0px;</string>
    <addaction name="action_open_proposals_window"/>
    <addaction name="separator"/>
    <addaction name="action_transfer_funds_for_any_address"/>
-   <addaction name="action_sign_message_for_cur_mn"/>
   </widget>
   <action name="action_transfer_funds_for_cur_mn">
    <property name="text">
@@ -598,9 +600,12 @@ padding-right: 0px;</string>
     <string>Transfer Funds / Wallet</string>
    </property>
   </action>
-  <action name="action_sign_message_for_cur_mn">
+  <action name="action_sign_message_with_collateral_addr">
    <property name="text">
-    <string>Sign Message for Current Masternode...</string>
+    <string>Sign Message with Collateral Address...</string>
+   </property>
+   <property name="toolTip">
+    <string>Sign message with the collateral address of the current masternode</string>
    </property>
   </action>
   <action name="action_hw_configuration">
@@ -773,6 +778,22 @@ padding-right: 0px;</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+R</string>
+   </property>
+  </action>
+  <action name="action_sign_message_with_owner_key">
+   <property name="text">
+    <string>Sign Message with Owner Key...</string>
+   </property>
+   <property name="toolTip">
+    <string>Sign message with the masternode owner key</string>
+   </property>
+  </action>
+  <action name="action_sign_message_with_voting_key">
+   <property name="text">
+    <string>Sign Message with Voting Key...</string>
+   </property>
+   <property name="toolTip">
+    <string>Sign message with the masternode voting key</string>
    </property>
   </action>
  </widget>

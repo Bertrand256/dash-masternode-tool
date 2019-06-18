@@ -666,9 +666,6 @@ class AppConfig(QObject):
                                 mn.name = config.get(section, 'name', fallback='')
                                 mn.ip = config.get(section, 'ip', fallback='')
                                 mn.port = config.get(section, 'port', fallback='')
-                                mn.privateKey = self.simple_decrypt(
-                                    config.get(section, 'private_key', fallback='').strip(), ini_version < 4,
-                                    lambda x: dash_utils.validate_wif_privkey(x, self.dash_network) )
                                 mn.collateralBip32Path = config.get(section, 'collateral_bip32_path', fallback='').strip()
                                 mn.collateralAddress = config.get(section, 'collateral_address', fallback='').strip()
                                 mn.collateralTx = config.get(section, 'collateral_tx', fallback='').strip()
@@ -920,7 +917,6 @@ class AppConfig(QObject):
             config.set(section, 'port', str(mn.port))
             # the private key encryption method used below is a very basic one, just to not have them stored
             # in plain text; more serious encryption is used when enabling the 'Encrypt config file' option
-            config.set(section, 'private_key', self.simple_encrypt(mn.privateKey))
             config.set(section, 'collateral_bip32_path', mn.collateralBip32Path)
             config.set(section, 'collateral_address', mn.collateralAddress)
             config.set(section, 'collateral_tx', mn.collateralTx)
@@ -1412,7 +1408,6 @@ class MasternodeConfig:
         self.name = ''
         self.__ip = ''
         self.__port = '9999'
-        self.__privateKey = ''
         self.__collateralBip32Path = ''
         self.__collateralAddress = ''
         self.__collateralTx = ''
@@ -1441,7 +1436,6 @@ class MasternodeConfig:
     def copy_from(self, src_mn: 'MasternodeConfig'):
         self.ip = src_mn.ip
         self.port = src_mn.port
-        self.privateKey = src_mn.privateKey
         self.collateralBip32Path = src_mn.collateralBip32Path
         self.collateralAddress = src_mn.collateralAddress
         self.collateralTx = src_mn.collateralTx
@@ -1490,20 +1484,6 @@ class MasternodeConfig:
             self.__port = new_port.strip()
         else:
             self.__port = new_port
-
-    @property
-    def privateKey(self):
-        if self.__privateKey:
-            return self.__privateKey.strip()
-        else:
-            return self.__privateKey
-
-    @privateKey.setter
-    def privateKey(self, new_private_key):
-        if new_private_key:
-            self.__privateKey = new_private_key.strip()
-        else:
-            self.__privateKey = new_private_key
 
     @property
     def collateralBip32Path(self):

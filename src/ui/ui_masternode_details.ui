@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>741</width>
-    <height>312</height>
+    <height>280</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -436,93 +436,6 @@
        </layout>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="horizontalLayout">
-        <item>
-         <widget class="QLabel" name="lblMasternodePrivateKey">
-          <property name="minimumSize">
-           <size>
-            <width>144</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="text">
-           <string>Masternode private key</string>
-          </property>
-          <property name="alignment">
-           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="edtMasternodePrivateKey">
-          <property name="echoMode">
-           <enum>QLineEdit::Password</enum>
-          </property>
-          <property name="clearButtonEnabled">
-           <bool>true</bool>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QToolButton" name="btnCopyMnKey">
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>16777215</height>
-           </size>
-          </property>
-          <property name="toolTip">
-           <string>Copy key to clipboard</string>
-          </property>
-          <property name="text">
-           <string/>
-          </property>
-          <property name="popupMode">
-           <enum>QToolButton::InstantPopup</enum>
-          </property>
-          <property name="arrowType">
-           <enum>Qt::NoArrow</enum>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QToolButton" name="btnShowMnPrivateKey">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>16777215</height>
-           </size>
-          </property>
-          <property name="toolTip">
-           <string>Show/hide private key</string>
-          </property>
-          <property name="text">
-           <string/>
-          </property>
-          <property name="checkable">
-           <bool>true</bool>
-          </property>
-          <property name="popupMode">
-           <enum>QToolButton::MenuButtonPopup</enum>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QToolButton" name="btnGenerateMnPrivateKey">
-          <property name="text">
-           <string>Generate new</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
        <layout class="QHBoxLayout" name="horizontalLayout_7">
         <item>
          <widget class="QLabel" name="lblOwnerKey">
@@ -770,11 +683,9 @@
   <tabstop>edtCollateralTxHash</tabstop>
   <tabstop>edtCollateralTxIndex</tabstop>
   <tabstop>edtDMNTxHash</tabstop>
-  <tabstop>edtMasternodePrivateKey</tabstop>
   <tabstop>edtOwnerKey</tabstop>
   <tabstop>edtOperatorKey</tabstop>
   <tabstop>edtVotingKey</tabstop>
-  <tabstop>btnGenerateMnPrivateKey</tabstop>
   <tabstop>chbRoleOwner</tabstop>
   <tabstop>chbRoleOperator</tabstop>
   <tabstop>chbRoleVoting</tabstop>

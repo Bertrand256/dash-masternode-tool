@@ -21,7 +21,7 @@ from PyQt5.QtCore import QSize, pyqtSlot, QEventLoop, QMutex, QWaitCondition, QU
 from PyQt5.QtGui import QFont, QIcon, QDesktopServices
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle, QInputDialog, QApplication, \
-    QHBoxLayout
+    QHBoxLayout, QAction, QToolButton, QWidgetAction
 from PyQt5.QtWidgets import QMessageBox
 
 import reg_masternode_dlg
@@ -148,11 +148,21 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.setIcon(self.action_test_hw_connection, "hw-test.png")
         self.setIcon(self.action_disconnect_hw, "hw-disconnect.png")
         self.setIcon(self.action_transfer_funds_for_any_address, "wallet.png")
-        self.setIcon(self.action_sign_message_for_cur_mn, "sign@32px.png")
         self.setIcon(self.action_hw_configuration, "hw.png")
         self.setIcon(self.action_hw_initialization_recovery, "recover.png")
         self.setIcon(self.btnMoveMnUp, "arrow-downward@16px.png", rotate=180)
         self.setIcon(self.btnMoveMnDown, "arrow-downward@16px.png")
+
+        self.mnuSignMessage = QMenu()
+        self.mnuSignMessage.addAction(self.action_sign_message_with_collateral_addr)
+        self.mnuSignMessage.addAction(self.action_sign_message_with_owner_key)
+        self.mnuSignMessage.addAction(self.action_sign_message_with_voting_key)
+
+        self.btnSignMessage = QToolButton()
+        self.btnSignMessage.setMenu(self.mnuSignMessage)
+        self.btnSignMessage.setPopupMode(QToolButton.InstantPopup)
+        self.setIcon(self.btnSignMessage, "sign@32px.png")
+        self.toolBar.addWidget(self.btnSignMessage)
 
         # icons will not be visible in menu
         self.action_save_config_file.setIconVisibleInMenu(False)
@@ -164,7 +174,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.action_run_trezor_emulator.setIconVisibleInMenu(False)
         self.action_run_trezor_emulator.setVisible(False)
         self.action_transfer_funds_for_any_address.setIconVisibleInMenu(False)
-        self.action_sign_message_for_cur_mn.setIconVisibleInMenu(False)
         self.action_hw_configuration.setIconVisibleInMenu(False)
         self.action_hw_initialization_recovery.setIconVisibleInMenu(False)
 
@@ -1098,7 +1107,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                     else:
                                         in_mn.ip = mn_ipport
                                         in_mn.port = '9999'
-                                    in_mn.privateKey = mn_privkey
                                     in_mn.collateralAddress = mn_dash_addr
                                     in_mn.collateralTx = mn_tx_hash
                                     in_mn.collateralTxIndex = mn_tx_idx
@@ -1218,6 +1226,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.action_disconnect_hw.setEnabled(True if self.hw_client else False)
             self.btnRefreshMnStatus.setEnabled(self.cur_masternode is not None)
             self.btnRegisterDmn.setEnabled(self.cur_masternode is not None)
+            self.action_sign_message_with_collateral_addr.setEnabled(self.cur_masternode is not None)
+            self.action_sign_message_with_owner_key.setEnabled(self.cur_masternode is not None)
+            self.action_sign_message_with_voting_key.setEnabled(self.cur_masternode is not None)
             self.update_mn_controls_state()
         if threading.current_thread() != threading.main_thread():
             self.call_in_main_thread(update_fun)
@@ -1852,16 +1863,40 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             ui.exec_()
 
     @pyqtSlot(bool)
-    def on_action_sign_message_for_cur_mn_triggered(self):
+    def on_action_sign_message_with_collateral_addr_triggered(self):
         if self.cur_masternode:
             self.connect_hardware_wallet()
             if self.hw_client:
                 if not self.cur_masternode.collateralBip32Path:
-                    self.errorMsg("Empty masternode's collateral BIP32 path")
+                    self.errorMsg("No masternode collateral BIP32 path")
                 else:
                     ui = SignMessageDlg(self, self.hw_session, self.cur_masternode.collateralBip32Path,
                                         self.cur_masternode.collateralAddress)
                     ui.exec_()
+        else:
+            self.errorMsg("To sign messages, you must select a masternode.")
+
+    @pyqtSlot(bool)
+    def on_action_sign_message_with_owner_key_triggered(self):
+        if self.cur_masternode:
+            pk = self.cur_masternode.dmn_owner_private_key
+            if not pk:
+                self.errorMsg("The masternode owner private key has not been configured.")
+            else:
+                ui = SignMessageDlg(self, None, None, None, pk)
+                ui.exec_()
+        else:
+            self.errorMsg("To sign messages, you must select a masternode.")
+
+    @pyqtSlot(bool)
+    def on_action_sign_message_with_voting_key_triggered(self):
+        if self.cur_masternode:
+            pk = self.cur_masternode.dmn_voting_private_key
+            if not pk:
+                self.errorMsg("The masternode voting private key has not been configured.")
+            else:
+                ui = SignMessageDlg(self, None, None, None, pk)
+                ui.exec_()
         else:
             self.errorMsg("To sign messages, you must select a masternode.")
 
