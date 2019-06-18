@@ -1,7 +1,8 @@
 python-bitcoinrpc>=1.0
 bitcoin>=1.1.42
-trezor==0.11.1
-keepkey==4.0.2
+trezor==0.11.3
+keepkey==6.1.0
+libusb1==1.7.1
 PyQt5==5.9.2
 PyQtChart==5.9.2
 pyinstaller>=3.3

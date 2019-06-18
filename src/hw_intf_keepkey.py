@@ -82,56 +82,59 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
                    List[Exception]]
     """
     from keepkeylib.transport_hid import HidTransport
+    from keepkeylib.transport_webusb import WebUsbTransport
 
     ret_list = []
+    transports = [HidTransport, WebUsbTransport]
     exceptions: List[Exception] = []
     device_ids = []
     was_bootloader_mode = False
 
-    for d in HidTransport.enumerate():
-        try:
-            transport = HidTransport(d)
-            client = MyKeepkeyClient(transport, ask_for_pin_callback, ask_for_pass_callback, passphrase_encoding)
+    for t in transports:
+        for d in t.enumerate():
+            try:
+                transport = t(d)
+                client = MyKeepkeyClient(transport, ask_for_pin_callback, ask_for_pass_callback, passphrase_encoding)
 
-            if client.features.bootloader_mode:
-                if was_bootloader_mode:
-                    # in bootloader mode the device_id attribute isn't available, so for a given client object
-                    # we are unable to distinguish between being the same device reached with the different
-                    # transport and being another device
-                    # for that reason, to avoid returning duplicate clients for the same device, we don't return
-                    # more than one instance of a device in bootloader mod
-                    client.close()
-                    continue
-                was_bootloader_mode = True
+                if client.features.bootloader_mode:
+                    if was_bootloader_mode:
+                        # in bootloader mode the device_id attribute isn't available, so for a given client object
+                        # we are unable to distinguish between being the same device reached with the different
+                        # transport and being another device
+                        # for that reason, to avoid returning duplicate clients for the same device, we don't return
+                        # more than one instance of a device in bootloader mod
+                        client.close()
+                        continue
+                    was_bootloader_mode = True
 
-            if (not client.features.bootloader_mode or allow_bootloader_mode) and \
-                (client.features.device_id not in device_ids or client.features.bootloader_mode):
+                if (not client.features.bootloader_mode or allow_bootloader_mode) and \
+                    (client.features.device_id not in device_ids or client.features.bootloader_mode):
 
-                version = f'{client.features.major_version}.{client.features.minor_version}.' \
-                          f'{client.features.patch_version}'
-                if client.features.label:
-                    desc = client.features.label
+                    version = f'{client.features.major_version}.{client.features.minor_version}.' \
+                              f'{client.features.patch_version}'
+                    if client.features.label:
+                        desc = client.features.label
+                    else:
+                        desc = '[UNNAMED]'
+                    desc = f'{desc} (ver: {version}, id: {client.features.device_id})'
+
+                    c = {
+                        'client': client,
+                        'device_id': client.features.device_id,
+                        'desc': desc,
+                        'model': client.features.model,
+                        'bootloader_mode': client.features.bootloader_mode
+                    }
+
+                    ret_list.append(c)
+                    device_ids.append(client.features.device_id)  # beware: it's empty in bootloader mode
                 else:
-                    desc = '[UNNAMED]'
-                desc = f'{desc} (ver: {version}, id: {client.features.device_id})'
-
-                c = {
-                    'client': client,
-                    'device_id': client.features.device_id,
-                    'desc': desc,
-                    'model': client.features.model,
-                    'bootloader_mode': client.features.bootloader_mode
-                }
-
-                ret_list.append(c)
-                device_ids.append(client.features.device_id)  # beware: it's empty in bootloader mode
-            else:
-                # the same device is already connected using different connection medium
-                client.close()
-        except Exception as e:
-            logging.warning(
-                f'Cannot create Keepkey client ({d.__class__.__name__}) due to the following error: ' + str(e))
-            exceptions.append(e)
+                    # the same device is already connected using different connection medium
+                    client.close()
+            except Exception as e:
+                logging.warning(
+                    f'Cannot create Keepkey client ({d.__class__.__name__}) due to the following error: ' + str(e))
+                exceptions.append(e)
 
     if not return_clients:
         for cli in ret_list:
