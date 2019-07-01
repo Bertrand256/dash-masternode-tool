@@ -1465,6 +1465,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     mn_ident = None
                     mn_ip_port = None
 
+            status_color = 'black'
             if mn_info or dmn_tx:
                 mn_status = ''
                 no_operator_pub_key = False
