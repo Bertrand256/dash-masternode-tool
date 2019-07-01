@@ -1,3 +1,7 @@
+## OUTDATED
+Please note that currently the documentation lags behind the development of the program, in particular in the area 
+related to starting masternodes. It will be improved according to the resources available. 
+
 # Dash Masternode Tool (DMT)
 
 ## Contents

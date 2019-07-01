@@ -1,3 +1,13 @@
+## [0.9.25] - 2019-07-01
+**Added**
+- Support for the KeepKey v6.x firmware.
+- Possibility to limit the Trezor transport methods using commandline parameters.
+- Signing messages with owner/voting key.
+- Export/import of the configuration.
+
+**Fixed**
+- A bug related to access to uninitialized variable.
+
 ## [0.9.24] - 2019-05-24
 
 **Added**
