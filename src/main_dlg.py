@@ -420,6 +420,36 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.save_configuration(file_name)
 
     @pyqtSlot(bool)
+    def on_action_export_configuration_triggered(self, checked):
+        if self.config.app_config_file_name:
+            dir = os.path.dirname(self.config.app_config_file_name)
+        else:
+            dir = self.config.data_dir
+        file_name = self.save_config_file_query(dir, self, self.app_config)
+
+        if file_name:
+            self.config.save_to_file(hw_session=self.hw_session, file_name=file_name, update_current_file_name=False)
+            WndUtils.infoMsg('Configuration has been exported.')
+
+    @pyqtSlot(bool)
+    def on_action_import_configuration_triggered(self, checked):
+        if self.config.app_config_file_name:
+            dir = os.path.dirname(self.config.app_config_file_name)
+        else:
+            dir = self.config.data_dir
+        file_name = self.open_config_file_query(dir, self, self.app_config)
+
+        if file_name:
+            if os.path.exists(file_name):
+                self.load_configuration_from_file(file_name, ask_save_changes=False,
+                                                  update_current_file_name=False)
+                self.config.modified = True
+                self.update_edit_controls_state()
+                WndUtils.infoMsg('Configuration has been imported.')
+            else:
+                WndUtils.errorMsg(f'File \'{file_name}\' does not exist.')
+
+    @pyqtSlot(bool)
     def on_action_open_log_file_triggered(self, checked):
         if os.path.exists(self.config.log_file):
             ret = QDesktopServices.openUrl(QUrl("file:///%s" % self.config.log_file))

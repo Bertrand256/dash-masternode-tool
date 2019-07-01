@@ -875,11 +875,11 @@ class AppConfig(QObject):
 
         self.configure_cache()
 
-    def save_to_file(self, hw_session: HwSessionInfo, file_name: Optional[str] = None):
+    def save_to_file(self, hw_session: HwSessionInfo, file_name: Optional[str] = None,
+                     update_current_file_name = True):
         """
         Saves current configuration to a file with the name 'file_name'. If the 'file_name' argument is empty
         configuration is saved under the current configuration file name (self.app_config_file_name).
-        :param file_name:
         :return:
         """
 
@@ -897,7 +897,7 @@ class AppConfig(QObject):
                 return
 
         # backup old ini file
-        if self.backup_config_file:
+        if self.backup_config_file and update_current_file_name:
             if os.path.exists(file_name):
                 tm_str = datetime.datetime.now().strftime('%Y-%m-%d %H_%M')
                 back_file_name = os.path.join(self.cfg_backup_dir, 'config_' + tm_str + '.ini')
@@ -992,14 +992,16 @@ class AppConfig(QObject):
                     mem_data += data_chunk
 
             write_file_encrypted(file_name, hw_session, mem_data)
-            self.config_file_encrypted = True
+            encrypted = True
         else:
             config.write(codecs.open(file_name, 'w', 'utf-8'))
-            self.config_file_encrypted = False
+            encrypted = False
 
-        self.modified = False
-        self.app_config_file_name = file_name
-        app_cache.set_value('AppConfig_ConfigFileName', self.app_config_file_name)
+        if update_current_file_name:
+            self.config_file_encrypted = encrypted
+            self.modified = False
+            self.app_config_file_name = file_name
+            app_cache.set_value('AppConfig_ConfigFileName', self.app_config_file_name)
 
     def reset_network_dependent_dyn_params(self):
         self.apply_remote_app_params()

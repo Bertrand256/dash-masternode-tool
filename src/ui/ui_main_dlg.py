@@ -282,6 +282,10 @@ class Ui_MainWindow(object):
         self.action_sign_message_with_owner_key.setObjectName("action_sign_message_with_owner_key")
         self.action_sign_message_with_voting_key = QtWidgets.QAction(MainWindow)
         self.action_sign_message_with_voting_key.setObjectName("action_sign_message_with_voting_key")
+        self.action_export_configuration = QtWidgets.QAction(MainWindow)
+        self.action_export_configuration.setObjectName("action_export_configuration")
+        self.action_import_configuration = QtWidgets.QAction(MainWindow)
+        self.action_import_configuration.setObjectName("action_import_configuration")
         self.menuClear.addAction(self.action_clear_wallet_cache)
         self.menuClear.addAction(self.action_clear_proposals_cache)
         self.menuTools.addAction(self.action_transfer_funds_for_any_address)
@@ -305,6 +309,8 @@ class Ui_MainWindow(object):
         self.menuFile.addAction(self.action_restore_config_from_backup)
         self.menuFile.addAction(self.action_save_config_file)
         self.menuFile.addAction(self.action_save_config_file_as)
+        self.menuFile.addAction(self.action_export_configuration)
+        self.menuFile.addAction(self.action_import_configuration)
         self.menuFile.addSeparator()
         self.menuFile.addAction(self.action_open_settings_window)
         self.menuFile.addSeparator()
@@ -415,6 +421,10 @@ class Ui_MainWindow(object):
         self.action_sign_message_with_owner_key.setToolTip(_translate("MainWindow", "Sign message with the masternode owner key"))
         self.action_sign_message_with_voting_key.setText(_translate("MainWindow", "Sign Message with Voting Key..."))
         self.action_sign_message_with_voting_key.setToolTip(_translate("MainWindow", "Sign message with the masternode voting key"))
+        self.action_export_configuration.setText(_translate("MainWindow", "Export Configuration..."))
+        self.action_export_configuration.setToolTip(_translate("MainWindow", "Export Configuration"))
+        self.action_import_configuration.setText(_translate("MainWindow", "Import Configuration..."))
+        self.action_import_configuration.setToolTip(_translate("MainWindow", "Import Configuration"))
 
 
 if __name__ == "__main__":

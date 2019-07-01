@@ -547,6 +547,8 @@ padding-right: 0px;</string>
     <addaction name="action_restore_config_from_backup"/>
     <addaction name="action_save_config_file"/>
     <addaction name="action_save_config_file_as"/>
+    <addaction name="action_export_configuration"/>
+    <addaction name="action_import_configuration"/>
     <addaction name="separator"/>
     <addaction name="action_open_settings_window"/>
     <addaction name="separator"/>
@@ -794,6 +796,22 @@ padding-right: 0px;</string>
    </property>
    <property name="toolTip">
     <string>Sign message with the masternode voting key</string>
+   </property>
+  </action>
+  <action name="action_export_configuration">
+   <property name="text">
+    <string>Export Configuration...</string>
+   </property>
+   <property name="toolTip">
+    <string>Export Configuration</string>
+   </property>
+  </action>
+  <action name="action_import_configuration">
+   <property name="text">
+    <string>Import Configuration...</string>
+   </property>
+   <property name="toolTip">
+    <string>Import Configuration</string>
    </property>
   </action>
  </widget>
