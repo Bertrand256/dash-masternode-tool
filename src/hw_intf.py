@@ -191,7 +191,19 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
         import trezorlib.client as client
         from trezorlib import btc, exceptions
         try:
-            cli = trezor.connect_trezor(device_id=device_id)
+            if hw_session and hw_session.app_config:
+                use_webusb = hw_session.app_config.trezor_webusb
+                use_bridge = hw_session.app_config.trezor_bridge
+                use_udp = hw_session.app_config.trezor_udp
+                use_hid = hw_session.app_config.trezor_hid
+            else:
+                use_webusb = True
+                use_bridge = True
+                use_udp = True
+                use_hid = True
+
+            cli = trezor.connect_trezor(device_id=device_id, use_webusb=use_webusb, use_bridge=use_bridge,
+                                        use_udp=use_udp, use_hid=use_hid)
             if cli and hw_session:
                 try:
                     get_public_node_fun = partial(btc.get_public_node, cli)

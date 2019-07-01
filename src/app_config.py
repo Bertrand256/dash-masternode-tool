@@ -197,6 +197,12 @@ class AppConfig(QObject):
         self.fernet = None
         self.log_handler = None
 
+        # options for trezor:
+        self.trezor_webusb = True
+        self.trezor_bridge = True
+        self.trezor_udp = True
+        self.trezor_hid = True
+
         try:
             self.default_rpc_connections = self.decode_connections(default_config.dashd_default_connections)
         except Exception:
@@ -220,7 +226,20 @@ class AppConfig(QObject):
         parser.add_argument('--config', help="Path to a configuration file", dest='config')
         parser.add_argument('--data-dir', help="Root directory for configuration file, cache and log subdirs",
                             dest='data_dir')
+        parser.add_argument('--trezor-webusb', type=app_utils.str2bool, help="Disable WebUsbTransport for Trezor",
+                            dest='trezor_webusb', default=True)
+        parser.add_argument('--trezor-bridge', type=app_utils.str2bool, help="Disable BridgeTransport for Trezor",
+                            dest='trezor_bridge', default=True)
+        parser.add_argument('--trezor-udp', type=app_utils.str2bool, help="Disable UdpTransport for Trezor",
+                            dest='trezor_udp', default=True)
+        parser.add_argument('--trezor-hid', type=app_utils.str2bool, help="Disable HidTransport for Trezor",
+                            dest='trezor_hid', default=True)
+
         args = parser.parse_args()
+        self.trezor_webusb = args.trezor_webusb
+        self.trezor_bridge = args.trezor_bridge
+        self.trezor_udp = args.trezor_udp
+        self.trezor_hid = args.trezor_hid
 
         app_user_dir = ''
         if args.data_dir:

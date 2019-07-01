@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-10
+import argparse
 import decimal
 import logging
 from functools import partial
@@ -370,3 +371,14 @@ def update_mru_menu_items(mru_file_list: List[str], mru_menu: QMenu,
             act.setVisible(False)
 
     mru_menu.update()
+
+
+def str2bool(v):
+    if isinstance(v, bool):
+       return v
+    if v.lower() in ('yes', 'true', '1'):
+        return True
+    elif v.lower() in ('no', 'false', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')

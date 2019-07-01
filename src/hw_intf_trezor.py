@@ -12,14 +12,16 @@ from typing import Optional, Tuple, List, Dict, Callable, Iterable, Type, Set
 import binascii
 from decimal import Decimal
 
+import trezorlib
 from bitcoinrpc.authproxy import EncodeDecimal
 from mnemonic import Mnemonic
 from trezorlib.client import TrezorClient
 from trezorlib.tools import CallException
+from trezorlib.transport import Transport
 from trezorlib.tx_api import TxApi, _json_to_input, _json_to_bin_output, is_zcash
 from trezorlib import messages as trezor_proto, exceptions, btc, messages
 from trezorlib.ui import PIN_CURRENT, PIN_NEW, PIN_CONFIRM
-from trezorlib.transport import enumerate_devices, get_transport
+#from trezorlib.transport import enumerate_devices, get_transport
 from trezorlib import device
 from trezorlib import coins
 
@@ -86,56 +88,51 @@ class MyTrezorClient(TrezorClient):
             raise CancelException('Cancelled')
 
 
-    # def callback_WordRequest(self, msg):
-    #     if msg.type in (trezor_proto.WordRequestType.Matrix9,
-    #                     trezor_proto.WordRequestType.Matrix6):
-    #         return self.callback_RecoveryMatrix(msg)
-    #
-    #     msg = "Enter one word of mnemonic: "
-    #     word = ask_for_word_callback(msg, self.__mnemonic.wordlist)
-    #     if not word:
-    #         raise HardwareWalletCancelException('Cancelled')
-    #     return trezor_proto.WordAck(word=word)
+def all_transports() -> Iterable[Type[Transport]]:
+    from trezorlib.transport.bridge import BridgeTransport
+    from trezorlib.transport.hid import HidTransport
+    from trezorlib.transport.udp import UdpTransport
+    from trezorlib.transport.webusb import WebUsbTransport
+
+    return set(
+        cls
+        for cls in (BridgeTransport, HidTransport, UdpTransport, WebUsbTransport)
+        if cls.ENABLED
+    )
+
+def enumerate_devices(
+        use_webusb=True,
+        use_bridge=True,
+        use_udp=True,
+        use_hid=True) -> Iterable[Transport]:
+
+    devices = []  # type: List[Transport]
+    for transport in all_transports():
+        name = transport.__name__
+        if (name == 'WebUsbTransport' and not use_webusb) or (name == 'BridgeTransport' and not use_bridge) or \
+           (name == 'UdpTransport' and not use_udp) or (name == 'HidTransport' and not use_hid):
+            log.info(f'Skipping {name}')
+            continue
+        try:
+            log.debug("About to enumerate {} devices".format(name))
+            found = list(transport.enumerate())
+            log.info("Enumerating {}: found {} devices".format(name, len(found)))
+            devices.extend(found)
+        except NotImplementedError:
+            log.error("{} does not implement device enumeration".format(name))
+        except Exception as e:
+            excname = e.__class__.__name__
+            log.exception("Failed to enumerate {}. {}: {}".format(name, excname, e))
+    return devices
 
 
-# def all_transports() -> Iterable[Type[trezorlib.transport.Transport]]:
-#     """ Patched version from trezorlib module to avoid the missing libusb-1.0 library exception. """
-#     transports = set()  # type: Set[Type[trezorlib.transport.Transport]]
-#     for modname in ("bridge", "hid", "udp", "webusb"):
-#         try:
-#             # Import the module and find the Transport class.
-#             # To avoid iterating over every item, the module should assign its Transport class
-#             # to a constant named TRANSPORT.
-#             module = importlib.import_module("." + modname, 'trezorlib.transport')
-#             try:
-#                 transports.add(getattr(module, "TRANSPORT"))
-#             except AttributeError:
-#                 log.warning("Skipping broken module {}".format(modname))
-#         except ImportError as e:
-#             log.info("Failed to import module {}: {}".format(modname, e))
-#         except OSError as e:
-#             log.info("Failed to import module {}: {}".format(modname, e))
-#
-#     return transports
-
-
-# def enumerate_devices() -> Iterable[trezorlib.transport.Transport]:
-#     """ Patched version from trezorlib module to avoid the missing libusb-1.0 library exception. """
-#     devices = []  # type: List[trezorlib.transport.Transport]
-#     for transport in all_transports():
-#         try:
-#             found = transport.enumerate()
-#             log.info("Enumerating {}: found {} devices".format(transport.__name__, len(found)))
-#             devices.extend(found)
-#         except NotImplementedError:
-#             log.error("{} does not implement device enumeration".format(transport.__name__))
-#         except Exception as e:
-#             log.error("Failed to enumerate {}. {}: {}".format(transport.__name__, e.__class__.__name__, e))
-#     return devices
-
-
-def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = False) \
-        -> Tuple[List[Dict], List[Exception]]:
+def get_device_list(
+        return_clients: bool = True,
+        allow_bootloader_mode: bool = False,
+        use_webusb=True,
+        use_bridge=True,
+        use_udp=True,
+        use_hid=True) -> Tuple[List[Dict], List[Exception]]:
     """
     :return: Tuple[List[Dict <{'client': MyTrezorClient, 'device_id': str, 'desc',: str, 'model': str}>],
                    List[Exception]]
@@ -145,7 +142,7 @@ def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = F
     device_ids = []
     was_bootloader_mode = False
 
-    devices = enumerate_devices()
+    devices = enumerate_devices(use_webusb=use_webusb, use_bridge=use_bridge, use_udp=use_udp, use_hid=use_hid)
     for d in devices:
         try:
             client = MyTrezorClient(d, ui=TrezorUi())
@@ -198,7 +195,11 @@ def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = F
     return ret_list, exceptions
 
 
-def connect_trezor(device_id: Optional[str] = None) -> Optional[MyTrezorClient]:
+def connect_trezor(device_id: Optional[str] = None,
+                   use_webusb=True,
+                   use_bridge=True,
+                   use_udp=True,
+                   use_hid=True) -> Optional[MyTrezorClient]:
     """
     Connect to a Trezor device.
     :param device_id:
@@ -208,7 +209,8 @@ def connect_trezor(device_id: Optional[str] = None) -> Optional[MyTrezorClient]:
     logging.info('Started function')
     def get_client() -> Optional[MyTrezorClient]:
 
-        hw_clients, exceptions = get_device_list()
+        hw_clients, exceptions = get_device_list(use_webusb=use_webusb, use_bridge=use_bridge, use_udp=use_udp,
+                                                 use_hid=use_hid)
         if not hw_clients:
             if exceptions:
                 raise exceptions[0]
