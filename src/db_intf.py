@@ -146,6 +146,9 @@ class DBCache(object):
             if not self.table_columns_exist('masternodes', ['registered_height']):
                 cur.execute("ALTER TABLE masternodes ADD COLUMN registered_height INTEGER")
 
+            if not self.table_columns_exist('masternodes', ['queue_position']):
+                cur.execute("ALTER TABLE masternodes ADD COLUMN queue_position INTEGER")
+
             # create structures for proposals:
             cur.execute("CREATE TABLE IF NOT EXISTS proposals(id INTEGER PRIMARY KEY, name TEXT, payment_start TEXT,"
                         " payment_end TEXT, payment_amount REAL, yes_count INTEGER, absolute_yes_count INTEGER,"
