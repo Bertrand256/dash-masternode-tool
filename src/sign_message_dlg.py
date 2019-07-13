@@ -24,7 +24,7 @@ class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.W
         self.bip32path = bip32path
         self.address = address
         self.private_key = private_key
-        self.app_config = main_ui.config
+        self.app_config = main_ui.app_config
         self.setupUi()
 
     def setupUi(self):
