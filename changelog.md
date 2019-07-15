@@ -1,3 +1,14 @@
+## [0.9.25-hotfix2] - 2019-07-15
+
+**Fixed**
+- Issue "'WalletDlg' object has no attribute 'config'" when signing message from the wallet dialog.
+
+## [0.9.25-hotfix1] - 2019-07-12
+
+**Fixed**
+- Issue with calculating the next payment block when a masternode received PoSeBan in the past and its PoSeRevivedBlock 
+is less than the last payment block.
+
 ## [0.9.25] - 2019-07-01
 **Added**
 - Support for the KeepKey v6.x firmware.
