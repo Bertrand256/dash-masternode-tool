@@ -13,7 +13,7 @@ from ui import ui_hw_setup_dlg
 class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
     def __init__(self, main_ui):
         QDialog.__init__(self)
-        wnd_utils.WndUtils.__init__(self, main_ui.config)
+        wnd_utils.WndUtils.__init__(self, main_ui.app_config)
         self.main_ui = main_ui
         self.main_ui.connect_hardware_wallet()
         self.hw_session = self.main_ui.hw_session
@@ -30,7 +30,7 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
         self.setWindowTitle('Hardware Wallet Setup')
         self.lblVersion.setText(self.version)
         self.updateControlsState()
-        if self.main_ui.config.hw_type == HWType.ledger_nano_s:
+        if self.main_ui.app_config.hw_type == HWType.ledger_nano_s:
             self.lblMessage.setVisible(True)
         else:
             self.lblMessage.setVisible(False)
@@ -69,7 +69,7 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
                 self.btnEnDisPass.setVisible(False)
 
     def read_hw_features(self):
-        if self.main_ui.config.hw_type in (HWType.trezor, HWType.keepkey):
+        if self.main_ui.app_config.hw_type in (HWType.trezor, HWType.keepkey):
             features = self.hw_session.hw_client.features
             self.pin_protection = features.pin_protection
             self.passphrase_protection = features.passphrase_protection

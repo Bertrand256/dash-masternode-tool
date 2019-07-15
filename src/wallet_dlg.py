@@ -77,24 +77,24 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         """
         :param initial_mn_sel:
           if the value is from 0 to len(masternodes), show utxos for the masternode
-            having the 'initial_mn' index in self.config.mastrnodes
+            having the 'initial_mn' index in self.app_config.mastrnodes
           if the value is -1, show utxo for all masternodes
           if the value is None, show the default utxo source type
         """
         QDialog.__init__(self, parent=main_ui)
-        WndUtils.__init__(self, main_ui.config)
+        WndUtils.__init__(self, main_ui.app_config)
 
         self.main_ui = main_ui
         self.hw_session: HwSessionInfo = self.main_ui.hw_session
         self.hw_connection_established = False
-        self.masternodes = main_ui.config.masternodes
+        self.masternodes = main_ui.app_config.masternodes
         self.masternode_addresses: List[Tuple[str, str]] = []  #  Tuple: address, bip32 path
         for idx, mn in enumerate(self.masternodes):
             self.masternode_addresses.append((mn.collateralAddress.strip(), mn.collateralBip32Path.strip()))
             log.debug(f'WalletDlg initial_mn_sel({idx}) addr - path: {mn.collateralAddress}-{mn.collateralBip32Path}')
 
         self.dashd_intf: DashdInterface = main_ui.dashd_intf
-        self.db_intf: DBCache = main_ui.config.db_intf
+        self.db_intf: DBCache = main_ui.app_config.db_intf
         self.bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.hw_session, self.db_intf, self.dashd_intf,
                                         self.app_config.dash_network)
         self.bip44_wallet.on_account_added_callback = self.on_bip44_account_added
@@ -102,9 +102,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.bip44_wallet.on_account_address_added_callback = self.on_bip44_account_address_added
         self.bip44_wallet.on_address_data_changed_callback = self.on_bip44_account_address_changed
 
-        self.utxo_table_model = UtxoTableModel(self, self.masternodes, main_ui.config.get_block_explorer_tx())
+        self.utxo_table_model = UtxoTableModel(self, self.masternodes, main_ui.app_config.get_block_explorer_tx())
         self.mn_model = MnAddressTableModel(self, self.masternodes, self.bip44_wallet)
-        self.tx_table_model = TransactionTableModel(self, main_ui.config.get_block_explorer_tx())
+        self.tx_table_model = TransactionTableModel(self, main_ui.app_config.get_block_explorer_tx())
 
         self.bip44_wallet.blockheight_changed.connect(self.tx_table_model.set_blockheight)
 
@@ -213,7 +213,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.cboAddressSourceMode.blockSignals(False)
 
         self.set_message("")
-        self.wdg_dest_adresses = SendFundsDestination(self.dest_widget, self, self.main_ui.config,
+        self.wdg_dest_adresses = SendFundsDestination(self.dest_widget, self, self.main_ui.app_config,
                                                       self.main_ui.hw_session)
         self.wdg_dest_adresses.resized_signal.connect(self.on_dest_addresses_resized)
 
@@ -670,7 +670,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                             self.errorMsg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
                         else:
                             after_send_tx_fun = partial(self.process_after_sending_transaction, tx_inputs, tx_outputs)
-                            tx_dlg = TransactionDlg(self, self.main_ui.config, self.dashd_intf, tx_hex, use_is,
+                            tx_dlg = TransactionDlg(self, self.main_ui.app_config, self.dashd_intf, tx_hex, use_is,
                                                     tx_inputs, tx_outputs, self.cur_hd_tree_id, self.hw_session,
                                                     after_send_tx_fun, fn_show_address_on_hw=self.show_address_on_hw)
                             tx_dlg.exec_()
@@ -831,7 +831,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             if acc:
                 addr = acc.address_by_id(self.hw_selected_address_id)
                 if addr and addr.bip32_path and addr.address:
-                    ui = SignMessageDlg(self, self.hw_session, addr.bip32_path, addr.address)
+                    ui = SignMessageDlg(self.main_ui, self.hw_session, addr.bip32_path, addr.address)
                     ui.exec_()
         if not addr:
             WndUtils.warnMsg('Couldn\'t copy the selected address.')

@@ -20,7 +20,7 @@ CACHE_ITEM_SHOW_COMMANDS = 'UpdMnRegistrarDlg_ShowCommands'
 class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, WndUtils):
     def __init__(self,
                  main_dlg,
-                 config: AppConfig,
+                 app_config: AppConfig,
                  dashd_intf: DashdInterface,
                  masternode: MasternodeConfig,
                  on_upd_success_callback: Callable,
@@ -29,10 +29,10 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                  show_upd_voting: bool):
         QDialog.__init__(self, main_dlg)
         ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg.__init__(self)
-        WndUtils.__init__(self, main_dlg.config)
+        WndUtils.__init__(self, main_dlg.app_config)
         self.main_dlg = main_dlg
         self.masternode = masternode
-        self.app_config = config
+        self.app_config = app_config
         self.dashd_intf = dashd_intf
         self.on_upd_success_callback = on_upd_success_callback
         self.dmn_operator_key_type = InputKeyType.PRIVATE

@@ -21,15 +21,15 @@ CACHE_ITEM_SHOW_COMMANDS = 'RevokeMnDlg_ShowCommands'
 class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
     def __init__(self,
                  main_dlg,
-                 config: AppConfig,
+                 app_config: AppConfig,
                  dashd_intf: DashdInterface,
                  masternode: MasternodeConfig):
         QDialog.__init__(self, main_dlg)
         ui_revoke_mn_dlg.Ui_RevokeMnDlg.__init__(self)
-        WndUtils.__init__(self, main_dlg.config)
+        WndUtils.__init__(self, main_dlg.app_config)
         self.main_dlg = main_dlg
         self.masternode = masternode
-        self.app_config = config
+        self.app_config = app_config
         self.dashd_intf = dashd_intf
         self.dmn_protx_hash = self.masternode.dmn_tx_hash
         self.dmn_actual_operator_pubkey = ""

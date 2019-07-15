@@ -81,10 +81,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.hw_client = None
         self.finishing = False
         self.app_messages: Dict[int, DispMessage] = {}
-        self.config = AppConfig()
-        self.config.init(app_dir)
-        self.config.sig_display_message.connect(self.add_app_message)
-        WndUtils.set_app_config(self, self.config)
+        self.app_config = AppConfig()
+        self.app_config.init(app_dir)
+        self.app_config.sig_display_message.connect(self.add_app_message)
+        WndUtils.set_app_config(self, self.app_config)
 
         self.dashd_intf = DashdInterface(window=None,
                                          on_connection_initiated_callback=self.show_connection_initiated,
@@ -95,7 +95,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.get_hw_client,
             self.connect_hardware_wallet,
             self.disconnect_hardware_wallet,
-            self.config,
+            self.app_config,
             dashd_intf=self.dashd_intf)
 
         self.dashd_info = {}
@@ -181,7 +181,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.addAction(self.action_gen_mn_priv_key_uncompressed)
         self.addAction(self.action_gen_mn_priv_key_compressed)
 
-        self.config.feature_update_registrar_automatic.value_changed.connect(self.update_mn_controls_state)
+        self.app_config.feature_update_registrar_automatic.value_changed.connect(self.update_mn_controls_state)
 
         # add masternodes' info to the combobox
         self.cur_masternode = None
@@ -198,18 +198,18 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         # after loading whole configuration, reset 'modified' variable
         try:
-            self.config.read_from_file(hw_session=self.hw_session, create_config_file=True)
+            self.app_config.read_from_file(hw_session=self.hw_session, create_config_file=True)
         except Exception as e:
             raise
         self.display_window_title()
-        self.dashd_intf.initialize(self.config)
+        self.dashd_intf.initialize(self.app_config)
 
         self.update_edit_controls_state()
 
         self.run_thread(self, self.get_project_config_params_thread, (False,))
 
-        if self.config.app_config_file_name and os.path.exists(self.config.app_config_file_name):
-            self.add_item_to_config_files_mru_list(self.config.app_config_file_name)
+        if self.app_config.app_config_file_name and os.path.exists(self.app_config.app_config_file_name):
+            self.add_item_to_config_files_mru_list(self.app_config.app_config_file_name)
         self.update_config_files_mru_menu_items()
 
         self.inside_setup_ui = False
@@ -227,12 +227,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.dashd_intf:
             self.dashd_intf.disconnect()
 
-        if self.config.is_modified():
+        if self.app_config.is_modified():
             if self.queryDlg('Configuration modified. Save?',
                              buttons=QMessageBox.Yes | QMessageBox.No,
                              default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
                 self.save_configuration()
-        self.config.close()
+        self.app_config.close()
 
     def set_mn_labels_width(self, width):
         self.lblMasternodeStatus.setFixedWidth(width)
@@ -251,23 +251,23 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.cboMasternodes.clear()
         try:
             self.cboMasternodes.blockSignals(True)
-            for mn in self.config.masternodes:
+            for mn in self.app_config.masternodes:
                 self.cboMasternodes.addItem(mn.name, mn)
         finally:
             self.cboMasternodes.blockSignals(False)
 
-        if self.config.masternodes:
+        if self.app_config.masternodes:
             # get last masternode selected
             idx = app_cache.get_value('MainWindow_CurMasternodeIndex', 0, int)
-            if idx >= len(self.config.masternodes):
+            if idx >= len(self.app_config.masternodes):
                 idx = 0
-            self.cur_masternode = self.config.masternodes[idx]
+            self.cur_masternode = self.app_config.masternodes[idx]
             self.display_masternode_config(True)
         else:
             self.cur_masternode = None
 
         self.wdg_masternode.set_masternode(self.cur_masternode)
-        self.action_open_log_file.setText('Open log file (%s)' % self.config.log_file)
+        self.action_open_log_file.setText('Open log file (%s)' % self.app_config.log_file)
         self.update_edit_controls_state()
 
     def load_configuration_from_file(self, file_name: str, ask_save_changes = True,
@@ -276,7 +276,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         Load configuration from a file.
         :param file_name: A name of the configuration file to be loaded into the application.
         """
-        if self.config.is_modified() and ask_save_changes:
+        if self.app_config.is_modified() and ask_save_changes:
             ret = self.queryDlg('Current configuration has been modified. Save?',
                                 buttons=QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
                                 default_button=QMessageBox.Yes, icon=QMessageBox.Warning)
@@ -288,20 +288,20 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         try:
             self.disconnect_hardware_wallet()
-            dash_network_sav = self.config.dash_network
-            self.config.read_from_file(hw_session=self.hw_session, file_name=file_name,
-                                       update_current_file_name=update_current_file_name)
+            dash_network_sav = self.app_config.dash_network
+            self.app_config.read_from_file(hw_session=self.hw_session, file_name=file_name,
+                                           update_current_file_name=update_current_file_name)
             self.editing_enabled = False
             self.configuration_to_ui()
             self.dashd_intf.reload_configuration()
-            self.config.modified = False
-            file_name = self.config.app_config_file_name
+            self.app_config.modified = False
+            file_name = self.app_config.app_config_file_name
             if file_name:
                 self.add_item_to_config_files_mru_list(file_name)
                 self.update_config_files_mru_menu_items()
-                if dash_network_sav != self.config.dash_network:
+                if dash_network_sav != self.app_config.dash_network:
                     self.disconnect_hardware_wallet()
-                    self.config.reset_network_dependent_dyn_params()
+                    self.app_config.reset_network_dependent_dyn_params()
             self.display_window_title()
         except CancelException:
             self.update_config_files_mru_menu_items()
@@ -328,7 +328,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def update_config_files_mru_menu_items(self):
         app_utils.update_mru_menu_items(self.recent_config_files, self.action_open_recent_files,
                                         self.on_config_file_mru_action_triggered,
-                                        self.config.app_config_file_name,
+                                        self.app_config.app_config_file_name,
                                         self.on_config_file_mru_clear_triggered)
 
     def on_config_file_mru_action_triggered(self, file_name: str) -> None:
@@ -336,7 +336,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         related to one of recently openend configuration files.
         :param file_name: A config file name accociated with the menu action clicked.
         """
-        if file_name != self.config.app_config_file_name:
+        if file_name != self.app_config.app_config_file_name:
             self.load_configuration_from_file(file_name)
 
     def on_config_file_mru_clear_triggered(self):
@@ -351,15 +351,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         the name of the current configuration file. This method is executed after each successful loading
         of the configuration file.
         """
-        app_version_part = ' (v' + self.config.app_version + ')' if self.config.app_version else ''
+        app_version_part = ' (v' + self.app_config.app_version + ')' if self.app_config.app_version else ''
 
-        if self.config.dash_network == 'TESTNET':
+        if self.app_config.dash_network == 'TESTNET':
             testnet_part = ' [TESTNET]'
         else:
             testnet_part = ''
 
-        if self.config.app_config_file_name:
-            cfg_file_name = self.config.app_config_file_name
+        if self.app_config.app_config_file_name:
+            cfg_file_name = self.app_config.app_config_file_name
             if cfg_file_name:
                 home_dir = os.path.expanduser('~')
                 if cfg_file_name.find(home_dir) == 0:
@@ -370,7 +370,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             cfg_file_name_part = '  <UNNAMED>'
 
-        if self.config.config_file_encrypted:
+        if self.app_config.config_file_encrypted:
             encrypted_part = ' (Encrypted)'
         else:
             encrypted_part = ''
@@ -381,10 +381,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_action_load_config_file_triggered(self, checked):
-        if self.config.app_config_file_name:
-            dir = os.path.dirname(self.config.app_config_file_name)
+        if self.app_config.app_config_file_name:
+            dir = os.path.dirname(self.app_config.app_config_file_name)
         else:
-            dir = self.config.data_dir
+            dir = self.app_config.data_dir
         file_name = self.open_config_file_query(dir, self, self.app_config)
 
         if file_name:
@@ -394,13 +394,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 WndUtils.errorMsg(f'File \'{file_name}\' does not exist.')
 
     def save_configuration(self, file_name: str = None):
-        self.config.save_to_file(hw_session=self.hw_session, file_name=file_name)
-        file_name = self.config.app_config_file_name
+        self.app_config.save_to_file(hw_session=self.hw_session, file_name=file_name)
+        file_name = self.app_config.app_config_file_name
         if file_name:
             self.add_item_to_config_files_mru_list(file_name)
         self.update_config_files_mru_menu_items()
         self.display_window_title()
-        self.editing_enabled = self.config.is_modified()
+        self.editing_enabled = self.app_config.is_modified()
         self.wdg_masternode.set_edit_mode(self.editing_enabled )
         self.update_edit_controls_state()
 
@@ -410,10 +410,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_action_save_config_file_as_triggered(self, checked):
-        if self.config.app_config_file_name:
-            dir = os.path.dirname(self.config.app_config_file_name)
+        if self.app_config.app_config_file_name:
+            dir = os.path.dirname(self.app_config.app_config_file_name)
         else:
-            dir = self.config.data_dir
+            dir = self.app_config.data_dir
         file_name = self.save_config_file_query(dir, self, self.app_config)
 
         if file_name:
@@ -421,29 +421,29 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_action_export_configuration_triggered(self, checked):
-        if self.config.app_config_file_name:
-            dir = os.path.dirname(self.config.app_config_file_name)
+        if self.app_config.app_config_file_name:
+            dir = os.path.dirname(self.app_config.app_config_file_name)
         else:
-            dir = self.config.data_dir
+            dir = self.app_config.data_dir
         file_name = self.save_config_file_query(dir, self, self.app_config)
 
         if file_name:
-            self.config.save_to_file(hw_session=self.hw_session, file_name=file_name, update_current_file_name=False)
+            self.app_config.save_to_file(hw_session=self.hw_session, file_name=file_name, update_current_file_name=False)
             WndUtils.infoMsg('Configuration has been exported.')
 
     @pyqtSlot(bool)
     def on_action_import_configuration_triggered(self, checked):
-        if self.config.app_config_file_name:
-            dir = os.path.dirname(self.config.app_config_file_name)
+        if self.app_config.app_config_file_name:
+            dir = os.path.dirname(self.app_config.app_config_file_name)
         else:
-            dir = self.config.data_dir
+            dir = self.app_config.data_dir
         file_name = self.open_config_file_query(dir, self, self.app_config)
 
         if file_name:
             if os.path.exists(file_name):
                 self.load_configuration_from_file(file_name, ask_save_changes=False,
                                                   update_current_file_name=False)
-                self.config.modified = True
+                self.app_config.modified = True
                 self.update_edit_controls_state()
                 WndUtils.infoMsg('Configuration has been imported.')
             else:
@@ -451,10 +451,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_action_open_log_file_triggered(self, checked):
-        if os.path.exists(self.config.log_file):
-            ret = QDesktopServices.openUrl(QUrl("file:///%s" % self.config.log_file))
+        if os.path.exists(self.app_config.log_file):
+            ret = QDesktopServices.openUrl(QUrl("file:///%s" % self.app_config.log_file))
             if not ret:
-                self.warnMsg('Could not open "%s" file using a default OS application.' % self.config.log_file)
+                self.warnMsg('Could not open "%s" file using a default OS application.' % self.app_config.log_file)
 
     @pyqtSlot(bool)
     def on_action_restore_config_from_backup_triggered(self, checked):
@@ -464,9 +464,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         input.setWindowTitle('Restore from backup')
         file_dates:List[Tuple[str, int, str]] = []
 
-        for fname in os.listdir(self.config.cfg_backup_dir):
+        for fname in os.listdir(self.app_config.cfg_backup_dir):
             try:
-                fpath = os.path.join(self.config.cfg_backup_dir, fname)
+                fpath = os.path.join(self.app_config.cfg_backup_dir, fname)
                 if os.path.isfile(fpath):
                     datetime.datetime.now().strftime('%Y-%m-%d %H_%M')
                     m = re.match('config_(\d{4}-\d{2}-\d{2}\s\d{2}_\d{2})', fname)
@@ -494,33 +494,33 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     _, _, file_name_to_restore = file_dates[idx]
                     self.load_configuration_from_file(file_name_to_restore, ask_save_changes=False,
                                                       update_current_file_name=False)
-                    self.config.modified = True
+                    self.app_config.modified = True
                     self.update_edit_controls_state()
         else:
             self.errorMsg("Couldn't find any backup file.")
 
     @pyqtSlot(bool)
     def on_action_open_data_folder_triggered(self, checked):
-        if os.path.exists(self.config.data_dir):
-            ret = QDesktopServices.openUrl(QUrl("file:///%s" % self.config.data_dir))
+        if os.path.exists(self.app_config.data_dir):
+            ret = QDesktopServices.openUrl(QUrl("file:///%s" % self.app_config.data_dir))
             if not ret:
-                self.warnMsg('Could not open "%s" folder using a default OS application.' % self.config.data_dir)
+                self.warnMsg('Could not open "%s" folder using a default OS application.' % self.app_config.data_dir)
 
     @pyqtSlot(bool)
     def on_action_clear_wallet_cache_triggered(self, checked):
         if self.queryDlg('Do you really want to clear the wallet cache?',
                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
                          default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
-            db_cursor = self.config.db_intf.get_cursor()
+            db_cursor = self.app_config.db_intf.get_cursor()
             try:
                 db_cursor.execute('drop table address')
                 db_cursor.execute('drop table hd_tree')
                 db_cursor.execute('drop table tx_input')
                 db_cursor.execute('drop table tx_output')
                 db_cursor.execute('drop table tx')
-                self.config.db_intf.create_structures()
+                self.app_config.db_intf.create_structures()
             finally:
-                self.config.db_intf.release_cursor()
+                self.app_config.db_intf.release_cursor()
             self.infoMsg('Wallet cache cleared.')
 
     @pyqtSlot(bool)
@@ -528,13 +528,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.queryDlg('Do you really want to clear the proposals cache?',
                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
                          default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
-            db_cursor = self.config.db_intf.get_cursor()
+            db_cursor = self.app_config.db_intf.get_cursor()
             try:
                 db_cursor.execute('drop table proposals')
                 db_cursor.execute('drop table voting_results')
-                self.config.db_intf.create_structures()
+                self.app_config.db_intf.create_structures()
             finally:
-                self.config.db_intf.release_cursor()
+                self.app_config.db_intf.release_cursor()
             self.infoMsg('Proposals cache cleared.')
 
     @pyqtSlot(bool)
@@ -563,14 +563,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             contents = response.read()
 
             remote_app_params = simplejson.loads(contents)
-            self.config.set_remote_app_params(remote_app_params)
+            self.app_config.set_remote_app_params(remote_app_params)
 
             if remote_app_params:
                 logging.info('Loaded the project configuration params: ' + str(remote_app_params))
-                if self.config.check_for_updates or force_check:
+                if self.app_config.check_for_updates or force_check:
                     remote_version_str = remote_app_params.get("appCurrentVersion")
                     if remote_version_str:
-                        if app_utils.is_version_bigger(remote_version_str, self.config.app_version):
+                        if app_utils.is_version_bigger(remote_version_str, self.app_config.app_version):
                             if sys.platform == 'win32':
                                 item_name = 'win'
                                 no_bits = platform.architecture()[0].replace('bit', '')
@@ -607,7 +607,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def display_masternode_config(self, set_mn_list_index):
         if self.cur_masternode:
             if set_mn_list_index:
-                self.cboMasternodes.setCurrentIndex(self.config.masternodes.index(self.cur_masternode))
+                self.cboMasternodes.setCurrentIndex(self.app_config.masternodes.index(self.cur_masternode))
             else:
                 self.wdg_masternode.set_masternode(self.cur_masternode)
             self.update_edit_controls_state()
@@ -618,23 +618,23 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_action_open_settings_window_triggered(self):
-        dash_network_sav = self.config.dash_network
-        hw_type_sav = self.config.hw_type
-        dlg = ConfigDlg(self, self.config)
+        dash_network_sav = self.app_config.dash_network
+        hw_type_sav = self.app_config.hw_type
+        dlg = ConfigDlg(self, self.app_config)
         res = dlg.exec_()
         if res and dlg.get_is_modified():
-            self.config.configure_cache()
+            self.app_config.configure_cache()
             self.dashd_intf.reload_configuration()
-            if dash_network_sav != self.config.dash_network or hw_type_sav != self.config.hw_type:
+            if dash_network_sav != self.app_config.dash_network or hw_type_sav != self.app_config.hw_type:
                 self.disconnect_hardware_wallet()
-                self.config.reset_network_dependent_dyn_params()
+                self.app_config.reset_network_dependent_dyn_params()
             self.display_window_title()
             self.update_edit_controls_state()
         del dlg
 
     @pyqtSlot(bool)
     def on_action_about_app_triggered(self):
-        ui = about_dlg.AboutDlg(self, self.config.app_version)
+        ui = about_dlg.AboutDlg(self, self.app_config.app_version)
         ui.exec_()
 
     def show_connection_initiated(self):
@@ -735,13 +735,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             del self.check_conn_thread
             self.check_conn_thread = None
             self.connecting_to_dashd = False
-            self.config.read_dash_network_app_params(self.dashd_intf)
+            self.app_config.read_dash_network_app_params(self.dashd_intf)
             if call_on_check_finished:
                 call_on_check_finished()
             if event_loop:
                 event_loop.exit()
 
-        if self.config.is_config_complete():
+        if self.app_config.is_config_complete():
             if not hasattr(self, 'check_conn_thread') or self.check_conn_thread is None:
 
                 if hasattr(self, 'wait_for_dashd_synced_thread') and self.wait_for_dashd_synced_thread is not None:
@@ -785,7 +785,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 else:
                     self.errorMsg('Connection error')
 
-        if self.config.is_config_complete():
+        if self.app_config.is_config_complete():
             self.action_check_network_connection.setEnabled(False)
             self.btnRegisterDmn.setEnabled(False)
             self.btnUpdMnPayoutAddr.setEnabled(False)
@@ -892,11 +892,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     break
 
     def getHwName(self):
-        if self.config.hw_type == HWType.trezor:
+        if self.app_config.hw_type == HWType.trezor:
             return 'Trezor'
-        elif self.config.hw_type == HWType.keepkey:
+        elif self.app_config.hw_type == HWType.keepkey:
             return 'KeepKey'
-        elif self.config.hw_type == HWType.ledger_nano_s:
+        elif self.app_config.hw_type == HWType.ledger_nano_s:
             return 'Ledger Nano S'
         else:
             return 'Unknown HW Type'
@@ -909,7 +909,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         ret = None
         if self.hw_client:
             cur_hw_type = hw_intf.get_hw_type(self.hw_client)
-            if self.config.hw_type != cur_hw_type:
+            if self.app_config.hw_type != cur_hw_type:
                 self.on_action_disconnect_hw_triggered()
 
         if not self.hw_client:
@@ -918,27 +918,27 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     logging.info('Connecting to a hardware wallet device. self: ' + str(self))
                     self.hw_client = hw_intf.connect_hw(hw_session=self.hw_session,
                                                         device_id=None,
-                                                        passphrase_encoding=self.config.hw_keepkey_psw_encoding,
-                                                        hw_type=self.config.hw_type)
+                                                        passphrase_encoding=self.app_config.hw_keepkey_psw_encoding,
+                                                        hw_type=self.app_config.hw_type)
 
-                    if self.config.dash_network == 'TESTNET':
+                    if self.app_config.dash_network == 'TESTNET':
                         # check if Dash testnet is supported by this hardware wallet
                         found_testnet_support = False
-                        if self.config.hw_type in (HWType.trezor, HWType.keepkey):
+                        if self.app_config.hw_type in (HWType.trezor, HWType.keepkey):
                             try:
-                                path = dash_utils.get_default_bip32_base_path(self.config.dash_network)
+                                path = dash_utils.get_default_bip32_base_path(self.app_config.dash_network)
                                 path += "/0'/0/0"
                                 path_n = dash_utils.bip32_path_string_to_n(path)
                                 addr = hw_intf.get_address(self.hw_session, path_n, False)
-                                if addr and dash_utils.validate_address(addr, self.config.dash_network):
+                                if addr and dash_utils.validate_address(addr, self.app_config.dash_network):
                                     found_testnet_support = True
                             except Exception as e:
                                 if str(e).find('Invalid coin name') < 0:
                                     logging.exception('Failed when looking for Dash testnet support')
-                        elif self.config.hw_type == HWType.ledger_nano_s:
+                        elif self.app_config.hw_type == HWType.ledger_nano_s:
                             addr = hw_intf.get_address(self.hw_session,
-                                                       dash_utils.get_default_bip32_path(self.config.dash_network))
-                            if dash_utils.validate_address(addr, self.config.dash_network):
+                                                       dash_utils.get_default_bip32_path(self.app_config.dash_network))
+                            if dash_utils.validate_address(addr, self.app_config.dash_network):
                                 found_testnet_support = False
 
                         if not found_testnet_support:
@@ -1005,10 +1005,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.update_edit_controls_state()
         if self.hw_client:
             try:
-                if self.config.hw_type in (HWType.trezor, HWType.keepkey):
+                if self.app_config.hw_type in (HWType.trezor, HWType.keepkey):
                     self.infoMsg('Connection to %s device (%s) successful.' %
                                  (self.getHwName(), hw_intf.get_hw_label(self.hw_client)))
-                elif self.config.hw_type == HWType.ledger_nano_s:
+                elif self.app_config.hw_type == HWType.ledger_nano_s:
                     self.infoMsg('Connection to %s device successful.' %
                                  (self.getHwName(),))
             except CancelException:
@@ -1043,9 +1043,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             retval = msg.exec_()
             if retval == QMessageBox.No:
                 return
-            self.config.masternodes.remove(self.cur_masternode)
+            self.app_config.masternodes.remove(self.cur_masternode)
             self.cboMasternodes.removeItem(self.cboMasternodes.currentIndex())
-            self.config.modified = True
+            self.app_config.modified = True
             self.update_edit_controls_state()
 
     @pyqtSlot(bool)
@@ -1061,25 +1061,25 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_btnCancelEditingMn_clicked(self, checked):
-        if self.config.is_modified():
+        if self.app_config.is_modified():
             if WndUtils.queryDlg('Configuration modified. Discard changes?',
                                  buttons=QMessageBox.Yes | QMessageBox.Cancel,
                                  default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
                 # reload the configuration (we don't keep the old values)
                 sel_mn_idx = self.app_config.masternodes.index(self.cur_masternode)
                 # reload the configuration from file
-                self.load_configuration_from_file(self.config.app_config_file_name, ask_save_changes=False)
+                self.load_configuration_from_file(self.app_config.app_config_file_name, ask_save_changes=False)
                 self.editing_enabled = False
-                if sel_mn_idx >= 0 and sel_mn_idx < len(self.config.masternodes):
-                    self.cur_masternode = self.config.masternodes[sel_mn_idx]
+                if sel_mn_idx >= 0 and sel_mn_idx < len(self.app_config.masternodes):
+                    self.cur_masternode = self.app_config.masternodes[sel_mn_idx]
                     self.display_masternode_config(sel_mn_idx)
                 self.wdg_masternode.set_edit_mode(self.editing_enabled)
                 self.update_edit_controls_state()
         else:
             if self.cur_masternode and self.cur_masternode.new:
-                idx = self.config.masternodes.index(self.cur_masternode)
+                idx = self.app_config.masternodes.index(self.cur_masternode)
                 if idx >= 0:
-                    self.config.masternodes.remove(self.cur_masternode)
+                    self.app_config.masternodes.remove(self.cur_masternode)
                     self.cboMasternodes.removeItem(self.cboMasternodes.currentIndex())
             self.editing_enabled = False
             self.wdg_masternode.set_edit_mode(self.editing_enabled)
@@ -1142,7 +1142,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                     in_mn.collateralTxIndex = mn_tx_idx
                                     in_mn.collateralBip32Path = ''
 
-                                mn = self.config.get_mn_by_name(mn_name)
+                                mn = self.app_config.get_mn_by_name(mn_name)
                                 if mn:
                                     msg = QMessageBox()
                                     msg.setIcon(QMessageBox.Information)
@@ -1169,7 +1169,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                     mn = MasternodeConfig()
                                     update_mn(mn)
                                     modified = True
-                                    self.config.add_mn(mn)
+                                    self.app_config.add_mn(mn)
                                     self.cboMasternodes.addItem(mn.name, mn)
                                     mns_imported.append(mn)
                             else:
@@ -1252,7 +1252,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.btnEditMn.setEnabled(not self.editing_enabled and self.cur_masternode is not None)
             self.btnCancelEditingMn.setEnabled(self.editing_enabled and self.cur_masternode is not None)
             self.btnDuplicateMn.setEnabled(self.cur_masternode is not None)
-            self.action_save_config_file.setEnabled(self.config.is_modified())
+            self.action_save_config_file.setEnabled(self.app_config.is_modified())
             self.action_disconnect_hw.setEnabled(True if self.hw_client else False)
             self.btnRefreshMnStatus.setEnabled(self.cur_masternode is not None)
             self.btnRegisterDmn.setEnabled(self.cur_masternode is not None)
@@ -1288,9 +1288,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.btnRevokeMn.setEnabled(enabled)
 
         if self.cur_masternode:
-            idx = self.config.masternodes.index(self.cur_masternode)
+            idx = self.app_config.masternodes.index(self.cur_masternode)
             self.btnMoveMnUp.setEnabled(idx > 0)
-            self.btnMoveMnDown.setEnabled(idx < len(self.config.masternodes) - 1)
+            self.btnMoveMnDown.setEnabled(idx < len(self.app_config.masternodes) - 1)
         else:
             self.btnMoveMnUp.setEnabled(False)
             self.btnMoveMnDown.setEnabled(False)
@@ -1310,7 +1310,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         name_found = None
         for nr in range(1, 100):
             exists = False
-            for mn in self.config.masternodes:
+            for mn in self.app_config.masternodes:
                 if mn.name == mn_template + str(nr):
                     exists = True
                     break
@@ -1323,21 +1323,21 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if copy_values_from_current and cur_masternode_sav:
             new_mn.copy_from(cur_masternode_sav)
 
-        self.config.masternodes.append(new_mn)
+        self.app_config.masternodes.append(new_mn)
         self.editing_enabled = True
         old_index = self.cboMasternodes.currentIndex()
         self.cboMasternodes.addItem(new_mn.name, new_mn)
         if old_index != -1:
             # if masternodes combo was not empty before adding new mn, we have to manually set combobox
             # position to a new masternode position
-            self.cboMasternodes.setCurrentIndex(self.config.masternodes.index(self.cur_masternode))
+            self.cboMasternodes.setCurrentIndex(self.app_config.masternodes.index(self.cur_masternode))
         self.wdg_masternode.set_masternode(self.cur_masternode)
         self.wdg_masternode.set_edit_mode(self.editing_enabled )
 
     @pyqtSlot(int)
     def on_cboMasternodes_currentIndexChanged(self):
         if self.cboMasternodes.currentIndex() >= 0:
-            self.cur_masternode = self.config.masternodes[self.cboMasternodes.currentIndex()]
+            self.cur_masternode = self.app_config.masternodes[self.cboMasternodes.currentIndex()]
         else:
             self.cur_masternode = None
         self.display_masternode_config(False)
@@ -1349,12 +1349,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def on_mn_data_changed(self, masternode: MasternodeConfig):
         if self.cur_masternode == masternode:
             self.cur_masternode.set_modified()
-            self.action_save_config_file.setEnabled(self.config.is_modified())
+            self.action_save_config_file.setEnabled(self.app_config.is_modified())
 
     @pyqtSlot(bool)
     def on_btnMoveMnUp_clicked(self, enabled):
         if self.cur_masternode:
-            idx = self.config.masternodes.index(self.cur_masternode)
+            idx = self.app_config.masternodes.index(self.cur_masternode)
             if idx > 0:
                 old = self.cboMasternodes.blockSignals(True)
                 try:
@@ -1362,9 +1362,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.cboMasternodes.removeItem(idx+1)
                     self.cboMasternodes.setCurrentIndex(idx-1)
 
-                    self.config.masternodes[idx-1], self.config.masternodes[idx] = self.config.masternodes[idx], \
-                                                                                   self.config.masternodes[idx-1]
-                    self.config.modified = True
+                    self.app_config.masternodes[idx - 1], self.app_config.masternodes[idx] = self.app_config.masternodes[idx], \
+                                                                                             self.app_config.masternodes[idx - 1]
+                    self.app_config.modified = True
                 finally:
                     self.cboMasternodes.blockSignals(old)
                     self.update_mn_controls_state()
@@ -1373,17 +1373,17 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot(bool)
     def on_btnMoveMnDown_clicked(self, enabled):
         if self.cur_masternode:
-            idx = self.config.masternodes.index(self.cur_masternode)
-            if idx < len(self.config.masternodes) - 1:
+            idx = self.app_config.masternodes.index(self.cur_masternode)
+            if idx < len(self.app_config.masternodes) - 1:
                 old = self.cboMasternodes.blockSignals(True)
                 try:
                     self.cboMasternodes.removeItem(idx)
                     self.cboMasternodes.insertItem(idx+1, self.cur_masternode.name, self.cur_masternode)
                     self.cboMasternodes.setCurrentIndex(idx+1)
 
-                    self.config.masternodes[idx+1], self.config.masternodes[idx] = self.config.masternodes[idx], \
-                                                                                   self.config.masternodes[idx+1]
-                    self.config.modified = True
+                    self.app_config.masternodes[idx + 1], self.app_config.masternodes[idx] = self.app_config.masternodes[idx], \
+                                                                                             self.app_config.masternodes[idx + 1]
+                    self.app_config.modified = True
                 finally:
                     self.cboMasternodes.blockSignals(old)
                     self.update_mn_controls_state()
@@ -1644,7 +1644,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     # get balance
                     collateral_address = masternode.collateralAddress.strip()
                     payout_address = dmn_tx_state.get('payoutAddress','')
-                    payment_url = self.config.get_block_explorer_addr().replace('%ADDRESS%', payout_address)
+                    payment_url = self.app_config.get_block_explorer_addr().replace('%ADDRESS%', payout_address)
                     payout_link = '<a href="%s">%s</a>' % (payment_url, payout_address)
                     payout_entry = f'<tr><td class="title">Payout address:</td><td class="value" colspan="2">' \
                         f'{payout_link}</td></tr>'
@@ -1856,7 +1856,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                               "button on the left of the 'BIP32 path' edit box.")
             else:
                 src_addresses.append((self.cur_masternode.collateralAddress, self.cur_masternode.collateralBip32Path))
-                mn_index = self.config.masternodes.index(self.cur_masternode)
+                mn_index = self.app_config.masternodes.index(self.cur_masternode)
                 self.show_wallet_window(mn_index)
         else:
             self.errorMsg('No masternode selected')
@@ -1874,7 +1874,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         Shows tranfser funds window for address/path specified by the user.
         """
         if self.cur_masternode:
-            mn_index = self.config.masternodes.index(self.cur_masternode)
+            mn_index = self.app_config.masternodes.index(self.cur_masternode)
         else:
             mn_index = None
         self.show_wallet_window(mn_index)
@@ -1883,7 +1883,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """ Shows the wallet/send payments dialog.
         :param initial_mn:
           if the value is from 0 to len(masternodes), show utxos for the masternode
-            having the 'initial_mn' index in self.config.mastrnodes
+            having the 'initial_mn' index in self.app_config.mastrnodes
           if the value is -1, show utxo for all masternodes
           if the value is None, show the default utxo source type
         """
@@ -2007,7 +2007,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                     if self.cur_masternode == masternode:
                         self.wdg_masternode.masternode_data_to_ui()
-                    if self.config.is_modified():
+                    if self.app_config.is_modified():
                         self.wdg_masternode.set_modified()
                     else:
                         self.save_configuration()
@@ -2026,7 +2026,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             try:
                 if self.cur_masternode == masternode:
                     self.wdg_masternode.masternode_data_to_ui()
-                if self.config.is_modified():
+                if self.app_config.is_modified():
                     self.wdg_masternode.set_modified()
                 else:
                     self.save_configuration()
@@ -2047,7 +2047,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             try:
                 if self.cur_masternode == masternode:
                     self.wdg_masternode.masternode_data_to_ui()
-                if self.config.is_modified():
+                if self.app_config.is_modified():
                     self.wdg_masternode.set_modified()
                 else:
                     self.save_configuration()

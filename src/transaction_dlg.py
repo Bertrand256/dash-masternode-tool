@@ -35,7 +35,7 @@ log = logging.getLogger('dmt.transaction_dlg')
 
 class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
     def __init__(self, parent: QDialog,
-                 config: AppConfig,
+                 app_config: AppConfig,
                  dashd_intf: DashdInterface,
                  raw_transaction: str,
                  use_instant_send: bool,
@@ -49,8 +49,8 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                  fn_show_address_on_hw: Callable[[Bip44AddressType], None] = None):
         QDialog.__init__(self, parent=parent)
         Ui_TransactionDlg.__init__(self)
-        WndUtils.__init__(self, config)
-        self.config = config
+        WndUtils.__init__(self, app_config)
+        self.app_config = app_config
         self.parent = parent
         self.dashd_intf = dashd_intf
         self.transaction_sent = False
@@ -241,7 +241,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
 
                         send_tx_row = ''
                         if self.transaction_sent:
-                            url = self.config.get_block_explorer_tx()
+                            url = self.app_config.get_block_explorer_tx()
                             if url:
                                 url = url.replace('%TXID%', self.tx_id)
                                 send_tx_row = f'<tr><td class="lbl"><p class="lbl">Transaction ID:</p></td><td colspan="2"><a href="{url}">{self.tx_id}</a></td></tr>'

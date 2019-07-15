@@ -1,9 +1,9 @@
 {
-  "appCurrentVersion": "0.9.25-hotfix1",
+  "appCurrentVersion": "0.9.25-hotfix2",
   "exeDownloads": {
-    "mac": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.25-hotfix1/DashMasternodeTool_0.9.25-hotfix1.mac.dmg",
-    "win64": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.25-hotfix1/DashMasternodeTool_0.9.25-hotfix1.win64.zip",
-    "linux": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.25-hotfix1/DashMasternodeTool_0.9.25-hotfix1.linux.tar.gz"
+    "mac": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.25-hotfix2/DashMasternodeTool_0.9.25-hotfix2.mac.dmg",
+    "win64": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.25-hotfix2/DashMasternodeTool_0.9.25-hotfix2.win64.zip",
+    "linux": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.25-hotfix2/DashMasternodeTool_0.9.25-hotfix2.linux.tar.gz"
   },
   "defaultDashdProtocol": {
     "mainnet": 70214,

@@ -22,16 +22,16 @@ CACHE_ITEM_SHOW_COMMANDS = 'UpdMnServiceDlg_ShowCommands'
 class UpdMnServiceDlg(QDialog, ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg, WndUtils):
     def __init__(self,
                  main_dlg,
-                 config: AppConfig,
+                 app_config: AppConfig,
                  dashd_intf: DashdInterface,
                  masternode: MasternodeConfig,
                  on_mn_config_updated_callback: Callable):
         QDialog.__init__(self, main_dlg)
         ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg.__init__(self)
-        WndUtils.__init__(self, main_dlg.config)
+        WndUtils.__init__(self, main_dlg.app_config)
         self.main_dlg = main_dlg
         self.masternode = masternode
-        self.app_config = config
+        self.app_config = app_config
         self.dashd_intf = dashd_intf
         self.on_mn_config_updated_callback = on_mn_config_updated_callback
         self.dmn_protx_hash = self.masternode.dmn_tx_hash

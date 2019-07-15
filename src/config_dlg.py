@@ -49,14 +49,14 @@ class RpcConnectionWidget(QWidget, Ui_RpcConnection):
 
 
 class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
-    def __init__(self, parent, config):
+    def __init__(self, parent, app_config: AppConfig):
         QDialog.__init__(self, parent=parent)
         Ui_ConfigDlg.__init__(self)
-        WndUtils.__init__(self, config)
-        self.config = config
+        WndUtils.__init__(self, app_config)
+        self.app_config = app_config
         self.main_window = parent
         self.local_config = AppConfig()
-        self.local_config.copy_from(config)
+        self.local_config.copy_from(app_config)
 
         # list of connections from self.local_config.dash_net_configs split on separate lists for mainnet and testnet
         self.connections_mainnet = []
@@ -790,7 +790,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
 
     def on_btnTestConnection_clicked(self):
         if self.current_network_cfg:
-            self.local_config.db_intf = self.config.db_intf
+            self.local_config.db_intf = self.app_config.db_intf
             dashd_intf = DashdInterface(window=self)
             dashd_intf.initialize(self.local_config, connection=self.current_network_cfg,
                                   for_testing_connections_only=True)
@@ -824,17 +824,17 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
     def apply_config_changes(self):
         """
         Applies changes made by the user by moving the UI controls values to the appropriate
-        fields in the self.config object.
+        fields in the self.app_config object.
         """
         if self.is_modified:
             self.local_config.dash_net_configs.clear()
             self.local_config.dash_net_configs.extend(self.connections_mainnet)
             self.local_config.dash_net_configs.extend(self.connections_testnet)
 
-            self.config.copy_from(self.local_config)
-            self.config.conn_config_changed()
-            self.config.set_log_level(self.local_config.log_level_str)
-            self.config.modified = True
+            self.app_config.copy_from(self.local_config)
+            self.app_config.conn_config_changed()
+            self.app_config.set_log_level(self.local_config.log_level_str)
+            self.app_config.modified = True
 
     def on_btnEncryptionPublicKey_clicked(self):
         updated = False

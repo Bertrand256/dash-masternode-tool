@@ -56,9 +56,9 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
     def __init__(self, parent) -> None:
         QDialog.__init__(self, parent)
         ui_initialize_hw_dlg.Ui_HwInitializeDlg.__init__(self)
-        WndUtils.__init__(self, parent.config)
+        WndUtils.__init__(self, parent.app_config)
         self.main_ui = parent
-        self.app_config = parent.config
+        self.app_config = parent.app_config
         self.current_step = STEP_SELECT_DEVICE_TYPE
         self.action_type: Optional[int] = None  # numeric value represting the action type from the first step
         self.word_count: int = 24
@@ -646,7 +646,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             firmware_fingerprint = self.hw_firmware_url_selected.get("fingerprint")
             firmware_hw_model = self.hw_firmware_url_selected.get('model')
             file_name = os.path.basename(urllib.parse.urlparse(url).path)
-            local_file_path = os.path.join(self.main_ui.config.cache_dir, file_name)
+            local_file_path = os.path.join(self.main_ui.app_config.cache_dir, file_name)
 
             response = urllib.request.urlopen(url, context=ssl._create_unverified_context())
             data = response.read()

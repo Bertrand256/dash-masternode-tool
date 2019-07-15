@@ -512,7 +512,7 @@ def json_cache_wrapper(func, intf, cache_file_ident, skip_cache=False,
         if intf.app_config.is_testnet():
             fname += 'testnet_'
 
-        cache_file = intf.config.tx_cache_dir + fname + cache_file_ident + '.json'
+        cache_file = intf.app_config.tx_cache_dir + fname + cache_file_ident + '.json'
         if not skip_cache:
             try:  # looking into cache first
                 with open(cache_file) as fp:
@@ -546,7 +546,7 @@ class DashdInterface(WndUtils):
                  on_connection_disconnected_callback=None):
         WndUtils.__init__(self, app_config=None)
 
-        self.config = None
+        self.app_config = None
         self.db_intf = None
         self.connections = []
         self.cur_conn_index = 0
@@ -576,10 +576,10 @@ class DashdInterface(WndUtils):
         self.http_lock = threading.RLock()
 
     def initialize(self, config: AppConfig, connection=None, for_testing_connections_only=False):
-        self.config = config
         self.app_config = config
         self.app_config = config
-        self.db_intf = self.config.db_intf
+        self.app_config = config
+        self.db_intf = self.app_config.db_intf
 
         # conn configurations are used from the first item in the list; if one fails, then next is taken
         if connection:
@@ -587,7 +587,7 @@ class DashdInterface(WndUtils):
             self.connections = [connection]
         else:
             # get connection list orderd by priority of use
-            self.connections = self.config.get_ordered_conn_list()
+            self.connections = self.app_config.get_ordered_conn_list()
 
         self.cur_conn_index = 0
         if self.connections:
@@ -659,7 +659,7 @@ class DashdInterface(WndUtils):
 
         # get connection list orderd by priority of use
         self.disconnect()
-        self.connections = self.config.get_ordered_conn_list()
+        self.connections = self.app_config.get_ordered_conn_list()
         self.cur_conn_index = 0
         if len(self.connections):
             self.cur_conn_def = self.connections[self.cur_conn_index]
@@ -688,7 +688,7 @@ class DashdInterface(WndUtils):
         :return: True if successfully switched or False if there was no another config
         """
         if self.cur_conn_def:
-            self.config.conn_cfg_failure(self.cur_conn_def)  # mark connection as defective
+            self.app_config.conn_cfg_failure(self.cur_conn_def)  # mark connection as defective
         if self.cur_conn_index < len(self.connections)-1:
             idx = self.cur_conn_index + 1
         else:
@@ -710,7 +710,7 @@ class DashdInterface(WndUtils):
 
     def mark_cur_conn_cfg_is_ok(self):
         if self.cur_conn_def:
-            self.config.conn_cfg_success(self.cur_conn_def)
+            self.app_config.conn_cfg_success(self.cur_conn_def)
 
     def open(self):
         """
@@ -888,10 +888,10 @@ class DashdInterface(WndUtils):
             info = self.proxy.getinfo()
             if verify_node:
                 node_under_testnet = info.get('testnet')
-                if self.config.is_testnet() and not node_under_testnet:
+                if self.app_config.is_testnet() and not node_under_testnet:
                     raise Exception('This RPC node works under Dash MAINNET, but your current configuration is '
                                     'for TESTNET.')
-                elif self.config.is_mainnet() and node_under_testnet:
+                elif self.app_config.is_mainnet() and node_under_testnet:
                     raise Exception('This RPC node works under Dash TESTNET, but your current configuration is '
                                     'for MAINNET.')
             return info

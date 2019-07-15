@@ -311,12 +311,12 @@ class Proposal(AttrsProtected):
 class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def __init__(self, parent, dashd_intf):
         QDialog.__init__(self, parent=parent)
-        wnd_utils.WndUtils.__init__(self, parent.config)
+        wnd_utils.WndUtils.__init__(self, parent.app_config)
         self.main_wnd = parent
-        self.app_config = parent.config
+        self.app_config = parent.app_config
         self.finishing = False  # True if the dialog is closing (all thread operations will be stopped)
         self.dashd_intf = dashd_intf
-        self.db_intf = parent.config.db_intf
+        self.db_intf = self.app_config.db_intf
         self.vote_columns_by_mn_ident = {}
         self.proposals = []
         self.proposals_by_hash = {}  # dict of Proposal object indexed by proposal hash
@@ -1346,7 +1346,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             if not self.finishing:
                 # read additional data from external sources, if configured (DashCentral)
                 proposals = []
-                if self.main_wnd.config.read_proposals_external_attributes:
+                if self.main_wnd.app_config.read_proposals_external_attributes:
                     for prop in self.proposals:
                         if not prop.ext_attributes_loaded:
                             proposals.append(prop)
@@ -1389,7 +1389,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         url_err_retries = 2
 
         try:
-            url = self.main_wnd.config.dash_central_proposal_api
+            url = self.main_wnd.app_config.dash_central_proposal_api
             if url:
                 exceptions_occurred = False
                 for idx, prop in enumerate(proposals):
@@ -1826,7 +1826,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.read_proposals_from_network()
 
         proposals = []
-        if self.main_wnd.config.read_proposals_external_attributes:
+        if self.main_wnd.app_config.read_proposals_external_attributes:
             # select proposals for which we read additional data from external sources as DashCentral.org
             for prop in self.proposals:
                 if not prop.ext_attributes_loaded:
@@ -1928,13 +1928,13 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     dc_entry = ''
 
                 payment_addr = self.current_proposal.get_value('payment_address')
-                if self.main_wnd.config.get_block_explorer_addr():
-                    payment_url = self.main_wnd.config.get_block_explorer_addr().replace('%ADDRESS%', payment_addr)
+                if self.main_wnd.app_config.get_block_explorer_addr():
+                    payment_url = self.main_wnd.app_config.get_block_explorer_addr().replace('%ADDRESS%', payment_addr)
                     payment_addr = '<a href="%s">%s</a>' % (payment_url, payment_addr)
 
                 col_hash = self.current_proposal.get_value('collateral_hash')
-                if self.main_wnd.config.get_block_explorer_tx():
-                    col_url = self.main_wnd.config.get_block_explorer_tx().replace('%TXID%', col_hash)
+                if self.main_wnd.app_config.get_block_explorer_tx():
+                    col_url = self.main_wnd.app_config.get_block_explorer_tx().replace('%TXID%', col_hash)
                     col_hash = '<a href="%s">%s</a>' % (col_url, col_hash)
 
                 def get_date_str(d):
@@ -2577,7 +2577,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     else:
                         last_vote_ts = None
 
-                    if self.main_wnd.config.add_random_offset_to_vote_time:
+                    if self.main_wnd.app_config.add_random_offset_to_vote_time:
 
                         if last_vote_ts is not None: # and cur_ts - last_vote_ts < 1800:
                             # new vote's timestamp cannot be less than the last vote for this proposal-mn pair
@@ -2714,7 +2714,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     masternodes.append(mn_info)
 
             if masternodes:
-                if not self.main_wnd.config.confirm_when_voting or \
+                if not self.main_wnd.app_config.confirm_when_voting or \
                         self.queryDlg(
                             f'Vote {vote_str} for {len(props)} proposal(s) on behalf of {len(masternodes)} masternode(s)?',
                             buttons=QMessageBox.Yes | QMessageBox.Cancel,

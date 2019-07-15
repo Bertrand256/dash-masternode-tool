@@ -18,7 +18,7 @@ class AboutDlg(QDialog, ui_about_dlg.Ui_AboutDlg, WndUtils):
     def __init__(self, parent, app_version_str):
         QDialog.__init__(self, parent)
         ui_about_dlg.Ui_AboutDlg.__init__(self)
-        WndUtils.__init__(self, parent.config)
+        WndUtils.__init__(self, parent.app_config)
         self.app_version_str = app_version_str
         self.setupUi()
 
