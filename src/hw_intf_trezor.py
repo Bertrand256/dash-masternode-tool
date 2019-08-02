@@ -7,6 +7,7 @@ import importlib
 import json
 import os
 import struct
+import sys
 import traceback
 from typing import Optional, Tuple, List, Dict, Callable, Iterable, Type, Set
 import binascii
@@ -94,11 +95,8 @@ def all_transports() -> Iterable[Type[Transport]]:
     from trezorlib.transport.udp import UdpTransport
     from trezorlib.transport.webusb import WebUsbTransport
 
-    return set(
-        cls
-        for cls in (BridgeTransport, HidTransport, UdpTransport, WebUsbTransport)
-        if cls.ENABLED
-    )
+    return [cls for cls in (BridgeTransport, HidTransport, UdpTransport, WebUsbTransport) if cls.ENABLED]
+
 
 def enumerate_devices(
         use_webusb=True,
@@ -108,11 +106,21 @@ def enumerate_devices(
 
     devices = []  # type: List[Transport]
     for transport in all_transports():
+        # workround for the issue introduced by Windows update #1903 (details: https://github.com/spesmilo/electrum/issues/5420):
+        # 1. use BridgeTransport first and then WebUsbTransport
+        # 2. if any BridgeTransport devices are found, skip scanning WevUsbTransport devices, otherwise it will
+        #     breake the related "bridge" devices
+
         name = transport.__name__
         if (name == 'WebUsbTransport' and not use_webusb) or (name == 'BridgeTransport' and not use_bridge) or \
            (name == 'UdpTransport' and not use_udp) or (name == 'HidTransport' and not use_hid):
             log.info(f'Skipping {name}')
             continue
+
+        if sys.platform == 'win32' and name == 'WebUsbTransport' and \
+                len([d for d in devices if d.__class__.__name__ == 'BridgeTransport']):
+            continue
+
         try:
             log.debug("About to enumerate {} devices".format(name))
             found = list(transport.enumerate())
