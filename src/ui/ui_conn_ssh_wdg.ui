@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>284</width>
-    <height>68</height>
+    <width>417</width>
+    <height>135</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -76,17 +76,23 @@
        </item>
       </layout>
      </item>
-     <item row="0" column="0">
-      <widget class="QLabel" name="lblSshHost">
-       <property name="text">
-        <string>SSH host:</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
-       </property>
-       <property name="buddy">
-        <cstring>edtSshHost</cstring>
-       </property>
+     <item row="2" column="1">
+      <widget class="QComboBox" name="cboAuthentication">
+       <item>
+        <property name="text">
+         <string>Any available</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>Password</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>Key pair (OpenSSH)</string>
+        </property>
+       </item>
       </widget>
      </item>
      <item row="1" column="0">
@@ -102,8 +108,42 @@
        </property>
       </widget>
      </item>
+     <item row="2" column="0">
+      <widget class="QLabel" name="lblAuthentication">
+       <property name="text">
+        <string>Authentication:</string>
+       </property>
+      </widget>
+     </item>
      <item row="1" column="1">
       <widget class="QLineEdit" name="edtSshUsername"/>
+     </item>
+     <item row="0" column="0">
+      <widget class="QLabel" name="lblSshHost">
+       <property name="text">
+        <string>SSH host:</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+       </property>
+       <property name="buddy">
+        <cstring>edtSshHost</cstring>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="0">
+      <widget class="QLabel" name="lblPrivateKeyPath">
+       <property name="text">
+        <string>Private key path:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="1">
+      <widget class="QLineEdit" name="edtPrivateKeyPath">
+       <property name="clearButtonEnabled">
+        <bool>false</bool>
+       </property>
+      </widget>
      </item>
     </layout>
    </item>

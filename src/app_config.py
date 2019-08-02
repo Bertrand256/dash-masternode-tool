@@ -755,6 +755,13 @@ class AppConfig(QObject):
                             cfg.ssh_conn_cfg.host = config.get(section, 'ssh_host', fallback='').strip()
                             cfg.ssh_conn_cfg.port = config.get(section, 'ssh_port', fallback='').strip()
                             cfg.ssh_conn_cfg.username = config.get(section, 'ssh_username', fallback='').strip()
+                            auth_method = config.get(section, 'ssh_auth_method', fallback='any').strip()
+                            if auth_method and auth_method not in ('any', 'password', 'key_pair'):
+                                auth_method = 'password'
+                            cfg.ssh_conn_cfg.auth_method = auth_method
+                            cfg.ssh_conn_cfg.private_key_path = config.get(section, 'ssh_private_key_path',
+                                                                           fallback='').strip()
+
                             cfg.testnet = self.value_to_bool(config.get(section, 'testnet', fallback='0'))
                             skip_adding = False
 
@@ -971,6 +978,8 @@ class AppConfig(QObject):
                 config.set(section, 'ssh_host', cfg.ssh_conn_cfg.host)
                 config.set(section, 'ssh_port', cfg.ssh_conn_cfg.port)
                 config.set(section, 'ssh_username', cfg.ssh_conn_cfg.username)
+                config.set(section, 'ssh_auth_method', cfg.ssh_conn_cfg.auth_method)
+                config.set(section, 'ssh_private_key_path', cfg.ssh_conn_cfg.private_key_path)
                 # SSH password is not saved until HW encrypting feature will be finished
             config.set(section, 'testnet', '1' if cfg.testnet else '0')
             config.set(section, 'rpc_encryption_pubkey', cfg.get_rpc_encryption_pubkey_str('DER'))
@@ -1745,6 +1754,8 @@ class SSHConnectionCfg(object):
         self.__port = ''
         self.__username = ''
         self.__password = ''
+        self.__auth_method = 'any'  # 'any', 'password', 'key_pair'
+        self.private_key_path = ''
 
     @property
     def host(self):
@@ -1756,7 +1767,10 @@ class SSHConnectionCfg(object):
 
     @property
     def port(self):
-        return self.__port
+        if self.__port:
+            return self.__port
+        else:
+            return '22'
 
     @port.setter
     def port(self, port):
@@ -1777,6 +1791,18 @@ class SSHConnectionCfg(object):
     @password.setter
     def password(self, password):
         self.__password = password
+
+    @property
+    def auth_method(self):
+        return self.__auth_method
+
+    @auth_method.setter
+    def auth_method(self, method):
+        if method not in ('any', 'password', 'key_pair'):
+            raise Exception('Invalid authentication method')
+        self.__auth_method = method
+
+
 
 
 class DashNetworkConnectionCfg(object):
@@ -1828,8 +1854,10 @@ class DashNetworkConnectionCfg(object):
             self.use_ssh_tunnel == cfg2.use_ssh_tunnel and \
             (not self.use_ssh_tunnel or (self.ssh_conn_cfg.host == cfg2.ssh_conn_cfg.host and
                                          self.ssh_conn_cfg.port == cfg2.ssh_conn_cfg.port and
-                                         self.ssh_conn_cfg.username == cfg2.ssh_conn_cfg.username)) and \
-            self.testnet == cfg2.testnet and \
+                                         self.ssh_conn_cfg.username == cfg2.ssh_conn_cfg.username and
+                                         self.ssh_conn_cfg.auth_method == cfg2.ssh_conn_cfg.auth_method and
+                                         self.ssh_conn_cfg.private_key_path == cfg2.ssh_conn_cfg.private_key_path)) \
+               and self.testnet == cfg2.testnet and \
             self.__rpc_encryption_pubkey_der == cfg2.__rpc_encryption_pubkey_der
 
     def __deepcopy__(self, memodict):
@@ -1854,6 +1882,8 @@ class DashNetworkConnectionCfg(object):
             self.ssh_conn_cfg.host = cfg2.ssh_conn_cfg.host
             self.ssh_conn_cfg.port = cfg2.ssh_conn_cfg.port
             self.ssh_conn_cfg.username = cfg2.ssh_conn_cfg.username
+            self.ssh_conn_cfg.auth_method = cfg2.ssh_conn_cfg.auth_method
+            self.ssh_conn_cfg.private_key_path = cfg2.ssh_conn_cfg.private_key_path
         if self.__rpc_encryption_pubkey_object and self.__rpc_encryption_pubkey_der != cfg2.__rpc_encryption_pubkey_der:
             self.__rpc_encryption_pubkey_object = None
         self.__rpc_encryption_pubkey_der = cfg2.__rpc_encryption_pubkey_der

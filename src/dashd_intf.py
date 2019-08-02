@@ -19,7 +19,7 @@ from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException, EncodeDecim
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from paramiko import AuthenticationException, PasswordRequiredException, SSHException
-from paramiko.ssh_exception import NoValidConnectionsError
+from paramiko.ssh_exception import NoValidConnectionsError, BadAuthenticationType
 from typing import List, Dict, Union, Callable, Optional
 import app_cache
 from app_config import AppConfig
@@ -154,7 +154,8 @@ class DashdConnectionError(Exception):
 
 
 class DashdSSH(object):
-    def __init__(self, host, port, username, on_connection_broken_callback=None):
+    def __init__(self, host, port, username, on_connection_broken_callback=None, auth_method: str = 'password',
+                 private_key_path: str = ''):
         self.host = host
         self.port = port
         self.username = username
@@ -164,6 +165,8 @@ class DashdSSH(object):
         self.connected = False
         self.connection_broken = False
         self.ssh_thread = None
+        self.auth_method = auth_method  #  'any', 'password', 'key_pair'
+        self.private_key_path = private_key_path
         self.on_connection_broken_callback = on_connection_broken_callback
 
     def __del__(self):
@@ -200,7 +203,7 @@ class DashdSSH(object):
             if channel:
                 channel.close()
 
-    def connect(self):
+    def connect(self) -> bool:
         import paramiko
         if self.ssh is None:
             self.ssh = paramiko.SSHClient()
@@ -210,11 +213,22 @@ class DashdSSH(object):
 
         while True:
             try:
-                self.ssh.connect(self.host, port=int(self.port), username=self.username, password=password)
+                if self.auth_method == 'any':
+                    self.ssh.connect(self.host, port=int(self.port), username=self.username, password=password)
+                elif self.auth_method == 'password':
+                    self.ssh.connect(self.host, port=int(self.port), username=self.username, password=password,
+                                     look_for_keys=False, allow_agent=False)
+                elif self.auth_method == 'key_pair':
+                    if not self.private_key_path:
+                        raise Exception('OpenSSH private key path not in the configuration.')
+                    self.ssh.connect(self.host, port=int(self.port), username=self.username, password=password,
+                                     key_filename=self.private_key_path, look_for_keys=False)
+
                 self.connected = True
                 if password:
                     SshPassCache.save_password(self.username, self.host, password)
                 break
+
             except PasswordRequiredException as e:
                 # private key with password protection is used; ask user for password
                 pass_message = "Enter passphrase for <b>private key</b> or password for %s" % \
@@ -224,6 +238,10 @@ class DashdSSH(object):
                     if password:
                         break
 
+            except BadAuthenticationType as e:
+                WndUtils.errorMsg(message=str(e))
+                break
+
             except AuthenticationException as e:
                 # This exception will be raised in the following cases:
                 #  1. a private key with password protectection is used but the user enters incorrect password
@@ -232,8 +250,13 @@ class DashdSSH(object):
                 # So, in the first case, the second query for password will ask for normal password to server, not
                 #  for a private key.
 
-                if password is not None:
-                    WndUtils.errorMsg(message='Incorrect password, try again...')
+                if self.auth_method == 'key_pair':
+                    WndUtils.errorMsg(message=f'Authentication failed for private key: {self.private_key_path} '
+                    f'(username {self.username}).')
+                    break
+                else:
+                    if password is not None:
+                        WndUtils.errorMsg(message='Incorrect password, try again...')
 
                 while True:
                     password = SshPassCache.get_password(self.username, self.host, message=pass_message)
@@ -249,7 +272,10 @@ class DashdSSH(object):
                 else:
                     raise
             except Exception as e:
+                log.exception(str(e))
                 raise
+
+        return self.connected
 
     def on_tunnel_thread_finish(self):
         self.ssh_thread = None
@@ -777,7 +803,9 @@ class DashdInterface(WndUtils):
                 # RPC over SSH
                 if self.ssh is None:
                     self.ssh = DashdSSH(self.cur_conn_def.ssh_conn_cfg.host, self.cur_conn_def.ssh_conn_cfg.port,
-                                        self.cur_conn_def.ssh_conn_cfg.username)
+                                        self.cur_conn_def.ssh_conn_cfg.username,
+                                        auth_method=self.cur_conn_def.ssh_conn_cfg.auth_method,
+                                        private_key_path=self.cur_conn_def.ssh_conn_cfg.private_key_path)
                 try:
                     log.debug('starting ssh.connect')
                     self.ssh.connect()
@@ -1331,18 +1359,21 @@ class DashdInterface(WndUtils):
 
         try:
             cur_mempool_txes = self.getrawmempool()
-            for tx_hash in cur_mempool_txes:
-                tx = self.mempool_txes.get(tx_hash)
-                if not tx:
-                    tx = self.getrawtransaction(tx_hash, True, skip_cache=True)
-                    self.mempool_txes[tx_hash] = tx
-                protx = tx.get('proUpRegTx')
-                if not protx:
-                    protx = tx.get('proUpRevTx')
-                if not protx:
-                    protx = tx.get('proUpServTx')
-                if protx and protx.get('proTxHash') == proregtx_hash:
-                    return True
+            if len(cur_mempool_txes) < 200:
+                for tx_hash in cur_mempool_txes:
+                    tx = self.mempool_txes.get(tx_hash)
+                    if not tx:
+                        tx = self.getrawtransaction(tx_hash, True, skip_cache=True)
+                        self.mempool_txes[tx_hash] = tx
+                    protx = tx.get('proUpRegTx')
+                    if not protx:
+                        protx = tx.get('proUpRevTx')
+                    if not protx:
+                        protx = tx.get('proUpServTx')
+                    if protx and protx.get('proTxHash') == proregtx_hash:
+                        return True
+            else:
+                log.warning('Mempool to large to scan for protx transaction. Skipping...')
             return False
         except Exception as e:
             return False

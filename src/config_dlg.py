@@ -4,6 +4,7 @@
 # Created on: 2017-05
 import copy
 import hashlib
+import os
 import sys
 import logging
 from typing import Optional
@@ -12,7 +13,7 @@ from PyQt5.QtCore import Qt, pyqtSlot, QPoint
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QInputDialog, QDialog, QLayout, QListWidgetItem, QPushButton, QCheckBox, QWidget, \
     QHBoxLayout, QMessageBox, QLineEdit, QMenu, QApplication, QDialogButtonBox, QAbstractButton, QPlainTextEdit, QLabel, \
-    QAction
+    QAction, QFileDialog
 from cryptography.hazmat.primitives import serialization
 
 import app_config
@@ -29,13 +30,22 @@ from app_defs import HWType, get_note_url
 
 
 class SshConnectionWidget(QWidget, Ui_SshConnection):
-    def __init__(self, parent):
-        QWidget.__init__(self, parent=parent)
+    def __init__(self, parent_window):
+        QWidget.__init__(self, parent=parent_window)
         Ui_SshConnection.__init__(self)
         self.setupUi()
 
     def setupUi(self):
         Ui_SshConnection.setupUi(self, self)
+        icon = self.parent().getIcon('folder-open@16px.png')
+        self.action_choose_private_key_file = self.edtPrivateKeyPath.addAction(icon, QLineEdit.TrailingPosition)
+        self.action_choose_private_key_file.triggered.connect(self.on_actionChoosePrivateKeyFile_triggered)
+
+    def on_actionChoosePrivateKeyFile_triggered(self):
+        default_dir = os.path.join(os.path.expanduser('~'), '.ssh')
+        file = QFileDialog.getOpenFileName(self.parent(), 'Select private key file', default_dir)
+        if len(file) >= 2:
+            self.edtPrivateKeyPath.setText(file[0])
 
 
 class RpcConnectionWidget(QWidget, Ui_RpcConnection):
@@ -89,7 +99,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.chbUseSshTunnel = QCheckBox("Use SSH tunnel")
         self.chbUseSshTunnel.toggled.connect(self.on_chbUseSshTunnel_toggled)
         layout_details.addWidget(self.chbUseSshTunnel)
-        self.ssh_tunnel_widget = SshConnectionWidget(self.detailsFrame)
+        self.ssh_tunnel_widget = SshConnectionWidget(self)
         layout_details.addWidget(self.ssh_tunnel_widget)
 
         # layout for button for reading RPC configuration from remote host over SSH:
@@ -137,6 +147,8 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.ssh_tunnel_widget.edtSshHost.textEdited.connect(self.on_edtSshHost_textEdited)
         self.ssh_tunnel_widget.edtSshPort.textEdited.connect(self.on_edtSshPort_textEdited)
         self.ssh_tunnel_widget.edtSshUsername.textEdited.connect(self.on_edtSshUsername_textEdited)
+        self.ssh_tunnel_widget.cboAuthentication.currentIndexChanged.connect(self.on_cboSshAuthentication_currentIndexChanged)
+        self.ssh_tunnel_widget.edtPrivateKeyPath.textChanged.connect(self.on_edtSshPrivateKeyPath_textChanged)
 
         self.lstConns.setContextMenuPolicy(Qt.CustomContextMenu)
         self.popMenu = QMenu(self)
@@ -527,6 +539,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         if not self.disable_cfg_update and self.current_network_cfg:
             self.current_network_cfg.use_ssh_tunnel = checked
             self.update_cur_connection_desc()
+            self.update_connection_details_ui()
             self.set_modified()
 
     def on_edtRpcHost_textEdited(self, text):
@@ -574,10 +587,33 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.current_network_cfg.ssh_conn_cfg.username = text
             self.set_modified()
 
+    def on_cboSshAuthentication_currentIndexChanged(self, index):
+        if not self.disable_cfg_update and self.current_network_cfg:
+            if index == 0:
+                auth_method = 'any'
+            elif index == 1:
+                auth_method = 'password'
+            else:
+                auth_method = 'key_pair'
+            self.current_network_cfg.ssh_conn_cfg.auth_method = auth_method
+            self.set_modified()
+        self.update_ssh_ctrls_ui()
+
+    def on_edtSshPrivateKeyPath_textChanged(self, text):
+        if not self.disable_cfg_update and self.current_network_cfg:
+            self.current_network_cfg.ssh_conn_cfg.private_key_path = text
+            self.set_modified()
+
     def on_chbRandomConn_toggled(self, checked):
         if not self.disable_cfg_update:
             self.local_config.random_dash_net_config = checked
             self.set_modified()
+
+    def update_ssh_ctrls_ui(self):
+        index = self.ssh_tunnel_widget.cboAuthentication.currentIndex()
+        pkey_visible = (index == 2)
+        self.ssh_tunnel_widget.lblPrivateKeyPath.setVisible(pkey_visible)
+        self.ssh_tunnel_widget.edtPrivateKeyPath.setVisible(pkey_visible)
 
     def update_connection_details_ui(self):
         """Display properties of the currently focused connection in dedicated UI controls."""
@@ -597,10 +633,23 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                     self.ssh_tunnel_widget.edtSshHost.setText(self.current_network_cfg.ssh_conn_cfg.host)
                     self.ssh_tunnel_widget.edtSshPort.setText(self.current_network_cfg.ssh_conn_cfg.port)
                     self.ssh_tunnel_widget.edtSshUsername.setText(self.current_network_cfg.ssh_conn_cfg.username)
+                    if self.current_network_cfg.ssh_conn_cfg.auth_method == 'any':
+                        index = 0
+                    elif self.current_network_cfg.ssh_conn_cfg.auth_method == 'password':
+                        index = 1
+                    else:
+                        index = 2
+                    self.ssh_tunnel_widget.cboAuthentication.setCurrentIndex(index)
+                    self.ssh_tunnel_widget.edtPrivateKeyPath.\
+                        setText(self.current_network_cfg.ssh_conn_cfg.private_key_path)
+                    self.update_ssh_ctrls_ui()
                 else:
                     self.ssh_tunnel_widget.edtSshHost.setText('')
                     self.ssh_tunnel_widget.edtSshPort.setText('')
                     self.ssh_tunnel_widget.edtSshUsername.setText('')
+                    self.ssh_tunnel_widget.cboAuthentication.setCurrentIndex(0)
+                    self.ssh_tunnel_widget.edtPrivateKeyPath.setText('')
+
                 self.rpc_cfg_widget.edtRpcHost.setText(self.current_network_cfg.host)
                 self.rpc_cfg_widget.edtRpcPort.setText(self.current_network_cfg.port)
                 self.rpc_cfg_widget.edtRpcUsername.setText(self.current_network_cfg.username)
@@ -722,12 +771,18 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             host = self.current_network_cfg.ssh_conn_cfg.host
             port = self.current_network_cfg.ssh_conn_cfg.port
             username = self.current_network_cfg.ssh_conn_cfg.username
+            auth_method = self.current_network_cfg.ssh_conn_cfg.auth_method
+            private_key_path = self.current_network_cfg.ssh_conn_cfg.private_key_path
+
             if not host:
                 self.errorMsg('Host address is required')
                 self.ssh_tunnel_widget.edtSshHost.setFocus()
+                return
+
             if not port:
                 self.errorMsg('Host TCP port number is required')
                 self.ssh_tunnel_widget.edtSshHost.setFocus()
+                return
 
             ok = True
             if not username:
@@ -735,53 +790,53 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             if not ok or not username:
                 return
             from dashd_intf import DashdSSH
-            ssh = DashdSSH(host, int(port), username)
+            ssh = DashdSSH(host, int(port), username, auth_method=auth_method, private_key_path=private_key_path)
             try:
-                ssh.connect()
-                dashd_conf = ssh.find_dashd_config()
-                self.disable_cfg_update = True
-                if isinstance(dashd_conf, tuple) and len(dashd_conf) >= 3:
-                    if not dashd_conf[0]:
-                        self.infoMsg('Remore Dash daemon seems to be shut down')
-                    elif not dashd_conf[1]:
-                        self.infoMsg('Could not find remote dashd.conf file')
-                    else:
-                        file = dashd_conf[2]
-                        rpcuser = file.get('rpcuser', '')
-                        rpcpassword = file.get('rpcpassword', '')
-                        rpcport = file.get('rpcport', '9998')
-                        modified = False
-                        if rpcuser:
-                            modified = modified or (self.current_network_cfg.username != rpcuser)
-                            self.current_network_cfg.username = rpcuser
-                        if rpcpassword:
-                            modified = modified or (self.current_network_cfg.password != rpcpassword)
-                            self.current_network_cfg.password = rpcpassword
-                        if rpcport:
-                            modified = modified or (self.current_network_cfg.port != rpcport)
-                            self.current_network_cfg.port = rpcport
-                        rpcbind = file.get('rpcbind', '')
-                        if not rpcbind:  # listen on all interfaces if not set
-                            rpcbind = '127.0.0.1'
-                        modified = modified or (self.current_network_cfg.host != rpcbind)
-                        self.current_network_cfg.host = rpcbind
-                        if modified:
-                            self.is_modified = modified
+                if ssh.connect():
+                    dashd_conf = ssh.find_dashd_config()
+                    self.disable_cfg_update = True
+                    if isinstance(dashd_conf, tuple) and len(dashd_conf) >= 3:
+                        if not dashd_conf[0]:
+                            self.infoMsg('Remore Dash daemon seems to be shut down')
+                        elif not dashd_conf[1]:
+                            self.infoMsg('Could not find remote dashd.conf file')
+                        else:
+                            file = dashd_conf[2]
+                            rpcuser = file.get('rpcuser', '')
+                            rpcpassword = file.get('rpcpassword', '')
+                            rpcport = file.get('rpcport', '9998')
+                            modified = False
+                            if rpcuser:
+                                modified = modified or (self.current_network_cfg.username != rpcuser)
+                                self.current_network_cfg.username = rpcuser
+                            if rpcpassword:
+                                modified = modified or (self.current_network_cfg.password != rpcpassword)
+                                self.current_network_cfg.password = rpcpassword
+                            if rpcport:
+                                modified = modified or (self.current_network_cfg.port != rpcport)
+                                self.current_network_cfg.port = rpcport
+                            rpcbind = file.get('rpcbind', '')
+                            if not rpcbind:  # listen on all interfaces if not set
+                                rpcbind = '127.0.0.1'
+                            modified = modified or (self.current_network_cfg.host != rpcbind)
+                            self.current_network_cfg.host = rpcbind
+                            if modified:
+                                self.is_modified = modified
 
-                        if file.get('server', '1') == '0':
-                            self.warnMsg("Remote dash.conf parameter 'server' is set to '0', so RPC interface will "
-                                         "not work.")
-                        if not rpcuser:
-                            self.warnMsg("Remote dash.conf parameter 'rpcuser' is not set, so RPC interface will  "
-                                         "not work.")
-                        if not rpcpassword:
-                            self.warnMsg("Remote dash.conf parameter 'rpcpassword' is not set, so RPC interface will  "
-                                         "not work.")
-                    self.update_connection_details_ui()
-                elif isinstance(dashd_conf, str):
-                    self.warnMsg("Couldn't read remote dashd configuration file due the following error: " +
-                                 dashd_conf)
-                ssh.disconnect()
+                            if file.get('server', '1') == '0':
+                                self.warnMsg("Remote dash.conf parameter 'server' is set to '0', so RPC interface will "
+                                             "not work.")
+                            if not rpcuser:
+                                self.warnMsg("Remote dash.conf parameter 'rpcuser' is not set, so RPC interface will  "
+                                             "not work.")
+                            if not rpcpassword:
+                                self.warnMsg("Remote dash.conf parameter 'rpcpassword' is not set, so RPC interface will  "
+                                             "not work.")
+                        self.update_connection_details_ui()
+                    elif isinstance(dashd_conf, str):
+                        self.warnMsg("Couldn't read remote dashd configuration file due the following error: " +
+                                     dashd_conf)
+                    ssh.disconnect()
             except Exception as e:
                 self.errorMsg(str(e))
                 return

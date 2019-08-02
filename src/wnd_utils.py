@@ -207,7 +207,7 @@ class WndUtils:
         return thread_wnd_utils.call_in_main_thread_ext(fun_to_call, skip_if_main_thread_locked,
                                                         callback_if_main_thread_locked, *args, **kwargs)
 
-    def setIcon(self, widget, ico, rotate=0, force_color_change:str=None):
+    def getIcon(self, ico, rotate=0, force_color_change: str=None):
         if isinstance(ico, str):
             icon = QIcon()
             if app_defs.APP_IMAGE_DIR:
@@ -238,7 +238,10 @@ class WndUtils:
         else:
             icon = self.style().standardIcon(ico)
 
-        widget.setIcon(icon)
+        return icon
+
+    def setIcon(self, widget, ico, rotate=0, force_color_change: str=None):
+        widget.setIcon(self.getIcon(ico, rotate, force_color_change))
 
     @staticmethod
     def open_file_query(parent_wnd, app_config, message, directory='', filter='', initial_filter=''):
