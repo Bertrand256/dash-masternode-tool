@@ -323,6 +323,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.proposals_by_db_id = {}
         self.masternodes: List[Masternode] = []
         self.masternodes_by_ident = {}
+        self.initial_messages = []
 
         self.masternodes_cfg: List[MasternodeConfig] = []
         pkeys = []
@@ -342,6 +343,13 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             log.warning('Invalid private key for masternode ' + mn.name)
                     else:
                         log.info('Empty voting key for masternode ' + mn.name)
+            else:
+                dup_idx = mn_idents.index(mn_ident)
+                msg = f'Duplicate collateral tx hash/index for masternodes: "{mn.name} (idx:{idx})" and ' \
+                      f'"{self.masternodes_cfg[dup_idx].name} (idx:{dup_idx})". You won\'t be able to vote with the ' \
+                      f'second one.'
+                log.warning(msg)
+                self.initial_messages.append(msg)
 
         # masternodes existing in the user's configuration, which can vote - list of VotingMasternode objects
         self.users_masternodes: List[VotingMasternode] = []
@@ -1132,6 +1140,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         if timestamp < self.last_superblock_time:
             superblock = self.last_superblock
             while True:
+                if self.finishing:
+                    raise CloseDialogException
                 prev_sb_ts = self.get_block_timestamp(superblock - self.superblock_cycle)
                 if timestamp > prev_sb_ts:
                     return superblock
@@ -1292,6 +1302,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                         # the proposal title changed
                                         prop.ext_attributes_loaded = False
 
+                                # todo: optimize; for very old proposals exising in the cache, especially for testnet,
+                                #  apply_values may have to fetch a large number of transactions from the network (to
+                                #  calculate the number of payment cycles that apply to the proposal), which can
+                                #  significantly slowndown the display of the list of proposals
                                 prop.apply_values(self.masternodes, self.last_superblock_time,
                                                   self.next_superblock_time)
                                 self.proposals.append(prop)
@@ -1374,7 +1388,16 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
         finally:
             if not self.finishing:
-                self.display_message("")
+                if self.initial_messages:
+                    msgs = ''
+                    for msg in self.initial_messages:
+                        msgs += f'<div style="color:red">{msg}</div>'
+                    msgs += ' (<a href="#close">close</a>)'
+
+                    self.display_message(msgs)
+                else:
+                    self.display_message("")
+
             self.reading_vote_data = old_reading_state
 
     def read_external_attibutes(self, proposals):
