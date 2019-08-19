@@ -593,8 +593,10 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                 auth_method = 'any'
             elif index == 1:
                 auth_method = 'password'
-            else:
+            elif index == 1:
                 auth_method = 'key_pair'
+            else:
+                auth_method = 'ssh_agent'
             self.current_network_cfg.ssh_conn_cfg.auth_method = auth_method
             self.set_modified()
         self.update_ssh_ctrls_ui()

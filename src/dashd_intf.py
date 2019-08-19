@@ -165,7 +165,7 @@ class DashdSSH(object):
         self.connected = False
         self.connection_broken = False
         self.ssh_thread = None
-        self.auth_method = auth_method  #  'any', 'password', 'key_pair'
+        self.auth_method = auth_method  #  'any', 'password', 'key_pair', 'ssh_agent'
         self.private_key_path = private_key_path
         self.on_connection_broken_callback = on_connection_broken_callback
 
@@ -220,9 +220,13 @@ class DashdSSH(object):
                                      look_for_keys=False, allow_agent=False)
                 elif self.auth_method == 'key_pair':
                     if not self.private_key_path:
-                        raise Exception('OpenSSH private key path not in the configuration.')
+                        raise Exception('No RSA private key path was provided.')
+
                     self.ssh.connect(self.host, port=int(self.port), username=self.username, password=password,
-                                     key_filename=self.private_key_path, look_for_keys=False)
+                                     key_filename=self.private_key_path, look_for_keys=False, allow_agent=False)
+                elif self.auth_method == 'ssh_agent':
+                    self.ssh.connect(self.host, port=int(self.port), username=self.username, password=password,
+                                     look_for_keys=False, allow_agent=True)
 
                 self.connected = True
                 if password:
@@ -239,8 +243,7 @@ class DashdSSH(object):
                         break
 
             except BadAuthenticationType as e:
-                WndUtils.errorMsg(message=str(e))
-                break
+                raise Exception(str(e))
 
             except AuthenticationException as e:
                 # This exception will be raised in the following cases:

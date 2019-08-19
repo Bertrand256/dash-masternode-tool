@@ -90,7 +90,12 @@
        </item>
        <item>
         <property name="text">
-         <string>Key pair (OpenSSH)</string>
+         <string>RSA key pair</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>SSH agent</string>
         </property>
        </item>
       </widget>

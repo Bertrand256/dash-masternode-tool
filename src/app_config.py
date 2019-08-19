@@ -13,6 +13,7 @@ import pickle
 import re
 import copy
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -226,6 +227,9 @@ class AppConfig(QObject):
         parser.add_argument('--config', help="Path to a configuration file", dest='config')
         parser.add_argument('--data-dir', help="Root directory for configuration file, cache and log subdirs",
                             dest='data_dir')
+        parser.add_argument('--scan-for-ssh-agent-vars', type=app_utils.str2bool,
+                            help="If 0, skip scanning shell profile files for the SSH_AUTH_SOCK env variable "
+                                 "(Mac only)", dest='scan_for_ssh_agent_vars', default=True)
         parser.add_argument('--trezor-webusb', type=app_utils.str2bool, help="Disable WebUsbTransport for Trezor",
                             dest='trezor_webusb', default=True)
         parser.add_argument('--trezor-bridge', type=app_utils.str2bool, help="Disable BridgeTransport for Trezor",
@@ -257,14 +261,14 @@ class AppConfig(QObject):
 
         migrate_config = False
         old_user_data_dir = ''
+        user_home_dir = os.path.expanduser('~')
         if not app_user_dir:
-            home_dir = os.path.expanduser('~')
-            app_user_dir = os.path.join(home_dir, APP_DATA_DIR_NAME + '-v' + str(CURRENT_CFG_FILE_VERSION))
+            app_user_dir = os.path.join(user_home_dir, APP_DATA_DIR_NAME + '-v' + str(CURRENT_CFG_FILE_VERSION))
             if not os.path.exists(app_user_dir):
                 prior_version_dirs = ['.dmt']
                 # look for the data dir of the previous version
                 for d in prior_version_dirs:
-                    old_user_data_dir = os.path.join(home_dir, d)
+                    old_user_data_dir = os.path.join(user_home_dir, d)
                     if os.path.exists(old_user_data_dir):
                         migrate_config = True
                         break
@@ -369,6 +373,20 @@ class AppConfig(QObject):
             self.app_config_file_name = app_cache.get_value(
                 'AppConfig_ConfigFileName', default_value=os.path.join(self.data_dir, 'config.ini'), type=str)
 
+        if sys.platform == 'darwin' and args.scan_for_ssh_agent_vars:
+            # on Mac try to read the SSH_AUTH_SOCK variable from shell profile files - on mac, shell profile files
+            # aren't used in GUI apps, so setting SSH_AUTH_SOCK there has no effect in this case
+            try:
+                for fname in ('.bash_profile', '.zshrc', '.bashrc'):
+                    cmd = f'echo $(source {os.path.join(user_home_dir, fname)}; echo $SSH_AUTH_SOCK)'
+                    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
+                    ssh_auth_sock = p.stdout.readlines()[0].strip().decode('ASCII')
+                    if ssh_auth_sock:
+                        os.environ['SSH_AUTH_SOCK'] = ssh_auth_sock
+                        break
+            except Exception:
+                pass
+
         # setup logging
         self.log_dir = os.path.join(self.data_dir, 'logs')
         self.log_file = os.path.join(self.log_dir, 'dmt.log')
@@ -383,6 +401,9 @@ class AppConfig(QObject):
         self.set_log_level('INFO')
         logging.info(f'===========================================================================')
         logging.info(f'Application started (v {self.app_version})')
+        logging.info('Environmnent:')
+        logging.info(str(os.environ))
+
         self.restore_loggers_config()
 
         # directory for configuration backups:
@@ -756,7 +777,7 @@ class AppConfig(QObject):
                             cfg.ssh_conn_cfg.port = config.get(section, 'ssh_port', fallback='').strip()
                             cfg.ssh_conn_cfg.username = config.get(section, 'ssh_username', fallback='').strip()
                             auth_method = config.get(section, 'ssh_auth_method', fallback='any').strip()
-                            if auth_method and auth_method not in ('any', 'password', 'key_pair'):
+                            if auth_method and auth_method not in ('any', 'password', 'key_pair', 'ssh_agent'):
                                 auth_method = 'password'
                             cfg.ssh_conn_cfg.auth_method = auth_method
                             cfg.ssh_conn_cfg.private_key_path = config.get(section, 'ssh_private_key_path',
@@ -1754,7 +1775,7 @@ class SSHConnectionCfg(object):
         self.__port = ''
         self.__username = ''
         self.__password = ''
-        self.__auth_method = 'any'  # 'any', 'password', 'key_pair'
+        self.__auth_method = 'any'  # 'any', 'password', 'key_pair', 'ssh_agent'
         self.private_key_path = ''
 
     @property
@@ -1798,7 +1819,7 @@ class SSHConnectionCfg(object):
 
     @auth_method.setter
     def auth_method(self, method):
-        if method not in ('any', 'password', 'key_pair'):
+        if method not in ('any', 'password', 'key_pair', 'ssh_agent'):
             raise Exception('Invalid authentication method')
         self.__auth_method = method
 
