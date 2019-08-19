@@ -173,6 +173,8 @@ class AppConfig(QObject):
         self.dont_use_file_dialogs = False
         self.confirm_when_voting = True
         self.add_random_offset_to_vote_time = True  # To avoid identifying one user's masternodes by vote time
+        self.sig_time_offset_min = -1800
+        self.sig_time_offset_max = 1800
         self.csv_delimiter = ';'
         self.masternodes = []
         self.last_bip32_base_path = ''
@@ -238,12 +240,22 @@ class AppConfig(QObject):
                             dest='trezor_udp', default=True)
         parser.add_argument('--trezor-hid', type=app_utils.str2bool, help="Disable HidTransport for Trezor",
                             dest='trezor_hid', default=True)
+        parser.add_argument('--sig-time-offset-min', type=int,
+                            help="Number of seconds relative to the current time being the lower bound of the "
+                                 "time range from which a random sig_time offset is drawn (default -1800)",
+                            dest='sig_time_offset_min', default=-1800)
+        parser.add_argument('--sig-time-offset-max', type=int,
+                            help="Number of seconds relative to the current time being the upper bound of the "
+                                 "time range from which a random sig_time offset is drawn (default 1800)",
+                            dest='sig_time_offset_max', default=1800)
 
         args = parser.parse_args()
         self.trezor_webusb = args.trezor_webusb
         self.trezor_bridge = args.trezor_bridge
         self.trezor_udp = args.trezor_udp
         self.trezor_hid = args.trezor_hid
+        self.sig_time_offset_min = args.sig_time_offset_min
+        self.sig_time_offset_max = args.sig_time_offset_max
 
         app_user_dir = ''
         if args.data_dir:
@@ -1822,8 +1834,6 @@ class SSHConnectionCfg(object):
         if method not in ('any', 'password', 'key_pair', 'ssh_agent'):
             raise Exception('Invalid authentication method')
         self.__auth_method = method
-
-
 
 
 class DashNetworkConnectionCfg(object):
