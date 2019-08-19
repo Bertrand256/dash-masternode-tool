@@ -256,6 +256,11 @@ class AppConfig(QObject):
         self.trezor_hid = args.trezor_hid
         self.sig_time_offset_min = args.sig_time_offset_min
         self.sig_time_offset_max = args.sig_time_offset_max
+        if not self.sig_time_offset_min < self.sig_time_offset_max:
+            WndUtils.errorMsg('--sig-time-offset-min must be less than --sig-time-offset-max. Using the default '
+                              'values (-1800/1800).')
+            self.sig_time_offset_min = -1800
+            self.sig_time_offset_max = 1800
 
         app_user_dir = ''
         if args.data_dir:
