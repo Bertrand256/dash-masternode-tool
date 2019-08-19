@@ -1,3 +1,14 @@
+## [0.9.26] - 2019-08-19
+**Added**
+- Commandline parameters for changing the sig_time random offset range.
+- Ability to explicitly specify the authentication methods for an SSH tunnel from: username/password, RSA private key 
+pair and ssh agent.
+- Workaround for Trezor connection issues (LIBUSB) after Windows update #1903.
+- Showing a message if duplicate masternode information in the configuration may prevent voting. 
+
+**Fixed**
+- Issue "'WalletDlg' object has no attribute 'config'" when signing message from the wallet dialog.
+
 ## [0.9.25-hotfix2] - 2019-07-15
 
 **Fixed**
