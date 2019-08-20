@@ -487,7 +487,6 @@ def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching
                         raise
             finally:
                 self.http_lock.release()
-                log.debug('Released http_lock')
 
             if last_exception:
                 raise last_exception
