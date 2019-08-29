@@ -593,7 +593,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                 auth_method = 'any'
             elif index == 1:
                 auth_method = 'password'
-            elif index == 1:
+            elif index == 2:
                 auth_method = 'key_pair'
             else:
                 auth_method = 'ssh_agent'
@@ -639,8 +639,10 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                         index = 0
                     elif self.current_network_cfg.ssh_conn_cfg.auth_method == 'password':
                         index = 1
-                    else:
+                    elif self.current_network_cfg.ssh_conn_cfg.auth_method == 'key_pair':
                         index = 2
+                    else:
+                        index = 3
                     self.ssh_tunnel_widget.cboAuthentication.setCurrentIndex(index)
                     self.ssh_tunnel_widget.edtPrivateKeyPath.\
                         setText(self.current_network_cfg.ssh_conn_cfg.private_key_path)
