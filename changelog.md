@@ -1,3 +1,13 @@
+## [0.9.26-hotfix2] - 2019-09-09
+
+**Fixed**
+- Fixed an issue with saving the ssh authentication method.
+
+## [0.9.26-hotfix1] - 2019-08-20
+
+**Fixed**
+- Proposals: remove votes from the cache that no longer exist on the network.
+
 ## [0.9.26] - 2019-08-19
 **Added**
 - Commandline parameters for changing the sig_time random offset range.
