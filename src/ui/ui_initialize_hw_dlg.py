@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_initialize_hw_dlg.ui'
+# Form implementation generated from reading ui file '/Users/blogin/Projects/dash-masternode-tool/src/ui/ui_initialize_hw_dlg.ui'
 #
 # Created by: PyQt5 UI code generator 5.9.2
 #
@@ -11,7 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_HwInitializeDlg(object):
     def setupUi(self, HwInitializeDlg):
         HwInitializeDlg.setObjectName("HwInitializeDlg")
-        HwInitializeDlg.resize(598, 489)
+        HwInitializeDlg.resize(683, 538)
         self.verticalLayout = QtWidgets.QVBoxLayout(HwInitializeDlg)
         self.verticalLayout.setContentsMargins(8, 8, 8, 8)
         self.verticalLayout.setSpacing(8)
@@ -347,12 +347,22 @@ class Ui_HwInitializeDlg(object):
         self.label_5.setObjectName("label_5")
         self.verticalLayout_9.addWidget(self.label_5)
         self.viewAddresses = QtWidgets.QTableView(self.wdgHwOptionsDetails)
+        self.viewAddresses.setSelectionMode(QtWidgets.QAbstractItemView.MultiSelection)
+        self.viewAddresses.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectItems)
         self.viewAddresses.setObjectName("viewAddresses")
         self.viewAddresses.horizontalHeader().setVisible(False)
         self.viewAddresses.horizontalHeader().setStretchLastSection(True)
         self.viewAddresses.verticalHeader().setVisible(False)
         self.viewAddresses.verticalHeader().setStretchLastSection(False)
         self.verticalLayout_9.addWidget(self.viewAddresses)
+        self.horizontalLayout_11 = QtWidgets.QHBoxLayout()
+        self.horizontalLayout_11.setObjectName("horizontalLayout_11")
+        self.btnPreviewShowNextAddresses = QtWidgets.QPushButton(self.wdgHwOptionsDetails)
+        self.btnPreviewShowNextAddresses.setObjectName("btnPreviewShowNextAddresses")
+        self.horizontalLayout_11.addWidget(self.btnPreviewShowNextAddresses)
+        spacerItem6 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.horizontalLayout_11.addItem(spacerItem6)
+        self.verticalLayout_9.addLayout(self.horizontalLayout_11)
         self.lblHwOptionsMessage1 = QtWidgets.QLabel(self.wdgHwOptionsDetails)
         self.lblHwOptionsMessage1.setStyleSheet("font-size:11px")
         self.lblHwOptionsMessage1.setWordWrap(True)
@@ -362,8 +372,8 @@ class Ui_HwInitializeDlg(object):
         self.verticalLayout_9.addWidget(self.lblHwOptionsMessage1)
         self.verticalLayout_11.addWidget(self.wdgHwOptionsDetails)
         self.verticalLayout_2.addWidget(self.fraDetails)
-        spacerItem6 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
-        self.verticalLayout_2.addItem(spacerItem6)
+        spacerItem7 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+        self.verticalLayout_2.addItem(spacerItem7)
         self.tabSteps.addWidget(self.pgStepInitOptions)
         self.pgStepSummary = QtWidgets.QWidget()
         self.pgStepSummary.setObjectName("pgStepSummary")
@@ -397,8 +407,8 @@ class Ui_HwInitializeDlg(object):
         self.rbTrezorModelT = QtWidgets.QRadioButton(self.gbTrezorModel)
         self.rbTrezorModelT.setObjectName("rbTrezorModelT")
         self.horizontalLayout_6.addWidget(self.rbTrezorModelT)
-        spacerItem7 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_6.addItem(spacerItem7)
+        spacerItem8 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.horizontalLayout_6.addItem(spacerItem8)
         self.verticalLayout_16.addWidget(self.gbTrezorModel)
         self.horizontalLayout_10 = QtWidgets.QHBoxLayout()
         self.horizontalLayout_10.setObjectName("horizontalLayout_10")
@@ -494,8 +504,8 @@ class Ui_HwInitializeDlg(object):
         self.edtFirmwareNotes.setReadOnly(True)
         self.edtFirmwareNotes.setObjectName("edtFirmwareNotes")
         self.verticalLayout_16.addWidget(self.edtFirmwareNotes)
-        spacerItem8 = QtWidgets.QSpacerItem(20, 0, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.MinimumExpanding)
-        self.verticalLayout_16.addItem(spacerItem8)
+        spacerItem9 = QtWidgets.QSpacerItem(20, 0, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.MinimumExpanding)
+        self.verticalLayout_16.addItem(spacerItem9)
         self.tabSteps.addWidget(self.pgStepHwFirmwareList)
         self.pgStepHwFirmwareUpload = QtWidgets.QWidget()
         self.pgStepHwFirmwareUpload.setObjectName("pgStepHwFirmwareUpload")
@@ -508,8 +518,8 @@ class Ui_HwInitializeDlg(object):
         self.lblUploadFirmwareMessage.setWordWrap(True)
         self.lblUploadFirmwareMessage.setObjectName("lblUploadFirmwareMessage")
         self.verticalLayout_18.addWidget(self.lblUploadFirmwareMessage)
-        spacerItem9 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
-        self.verticalLayout_18.addItem(spacerItem9)
+        spacerItem10 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+        self.verticalLayout_18.addItem(spacerItem10)
         self.tabSteps.addWidget(self.pgStepHwFirmwareUpload)
         self.verticalLayout.addWidget(self.tabSteps)
         self.horizontalLayout_4 = QtWidgets.QHBoxLayout()
@@ -528,8 +538,8 @@ class Ui_HwInitializeDlg(object):
         self.btnCancel.setAutoDefault(False)
         self.btnCancel.setObjectName("btnCancel")
         self.horizontalLayout.addWidget(self.btnCancel)
-        spacerItem10 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout.addItem(spacerItem10)
+        spacerItem11 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.horizontalLayout.addItem(spacerItem11)
         self.btnBack = QtWidgets.QPushButton(self.widget)
         self.btnBack.setAutoDefault(False)
         self.btnBack.setObjectName("btnBack")
@@ -541,7 +551,7 @@ class Ui_HwInitializeDlg(object):
         self.verticalLayout.addWidget(self.widget)
 
         self.retranslateUi(HwInitializeDlg)
-        self.tabSteps.setCurrentIndex(2)
+        self.tabSteps.setCurrentIndex(6)
         QtCore.QMetaObject.connectSlotsByName(HwInitializeDlg)
 
     def retranslateUi(self, HwInitializeDlg):
@@ -588,6 +598,7 @@ class Ui_HwInitializeDlg(object):
         self.btnRefreshAddressesPreview.setText(_translate("HwInitializeDlg", "Apply and reload addresses"))
         self.edtHwOptionsBip32Path.setText(_translate("HwInitializeDlg", "44\'/5\'/0\'/0/0"))
         self.label_5.setText(_translate("HwInitializeDlg", "Dash addresses which will be available in the device after finishing the process:"))
+        self.btnPreviewShowNextAddresses.setText(_translate("HwInitializeDlg", "Show more addresses"))
         self.lblHwOptionsMessage1.setText(_translate("HwInitializeDlg", "Entropy:"))
         self.lblStepSummaryTitle.setText(_translate("HwInitializeDlg", "<h2>Operation successfully finished</h2>"))
         self.lblFirmwareSource.setText(_translate("HwInitializeDlg", "<b>Choose the source of firmware</b>"))

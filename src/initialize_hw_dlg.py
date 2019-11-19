@@ -51,6 +51,7 @@ STEP_UPLOAD_FIRMWARE = 9
 
 CACHE_ITEM_LAST_FIRMWARE_FILE = 'HwInitializeDlg_LastFirmwareFile'
 
+PREVIEW_ADDRESSES_PER_PAGE = 50
 
 class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils):
     def __init__(self, parent) -> None:
@@ -90,6 +91,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         self.hw_firmware_url_selected: Dict = None
         self.hw_firmware_last_hw_type = None
         self.hw_firmware_last_hw_model = None
+        self.preview_address_count = PREVIEW_ADDRESSES_PER_PAGE
         self.setupUi()
 
     def setupUi(self):
@@ -1056,7 +1058,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             if len(bip32_path_n) > 0:
                 last_idx = bip32_path_n[-1]
                 addresses = []
-                for idx in range(10):
+                for idx in range(self.preview_address_count):
                     bip32_path_n[-1] = last_idx + idx
                     pk = self.get_bip32_private_key(bip32_path_n, bip32_master_key)
                     pubkey = bitcoin.privkey_to_pubkey(pk)
@@ -1069,6 +1071,11 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
     @pyqtSlot(bool)
     def on_btnRefreshAddressesPreview_clicked(self, check):
+        self.refresh_adresses_preview()
+
+    @pyqtSlot(bool)
+    def on_btnPreviewShowNextAddresses_clicked(self, check):
+        self.preview_address_count += PREVIEW_ADDRESSES_PER_PAGE
         self.refresh_adresses_preview()
 
     @pyqtSlot()
