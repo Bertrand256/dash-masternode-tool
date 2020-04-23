@@ -3,12 +3,16 @@
 import os
 import sys
 import PyQt5.QtWidgets as qwi
+from PyQt5 import QtCore
 from PyQt5.QtGui import QIcon
 import main_dlg
 import traceback
 import logging
 
 from wnd_utils import WndUtils
+
+qwi.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+qwi.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
 
 if __name__ == '__main__':
     def my_excepthook(type, value, tback):
@@ -49,4 +53,3 @@ if __name__ == '__main__':
         pass
 
     sys.exit(app.exec_())
-
