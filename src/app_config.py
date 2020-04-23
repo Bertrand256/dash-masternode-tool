@@ -53,7 +53,7 @@ from hw_common import HwSessionInfo
 from wnd_utils import WndUtils
 
 
-CURRENT_CFG_FILE_VERSION = 5
+CURRENT_CFG_FILE_VERSION = 1
 CACHE_ITEM_LOGGERS_LOGLEVEL = 'LoggersLogLevel'
 CACHE_ITEM_LOG_FORMAT = 'LogFormat'
 
@@ -759,12 +759,12 @@ class AppConfig(QObject):
                                         config.get(section, 'dmn_owner_private_key', fallback='').strip(), False)
                                 else:
                                     mn.dmn_owner_address = config.get(section, 'dmn_owner_address', fallback='').strip()
-                                    
+
                                 if mn.dmn_operator_key_type == InputKeyType.PRIVATE:
                                     mn.dmn_operator_private_key = self.simple_decrypt(
                                         config.get(section, 'dmn_operator_private_key', fallback='').strip(), False)
                                 else:
-                                    mn.dmn_operator_public_key = config.get(section, 'dmn_operator_public_key', 
+                                    mn.dmn_operator_public_key = config.get(section, 'dmn_operator_public_key',
                                                                             fallback='').strip()
 
                                 if mn.dmn_voting_key_type == InputKeyType.PRIVATE:
@@ -1098,9 +1098,9 @@ class AppConfig(QObject):
         """
         Cast value to bool:
           - if value is int, 1 will return True, 0 will return False, others will be invalid
-          - if value is str, '1' will return True, '0' will return False, others will be invalid 
-        :param value: 
-        :return: 
+          - if value is str, '1' will return True, '0' will return False, others will be invalid
+        :param value:
+        :return:
         """
         if isinstance(value, bool):
             v = value
@@ -1185,8 +1185,8 @@ class AppConfig(QObject):
 
     def prepare_conn_list(self):
         """
-        Prepare list of enabled connections for connecting to dash network. 
-        :return: list of DashNetworkConnectionCfg objects order randomly (random_dash_net_config == True) or according 
+        Prepare list of enabled connections for connecting to dash network.
+        :return: list of DashNetworkConnectionCfg objects order randomly (random_dash_net_config == True) or according
             to order in configuration
         """
         tmp_list = []
@@ -1216,15 +1216,15 @@ class AppConfig(QObject):
         """
         Mark conn configuration as not functioning (node could be shut down in the meantime) - this connection will
         be sent to the end of queue of active connections.
-        :param cfg: 
-        :return: 
+        :param cfg:
+        :return:
         """
         self.defective_net_configs.append(cfg)
 
     def decode_connections(self, raw_conn_list) -> List['DashNetworkConnectionCfg']:
         """
         Decodes list of dicts describing connection to a list of DashNetworkConnectionCfg objects.
-        :param raw_conn_list: 
+        :param raw_conn_list:
         :return: list of connection objects
         """
         connn_list = []
@@ -1309,7 +1309,7 @@ class AppConfig(QObject):
     def import_connections(self, in_conns, force_import, limit_to_network: Optional[str]):
         """
         Imports connections from a list. Used at the app's start to process default connections and/or from
-          a configuration dialog, when user pastes from a clipboard a string, describing connections he 
+          a configuration dialog, when user pastes from a clipboard a string, describing connections he
           wants to add to the configuration. The latter feature is used for a convenience.
         :param in_conns: list of DashNetworkConnectionCfg objects.
         :returns: tuple (list_of_added_connections, list_of_updated_connections)
@@ -1869,8 +1869,8 @@ class DashNetworkConnectionCfg(object):
 
     def get_conn_id(self):
         """
-        Returns identifier of this connection, built on attributes that uniquely characteraize the connection. 
-        :return: 
+        Returns identifier of this connection, built on attributes that uniquely characteraize the connection.
+        :return:
         """
         if self.__use_ssh_tunnel:
             id = 'SSH:' + self.ssh_conn_cfg.host + ':' + self.__host + ':' + self.__port + ':' + str(self.__testnet)
@@ -1926,8 +1926,8 @@ class DashNetworkConnectionCfg(object):
 
     def is_http_proxy(self):
         """
-        Returns if current config is a http proxy. Method is not very brilliant for now: we assume, that 
-        proxy uses SSL while normal, "local" dashd does not. 
+        Returns if current config is a http proxy. Method is not very brilliant for now: we assume, that
+        proxy uses SSL while normal, "local" dashd does not.
         """
         if self.__use_ssl:
             return True

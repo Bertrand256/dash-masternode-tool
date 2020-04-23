@@ -8,7 +8,7 @@ from typing import List
 
 APP_NAME_SHORT = 'znode-tool'
 APP_NAME_LONG = 'Znode Tool'
-APP_DATA_DIR_NAME = '.dmt'
+APP_DATA_DIR_NAME = '.znode-tool'
 PROJECT_URL = 'https://github.com/Bertrand256/dash-masternode-tool'
 FEE_DUFF_PER_BYTE = 1
 MIN_TX_FEE = 1000
