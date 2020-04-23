@@ -43,7 +43,7 @@ import app_utils
 from initialize_hw_dlg import HwInitializeDlg
 from masternode_details import WdgMasternodeDetails
 from proposals_dlg import ProposalsDlg
-from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
+from app_config import AppConfig, MasternodeConfig, APP_NAME_LONG, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
 from app_defs import PROJECT_URL, HWType, get_note_url
 from dash_utils import bip32_path_n_to_string
 from dashd_intf import DashdInterface, DashdIndexException
@@ -375,7 +375,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             encrypted_part = ''
 
-        title = f'{APP_NAME_SHORT}{app_version_part}{testnet_part}{cfg_file_name_part}{encrypted_part}'
+        title = f'{APP_NAME_LONG}{app_version_part}{testnet_part}{cfg_file_name_part}{encrypted_part}'
 
         self.setWindowTitle(title)
 
@@ -550,8 +550,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def get_project_config_params_thread(self, ctrl, force_check):
         """
         Thread function checking whether there is a new version of the application on Github page.
-        :param ctrl: thread control structure (not used here) 
-        :param cur_date_str: Current date string - it will be saved in the cache file as the date of the 
+        :param ctrl: thread control structure (not used here)
+        :param cur_date_str: Current date string - it will be saved in the cache file as the date of the
             last-version-check date.
         :param force_check: True if version-check has been invoked by the user, not the app itself.
         :return: None
@@ -596,7 +596,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         else:
                             if force_check:
                                 self.add_app_message(DispMessage.NEW_VERSION, "You have the latest version of %s."
-                                                     % APP_NAME_SHORT, 'info')
+                                                     % APP_NAME_LONG, 'info')
                     elif force_check:
                         self.add_app_message(DispMessage.NEW_VERSION, "Could not read the remote version number.",
                                               'warn')
@@ -853,7 +853,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def add_app_message(self, msg_id: int, text: str, type: str):
         """
         Display message in the app message area.
-        :param text: Text to be displayed. If Text is empty, message area will be hidden. 
+        :param text: Text to be displayed. If Text is empty, message area will be hidden.
         :param color: Color of thext.
         """
         def set_message(msg_id: int, text, type):
@@ -1844,7 +1844,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot(bool)
     def on_action_transfer_funds_for_cur_mn_triggered(self):
         """
-        Shows tranfser funds window with utxos related to current masternode. 
+        Shows tranfser funds window with utxos related to current masternode.
         """
         if self.cur_masternode:
             src_addresses = []
@@ -1864,7 +1864,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot(bool)
     def on_action_transfer_funds_for_all_mns_triggered(self):
         """
-        Shows tranfser funds window with utxos related to all masternodes. 
+        Shows tranfser funds window with utxos related to all masternodes.
         """
         self.show_wallet_window(None)
 
@@ -2089,4 +2089,3 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot()
     def on_btnRevokeMn_clicked(self):
         self.revoke_mn_operator()
-
