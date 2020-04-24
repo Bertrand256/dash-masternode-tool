@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_config_dlg.ui'
+# Form implementation generated from reading ui file 'src/ui/ui_config_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.9.2
+# Created by: PyQt5 UI code generator 5.14.0
 #
 # WARNING! All changes made in this file will be lost!
 
+
 from PyQt5 import QtCore, QtGui, QtWidgets
+
 
 class Ui_ConfigDlg(object):
     def setupUi(self, ConfigDlg):
@@ -236,7 +238,7 @@ class Ui_ConfigDlg(object):
     def retranslateUi(self, ConfigDlg):
         _translate = QtCore.QCoreApplication.translate
         ConfigDlg.setWindowTitle(_translate("ConfigDlg", "Dialog"))
-        self.label_2.setText(_translate("ConfigDlg", "Dash network:"))
+        self.label_2.setText(_translate("ConfigDlg", "Network:"))
         self.cboDashNetwork.setItemText(0, _translate("ConfigDlg", "MAINNET"))
         self.cboDashNetwork.setItemText(1, _translate("ConfigDlg", "TESTNET"))
         self.btnNewConn.setToolTip(_translate("ConfigDlg", "Add New Connection"))
@@ -247,7 +249,7 @@ class Ui_ConfigDlg(object):
         self.label.setText(_translate("ConfigDlg", "Connections:"))
         self.chbRandomConn.setToolTip(_translate("ConfigDlg", "Pick random connection to distribute clients\' load over multiple nodes."))
         self.chbRandomConn.setText(_translate("ConfigDlg", "Pick random connection"))
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tabDashd), _translate("ConfigDlg", "Dash network"))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tabDashd), _translate("ConfigDlg", "Zcoin"))
         self.label_3.setText(_translate("ConfigDlg", "Hardware wallet:"))
         self.chbHwTrezor.setText(_translate("ConfigDlg", "Trezor"))
         self.chbHwKeepKey.setText(_translate("ConfigDlg", "KeepKey"))
@@ -281,4 +283,3 @@ if __name__ == "__main__":
     ui.setupUi(ConfigDlg)
     ConfigDlg.show()
     sys.exit(app.exec_())
-

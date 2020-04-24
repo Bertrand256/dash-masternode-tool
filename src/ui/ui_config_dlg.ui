@@ -36,7 +36,7 @@
      </property>
      <widget class="QWidget" name="tabDashd">
       <attribute name="title">
-       <string>Dash network</string>
+       <string>Zcoin</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_3">
        <property name="spacing">
@@ -59,7 +59,7 @@
          <item>
           <widget class="QLabel" name="label_2">
            <property name="text">
-            <string>Dash network:</string>
+            <string>Network:</string>
            </property>
           </widget>
          </item>
