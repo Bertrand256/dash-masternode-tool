@@ -486,27 +486,6 @@
         </widget>
        </item>
        <item>
-        <widget class="QCheckBox" name="chbConfirmWhenVoting">
-         <property name="text">
-          <string>Ask for confirmation when voting (proposals)</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QCheckBox" name="chbAddRandomOffsetToVotingTime">
-         <property name="text">
-          <string>Add random offset to a vote time to enhance privacy (proposals)</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QCheckBox" name="chbDownloadProposalExternalData">
-         <property name="text">
-          <string>Download external proposal attributes (DashCentral.org)</string>
-         </property>
-        </widget>
-       </item>
-       <item>
         <widget class="QCheckBox" name="chbDontUseFileDialogs">
          <property name="toolTip">
           <string/>

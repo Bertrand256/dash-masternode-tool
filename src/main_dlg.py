@@ -42,7 +42,6 @@ import wallet_dlg
 import app_utils
 from initialize_hw_dlg import HwInitializeDlg
 from masternode_details import WdgMasternodeDetails
-from proposals_dlg import ProposalsDlg
 from app_config import AppConfig, MasternodeConfig, APP_NAME_LONG, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
 from app_defs import PROJECT_URL, HWType, get_note_url
 from dash_utils import bip32_path_n_to_string
@@ -144,7 +143,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.setIcon(self.action_save_config_file, 'save.png')
         self.setIcon(self.action_check_network_connection, "link-check.png")
         self.setIcon(self.action_open_settings_window, "gear.png")
-        self.setIcon(self.action_open_proposals_window, "thumbs-up-down.png")
         self.setIcon(self.action_test_hw_connection, "hw-test.png")
         self.setIcon(self.action_disconnect_hw, "hw-disconnect.png")
         self.setIcon(self.action_transfer_funds_for_any_address, "wallet.png")
@@ -168,7 +166,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.action_save_config_file.setIconVisibleInMenu(False)
         self.action_check_network_connection.setIconVisibleInMenu(False)
         self.action_open_settings_window.setIconVisibleInMenu(False)
-        self.action_open_proposals_window.setIconVisibleInMenu(False)
         self.action_test_hw_connection.setIconVisibleInMenu(False)
         self.action_disconnect_hw.setIconVisibleInMenu(False)
         self.action_run_trezor_emulator.setIconVisibleInMenu(False)
@@ -1947,11 +1944,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         Hardware wallet initialization from a seed.
         """
         ui = HwInitializeDlg(self)
-        ui.exec_()
-
-    @pyqtSlot(bool)
-    def on_action_open_proposals_window_triggered(self):
-        ui = ProposalsDlg(self, self.dashd_intf)
         ui.exec_()
 
     @pyqtSlot(bool)

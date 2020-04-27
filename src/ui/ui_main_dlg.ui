@@ -583,8 +583,6 @@ padding-right: 0px;</string>
    <addaction name="action_test_hw_connection"/>
    <addaction name="action_disconnect_hw"/>
    <addaction name="separator"/>
-   <addaction name="action_open_proposals_window"/>
-   <addaction name="separator"/>
    <addaction name="action_transfer_funds_for_any_address"/>
   </widget>
   <action name="action_transfer_funds_for_cur_mn">
@@ -659,14 +657,6 @@ padding-right: 0px;</string>
    </property>
    <property name="menuRole">
     <enum>QAction::PreferencesRole</enum>
-   </property>
-  </action>
-  <action name="action_open_proposals_window">
-   <property name="text">
-    <string>Proposals</string>
-   </property>
-   <property name="toolTip">
-    <string>Proposals</string>
    </property>
   </action>
   <action name="action_test_hw_connection">

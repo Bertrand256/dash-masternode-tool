@@ -219,10 +219,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
 
         self.chbCheckForUpdates.setChecked(self.local_config.check_for_updates)
         self.chbBackupConfigFile.setChecked(self.local_config.backup_config_file)
-        self.chbDownloadProposalExternalData.setChecked(self.local_config.read_proposals_external_attributes)
         self.chbDontUseFileDialogs.setChecked(self.local_config.dont_use_file_dialogs)
-        self.chbConfirmWhenVoting.setChecked(self.local_config.confirm_when_voting)
-        self.chbAddRandomOffsetToVotingTime.setChecked(self.local_config.add_random_offset_to_vote_time)
         self.chbEncryptConfigFile.setChecked(self.local_config.encrypt_config_file)
 
         idx = {
@@ -355,7 +352,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                     self.display_connection_list()
                     self.set_modified()
                     self.lstConns.setCurrentRow(row_selected)
-                    
+
         except Exception as e:
             self.errorMsg(str(e))
 
@@ -729,23 +726,8 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.set_modified()
 
     @pyqtSlot(bool)
-    def on_chbDownloadProposalExternalData_toggled(self, checked):
-        self.local_config.read_proposals_external_attributes = checked
-        self.set_modified()
-
-    @pyqtSlot(bool)
     def on_chbDontUseFileDialogs_toggled(self, checked):
         self.local_config.dont_use_file_dialogs = checked
-        self.set_modified()
-
-    @pyqtSlot(bool)
-    def on_chbConfirmWhenVoting_toggled(self, checked):
-        self.local_config.confirm_when_voting = checked
-        self.set_modified()
-
-    @pyqtSlot(bool)
-    def on_chbAddRandomOffsetToVotingTime_toggled(self, checked):
-        self.local_config.add_random_offset_to_vote_time = checked
         self.set_modified()
 
     @pyqtSlot(bool)
