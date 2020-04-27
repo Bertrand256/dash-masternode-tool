@@ -53,7 +53,7 @@ from hw_common import HwSessionInfo
 from wnd_utils import WndUtils
 
 
-CURRENT_CFG_FILE_VERSION = 1
+CURRENT_CFG_FILE_VERSION = 5
 CACHE_ITEM_LOGGERS_LOGLEVEL = 'LoggersLogLevel'
 CACHE_ITEM_LOG_FORMAT = 'LogFormat'
 
