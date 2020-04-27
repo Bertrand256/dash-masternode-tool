@@ -886,6 +886,7 @@ class AppConfig(QObject):
             if not create_config_file:
                 raise Exception(f'The configuration file \'{file_name}\' does not exist.')
             else:
+                ini_version = CURRENT_CFG_FILE_VERSION
                 self.modified = True
             # else: file will be created while saving
 
