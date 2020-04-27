@@ -386,7 +386,7 @@ class Ui_MainWindow(object):
         self.action_save_config_file.setShortcut(_translate("MainWindow", "Ctrl+S"))
         self.action_check_network_connection.setText(_translate("MainWindow", "Check Network Connection"))
         self.action_check_network_connection.setToolTip(_translate("MainWindow", "Check Dash Network Connection"))
-        self.action_open_settings_window.setText(_translate("MainWindow", "Settings"))
+        self.action_open_settings_window.setText(_translate("MainWindow", "Settings..."))
         self.action_open_settings_window.setToolTip(_translate("MainWindow", "Settings"))
         self.action_test_hw_connection.setText(_translate("MainWindow", "Test Hardware Wallet Connection"))
         self.action_disconnect_hw.setText(_translate("MainWindow", "Disconnect Hardware Wallet"))
