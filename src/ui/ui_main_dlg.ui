@@ -525,8 +525,6 @@ padding-right: 0px;</string>
     <addaction name="action_hw_configuration"/>
     <addaction name="action_hw_initialization_recovery"/>
     <addaction name="separator"/>
-    <addaction name="action_import_masternode_conf"/>
-    <addaction name="separator"/>
     <addaction name="action_check_for_updates"/>
     <addaction name="action_command_console"/>
     <addaction name="action_open_log_file"/>
@@ -693,11 +691,6 @@ padding-right: 0px;</string>
    </property>
    <property name="menuRole">
     <enum>QAction::AboutRole</enum>
-   </property>
-  </action>
-  <action name="action_import_masternode_conf">
-   <property name="text">
-    <string>Import masternodes from the masternode.conf file...</string>
    </property>
   </action>
   <action name="action_about_qt">
