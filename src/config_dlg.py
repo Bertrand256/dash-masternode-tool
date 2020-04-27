@@ -114,17 +114,6 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.rpc_cfg_widget = RpcConnectionWidget(self.detailsFrame)
         layout_details.addWidget(self.rpc_cfg_widget)
 
-        # layout for controls related to setting up an additional encryption
-        hl = QHBoxLayout()
-        self.btnEncryptionPublicKey = QPushButton("RPC encryption public key")
-        self.btnEncryptionPublicKey.clicked.connect(self.on_btnEncryptionPublicKey_clicked)
-        hl.addWidget(self.btnEncryptionPublicKey)
-        self.lblEncryptionPublicKey = QLabel(self)
-        self.lblEncryptionPublicKey.setText('')
-        hl.addWidget(self.lblEncryptionPublicKey)
-        hl.addStretch()
-        layout_details.addLayout(hl)
-
         # layout for the 'test connection' button:
         hl = QHBoxLayout()
         self.btnTestConnection = QPushButton("\u2705 Test connection")
@@ -654,18 +643,15 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                 self.rpc_cfg_widget.edtRpcPassword.setText(self.current_network_cfg.password)
                 self.rpc_cfg_widget.chbRpcSSL.setChecked(self.current_network_cfg.use_ssl)
 
-                self.btnEncryptionPublicKey.setVisible(True)
-                self.lblEncryptionPublicKey.setVisible(True)
                 pubkey_der = self.current_network_cfg.get_rpc_encryption_pubkey_str('DER')
                 if pubkey_der:
                     try:
                         pub_bytes = bytearray.fromhex(pubkey_der)
                         hash = hashlib.sha256(pub_bytes).hexdigest()
-                        self.lblEncryptionPublicKey.setText(f'[pubkey hash: {hash[0:8]}]')
                     except Exception as e:
-                        self.lblEncryptionPublicKey.setText(f'[pubkey not set]')
+                        pass
                 else:
-                    self.lblEncryptionPublicKey.setText(f'[pubkey not set]')
+                    pass
 
                 self.rpc_cfg_widget.setVisible(True)
             else:
@@ -675,8 +661,6 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                 self.ssh_tunnel_widget.setVisible(False)
                 self.btnSshReadRpcConfig.setVisible(False)
                 self.rpc_cfg_widget.setVisible(False)
-                self.btnEncryptionPublicKey.setVisible(False)
-                self.lblEncryptionPublicKey.setVisible(False)
             self.chbRandomConn.setChecked(self.local_config.random_dash_net_config)
         finally:
             self.disable_cfg_update = dis_old
