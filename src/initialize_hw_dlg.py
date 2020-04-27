@@ -107,8 +107,6 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         # self.tabFirmwareWebSources.
 
         self.rbDeviceTrezor.toggled.connect(self.on_device_type_changed)
-        self.rbDeviceKeepkey.toggled.connect(self.on_device_type_changed)
-        self.rbDeviceLedger.toggled.connect(self.on_device_type_changed)
 
         self.rbActRecoverWordsSafe.toggled.connect(self.on_rbActionType_changed)
         self.rbActRecoverMnemonicWords.toggled.connect(self.on_rbActionType_changed)
@@ -1124,10 +1122,6 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
     def read_device_type_from_ui(self):
         if self.rbDeviceTrezor.isChecked():
             self.hw_type = HWType.trezor
-        elif self.rbDeviceKeepkey.isChecked():
-            self.hw_type = HWType.keepkey
-        elif self.rbDeviceLedger.isChecked():
-            self.hw_type = HWType.ledger_nano_s
         else:
             self.hw_type = None
 

@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_initialize_hw_dlg.ui'
+# Form implementation generated from reading ui file 'src/ui/ui_initialize_hw_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.9.2
+# Created by: PyQt5 UI code generator 5.14.0
 #
 # WARNING! All changes made in this file will be lost!
 
+
 from PyQt5 import QtCore, QtGui, QtWidgets
+
 
 class Ui_HwInitializeDlg(object):
     def setupUi(self, HwInitializeDlg):
@@ -36,12 +38,6 @@ class Ui_HwInitializeDlg(object):
         self.rbDeviceTrezor = QtWidgets.QRadioButton(self.gbDeviceType)
         self.rbDeviceTrezor.setObjectName("rbDeviceTrezor")
         self.verticalLayout_14.addWidget(self.rbDeviceTrezor)
-        self.rbDeviceKeepkey = QtWidgets.QRadioButton(self.gbDeviceType)
-        self.rbDeviceKeepkey.setObjectName("rbDeviceKeepkey")
-        self.verticalLayout_14.addWidget(self.rbDeviceKeepkey)
-        self.rbDeviceLedger = QtWidgets.QRadioButton(self.gbDeviceType)
-        self.rbDeviceLedger.setObjectName("rbDeviceLedger")
-        self.verticalLayout_14.addWidget(self.rbDeviceLedger)
         self.verticalLayout_12.addWidget(self.gbDeviceType)
         self.lblStepDeviceTypeMessage = QtWidgets.QLabel(self.pgStepDeviceType)
         self.lblStepDeviceTypeMessage.setText("")
@@ -550,8 +546,6 @@ class Ui_HwInitializeDlg(object):
         self.lblStepDeviceType.setText(_translate("HwInitializeDlg", "<b>Select device type</b>\n"
 ""))
         self.rbDeviceTrezor.setText(_translate("HwInitializeDlg", "Trezor"))
-        self.rbDeviceKeepkey.setText(_translate("HwInitializeDlg", "KeepKey"))
-        self.rbDeviceLedger.setText(_translate("HwInitializeDlg", "Ledger Nano S"))
         self.lblStepDeviceInstanceMessage.setText(_translate("HwInitializeDlg", "<b>Select which device you want to use</b>"))
         self.lblStepActionTitle.setText(_translate("HwInitializeDlg", "<b>Select the action to perform</b>"))
         self.rbActRecoverWordsSafe.setText(_translate("HwInitializeDlg", "Recover hardware wallet from seed words - safe"))
@@ -615,7 +609,7 @@ class Ui_HwInitializeDlg(object):
         item.setText(_translate("HwInitializeDlg", "URL"))
         item = self.tabFirmwareWebSources.horizontalHeaderItem(5)
         item.setText(_translate("HwInitializeDlg", "Fingerprint"))
-        self.label_2.setText(_translate("HwInitializeDlg", "<a href=\"https://github.com/Bertrand256/dash-masternode-tool/blob/master/doc/hw-initialization-recovery.md\">Read the documentation on GitHub</a>"))
+        self.label_2.setText(_translate("HwInitializeDlg", "<a href=\"https://github.com/zcoinofficial/znode-tool-evo/blob/master/doc/hw-initialization-recovery.md\">Read the documentation on GitHub</a>"))
         self.btnCancel.setText(_translate("HwInitializeDlg", "Cancel"))
         self.btnBack.setText(_translate("HwInitializeDlg", "Back"))
         self.btnNext.setText(_translate("HwInitializeDlg", "Continue"))
@@ -629,4 +623,3 @@ if __name__ == "__main__":
     ui.setupUi(HwInitializeDlg)
     HwInitializeDlg.show()
     sys.exit(app.exec_())
-

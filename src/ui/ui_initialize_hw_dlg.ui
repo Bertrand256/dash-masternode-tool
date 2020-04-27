@@ -75,20 +75,6 @@
             </property>
            </widget>
           </item>
-          <item>
-           <widget class="QRadioButton" name="rbDeviceKeepkey">
-            <property name="text">
-             <string>KeepKey</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QRadioButton" name="rbDeviceLedger">
-            <property name="text">
-             <string>Ledger Nano S</string>
-            </property>
-           </widget>
-          </item>
          </layout>
         </widget>
        </item>
@@ -1262,7 +1248,7 @@ For an official firmware, you can uncheck this option.</string>
      <item>
       <widget class="QLabel" name="label_2">
        <property name="text">
-        <string>&lt;a href=&quot;https://github.com/Bertrand256/dash-masternode-tool/blob/master/doc/hw-initialization-recovery.md&quot;&gt;Read the documentation on GitHub&lt;/a&gt;</string>
+        <string>&lt;a href=&quot;https://github.com/zcoinofficial/znode-tool-evo/blob/master/doc/hw-initialization-recovery.md&quot;&gt;Read the documentation on GitHub&lt;/a&gt;</string>
        </property>
        <property name="openExternalLinks">
         <bool>true</bool>
