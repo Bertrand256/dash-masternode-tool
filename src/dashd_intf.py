@@ -383,13 +383,13 @@ class DashdIndexException(JSONRPCException):
     def __init__(self, parent_exception):
         JSONRPCException.__init__(self, parent_exception.error)
         self.message = self.message + \
-                       '\n\nMake sure the dash daemon you are connecting to has the following options enabled in ' \
-                       'its dash.conf:\n\n' + \
+                       '\n\nMake sure the Zcoin daemon you are connecting to has the following options enabled in ' \
+                       'its zcoin.conf:\n\n' + \
                        'addressindex=1\n' + \
                        'spentindex=1\n' + \
                        'timestampindex=1\n' + \
                        'txindex=1\n\n' + \
-                       'Changing these parameters requires to execute dashd with "-reindex" option (linux: ./dashd -reindex)'
+                       'Changing these parameters requires to execute zcoind with "-reindex" option (linux: ./zcoind -reindex)'
 
 
 def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching_conns=True):
@@ -743,12 +743,12 @@ class DashdInterface(WndUtils):
     def open(self):
         """
         Opens connection to dash RPC. If it fails, then the next enabled conn config will be used, if any exists.
-        :return: True if successfully connected, False if user cancelled the operation. If all of the attempts 
+        :return: True if successfully connected, False if user cancelled the operation. If all of the attempts
             fail, then appropriate exception will be raised.
         """
         try:
             if not self.cur_conn_def:
-                raise Exception('There is no connections to Dash network enabled in the configuration.')
+                raise Exception('There is no connections to Zcoin enabled in the configuration.')
 
             while True:
                 try:
@@ -789,7 +789,7 @@ class DashdInterface(WndUtils):
     def open_internal(self):
         """
         Try to establish connection to dash RPC daemon for current connection config.
-        :return: True, if connection successfully establishes, False if user Cancels the operation (not always 
+        :return: True, if connection successfully establishes, False if user Cancels the operation (not always
             cancelling will be possible - only when user is prompted for a password).
         """
         if not self.active:
@@ -1379,4 +1379,3 @@ class DashdInterface(WndUtils):
             return False
         except Exception as e:
             return False
-
