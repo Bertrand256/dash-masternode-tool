@@ -835,7 +835,7 @@
                   </size>
                  </property>
                  <property name="text">
-                  <string>44'/5'/0'/0/0</string>
+                  <string>44'/136'/0'/0/0</string>
                  </property>
                  <property name="echoMode">
                   <enum>QLineEdit::Normal</enum>
