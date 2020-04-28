@@ -1401,9 +1401,9 @@ class AppConfig(QObject):
     @property
     def hw_coin_name(self):
         if self.is_testnet():
-            return 'Dash Testnet'
+            return 'Zcoin Testnet'
         else:
-            return 'Dash'
+            return 'Zcoin'
 
     def get_block_explorer_tx(self):
         if self.dash_network == 'MAINNET':
