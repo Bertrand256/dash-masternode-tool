@@ -380,12 +380,12 @@ class AccountListModel(ExtSortFilterTableModel):
 class UtxoTableModel(ExtSortFilterTableModel):
     def __init__(self, parent, masternode_list: List[MasternodeConfig], tx_explorer_url: str):
         ExtSortFilterTableModel.__init__(self, parent, [
-            TableModelColumn('satoshis', 'Amount (Dash)', True, 100),
+            TableModelColumn('satoshis', 'Amount (XZC)', True, 100),
             TableModelColumn('confirmations', 'Confirmations', True, 100),
             TableModelColumn('bip32_path', 'Path', True, 100),
             TableModelColumn('time_str', 'TX Date/Time', True, 140),
             TableModelColumn('address', 'Address', True, 140),
-            TableModelColumn('masternode', 'Masternode', False, 40),
+            TableModelColumn('masternode', 'Znode', False, 40),
             TableModelColumn('txid', 'TX Hash', True, 220),
             TableModelColumn('output_index', 'TX Idx', True, 40)
         ], True, True)

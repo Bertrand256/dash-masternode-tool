@@ -199,7 +199,7 @@
               </item>
               <item>
                <property name="text">
-                <string>View As: Masternode Address</string>
+                <string>View As: Znode Address</string>
                </property>
               </item>
              </widget>

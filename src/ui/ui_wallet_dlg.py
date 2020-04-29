@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_wallet_dlg.ui'
+# Form implementation generated from reading ui file 'src/ui/ui_wallet_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.9.2
+# Created by: PyQt5 UI code generator 5.14.0
 #
 # WARNING! All changes made in this file will be lost!
 
+
 from PyQt5 import QtCore, QtGui, QtWidgets
+
 
 class Ui_WalletDlg(object):
     def setupUi(self, WalletDlg):
@@ -313,7 +315,7 @@ class Ui_WalletDlg(object):
         self.btnFetchTransactions.setToolTip(_translate("WalletDlg", "Force fetch transactions"))
         self.btnFetchTransactions.setText(_translate("WalletDlg", "..."))
         self.cboAddressSourceMode.setItemText(0, _translate("WalletDlg", "View As: Wallet Account"))
-        self.cboAddressSourceMode.setItemText(1, _translate("WalletDlg", "View As: Masternode Address"))
+        self.cboAddressSourceMode.setItemText(1, _translate("WalletDlg", "View As: Znode Address"))
         self.btnViewModeOptions.setToolTip(_translate("WalletDlg", "Options"))
         self.btnViewModeOptions.setText(_translate("WalletDlg", "..."))
         self.lblViewModeOptions.setToolTip(_translate("WalletDlg", "Options"))
@@ -341,4 +343,3 @@ if __name__ == "__main__":
     ui.setupUi(WalletDlg)
     WalletDlg.show()
     sys.exit(app.exec_())
-

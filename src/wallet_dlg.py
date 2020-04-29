@@ -177,7 +177,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.utxoTableView.horizontalHeader().setSortIndicator(
             self.utxo_table_model.col_index_by_name('confirmations'), Qt.AscendingOrder)
         self.utxo_table_model.set_view(self.utxoTableView)
-        
+
         self.txesTableView.setSortingEnabled(True)
         self.txesTableView.setItemDelegate(ReadOnlyTableCellDelegate(self.txesTableView))
         self.txesTableView.verticalHeader().setDefaultSectionSize(
@@ -1633,8 +1633,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 <table>
 <tr><td class="lbl">{addr_lbl}</td><td>{addr_str}</td></tr>
 <tr><td class="lbl">Path</td><td>{addr_path}</td></tr>
-<tr><td class="lbl">Balance</td><td>{app_utils.to_string(balance/1e8)} Dash</td></tr>
-<tr><td class="lbl">Received</td><td>{app_utils.to_string(received/1e8)} Dash</td></tr>
+<tr><td class="lbl">Balance</td><td>{app_utils.to_string(balance/1e8)} XZC</td></tr>
+<tr><td class="lbl">Received</td><td>{app_utils.to_string(received/1e8)} XZC</td></tr>
 </table>
 </body>
 """
