@@ -153,9 +153,9 @@ class AppConfig(QObject):
 
         self.dash_network = 'MAINNET'
 
-        self.block_explorer_tx_mainnet = 'https://insight.dash.org/insight/tx/%TXID%'
+        self.block_explorer_tx_mainnet = 'https://insight.zcoin.io/tx/%TXID%'
         self.block_explorer_addr_mainnet = 'https://insight.dash.org/insight/address/%ADDRESS%'
-        self.block_explorer_tx_testnet = 'https://testnet-insight.dashevo.org/insight/tx/%TXID%'
+        self.block_explorer_tx_testnet = 'https://testexplorer.zcoin.io/tx/%TXID%'
         self.block_explorer_addr_testnet = 'https://testnet-insight.dashevo.org/insight/address/%ADDRESS%'
         self.tx_api_url_mainnet = 'https://insight.dash.org/insight'
         self.tx_api_url_testnet = 'https://testnet-insight.dashevo.org/insight'
