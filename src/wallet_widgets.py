@@ -397,15 +397,6 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.lay_fee_value.addWidget(self.lbl_change_value)
         self.lay_fee_value.addStretch(0)
 
-        # instant send
-        self.lbl_instant_send = QLabel(self.scroll_area_widget)
-        self.lbl_instant_send.setAlignment(QtCore.Qt.AlignRight|QtCore.Qt.AlignTrailing|QtCore.Qt.AlignVCenter)
-        self.lbl_instant_send.setText('Use InstantSend')
-        self.chb_instant_send = QCheckBox(self.scroll_area_widget)
-        self.chb_instant_send.toggled.connect(self.on_chb_instant_send_toggled)
-        self.lay_addresses.addWidget(self.lbl_instant_send, 2, 0)
-        self.lay_addresses.addWidget(self.chb_instant_send, 2, 1)
-
         # below the addresses grid place a label dedicated do display messages
         self.lbl_message = QLabel(Form)
         self.lbl_message.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse|QtCore.Qt.TextSelectableByMouse)
