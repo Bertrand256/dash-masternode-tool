@@ -1243,7 +1243,7 @@ class DashdInterface(WndUtils):
     @control_rpc_call
     def sendrawtransaction(self, tx, use_instant_send):
         if self.open():
-            return self.proxy.sendrawtransaction(tx, False, use_instant_send)
+            return self.proxy.sendrawtransaction(tx, False)
         else:
             raise Exception('Not connected')
 
