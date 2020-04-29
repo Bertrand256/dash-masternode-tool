@@ -235,7 +235,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                                 lbl = f'<p class="lbl">Recipients:</p>'
                             else:
                                 lbl = ''
-                            recipients += f'<tr><td class="lbl">{lbl}</td><td>{address}{address_info}</td><td><p class="val">{app_utils.to_string(val)} Dash</p></td></tr>'
+                            recipients += f'<tr><td class="lbl">{lbl}</td><td>{address}{address_info}</td><td><p class="val">{app_utils.to_string(val)} XZC</p></td></tr>'
 
                         fee = round(inputs_total - outputs_total, 8)
 
@@ -270,10 +270,9 @@ td.lbl{{text-align: right;vertical-align: top;}} p.lbl{{margin: 0 5px 0 0; font-
 <p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">
  <table>
     {send_tx_row}
-    <tr><td class="lbl"><p class="lbl">Total amount:</p></td><td>{app_utils.to_string(inputs_total)} Dash</td></tr>
-    <tr><td class="lbl"><p class="lbl">Fee:</p></td><td>{app_utils.to_string(fee)} Dash</td></tr>
+    <tr><td class="lbl"><p class="lbl">Total amount:</p></td><td>{app_utils.to_string(inputs_total)} XZC</td></tr>
+    <tr><td class="lbl"><p class="lbl">Fee:</p></td><td>{app_utils.to_string(fee)} XZC</td></tr>
     <tr><td class="lbl"><p class="lbl">Transaction size:</p></td><td>{tx_size_str}</td></tr>
-    <tr><td class="lbl"><p class="lbl">InstantSend:</p></td><td>{'YES' if self.use_instant_send else 'NO'}</td></tr>
     {recipients}
  </table></p></body></html>"""
 
