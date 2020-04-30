@@ -640,10 +640,10 @@ padding-right: 0px;</string>
   </action>
   <action name="action_check_network_connection">
    <property name="text">
-    <string>Check Network Connection</string>
+    <string>Check Zcoin Connection</string>
    </property>
    <property name="toolTip">
-    <string>Check Dash Network Connection</string>
+    <string>Check Zcoin Connection</string>
    </property>
   </action>
   <action name="action_open_settings_window">
