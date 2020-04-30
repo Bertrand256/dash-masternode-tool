@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/Users/blogin/Projects/dash-masternode-tool/src/ui/ui_masternode_details.ui'
+# Form implementation generated from reading ui file 'src/ui/ui_masternode_details.ui'
 #
-# Created by: PyQt5 UI code generator 5.9.2
+# Created by: PyQt5 UI code generator 5.14.0
 #
 # WARNING! All changes made in this file will be lost!
 
+
 from PyQt5 import QtCore, QtGui, QtWidgets
+
 
 class Ui_WdgMasternodeDetails(object):
     def setupUi(self, WdgMasternodeDetails):
@@ -309,12 +311,12 @@ class Ui_WdgMasternodeDetails(object):
         self.btnBip32PathToAddress.setToolTip(_translate("WdgMasternodeDetails", "Convert BIP32 path to address"))
         self.btnBip32PathToAddress.setText(_translate("WdgMasternodeDetails", "<<"))
         self.lblCollateralPath.setText(_translate("WdgMasternodeDetails", "path"))
-        self.btnShowCollateralPathAddress.setToolTip(_translate("WdgMasternodeDetails", "Show Dash address for the entered BIP32 path"))
+        self.btnShowCollateralPathAddress.setToolTip(_translate("WdgMasternodeDetails", "Show address for the entered BIP32 path"))
         self.lblCollateralTxHash.setText(_translate("WdgMasternodeDetails", "Collateral TX hash"))
         self.lblCollateralTxIndex.setText(_translate("WdgMasternodeDetails", "index"))
         self.lblDMNTxHash.setText(_translate("WdgMasternodeDetails", "Protx hash"))
         self.btnCopyProtxHash.setToolTip(_translate("WdgMasternodeDetails", "Copy protx hash to clipboard"))
-        self.btnFindDMNTxHash.setToolTip(_translate("WdgMasternodeDetails", "Find DMN TX hash based on the ip/port or collateral tx"))
+        self.btnFindDMNTxHash.setToolTip(_translate("WdgMasternodeDetails", "Find Znode TX hash based on the ip/port or collateral tx"))
         self.btnFindDMNTxHash.setText(_translate("WdgMasternodeDetails", "Find"))
         self.lblOwnerKey.setText(_translate("WdgMasternodeDetails", "Owner private key"))
         self.btnCopyOwnerKey.setToolTip(_translate("WdgMasternodeDetails", "Copy key to clipboard"))
@@ -338,4 +340,3 @@ if __name__ == "__main__":
     ui.setupUi(WdgMasternodeDetails)
     WdgMasternodeDetails.show()
     sys.exit(app.exec_())
-

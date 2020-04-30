@@ -300,7 +300,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 if not self.edit_mode and not self.act_view_as_owner_private_key.isChecked():
                     style = 'hl2'
             else:
-                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Dash address')
+                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Zcoin address')
                 if not self.edit_mode:
                     style = 'hl1' if self.act_view_as_owner_public_address.isChecked() else 'hl2'
             self.lblOwnerKey.setText(get_label_text('Owner', key_type, tooltip_anchor, self.ag_owner_key, style))
@@ -325,7 +325,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 if not self.edit_mode and not self.act_view_as_voting_private_key.isChecked():
                     style = 'hl2'
             else:
-                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Dash address')
+                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Zcoin address')
                 if not self.edit_mode:
                     style = 'hl1' if self.act_view_as_voting_public_address.isChecked() else 'hl2'
             self.lblVotingKey.setText(get_label_text('Voting', key_type, tooltip_anchor, self.ag_voting_key, style))
@@ -545,7 +545,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     @pyqtSlot(str)
     def on_lblOwnerKey_linkHovered(self, link):
         if link == 'address':
-            tt = 'Change input type to Dash address'
+            tt = 'Change input type to Zcoin address'
         else:
             tt = 'Change input type to private key'
         self.lblOwnerKey.setToolTip(tt)
@@ -561,7 +561,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     @pyqtSlot(str)
     def on_lblVotingKey_linkHovered(self, link):
         if link == 'address':
-            tt = 'Change input type to Dash address'
+            tt = 'Change input type to Zcoin address'
         else:
             tt = 'Change input type to private key'
         self.lblVotingKey.setToolTip(tt)
@@ -1008,4 +1008,3 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     def on_btnCopyProtxHash_clicked(self):
         cl = QApplication.clipboard()
         cl.setText(self.edtDMNTxHash.text())
-
