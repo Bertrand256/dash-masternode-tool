@@ -1303,7 +1303,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             if self.app_config.is_testnet():
                 new_mn.port = '19999'
-            mn_template = 'MN'
+            mn_template = 'ZN'
         name_found = None
         for nr in range(1, 100):
             exists = False
