@@ -932,7 +932,7 @@ class DashdInterface(WndUtils):
     def issynchronized(self):
         if self.open():
             try:
-                syn = self.proxy.mnsync('status')
+                syn = self.proxy.evoznsync('status')
                 return syn.get('IsSynced')
             except JSONRPCException as e:
                 if str(e).lower().find('403 forbidden') >= 0:
@@ -950,7 +950,7 @@ class DashdInterface(WndUtils):
             if self.cur_conn_def.is_http_proxy():
                 return {}
             else:
-                return self.proxy.mnsync('status')
+                return self.proxy.evoznsync('status')
         else:
             raise Exception('Not connected')
 
