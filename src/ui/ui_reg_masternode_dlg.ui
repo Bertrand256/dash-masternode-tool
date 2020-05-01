@@ -619,7 +619,7 @@
        <item>
         <widget class="QLabel" name="label_4">
          <property name="text">
-          <string>&lt;b&gt;Choose the Dash wallet type to be used for submitting ProRegTx transaction.&lt;/b&gt;</string>
+          <string>&lt;b&gt;Choose the Zcoin wallet type to be used for submitting ProRegTx transaction.&lt;/b&gt;</string>
          </property>
          <property name="wordWrap">
           <bool>true</bool>
@@ -641,14 +641,14 @@
           <item>
            <widget class="QRadioButton" name="rbDMTDashNodeType">
             <property name="text">
-             <string>Remote Dash RPC Node (automatic method)</string>
+             <string>Remote Zcoin RPC Node (automatic method)</string>
             </property>
            </widget>
           </item>
           <item>
            <widget class="QRadioButton" name="rbOwnDashNodeType">
             <property name="text">
-             <string>Your own Dash-Qt wallet (manual method)</string>
+             <string>Your own Zcoin-Qt wallet (manual method)</string>
             </property>
            </widget>
           </item>

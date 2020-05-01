@@ -575,8 +575,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         nt = self.get_dash_node_type()
         msg = ''
         if nt is None:
-            msg = 'DIP-3 masternode registration involves sending a special transaction via the v0.13 Dash node ' \
-                  '(eg Dash-Qt). <b>Note, that this requires incurring a certain transaction fee, as with any ' \
+            msg = 'Znode registration involves sending a special transaction via the Zcoin node ' \
+                  '(eg Zcoin-Qt). <b>Note, that this requires incurring a certain transaction fee, as with any ' \
                   'other ("normal") transaction.</b>'
         elif nt == NODE_TYPE_PUBLIC_RPC:
             msg = 'The ProRegTx transaction will be processed via the remote RPC node stored in the app configuration.' \
