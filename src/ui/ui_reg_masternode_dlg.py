@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/Users/blogin/PycharmProjects/DMT-git/src/ui/ui_reg_masternode_dlg.ui'
+# Form implementation generated from reading ui file 'src/ui/ui_reg_masternode_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.9.2
+# Created by: PyQt5 UI code generator 5.14.2
 #
 # WARNING! All changes made in this file will be lost!
 
+
 from PyQt5 import QtCore, QtGui, QtWidgets
+
 
 class Ui_RegMasternodeDlg(object):
     def setupUi(self, RegMasternodeDlg):
@@ -599,11 +601,11 @@ class Ui_RegMasternodeDlg(object):
 
     def retranslateUi(self, RegMasternodeDlg):
         _translate = QtCore.QCoreApplication.translate
-        RegMasternodeDlg.setWindowTitle(_translate("RegMasternodeDlg", "Masternode migration wizard"))
+        RegMasternodeDlg.setWindowTitle(_translate("RegMasternodeDlg", "Znode migration wizard"))
         self.lblOwnerMsg.setText(_translate("RegMasternodeDlg", "..."))
         self.lblVotingMsg.setText(_translate("RegMasternodeDlg", "..."))
         self.label_5.setText(_translate("RegMasternodeDlg", "Port"))
-        self.chbWholeMNReward.setText(_translate("RegMasternodeDlg", "The entire masternode reward goes to the owner"))
+        self.chbWholeMNReward.setText(_translate("RegMasternodeDlg", "The entire Znode reward goes to the owner"))
         self.label_16.setText(_translate("RegMasternodeDlg", "%"))
         self.btnGenerateVotingKey.setText(_translate("RegMasternodeDlg", "Generate new"))
         self.btnGenerateOperatorKey.setText(_translate("RegMasternodeDlg", "Generate new"))
@@ -660,4 +662,3 @@ if __name__ == "__main__":
     ui.setupUi(RegMasternodeDlg)
     RegMasternodeDlg.show()
     sys.exit(app.exec_())
-

@@ -17,7 +17,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>Masternode migration wizard</string>
+   <string>Znode migration wizard</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="spacing">
@@ -162,7 +162,7 @@
          <item>
           <widget class="QCheckBox" name="chbWholeMNReward">
            <property name="text">
-            <string>The entire masternode reward goes to the owner</string>
+            <string>The entire Znode reward goes to the owner</string>
            </property>
           </widget>
          </item>

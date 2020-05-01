@@ -177,7 +177,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
         def get_label_text(prefix:str, key_type: str, tooltip_anchor: str, style: str):
             lbl = prefix + ' ' + \
-                  {'privkey': 'private key', 'pubkey': 'public key', 'address': 'Dash address'}.get(key_type, '???')
+                  {'privkey': 'private key', 'pubkey': 'public key', 'address': 'Zcoin address'}.get(key_type, '???')
 
             change_mode = f'(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)'
             return f'<table style="float:right;{style_to_color(style)}"><tr><td><b>{lbl}</b></td><td>{change_mode}</td></tr></table>'
@@ -188,7 +188,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 key_type, tooltip_anchor, placeholder_text = ('privkey', 'address', 'Enter the owner private key')
                 style = ''
             else:
-                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Dash address')
+                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Zcoin address')
                 style = 'hl1'
             self.lblOwnerKey.setText(get_label_text('Owner', key_type, tooltip_anchor, style))
             self.edtOwnerKey.setPlaceholderText(placeholder_text)
@@ -206,7 +206,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 key_type, tooltip_anchor, placeholder_text = ('privkey','address', 'Enter the voting private key')
                 style = ''
             else:
-                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Dash address')
+                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Zcoin address')
                 style = 'hl1'
             self.lblVotingKey.setText(get_label_text('Voting', key_type, tooltip_anchor, style))
             self.edtVotingKey.setPlaceholderText(placeholder_text)
@@ -256,7 +256,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
     @pyqtSlot(str)
     def on_lblOwnerKey_linkHovered(self, link):
         if link == 'address':
-            tt = 'Change input type to Dash address'
+            tt = 'Change input type to Zcoin address'
         else:
             tt = 'Change input type to private key'
         self.lblOwnerKey.setToolTip(tt)
@@ -466,7 +466,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             style = 'error'
         else:
             if self.show_field_hinds:
-                msg = 'The owner\'s payout address can be set to any valid Dash address - it no longer ' \
+                msg = 'The owner\'s payout address can be set to any valid Zcoin address - it no longer ' \
                       'has to be the same as the collateral address.'
                 style = 'info'
         self.set_ctrl_message(self.lblPayoutMsg, msg, style)
@@ -480,8 +480,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         else:
             if self.show_field_hinds:
                 if self.chbWholeMNReward.isChecked():
-                    msg = 'Here you can specify how much of the masternode earnings will go to the ' \
-                          'masternode operator.'
+                    msg = 'Here you can specify how much of the Znode earnings will go to the ' \
+                          'Znode operator.'
                     style = 'info'
                 else:
                     msg = 'The masternode operator will have to specify his reward payee address in a ProUpServTx ' \
@@ -505,8 +505,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                         msg = 'Enter the owner private key or generate a new one by clicking the button on the right.'
                     style = 'info'
                 else:
-                    msg = 'You can use Dash address if the related private key is stored elsewhere, eg in ' \
-                          'the Dash Core wallet.<br><span class="warning">Note, that if you provide an address ' \
+                    msg = 'You can use Zcoin address if the related private key is stored elsewhere, eg in ' \
+                          'the Zcoin Core wallet.<br><span class="warning">Note, that if you provide an address ' \
                           'instead of a private key, you will not be able to publish ProRegTx ' \
                           'transaction through public RPC nodes in the next steps.</span>'
                     style = 'info'
@@ -556,9 +556,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                                   'the right.'
                         style = 'info'
                     else:
-                        msg = 'You can use Dash address if the related private key is stored elsewhere, eg in ' \
-                              'the Dash Core wallet.<br><span class="warning">Note, that providing an address instead of ' \
-                              'a private key will prevent you from voting on proposals in this program.</span>'
+                        msg = 'You can use Zcoin address if the related private key is stored elsewhere, eg in ' \
+                              'the Zcoin Core wallet.'
                         style = 'info'
 
         self.set_ctrl_message(self.lblVotingMsg, msg, style)
