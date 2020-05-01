@@ -716,8 +716,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
             if self.dmn_operator_key_type == InputKeyType.PRIVATE:
                 operator_message = '<b><span style="color:red">One more thing... <span></b>copy the following ' \
-                                   'line to the <code>dash.conf</code> file on your masternode server ' \
-                                   '(and restart <i>dashd</i>) or pass it to the masternode operator:'
+                                   'line to the <code>zcoin.conf</code> file on your Znode server ' \
+                                   '(and restart <i>zcoind</i>) or pass it to the Znode operator:'
             else:
                 operator_message = '<b><span style="color:red">One more thing... <span></b>copy the following ' \
                                    'line to the <code>dash.conf</code> file on your masternode server, replacing ' \
@@ -730,7 +730,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             else:
                 operator_privkey = '<your-operator-bls-private-key>'
 
-            self.edtSummaryDMNOperatorKey.setText(f'masternodeblsprivkey={operator_privkey}')
+            self.edtSummaryDMNOperatorKey.setText(f'znodeblsprivkey={operator_privkey}')
             self.btnCancel.hide()
             self.btnBack.hide()
             self.btnContinue.hide()
@@ -1088,8 +1088,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             elif self.current_step == STEP_MANUAL_OWN_NODE:
                 self.start_manual_process()
             elif self.current_step == STEP_SUMMARY:
-                self.lblProtxSummary1.setText('<b><span style="color:green">Congratultions! The transaction for your DIP-3 '
-                                              'masternode has been submitted and is currently awaiting confirmations.'
+                self.lblProtxSummary1.setText('<b><span style="color:green">Congratultions! The transaction for your'
+                                              'Znode has been submitted and is currently awaiting confirmations.'
                                               '</b></span>')
                 if self.on_proregtx_success_callback:
                     self.on_proregtx_success_callback(self.masternode)
