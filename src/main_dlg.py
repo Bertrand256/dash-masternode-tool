@@ -685,7 +685,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     mnsync = self.dashd_intf.mnsync()
                     self.add_app_message(
                         DispMessage.DASH_NET_CONNECTION,
-                        'Dashd is synchronizing: AssetID: %s, AssetName: %s' %
+                        'Zcoind is synchronizing: AssetID: %s, AssetName: %s' %
                         (str(mnsync.get('AssetID', '')), str(mnsync.get('AssetName', ''))), 'warn')
                     cond.wait(mtx, 5000)
                 self.del_app_message(DispMessage.DASH_NET_CONNECTION)
@@ -1794,7 +1794,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 else:
                     status = '<span style="color:red">Masternode not found.</span>'
             else:
-                status = '<span style="color:red">Masternode not found.</span>'
+                status = '<span style="color:red">Znode not found.</span>'
         else:
             status = '<span style="color:red">Problem with connection to dashd.</span>'
 
