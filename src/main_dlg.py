@@ -1448,7 +1448,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
         if self.dashd_connection_ok:
             if masternode.collateralTx and str(masternode.collateralTxIndex):
-                collateral_id = masternode.collateralTx + '-' + masternode.collateralTxIndex
+                collateral_id = f'COutPoint({masternode.collateralTx}, {masternode.collateralTxIndex})'
             else:
                 collateral_id = None
             if masternode.ip and masternode.port:
