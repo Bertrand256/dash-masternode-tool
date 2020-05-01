@@ -582,12 +582,12 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             msg = 'The ProRegTx transaction will be processed via the remote RPC node stored in the app configuration.' \
                   '<br><br>' \
                   '<b>Note 1:</b> this operation will involve signing transaction data with your <span style="color:red">owner key on the remote node</span>, ' \
-                  'so use this method only if you trust the operator of that node (nodes <i>alice(luna, suzy).dash-masternode-tool.org</i> are maintained by the author of this application).<br><br>' \
+                  'so use this method only if you trust the operator of that node.<br><br>' \
                   '<b>Note 2:</b> if the operation fails (e.g. due to a lack of funds), choose the manual method ' \
-                  'using your own Dash wallet.'
+                  'using your own Zcoin wallet.'
 
         elif nt == NODE_TYPE_OWN:
-            msg = 'A Dash Core wallet (v0.13) with sufficient funds to cover transaction fees is required to ' \
+            msg = 'A Zcoin Core wallet with sufficient funds to cover transaction fees is required to ' \
                   'complete the next steps.'
         self.lblDashNodeTypeMessage.setText(msg)
 
