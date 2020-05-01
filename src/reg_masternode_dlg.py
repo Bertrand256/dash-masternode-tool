@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2018-11
+import decimal
 import base64
 import json
 import logging
@@ -971,7 +972,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 ads = spk.get('addresses')
                 if not ads or len(ads) < 0:
                     raise Exception('The collateral transaction output doesn\'t have the Dash address assigned.')
-                if vout.get('valueSat') != 1000e8:
+                if (vout.get('valueSat') if 'valueSat' in vout else vout['value'] * decimal.Decimal(1e8)) != 1000e8:
                     raise Exception('The value of the collateral transaction output is not equal to 1000 XZC.')
 
                 self.dmn_collateral_tx_address = ads[0]
