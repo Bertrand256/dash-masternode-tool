@@ -969,7 +969,7 @@ class DashdInterface(WndUtils):
             self.protx_by_mn_ident.clear()
             protx_list = self.proxy.protx('list', 'registered', True)
             for protx in protx_list:
-                ident = protx.get('collateralHash') + '-' + str(protx.get('collateralIndex'))
+                ident = f'COutPoint({protx.get("collateralHash")}, {protx.get("collateralIndex")})'
                 s = protx.get('state',{})
                 p = {
                     'protx_hash': protx.get('proTxHash'),
