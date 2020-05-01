@@ -1063,7 +1063,7 @@ class DashdInterface(WndUtils):
                    int(time.time()) - last_read_time < data_max_age:
                     return self.masternodes
                 else:
-                    mns = self.proxy.masternodelist(*args)
+                    mns = self.proxy.evoznodelist(*args)
                     mns = parse_mns(mns)
                     self.update_mn_queue_values(mns)
 
@@ -1149,7 +1149,7 @@ class DashdInterface(WndUtils):
 
                     return self.masternodes
             else:
-                mns = self.proxy.masternodelist(*args)
+                mns = self.proxy.evoznodelist(*args)
                 return mns
         else:
             raise Exception('Not connected')
