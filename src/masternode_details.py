@@ -285,7 +285,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             if cur_key_type == 'privkey':
                 lbl = prefix + ' private key'
             elif cur_key_type == 'address':
-                lbl = prefix + ' Dash address'
+                lbl = prefix + ' Zcoin address'
             elif cur_key_type == 'pubkey':
                 lbl = prefix + ' public key'
             elif cur_key_type == 'pubkeyhash':
