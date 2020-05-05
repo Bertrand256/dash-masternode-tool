@@ -168,13 +168,10 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
 
     def send_revoke_tx(self):
         try:
-            funding_address = ''
-
             params = ['revoke',
                       self.dmn_protx_hash,
                       self.masternode.dmn_operator_private_key,
-                      self.revocation_reason,
-                      funding_address]
+                      self.revocation_reason]
 
             try:
                 revoke_support = self.dashd_intf.checkfeaturesupport('protx_revoke',
@@ -211,7 +208,7 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
                     if not bal_list:
                         raise Exception("No address can be found in the node's wallet with sufficient funds to "
                                         "cover the transaction fees.")
-                    params[5] = bal_list[0]['address']
+                    params.append(bal_list[0]['address'])
                 except JSONRPCException as e:
                     logging.warning("Couldn't list the node address balances. We assume you are using a "
                                     "public RPC node and the funding address for the transaction fee will "
