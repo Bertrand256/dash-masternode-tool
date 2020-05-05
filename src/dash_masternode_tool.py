@@ -45,7 +45,7 @@ if __name__ == '__main__':
     ui.show()
 
     try:
-        ico_path = os.path.join(app_dir, 'img', 'dmt.ico')
+        ico_path = os.path.join(app_dir, 'img', 'znode-tool.png')
         if os.path.exists(ico_path):
             app_icon = QIcon(ico_path)
             app.setWindowIcon(app_icon)
