@@ -17,7 +17,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>Update masternode registrar</string>
+   <string>Update Znode registrar</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="spacing">

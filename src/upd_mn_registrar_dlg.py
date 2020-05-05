@@ -218,7 +218,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
         self.lblMessage.setText('<span style="color:#ff6600">By clicking <span style="font-weight:800">&lt;Send '
                                 'Update Transaction&gt;</span> you agree to send the owner private key to '
                                 'the remote RPC node which is necessary to automatically execute the required command ('
-                                'read notes <a href="https://github.com/Bertrand256/dash-masternode-tool/blob/'
+                                'read notes <a href="https://github.com/zcoinofficial/znode-tool-evo/blob/'
                                 'master/doc/deterministic-mn-migration.md#automatic-method-using-public-rpc-'
                                 'nodes-m1">here</a>). If you do not agree, follow the manual steps.</span>')
         self.minimize_dialog_height()
@@ -345,12 +345,12 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                     f'"{self.dmn_new_voting_address}" "{self.dmn_new_payout_address}" ' \
                     f'"<span style="color:green">feeSourceAddress</span>"'
                 msg = "<ol>" \
-                      "<li>Start a Dash Core wallet with sufficient funds to cover a transaction fee.</li>"
-                msg += "<li>Import the owner private key into the Dash Core wallet if you haven't done this " \
-                       "before (<a href=\"https://github.com/Bertrand256/dash-masternode-tool/blob/master/doc/" \
+                      "<li>Start a Zcoin Core wallet with sufficient funds to cover a transaction fee.</li>"
+                msg += "<li>Import the owner private key into the Zcoin Core wallet if you haven't done this " \
+                       "before (<a href=\"https://github.com/zcoinofficial/znode-tool-evo/blob/master/doc/" \
                        "deterministic-mn-migration.md#can-i-modify-the-payout-address-without-resetting-the-" \
                        "place-in-the-payment-queue\">details</a>).</li>"
-                msg += "<li>Execute the following command in the Dash Core debug console:<br><br>"
+                msg += "<li>Execute the following command in the Zcoin Core debug console:<br><br>"
                 msg += "  <code style=\"background-color:#e6e6e6\">" + cmd + '</code></li><br>'
                 msg += 'Replace <span style="color:green">feeSourceAddress</span> with the address being the ' \
                        'source of the transaction fee.'
