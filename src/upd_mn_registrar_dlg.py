@@ -168,7 +168,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
 
         def get_label_text(prefix:str, key_type: str, tooltip_anchor: str, style: str):
             lbl = prefix + ' ' + \
-                  {'privkey': 'private key', 'pubkey': 'public key', 'address': 'Dash address'}.get(key_type, '???')
+                  {'privkey': 'private key', 'pubkey': 'public key', 'address': 'Zcoin address'}.get(key_type, '???')
 
             change_mode = f'(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)'
             return f'<table style="float:right;{style_to_color(style)}"><tr><td><b>{lbl}</b></td><td>{change_mode}' \
@@ -252,7 +252,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
     @pyqtSlot(str)
     def on_lblVotingKey_linkHovered(self, link):
         if link == 'address':
-            tt = 'Change input type to Dash address'
+            tt = 'Change input type to Zcoin address'
         else:
             tt = 'Change input type to private key'
         self.lblVotingKey.setToolTip(tt)
