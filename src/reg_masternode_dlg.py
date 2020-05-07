@@ -1088,7 +1088,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             elif self.current_step == STEP_MANUAL_OWN_NODE:
                 self.start_manual_process()
             elif self.current_step == STEP_SUMMARY:
-                self.lblProtxSummary1.setText('<b><span style="color:green">Congratultions! The transaction for your'
+                self.lblProtxSummary1.setText('<b><span style="color:green">Congratultions! The transaction for your '
                                               'Znode has been submitted and is currently awaiting confirmations.'
                                               '</b></span>')
                 if self.on_proregtx_success_callback:

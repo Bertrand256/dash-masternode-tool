@@ -788,7 +788,7 @@
        <item>
         <widget class="QLabel" name="label_10">
          <property name="text">
-          <string>&lt;span style=&quot;color:red&quot;&gt;&lt;b&gt;Important:&lt;/b&gt;&lt;/span&gt; A Dash Core wallet with sufficient funds to cover transaction fees is required to complete the steps below. The operations are performed from the Debug console in the Tools menu.</string>
+          <string>&lt;span style=&quot;color:red&quot;&gt;&lt;b&gt;Important:&lt;/b&gt;&lt;/span&gt; A Zcoin Core wallet with sufficient funds to cover transaction fees is required to complete the steps below. The operations are performed from the Debug console in the Tools menu.</string>
          </property>
          <property name="wordWrap">
           <bool>true</bool>
@@ -801,7 +801,7 @@
        <item>
         <widget class="QLabel" name="label_12">
          <property name="text">
-          <string>&lt;b&gt;1. Enter the funding address from your Dash Core wallet:&lt;/b&gt;</string>
+          <string>&lt;b&gt;1. Enter the funding address from your Zcoin Core wallet:&lt;/b&gt;</string>
          </property>
         </widget>
        </item>
@@ -829,7 +829,7 @@
        <item>
         <widget class="QLabel" name="label_13">
          <property name="text">
-          <string>&lt;b&gt;2. Execute the following command in the Dash wallet's debug console:&lt;/b&gt;</string>
+          <string>&lt;b&gt;2. Execute the following command in the Zcoin wallet's debug console:&lt;/b&gt;</string>
          </property>
         </widget>
        </item>
@@ -933,7 +933,7 @@
        <item>
         <widget class="QLabel" name="label_17">
          <property name="text">
-          <string>&lt;b&gt;4. Execute the following command in the Dash wallet's debug console:&lt;/b&gt;</string>
+          <string>&lt;b&gt;4. Execute the following command in the Zcoin wallet's debug console:&lt;/b&gt;</string>
          </property>
         </widget>
        </item>
