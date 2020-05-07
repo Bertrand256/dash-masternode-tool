@@ -1034,7 +1034,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.cur_masternode:
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Warning)
-            msg.setText('Do you really want to delete current masternode configuration?')
+            msg.setText('Do you really want to delete current Znode configuration?')
             msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
             msg.setDefaultButton(QMessageBox.No)
             retval = msg.exec_()
@@ -1750,7 +1750,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     if operator_pubkey_mismatch and not skip_data_mismatch:
                         errors.append('<td class="error" colspan="2">Operator public key mismatch</td>')
                     if voting_public_address_mismatch and not skip_data_mismatch:
-                        errors.append('<td class="error" colspan="2">Voting Dash address mismatch</td>')
+                        errors.append('<td class="error" colspan="2">Voting Zcoin address mismatch</td>')
                     if not dmn_tx:
                         warnings.append('<td class="warning" colspan="2">Couldn\'d read protx info for this masternode'
                                         ' (look into the logfile for details)</td>')
