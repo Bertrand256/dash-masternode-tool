@@ -792,6 +792,8 @@ class DashdInterface(WndUtils):
         :return: True, if connection successfully establishes, False if user Cancels the operation (not always
             cancelling will be possible - only when user is prompted for a password).
         """
+        self.reset_connection()
+
         if not self.active:
             log.info("Connecting to: %s" % self.cur_conn_def.get_description())
             try:
