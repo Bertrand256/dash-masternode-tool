@@ -36,7 +36,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
         self.dashd_intf = dashd_intf
         self.on_upd_success_callback = on_upd_success_callback
         self.dmn_operator_key_type = InputKeyType.PRIVATE
-        self.dmn_voting_key_type = InputKeyType.PRIVATE
+        self.dmn_voting_key_type = InputKeyType.PUBLIC
         self.dmn_protx_hash = self.masternode.dmn_tx_hash
         self.dmn_owner_address = ""
         self.dmn_prev_operator_pubkey = ""
@@ -168,9 +168,13 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
 
         def get_label_text(prefix:str, key_type: str, tooltip_anchor: str, style: str):
             lbl = prefix + ' ' + \
-                  {'privkey': 'private key', 'pubkey': 'public key', 'address': 'Zcoin address'}.get(key_type, '???')
+                  {'privkey': 'private key', 'pubkey': 'public key', 'address': 'address'}.get(key_type, '???')
 
-            change_mode = f'(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)'
+            if tooltip_anchor:
+                change_mode = f'(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)'
+            else:
+                change_mode = ''
+
             return f'<table style="float:right;{style_to_color(style)}"><tr><td><b>{lbl}</b></td><td>{change_mode}' \
                 f'</td></tr></table>'
 
@@ -190,8 +194,8 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
             style = ''
         else:
             key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter a new voting Dash address.')
-            style = 'hl1'
-        self.lblVotingKey.setText(get_label_text('Voting', key_type, tooltip_anchor, style))
+            style = ''
+        self.lblVotingKey.setText(get_label_text('Voting', key_type, None, style))
         self.edtVotingKey.setToolTip(placeholder_text)
 
         self.lblPayoutAddress.setVisible(self.show_upd_payout)
@@ -394,9 +398,6 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
             if owner_address != self.dmn_owner_address:
                 raise Exception('Inconsistency of the owner key between the app configuration and the data '
                                 'on the Dash network.')
-        else:
-            raise Exception('To use this feature, you need to have the owner private key in your masternode '
-                            'configuration.')
 
         try:
             funding_address = ''

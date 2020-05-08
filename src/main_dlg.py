@@ -153,8 +153,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         self.mnuSignMessage = QMenu()
         self.mnuSignMessage.addAction(self.action_sign_message_with_collateral_addr)
-        self.mnuSignMessage.addAction(self.action_sign_message_with_owner_key)
-        self.mnuSignMessage.addAction(self.action_sign_message_with_voting_key)
 
         self.btnSignMessage = QToolButton()
         self.btnSignMessage.setMenu(self.mnuSignMessage)
@@ -1254,8 +1252,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.btnRefreshMnStatus.setEnabled(self.cur_masternode is not None)
             self.btnRegisterDmn.setEnabled(self.cur_masternode is not None)
             self.action_sign_message_with_collateral_addr.setEnabled(self.cur_masternode is not None)
-            self.action_sign_message_with_owner_key.setEnabled(self.cur_masternode is not None)
-            self.action_sign_message_with_voting_key.setEnabled(self.cur_masternode is not None)
             self.update_mn_controls_state()
         if threading.current_thread() != threading.main_thread():
             self.call_in_main_thread(update_fun)
