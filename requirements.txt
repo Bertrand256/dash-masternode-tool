@@ -14,4 +14,4 @@ cryptography
 bip32utils
 more-itertools
 -e git+https://github.com/Bertrand256/btchip-python#egg=btchip-python
-python-bls
+python-bls==0.1.5
