@@ -24,7 +24,7 @@ jobs:
     - name: Checkout Source
       uses: actions/checkout@v2
     - name: Install Required Python Packages
-      run: pip3 install -r requirements.txt
+      run: pip3 install --user -r requirements.txt
     - name: Bundle Application
       run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
   build-ubuntu-bionic:
