@@ -40,7 +40,7 @@ jobs:
     - name: Checkout Source
       uses: actions/checkout@v2
     - name: Install Required System Packages
-      run: sudo apt-get install -y libusb-1.0-0-dev python3-setuptools python3-wheel
+      run: sudo apt-get install -y libudev-dev libusb-1.0-0-dev python3-setuptools python3-wheel
     - name: Install Application Dependencies
       run: pip3 install -r requirements.txt
     - name: Bundle Application
