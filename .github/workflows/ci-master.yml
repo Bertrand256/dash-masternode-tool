@@ -26,7 +26,7 @@ jobs:
     - name: Install Application Dependencies
       run: |
         prefix=$(python3 -m site --user-base)
-        export PATH=$prefix/bin:$PATH
+        export PATH="$prefix/bin:$PATH"
 
         pip3 install --user -r requirements.txt
 
@@ -42,6 +42,12 @@ jobs:
     - name: Install Required System Packages
       run: sudo apt-get install -y libudev-dev libusb-1.0-0-dev python3-setuptools python3-wheel
     - name: Install Application Dependencies
-      run: pip3 install -r requirements.txt
+      run: |
+        prefix=$(python3 -m site --user-base)
+        export PATH="$prefix/bin:$PATH"
+
+        pip3 install -r requirements.txt
+
+        echo "::set-env name=PATH::$PATH"
     - name: Bundle Application
       run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
