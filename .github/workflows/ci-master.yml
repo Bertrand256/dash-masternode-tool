@@ -33,6 +33,8 @@ jobs:
     steps:
     - name: Checkout Source
       uses: actions/checkout@v2
+    - name: Install Required System Packages
+      run: sudo apt-get install python3-setuptools
     - name: Install Required Python Packages
       run: pip3 install -r requirements.txt
     - name: Bundle Application
