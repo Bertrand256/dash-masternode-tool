@@ -13,7 +13,7 @@ jobs:
     steps:
     - name: Checkout Source
       uses: actions/checkout@v2
-    - name: Install Required Python Packages
+    - name: Install Application Dependencies
       run: pip install -r requirements.txt
     - name: Bundle Application
       run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
@@ -23,7 +23,7 @@ jobs:
     steps:
     - name: Checkout Source
       uses: actions/checkout@v2
-    - name: Install Required Python Packages
+    - name: Install Application Dependencies
       run: |
         prefix=$(python3 -m site --user-base)
         export PATH=$prefix/bin:$PATH
@@ -40,8 +40,8 @@ jobs:
     - name: Checkout Source
       uses: actions/checkout@v2
     - name: Install Required System Packages
-      run: sudo apt-get install python3-setuptools
-    - name: Install Required Python Packages
+      run: sudo apt-get install -y python3-setuptools python3-wheel
+    - name: Install Application Dependencies
       run: pip3 install -r requirements.txt
     - name: Bundle Application
       run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
