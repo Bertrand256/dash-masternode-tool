@@ -18,7 +18,7 @@ jobs:
     - name: Bundle Application
       run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
   build-mac:
-    name: Build for Ubuntu 18.04
+    name: Build for macOS
     runs-on: macos-10.15
     steps:
     - name: Checkout Source
