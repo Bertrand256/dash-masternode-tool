@@ -1,0 +1,186 @@
+name: Continuous Delivery
+on:
+  push:
+    tags:
+    - 'v*'
+jobs:
+  build-windows:
+    name: Build for Windows
+    runs-on: windows-2019
+    steps:
+    - name: Checkout Source
+      uses: actions/checkout@v2
+    - name: Install Application Dependencies
+      run: pip install -r requirements.txt
+    - name: Bundle Application
+      run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
+    - name: Upload Release Artifact
+      uses: actions/checkout@v2
+      with:
+        name: binaries-win32-amd64
+        path: bin\znode-tool.exe
+  build-mac:
+    name: Build for macOS
+    runs-on: macos-10.15
+    steps:
+    - name: Checkout Source
+      uses: actions/checkout@v2
+    - name: Install Application Dependencies
+      run: |
+        prefix=$(python3 -m site --user-base)
+        export PATH="$prefix/bin:$PATH"
+
+        pip3 install --user -r requirements.txt
+
+        echo "::set-env name=PATH::$PATH"
+    - name: Bundle Application
+      run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
+    - name: Upload Release Artifact
+      uses: actions/checkout@v2
+      with:
+        name: binaries-osx-amd64
+        path: bin/znode-tool.app
+  build-ubuntu-bionic:
+    name: Build for Ubuntu 18.04
+    runs-on: ubuntu-18.04
+    steps:
+    - name: Checkout Source
+      uses: actions/checkout@v2
+    - name: Install Required System Packages
+      run: sudo apt-get install -y libudev-dev libusb-1.0-0-dev python3-setuptools python3-wheel
+    - name: Install Application Dependencies
+      run: |
+        prefix=$(python3 -m site --user-base)
+        export PATH="$prefix/bin:$PATH"
+
+        pip3 install -r requirements.txt
+
+        echo "::set-env name=PATH::$PATH"
+    - name: Bundle Application
+      run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
+    - name: Upload Release Artifact
+      uses: actions/checkout@v2
+      with:
+        name: binaries-bionic-bionic
+        path: bin/znode-tool
+  release:
+    name: Draft Release
+    runs-on: ubuntu-18.04
+    needs: [build-windows, build-mac, build-ubuntu-bionic]
+    env:
+      BIN_ROOT: bin
+      ASSETS_ROOT: release
+    steps:
+    - name: Get Windows Binaries
+      uses: actions/download-artifact@v2
+      with:
+        name: binaries-win32-amd64
+        path: ${{ env.BIN_ROOT }}/win32/amd64
+    - name: Get macOS Binaries
+      uses: actions/download-artifact@v2
+      with:
+        name: binaries-osx-amd64
+        path: ${{ env.BIN_ROOT }}/osx/amd64
+    - name: Get Bionic Binaries
+      uses: actions/download-artifact@v2
+      with:
+        name: binaries-bionic-bionic
+        path: ${{ env.BIN_ROOT }}/bionic/amd64
+    - name: Generate Release Information
+      shell: python
+      run: |
+        import os
+        import re
+
+        ref = os.environ['GITHUB_REF']
+        tag = re.match(r'^refs/tags/(.+)$', ref).group(1)
+        version = re.match(r'^v(.+)$', tag).group(1)
+        pre_release = '-' in version
+
+        print(f'Tag Reference: {ref}')
+        print(f'Tag Name     : {tag}')
+        print(f'Version      : {version}')
+        print(f'Pre-release  : {pre_release}')
+
+        print(f'::set-output name=version::{version}')
+        print(f'::set-output name=pre-release::{str(pre_release).lower()}')
+      id: release-info
+    - name: Create Release Assets
+      run: |
+        version="${{ steps.release-info.outputs.version }}"
+        win32="znode-tool-${version}-win32-amd64.zip"
+        osx="znode-tool-${version}-osx-amd64.zip"
+        bionic="znode-tool-${version}-bionic-amd64.tar.gz"
+
+        echo "==> Prepare a directory for assets"
+        mkdir -v "$ASSETS_ROOT"
+
+        echo "==> Prepare Win32 binaries"
+        contents="Znode Tool"
+        mv -v "$BIN_ROOT/win32/amd64" "$ASSETS_ROOT/$contents"
+
+        echo "==> Zip Win32 contents"
+        pushd "$ASSETS_ROOT" > /dev/null
+        zip -r -9 -v "$win32" "$contents"
+        popd > /dev/null
+
+        echo "==> Prepare macOS bundle"
+        contents="Znode Tool.app"
+        mv -v "$BIN_ROOT/osx/amd64" "$ASSETS_ROOT/$contents"
+
+        echo "==> Zip macOS bundle"
+        pushd "$ASSETS_ROOT" > /dev/null
+        zip -r -9 -v "$osx" "$contents"
+        popd > /dev/null
+
+        echo "==> Prepare Ubuntu 18.04 binaries"
+        contents="znode-tool"
+        mkdir -p "$ASSETS_ROOT/$contents"
+        mv -v "$BIN_ROOT/bionic/amd64" "$ASSETS_ROOT/$contents/bin"
+
+        echo "==> Tarball Ubuntu 18.04 contents"
+        pushd "$ASSETS_ROOT" > /dev/null
+        tar -cvzf "$bionic" "$contents"
+        popd > /dev/null
+
+        echo "::set-output name=win32-name::$win32"
+        echo "::set-output name=win32-path::$ASSETS_ROOT/$win32"
+        echo "::set-output name=win32-type::application/zip"
+
+        echo "::set-output name=osx-name::$osx"
+        echo "::set-output name=osx-path::$ASSETS_ROOT/$osx"
+        echo "::set-output name=osx-type::application/zip"
+
+        echo "::set-output name=bionic-name::$bionic"
+        echo "::set-output name=bionic-path::$ASSETS_ROOT/$bionic"
+        echo "::set-output name=bionic-type::application/gzip"
+      id: release-assets
+    - name: Draft Release
+      uses: actions/create-release@v1
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: ${{ steps.release-info.outputs.version }}
+        draft: true
+        prerelease: ${{ steps.release-info.outputs.pre-release }}
+      id: draft-release
+    - name: Upload Windows Assets
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.draft-release.outputs.upload_url }}
+        asset_name: ${{ steps.release-assets.outputs.win32-name }}
+        asset_path: ${{ steps.release-assets.outputs.win32-path }}
+        asset_content_type: ${{ steps.release-assets.outputs.win32-type }}
+    - name: Upload macOS Assets
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.draft-release.outputs.upload_url }}
+        asset_name: ${{ steps.release-assets.outputs.osx-name }}
+        asset_path: ${{ steps.release-assets.outputs.osx-path }}
+        asset_content_type: ${{ steps.release-assets.outputs.osx-type }}
+    - name: Upload Ubuntu 18.04 Assets
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.draft-release.outputs.upload_url }}
+        asset_name: ${{ steps.release-assets.outputs.bionic-name }}
+        asset_path: ${{ steps.release-assets.outputs.bionic-path }}
+        asset_content_type: ${{ steps.release-assets.outputs.bionic-type }}
