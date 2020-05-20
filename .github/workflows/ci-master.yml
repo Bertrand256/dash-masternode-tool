@@ -24,13 +24,11 @@ jobs:
     - name: Checkout Source
       uses: actions/checkout@v2
     - name: Install Application Dependencies
+      run: pip3 install --user -r requirements.txt
+    - name: Add Local Bin To Path
       run: |
         prefix=$(python3 -m site --user-base)
-        export PATH="$prefix/bin:$PATH"
-
-        pip3 install --user -r requirements.txt
-
-        echo "::set-env name=PATH::$PATH"
+        echo "::add-path::$prefix/bin"
     - name: Bundle Application
       run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
   build-ubuntu-bionic:
@@ -42,12 +40,10 @@ jobs:
     - name: Install Required System Packages
       run: sudo apt-get install -y libudev-dev libusb-1.0-0-dev python3-setuptools python3-wheel
     - name: Install Application Dependencies
+      run: pip3 install -r requirements.txt
+    - name: Add Local Bin To Path
       run: |
         prefix=$(python3 -m site --user-base)
-        export PATH="$prefix/bin:$PATH"
-
-        pip3 install -r requirements.txt
-
-        echo "::set-env name=PATH::$PATH"
+        echo "::add-path::$prefix/bin"
     - name: Bundle Application
       run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
