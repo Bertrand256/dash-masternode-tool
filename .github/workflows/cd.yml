@@ -15,7 +15,7 @@ jobs:
     - name: Bundle Application
       run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
     - name: Upload Release Artifact
-      uses: actions/checkout@v2
+      uses: actions/upload-artifact@v2
       with:
         name: binaries-win32-amd64
         path: bin\znode-tool.exe
@@ -34,7 +34,7 @@ jobs:
     - name: Bundle Application
       run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
     - name: Upload Release Artifact
-      uses: actions/checkout@v2
+      uses: actions/upload-artifact@v2
       with:
         name: binaries-osx-amd64
         path: bin/znode-tool.app
@@ -55,7 +55,7 @@ jobs:
     - name: Bundle Application
       run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
     - name: Upload Release Artifact
-      uses: actions/checkout@v2
+      uses: actions/upload-artifact@v2
       with:
         name: binaries-bionic-bionic
         path: bin/znode-tool
