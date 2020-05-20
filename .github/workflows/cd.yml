@@ -93,13 +93,13 @@ jobs:
         version = re.match(r'^v(.+)$', tag).group(1)
         pre_release = '-' in version
 
-        print(f'Tag Reference: {ref}')
-        print(f'Tag Name     : {tag}')
-        print(f'Version      : {version}')
-        print(f'Pre-release  : {pre_release}')
+        print('Tag Reference: {0}'.format(ref))
+        print('Tag Name     : {0}'.format(tag))
+        print('Version      : {0}'.format(version))
+        print('Pre-release  : {0}'.format(pre_release))
 
-        print(f'::set-output name=version::{version}')
-        print(f'::set-output name=pre-release::{str(pre_release).lower()}')
+        print('::set-output name=version::{0}'.format(version))
+        print('::set-output name=pre-release::{0}'.format(str(pre_release).lower()))
       id: release-info
     - name: Create Release Assets
       run: |
