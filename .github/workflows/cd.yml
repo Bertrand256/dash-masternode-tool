@@ -66,6 +66,7 @@ jobs:
     env:
       BIN_ROOT: bin
       ASSETS_ROOT: release
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
     - name: Get Windows Binaries
       uses: actions/download-artifact@v2
@@ -153,8 +154,6 @@ jobs:
       id: release-assets
     - name: Draft Release
       uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ github.ref }}
         release_name: ${{ steps.release-info.outputs.version }}
