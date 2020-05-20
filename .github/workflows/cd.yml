@@ -132,8 +132,9 @@ jobs:
 
         echo "==> Prepare Ubuntu 18.04 binaries"
         contents="znode-tool"
-        mkdir -p "$ASSETS_ROOT/$contents"
+        mkdir -v -p "$ASSETS_ROOT/$contents"
         mv -v "$BIN_ROOT/bionic/amd64" "$ASSETS_ROOT/$contents/bin"
+        chmod -v +x "$ASSETS_ROOT/$contents/bin/znode-tool"
 
         echo "==> Tarball Ubuntu 18.04 contents"
         pushd "$ASSETS_ROOT" > /dev/null
