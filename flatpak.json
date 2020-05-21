@@ -1,0 +1,983 @@
+{
+  "id": "io.zcoin.ZnodeTool",
+  "runtime": "org.freedesktop.Platform",
+  "runtime-version": "19.08",
+  "sdk": "org.freedesktop.Sdk",
+  "command": "/app/opt/znode-tool/src/dash_masternode_tool.py",
+  "finish-args": [
+    "--socket=x11",
+    "--socket=wayland",
+    "--share=network",
+    "--filesystem=home",
+    "--device=all",
+    "--socket=session-bus"
+  ],
+  "modules": [
+    {
+      "name": "libusb",
+      "buildsystem": "autotools",
+      "config-opts": [
+        "--disable-static"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://github.com/libusb/libusb/releases/download/v1.0.23/libusb-1.0.23.tar.bz2",
+          "sha256": "db11c06e958a82dac52cf3c65cb4dd2c3f339c8a988665110e0d24d19312ad8d"
+        }
+      ]
+    },
+    {
+      "name": "znode-tool",
+      "buildsystem": "simple",
+      "build-options": {
+        "cflags": "-I/app/include/libusb-1.0",
+        "build-args": [
+          "--share=network"
+        ]
+      },
+      "build-commands": [
+        "install -D 'img/add@16px.png' '/app/opt/znode-tool/img/add@16px.png'",
+        "install -D 'img/add@20px.png' '/app/opt/znode-tool/img/add@20px.png'",
+        "install -D 'img/add@24px.png' '/app/opt/znode-tool/img/add@24px.png'",
+        "install -D 'img/add@32px.png' '/app/opt/znode-tool/img/add@32px.png'",
+        "install -D 'img/arrow-downward@16px.png' '/app/opt/znode-tool/img/arrow-downward@16px.png'",
+        "install -D 'img/arrow-downward@20px.png' '/app/opt/znode-tool/img/arrow-downward@20px.png'",
+        "install -D 'img/arrow-downward@24px.png' '/app/opt/znode-tool/img/arrow-downward@24px.png'",
+        "install -D 'img/arrow-downward@32px.png' '/app/opt/znode-tool/img/arrow-downward@32px.png'",
+        "install -D 'img/autorenew@16px.png' '/app/opt/znode-tool/img/autorenew@16px.png'",
+        "install -D 'img/check.png' '/app/opt/znode-tool/img/check.png'",
+        "install -D 'img/clear@32px.png' '/app/opt/znode-tool/img/clear@32px.png'",
+        "install -D 'img/content-copy@16px.png' '/app/opt/znode-tool/img/content-copy@16px.png'",
+        "install -D 'img/content-copy@20px.png' '/app/opt/znode-tool/img/content-copy@20px.png'",
+        "install -D 'img/content-copy@24px.png' '/app/opt/znode-tool/img/content-copy@24px.png'",
+        "install -D 'img/content-copy@32px.png' '/app/opt/znode-tool/img/content-copy@32px.png'",
+        "install -D 'img/content-paste@16px.png' '/app/opt/znode-tool/img/content-paste@16px.png'",
+        "install -D 'img/content-paste@20px.png' '/app/opt/znode-tool/img/content-paste@20px.png'",
+        "install -D 'img/content-paste@24px.png' '/app/opt/znode-tool/img/content-paste@24px.png'",
+        "install -D 'img/content-paste@32px.png' '/app/opt/znode-tool/img/content-paste@32px.png'",
+        "install -D 'img/delete@16px.png' '/app/opt/znode-tool/img/delete@16px.png'",
+        "install -D 'img/dmt.icns' '/app/opt/znode-tool/img/dmt.icns'",
+        "install -D 'img/dmt.ico' '/app/opt/znode-tool/img/dmt.ico'",
+        "install -D 'img/dmt.png' '/app/opt/znode-tool/img/dmt.png'",
+        "install -D 'img/eject@16px.png' '/app/opt/znode-tool/img/eject@16px.png'",
+        "install -D 'img/eye-crossed-out@16px.png' '/app/opt/znode-tool/img/eye-crossed-out@16px.png'",
+        "install -D 'img/eye@16px.png' '/app/opt/znode-tool/img/eye@16px.png'",
+        "install -D 'img/filter@16px.png' '/app/opt/znode-tool/img/filter@16px.png'",
+        "install -D 'img/filter@24px.png' '/app/opt/znode-tool/img/filter@24px.png'",
+        "install -D 'img/filter@32px.png' '/app/opt/znode-tool/img/filter@32px.png'",
+        "install -D 'img/first-page@16px.png' '/app/opt/znode-tool/img/first-page@16px.png'",
+        "install -D 'img/first-page@20px.png' '/app/opt/znode-tool/img/first-page@20px.png'",
+        "install -D 'img/first-page@24px.png' '/app/opt/znode-tool/img/first-page@24px.png'",
+        "install -D 'img/first-page@32px.png' '/app/opt/znode-tool/img/first-page@32px.png'",
+        "install -D 'img/folder-open@16px.png' '/app/opt/znode-tool/img/folder-open@16px.png'",
+        "install -D 'img/folder-open@20px.png' '/app/opt/znode-tool/img/folder-open@20px.png'",
+        "install -D 'img/folder-open@24px.png' '/app/opt/znode-tool/img/folder-open@24px.png'",
+        "install -D 'img/folder-open@32px.png' '/app/opt/znode-tool/img/folder-open@32px.png'",
+        "install -D 'img/gear.png' '/app/opt/znode-tool/img/gear.png'",
+        "install -D 'img/hw-disconnect.png' '/app/opt/znode-tool/img/hw-disconnect.png'",
+        "install -D 'img/hw-emulator.icns' '/app/opt/znode-tool/img/hw-emulator.icns'",
+        "install -D 'img/hw-emulator.png' '/app/opt/znode-tool/img/hw-emulator.png'",
+        "install -D 'img/hw-test.png' '/app/opt/znode-tool/img/hw-test.png'",
+        "install -D 'img/hw.png' '/app/opt/znode-tool/img/hw.png'",
+        "install -D 'img/info.png' '/app/opt/znode-tool/img/info.png'",
+        "install -D 'img/label@16px.png' '/app/opt/znode-tool/img/label@16px.png'",
+        "install -D 'img/link-check.png' '/app/opt/znode-tool/img/link-check.png'",
+        "install -D 'img/money-bag.png' '/app/opt/znode-tool/img/money-bag.png'",
+        "install -D 'img/money-transfer-1.png' '/app/opt/znode-tool/img/money-transfer-1.png'",
+        "install -D 'img/money-transfer-2.png' '/app/opt/znode-tool/img/money-transfer-2.png'",
+        "install -D 'img/recover.png' '/app/opt/znode-tool/img/recover.png'",
+        "install -D 'img/remove@16px.png' '/app/opt/znode-tool/img/remove@16px.png'",
+        "install -D 'img/remove@20px.png' '/app/opt/znode-tool/img/remove@20px.png'",
+        "install -D 'img/remove@24px.png' '/app/opt/znode-tool/img/remove@24px.png'",
+        "install -D 'img/remove@32px.png' '/app/opt/znode-tool/img/remove@32px.png'",
+        "install -D 'img/save.png' '/app/opt/znode-tool/img/save.png'",
+        "install -D 'img/save@16px.png' '/app/opt/znode-tool/img/save@16px.png'",
+        "install -D 'img/save@20px.png' '/app/opt/znode-tool/img/save@20px.png'",
+        "install -D 'img/save@24px.png' '/app/opt/znode-tool/img/save@24px.png'",
+        "install -D 'img/save@32px.png' '/app/opt/znode-tool/img/save@32px.png'",
+        "install -D 'img/settings@16px.png' '/app/opt/znode-tool/img/settings@16px.png'",
+        "install -D 'img/sign.png' '/app/opt/znode-tool/img/sign.png'",
+        "install -D 'img/sign@32px.png' '/app/opt/znode-tool/img/sign@32px.png'",
+        "install -D 'img/star@16px.png' '/app/opt/znode-tool/img/star@16px.png'",
+        "install -D 'img/star@20px.png' '/app/opt/znode-tool/img/star@20px.png'",
+        "install -D 'img/star@24px.png' '/app/opt/znode-tool/img/star@24px.png'",
+        "install -D 'img/star@32px.png' '/app/opt/znode-tool/img/star@32px.png'",
+        "install -D 'img/thumbs-up-down.png' '/app/opt/znode-tool/img/thumbs-up-down.png'",
+        "install -D 'img/uncheck.png' '/app/opt/znode-tool/img/uncheck.png'",
+        "install -D 'img/undo@16px.png' '/app/opt/znode-tool/img/undo@16px.png'",
+        "install -D 'img/undo@20px.png' '/app/opt/znode-tool/img/undo@20px.png'",
+        "install -D 'img/undo@24px.png' '/app/opt/znode-tool/img/undo@24px.png'",
+        "install -D 'img/undo@32px.png' '/app/opt/znode-tool/img/undo@32px.png'",
+        "install -D 'img/wallet.png' '/app/opt/znode-tool/img/wallet.png'",
+        "install -D 'img/znode-tool.png' '/app/opt/znode-tool/img/znode-tool.png'",
+        "install -D 'img/znode-tool.icns' '/app/opt/znode-tool/img/znode-tool.icns'",
+        "install -D 'img/znode-tool.ico' '/app/opt/znode-tool/img/znode-tool.ico'",
+        "install -D 'requirements.txt' '/app/opt/znode-tool/requirements.txt'",
+        "install -D 'version.txt' '/app/opt/znode-tool/version.txt'",
+        "install -D 'src/about_dlg.py' '/app/opt/znode-tool/src/about_dlg.py'",
+        "install -D 'src/app_cache.py' '/app/opt/znode-tool/src/app_cache.py'",
+        "install -D 'src/app_config.py' '/app/opt/znode-tool/src/app_config.py'",
+        "install -D 'src/app_defs.py' '/app/opt/znode-tool/src/app_defs.py'",
+        "install -D 'src/app_utils.py' '/app/opt/znode-tool/src/app_utils.py'",
+        "install -D 'src/cmd_console_dlg.py' '/app/opt/znode-tool/src/cmd_console_dlg.py'",
+        "install -D 'src/columns_cfg_dlg.py' '/app/opt/znode-tool/src/columns_cfg_dlg.py'",
+        "install -D 'src/common.py' '/app/opt/znode-tool/src/common.py'",
+        "install -D 'src/dash_utils.py' '/app/opt/znode-tool/src/dash_utils.py'",
+        "install -D 'src/dashd_intf.py' '/app/opt/znode-tool/src/dashd_intf.py'",
+        "install -D 'src/db_intf.py' '/app/opt/znode-tool/src/db_intf.py'",
+        "install -D 'src/default_config.py' '/app/opt/znode-tool/src/default_config.py'",
+        "install -D 'src/doc_dlg.py' '/app/opt/znode-tool/src/doc_dlg.py'",
+        "install -D 'src/encrypted_files.py' '/app/opt/znode-tool/src/encrypted_files.py'",
+        "install -D 'src/ext_item_model.py' '/app/opt/znode-tool/src/ext_item_model.py'",
+        "install -D 'src/find_coll_tx_dlg.py' '/app/opt/znode-tool/src/find_coll_tx_dlg.py'",
+        "install -D 'src/hw_common.py' '/app/opt/znode-tool/src/hw_common.py'",
+        "install -D 'src/hw_intf.py' '/app/opt/znode-tool/src/hw_intf.py'",
+        "install -D 'src/hw_intf_keepkey.py' '/app/opt/znode-tool/src/hw_intf_keepkey.py'",
+        "install -D 'src/hw_intf_ledgernano.py' '/app/opt/znode-tool/src/hw_intf_ledgernano.py'",
+        "install -D 'src/hw_intf_trezor.py' '/app/opt/znode-tool/src/hw_intf_trezor.py'",
+        "install -D 'src/hw_pass_dlg.py' '/app/opt/znode-tool/src/hw_pass_dlg.py'",
+        "install -D 'src/hw_pin_dlg.py' '/app/opt/znode-tool/src/hw_pin_dlg.py'",
+        "install -D 'src/hw_setup_dlg.py' '/app/opt/znode-tool/src/hw_setup_dlg.py'",
+        "install -D 'src/hw_word_dlg.py' '/app/opt/znode-tool/src/hw_word_dlg.py'",
+        "install -D 'src/message_dlg.py' '/app/opt/znode-tool/src/message_dlg.py'",
+        "install -D 'src/proposals_dlg.py' '/app/opt/znode-tool/src/proposals_dlg.py'",
+        "install -D 'src/psw_cache.py' '/app/opt/znode-tool/src/psw_cache.py'",
+        "install -D 'src/reg_masternode_dlg.py' '/app/opt/znode-tool/src/reg_masternode_dlg.py'",
+        "install -D 'src/revoke_mn_dlg.py' '/app/opt/znode-tool/src/revoke_mn_dlg.py'",
+        "install -D 'src/sign_message_dlg.py' '/app/opt/znode-tool/src/sign_message_dlg.py'",
+        "install -D 'src/thread_fun_dlg.py' '/app/opt/znode-tool/src/thread_fun_dlg.py'",
+        "install -D 'src/thread_utils.py' '/app/opt/znode-tool/src/thread_utils.py'",
+        "install -D 'src/transaction_dlg.py' '/app/opt/znode-tool/src/transaction_dlg.py'",
+        "install -D 'src/trezor-t-emu.py' '/app/opt/znode-tool/src/trezor-t-emu.py'",
+        "install -D 'src/ui/ui_about_dlg.py' '/app/opt/znode-tool/src/ui/ui_about_dlg.py'",
+        "install -D 'src/ui/ui_cmd_console_dlg.py' '/app/opt/znode-tool/src/ui/ui_cmd_console_dlg.py'",
+        "install -D 'src/ui/ui_columns_cfg_dlg.py' '/app/opt/znode-tool/src/ui/ui_columns_cfg_dlg.py'",
+        "install -D 'src/ui/ui_config_dlg.py' '/app/opt/znode-tool/src/ui/ui_config_dlg.py'",
+        "install -D 'src/ui/ui_conn_rpc_wdg.py' '/app/opt/znode-tool/src/ui/ui_conn_rpc_wdg.py'",
+        "install -D 'src/ui/ui_conn_ssh_wdg.py' '/app/opt/znode-tool/src/ui/ui_conn_ssh_wdg.py'",
+        "install -D 'src/ui/ui_doc_dlg.py' '/app/opt/znode-tool/src/ui/ui_doc_dlg.py'",
+        "install -D 'src/ui/ui_find_coll_tx_dlg.py' '/app/opt/znode-tool/src/ui/ui_find_coll_tx_dlg.py'",
+        "install -D 'src/ui/ui_hw_pass_dlg.py' '/app/opt/znode-tool/src/ui/ui_hw_pass_dlg.py'",
+        "install -D 'src/ui/ui_hw_pin_dlg.py' '/app/opt/znode-tool/src/ui/ui_hw_pin_dlg.py'",
+        "install -D 'src/ui/ui_hw_setup_dlg.py' '/app/opt/znode-tool/src/ui/ui_hw_setup_dlg.py'",
+        "install -D 'src/ui/ui_hw_word_dlg.py' '/app/opt/znode-tool/src/ui/ui_hw_word_dlg.py'",
+        "install -D 'src/ui/ui_initialize_hw_dlg.py' '/app/opt/znode-tool/src/ui/ui_initialize_hw_dlg.py'",
+        "install -D 'src/ui/ui_main_dlg.py' '/app/opt/znode-tool/src/ui/ui_main_dlg.py'",
+        "install -D 'src/ui/ui_masternode_details.py' '/app/opt/znode-tool/src/ui/ui_masternode_details.py'",
+        "install -D 'src/ui/ui_message_dlg.py' '/app/opt/znode-tool/src/ui/ui_message_dlg.py'",
+        "install -D 'src/ui/ui_proposals.py' '/app/opt/znode-tool/src/ui/ui_proposals.py'",
+        "install -D 'src/ui/ui_reg_masternode_dlg.py' '/app/opt/znode-tool/src/ui/ui_reg_masternode_dlg.py'",
+        "install -D 'src/ui/ui_revoke_mn_dlg.py' '/app/opt/znode-tool/src/ui/ui_revoke_mn_dlg.py'",
+        "install -D 'src/ui/ui_revoke_mn_dlg.ui.py' '/app/opt/znode-tool/src/ui/ui_revoke_mn_dlg.ui.py'",
+        "install -D 'src/ui/ui_sign_message_dlg.py' '/app/opt/znode-tool/src/ui/ui_sign_message_dlg.py'",
+        "install -D 'src/ui/ui_thread_fun_dlg.py' '/app/opt/znode-tool/src/ui/ui_thread_fun_dlg.py'",
+        "install -D 'src/ui/ui_transaction_dlg.py' '/app/opt/znode-tool/src/ui/ui_transaction_dlg.py'",
+        "install -D 'src/ui/ui_upd_mn_registrar_dlg.py' '/app/opt/znode-tool/src/ui/ui_upd_mn_registrar_dlg.py'",
+        "install -D 'src/ui/ui_upd_mn_service_dlg.py' '/app/opt/znode-tool/src/ui/ui_upd_mn_service_dlg.py'",
+        "install -D 'src/ui/ui_wallet_dlg.py' '/app/opt/znode-tool/src/ui/ui_wallet_dlg.py'",
+        "install -D 'src/ui/ui_wallet_dlg_options1.py' '/app/opt/znode-tool/src/ui/ui_wallet_dlg_options1.py'",
+        "install -D 'src/ui/ui_wdg_wallet_txes_filter.py' '/app/opt/znode-tool/src/ui/ui_wdg_wallet_txes_filter.py'",
+        "install -D 'src/upd_mn_service_dlg.py' '/app/opt/znode-tool/src/upd_mn_service_dlg.py'",
+        "install -D 'src/wallet_common.py' '/app/opt/znode-tool/src/wallet_common.py'",
+        "install -D 'src/wallet_data_models.py' '/app/opt/znode-tool/src/wallet_data_models.py'",
+        "install -D 'src/wallet_dlg.py' '/app/opt/znode-tool/src/wallet_dlg.py'",
+        "install -D 'src/wallet_widgets.py' '/app/opt/znode-tool/src/wallet_widgets.py'",
+        "install -D 'src/wnd_utils.py' '/app/opt/znode-tool/src/wnd_utils.py'",
+        "install -D 'src/base58.py' '/app/opt/znode-tool/src/base58.py'",
+        "install -D 'src/config_dlg.py' '/app/opt/znode-tool/src/config_dlg.py'",
+        "install -D 'src/bip44_wallet.py' '/app/opt/znode-tool/src/bip44_wallet.py'",
+        "install -D 'src/dash_masternode_tool.py' '/app/opt/znode-tool/src/dash_masternode_tool.py'",
+        "install -D 'src/main_dlg.py' '/app/opt/znode-tool/src/main_dlg.py'",
+        "install -D 'src/upd_mn_registrar_dlg.py' '/app/opt/znode-tool/src/upd_mn_registrar_dlg.py'",
+        "install -D 'src/masternode_details.py' '/app/opt/znode-tool/src/masternode_details.py'",
+        "install -D 'src/initialize_hw_dlg.py' '/app/opt/znode-tool/src/initialize_hw_dlg.py'"
+      ],
+      "post-install": [
+        "cd /app/opt/znode-tool && pip3 install --prefix=/app -r requirements.txt"
+      ],
+      "sources": [
+        {
+          "type": "file",
+          "path": "img/add@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/add@20px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/add@24px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/add@32px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/arrow-downward@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/arrow-downward@20px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/arrow-downward@24px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/arrow-downward@32px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/autorenew@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/check.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/clear@32px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/content-copy@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/content-copy@20px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/content-copy@24px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/content-copy@32px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/content-paste@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/content-paste@20px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/content-paste@24px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/content-paste@32px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/delete@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/dmt.icns",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/dmt.ico",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/dmt.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/eject@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/eye-crossed-out@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/eye@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/filter@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/filter@24px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/filter@32px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/first-page@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/first-page@20px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/first-page@24px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/first-page@32px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/folder-open@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/folder-open@20px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/folder-open@24px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/folder-open@32px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/gear.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/hw-disconnect.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/hw-emulator.icns",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/hw-emulator.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/hw-test.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/hw.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/info.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/label@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/link-check.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/money-bag.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/money-transfer-1.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/money-transfer-2.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/recover.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/remove@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/remove@20px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/remove@24px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/remove@32px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/save.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/save@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/save@20px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/save@24px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/save@32px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/settings@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/sign.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/sign@32px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/star@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/star@20px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/star@24px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/star@32px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/thumbs-up-down.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/uncheck.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/undo@16px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/undo@20px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/undo@24px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/undo@32px.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/wallet.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/znode-tool.png",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/znode-tool.icns",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "img/znode-tool.ico",
+          "dest": "img"
+        },
+        {
+          "type": "file",
+          "path": "requirements.txt",
+          "dest": ""
+        },
+        {
+          "type": "file",
+          "path": "version.txt",
+          "dest": ""
+        },
+        {
+          "type": "file",
+          "path": "src/about_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/app_cache.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/app_config.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/app_defs.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/app_utils.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/cmd_console_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/columns_cfg_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/common.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/dash_utils.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/dashd_intf.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/db_intf.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/default_config.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/doc_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/encrypted_files.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/ext_item_model.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/find_coll_tx_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/hw_common.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/hw_intf.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/hw_intf_keepkey.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/hw_intf_ledgernano.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/hw_intf_trezor.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/hw_pass_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/hw_pin_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/hw_setup_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/hw_word_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/message_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/proposals_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/psw_cache.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/reg_masternode_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/revoke_mn_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/sign_message_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/thread_fun_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/thread_utils.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/transaction_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/trezor-t-emu.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_about_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_cmd_console_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_columns_cfg_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_config_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_conn_rpc_wdg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_conn_ssh_wdg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_doc_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_find_coll_tx_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_hw_pass_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_hw_pin_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_hw_setup_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_hw_word_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_initialize_hw_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_main_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_masternode_details.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_message_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_proposals.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_reg_masternode_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_revoke_mn_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_revoke_mn_dlg.ui.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_sign_message_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_thread_fun_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_transaction_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_upd_mn_registrar_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_upd_mn_service_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_wallet_dlg.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_wallet_dlg_options1.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/ui/ui_wdg_wallet_txes_filter.py",
+          "dest": "src/ui"
+        },
+        {
+          "type": "file",
+          "path": "src/upd_mn_service_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/wallet_common.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/wallet_data_models.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/wallet_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/wallet_widgets.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/wnd_utils.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/base58.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/config_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/bip44_wallet.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/dash_masternode_tool.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/main_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/upd_mn_registrar_dlg.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/masternode_details.py",
+          "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/initialize_hw_dlg.py",
+          "dest": "src"
+        }
+      ]
+    }
+  ],
+  "cleanup": [
+    "/include",
+    "/lib/*.la",
+    "/lib/pkgconfig"
+  ]
+}
