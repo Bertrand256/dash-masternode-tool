@@ -38,6 +38,8 @@ jobs:
     - name: Checkout Source
       uses: actions/checkout@v2
     - name: Install Required System Packages
-      run: sudo apt-get install -y flatpak-builder
+      run: sudo apt-get install -y flatpak flatpak-builder
+    - name: Install Required Flatpak SDKs
+      run: flatpak install flathub org.freedesktop.Sdk//19.08
     - name: Build Application
       run: flatpak-builder var/flatpak/build/znode-tool flatpak.json
