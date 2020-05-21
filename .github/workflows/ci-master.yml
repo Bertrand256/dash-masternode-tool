@@ -31,19 +31,13 @@ jobs:
         echo "::add-path::$prefix/bin"
     - name: Bundle Application
       run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
-  build-ubuntu-bionic:
-    name: Build for Ubuntu 18.04
+  build-linux:
+    name: Build for Linux
     runs-on: ubuntu-18.04
     steps:
     - name: Checkout Source
       uses: actions/checkout@v2
     - name: Install Required System Packages
-      run: sudo apt-get install -y libudev-dev libusb-1.0-0-dev python3-setuptools python3-wheel
-    - name: Install Application Dependencies
-      run: pip3 install -r requirements.txt
-    - name: Add Local Bin To Path
-      run: |
-        prefix=$(python3 -m site --user-base)
-        echo "::add-path::$prefix/bin"
-    - name: Bundle Application
-      run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
+      run: sudo apt-get install -y flatpak-builder
+    - name: Build Application
+      run: flatpak-builder var/flatpak/build/znode-tool flatpak.json
