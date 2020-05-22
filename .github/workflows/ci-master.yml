@@ -41,7 +41,7 @@ jobs:
       run: sudo apt-get install -y flatpak flatpak-builder
     - name: Add Flatpak Repositories
       run: flatpak remote-add --user flathub https://flathub.org/repo/flathub.flatpakrepo
-    - name: Install Required Flatpak SDKs
+    - name: Install Required Flatpak Runetimes
       run: flatpak install --user -y flathub org.freedesktop.Platform//19.08 org.freedesktop.Sdk//19.08
     - name: Build Application
       run: flatpak-builder var/flatpak/build/znode-tool flatpak.json
