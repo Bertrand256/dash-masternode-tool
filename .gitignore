@@ -1,3 +1,4 @@
+.flatpak-builder/
 /.vscode/
 /src/btchip-python/
 __pycache__/
