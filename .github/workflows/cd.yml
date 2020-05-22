@@ -38,31 +38,35 @@ jobs:
       with:
         name: binaries-osx-amd64
         path: bin/znode-tool.app
-  build-ubuntu-bionic:
-    name: Build for Ubuntu 18.04
+  build-linux:
+    name: Build for Linux
     runs-on: ubuntu-18.04
+    env:
+      FLATPAK_FLATHUB_REPO: https://flathub.org/repo/flathub.flatpakrepo
+      FLATPAK_LOCAL_REPO: ${{ github.workspace }}/flatpak/repo/local
+      FLATPAK_BUILD_ROOT: ${{ github.workspace }}/flatpak/build
     steps:
     - name: Checkout Source
       uses: actions/checkout@v2
     - name: Install Required System Packages
-      run: sudo apt-get install -y libudev-dev libusb-1.0-0-dev python3-setuptools python3-wheel
-    - name: Install Application Dependencies
-      run: pip3 install -r requirements.txt
-    - name: Add Local Bin To Path
-      run: |
-        prefix=$(python3 -m site --user-base)
-        echo "::add-path::$prefix/bin"
+      run: sudo apt-get install -y flatpak flatpak-builder
+    - name: Add Flatpak Repositories
+      run: flatpak remote-add --user flathub "$FLATPAK_FLATHUB_REPO"
+    - name: Install Required Flatpak Runetimes
+      run: flatpak install --user -y flathub org.freedesktop.Platform//19.08 org.freedesktop.Sdk//19.08
+    - name: Build Application
+      run: flatpak-builder --repo="$FLATPAK_LOCAL_REPO" "$FLATPAK_BUILD_ROOT/znode-tool" flatpak.json
     - name: Bundle Application
-      run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
+      run: flatpak build-bundle --runtime-repo="$FLATPAK_FLATHUB_REPO" "$FLATPAK_LOCAL_REPO" znode-tool.flatpak io.zcoin.ZnodeTool
     - name: Upload Release Artifact
       uses: actions/upload-artifact@v2
       with:
-        name: binaries-bionic-bionic
-        path: bin/znode-tool
+        name: binaries-linux-amd64
+        path: znode-tool.flatpak
   release:
     name: Draft Release
     runs-on: ubuntu-18.04
-    needs: [build-windows, build-mac, build-ubuntu-bionic]
+    needs: [build-windows, build-mac, build-linux]
     env:
       BIN_ROOT: bin
       ASSETS_ROOT: release
@@ -78,11 +82,11 @@ jobs:
       with:
         name: binaries-osx-amd64
         path: ${{ env.BIN_ROOT }}/osx/amd64
-    - name: Get Bionic Binaries
+    - name: Get Linux Binaries
       uses: actions/download-artifact@v2
       with:
-        name: binaries-bionic-bionic
-        path: ${{ env.BIN_ROOT }}/bionic/amd64
+        name: binaries-linux-amd64
+        path: ${{ env.BIN_ROOT }}/linux/amd64
     - name: Generate Release Information
       shell: python
       run: |
@@ -107,7 +111,7 @@ jobs:
         version="${{ steps.release-info.outputs.version }}"
         win32="znode-tool-${version}-win32-amd64.zip"
         osx="znode-tool-${version}-osx-amd64.zip"
-        bionic="znode-tool-${version}-bionic-amd64.tar.gz"
+        linux="znode-tool-${version}-linux-amd64.tar.gz"
 
         echo "==> Prepare a directory for assets"
         mkdir -v "$ASSETS_ROOT"
@@ -130,15 +134,13 @@ jobs:
         zip -r -9 -v "$osx" "$contents"
         popd > /dev/null
 
-        echo "==> Prepare Ubuntu 18.04 binaries"
+        echo "==> Prepare Linux binaries"
         contents="znode-tool"
-        mkdir -v -p "$ASSETS_ROOT/$contents"
-        mv -v "$BIN_ROOT/bionic/amd64" "$ASSETS_ROOT/$contents/bin"
-        chmod -v +x "$ASSETS_ROOT/$contents/bin/znode-tool"
+        mv -v "$BIN_ROOT/linux/amd64" "$ASSETS_ROOT/$contents"
 
-        echo "==> Tarball Ubuntu 18.04 contents"
+        echo "==> Tarball Linux contents"
         pushd "$ASSETS_ROOT" > /dev/null
-        tar -cvzf "$bionic" "$contents"
+        tar -cvzf "$linux" "$contents"
         popd > /dev/null
 
         echo "::set-output name=win32-name::$win32"
@@ -149,9 +151,9 @@ jobs:
         echo "::set-output name=osx-path::$ASSETS_ROOT/$osx"
         echo "::set-output name=osx-type::application/zip"
 
-        echo "::set-output name=bionic-name::$bionic"
-        echo "::set-output name=bionic-path::$ASSETS_ROOT/$bionic"
-        echo "::set-output name=bionic-type::application/gzip"
+        echo "::set-output name=linux-name::$linux"
+        echo "::set-output name=linux-path::$ASSETS_ROOT/$linux"
+        echo "::set-output name=linux-type::application/gzip"
       id: release-assets
     - name: Draft Release
       uses: actions/create-release@v1
@@ -175,10 +177,10 @@ jobs:
         asset_name: ${{ steps.release-assets.outputs.osx-name }}
         asset_path: ${{ steps.release-assets.outputs.osx-path }}
         asset_content_type: ${{ steps.release-assets.outputs.osx-type }}
-    - name: Upload Ubuntu 18.04 Assets
+    - name: Upload Linux Assets
       uses: actions/upload-release-asset@v1
       with:
         upload_url: ${{ steps.draft-release.outputs.upload_url }}
-        asset_name: ${{ steps.release-assets.outputs.bionic-name }}
-        asset_path: ${{ steps.release-assets.outputs.bionic-path }}
-        asset_content_type: ${{ steps.release-assets.outputs.bionic-type }}
+        asset_name: ${{ steps.release-assets.outputs.linux-name }}
+        asset_path: ${{ steps.release-assets.outputs.linux-path }}
+        asset_content_type: ${{ steps.release-assets.outputs.linux-type }}
