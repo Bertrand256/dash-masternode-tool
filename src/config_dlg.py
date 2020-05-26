@@ -778,7 +778,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                                              "not work.")
                         self.update_connection_details_ui()
                     elif isinstance(dashd_conf, str):
-                        self.warnMsg("Couldn't read remote dashd configuration file due the following error: " +
+                        self.warnMsg("Couldn't read remote zcoind configuration file due the following error: " +
                                      dashd_conf)
                     ssh.disconnect()
             except Exception as e:

@@ -316,9 +316,9 @@ class DashdSSH(object):
         try:
             # find dashd process id if running
             try:
-                pids = self.remote_command('ps -C "dashd" -o pid')
+                pids = self.remote_command('ps -C "zcoind" -o pid')
             except UnknownError:
-                raise Exception('is dashd running on the remote machine?')
+                raise Exception('is zcoind running on the remote machine?')
             pid = None
             if isinstance(pids, list):
                 pids = [pid.strip() for pid in pids]
@@ -336,7 +336,7 @@ class DashdSSH(object):
                     if len(elems) == 2:
                         executable = elems[1].strip()
                         dashd_dir = os.path.dirname(executable)
-                        dash_conf_file = dashd_dir + '/.dashcore/dash.conf'
+                        dash_conf_file = dashd_dir + '/.zcoin/zcoin.conf'
                         conf_lines = []
                         try:
                             conf_lines = self.remote_command('cat ' + dash_conf_file)
@@ -348,13 +348,13 @@ class DashdSSH(object):
                                 elems = cwd_lines[0].split('->')
                                 if len(elems) >= 2:
                                     cwd = elems[1]
-                                    dash_conf_file = cwd + '/.dashcore/dash.conf'
+                                    dash_conf_file = cwd + '/.zcoin/zcoin.conf'
                                     try:
                                         conf_lines = self.remote_command('cat ' + dash_conf_file)
                                     except Exception as e:
                                         # second method did not suceed, so assume, that conf file is located
                                         # i /home/<username>/.dashcore directory
-                                        dash_conf_file = '/home/' + self.username + '/.dashcore/dash.conf'
+                                        dash_conf_file = '/home/' + self.username + '/.zcoin/zcoin.conf'
                                         conf_lines = self.remote_command('cat ' + dash_conf_file)
 
                         for line in conf_lines:
