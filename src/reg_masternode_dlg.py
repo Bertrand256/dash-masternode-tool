@@ -272,7 +272,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
     @pyqtSlot(str)
     def on_lblVotingKey_linkHovered(self, link):
         if link == 'address':
-            tt = 'Change input type to Dash address'
+            tt = 'Change input type to Zcoin address'
         else:
             tt = 'Change input type to private key'
         self.lblVotingKey.setToolTip(tt)
@@ -446,7 +446,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                     style = 'info'
                 else:
                     msg = 'If don\'t set the IP address and port fields, the masternode operator will ' \
-                          'have to issue a ProUpServTx transaction using Dash wallet.'
+                          'have to issue a ProUpServTx transaction using Zcoin wallet.'
                     style = 'warning'
         self.set_ctrl_message(self.lblIPMsg, msg, style)
 
@@ -697,7 +697,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                                    '(and restart <i>zcoind</i>) or pass it to the Znode operator:'
             else:
                 operator_message = '<b><span style="color:red">One more thing... <span></b>copy the following ' \
-                                   'line to the <code>dash.conf</code> file on your masternode server, replacing ' \
+                                   'line to the <code>zcoin.conf</code> file on your masternode server, replacing ' \
                                    '"&lt;your-operator-bls-private-key&gt;" with the appropriate value or ask the operator ' \
                                    'for it:'
             self.lblProtxSummary3.setText(operator_message)
@@ -809,7 +809,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 self.dmn_owner_privkey = ''
                 if not validate_address(self.dmn_owner_address, self.app_config.dash_network):
                     self.edtOwnerKey.setFocus()
-                    self.owner_key_validation_err_msg = 'Invalid owner Dash address.'
+                    self.owner_key_validation_err_msg = 'Invalid owner address.'
         if self.owner_key_validation_err_msg:
             self.upd_owner_key_info(True)
             error_count += 1
@@ -867,7 +867,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                     self.dmn_voting_privkey = ''
                     if not validate_address(self.dmn_voting_address, self.app_config.dash_network):
                         self.edtVotingKey.setFocus()
-                        self.voting_key_validation_err_msg = 'Invalid voting Dash address.'
+                        self.voting_key_validation_err_msg = 'Invalid voting address.'
         else:
             # spork 15 not active - use the owner private key for voting
             self.dmn_voting_address = self.dmn_owner_address
@@ -948,7 +948,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                                     f'field.')
                 ads = spk.get('addresses')
                 if not ads or len(ads) < 0:
-                    raise Exception('The collateral transaction output doesn\'t have the Dash address assigned.')
+                    raise Exception('The collateral transaction output doesn\'t have the Zcoin address assigned.')
                 if (vout.get('valueSat') if 'valueSat' in vout else vout['value'] * decimal.Decimal(1e8)) != 1000e8:
                     raise Exception('The value of the collateral transaction output is not equal to 1000 XZC.')
 
@@ -981,7 +981,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                       f'<br>This may take a while (<a href="break">break</a>)...'
                 self.dmn_collateral_tx_address_path = ''
         else:
-            msg = 'Looking for a BIP32 path of the Dash address related to the masternode collateral.<br>' \
+            msg = 'Looking for a BIP32 path of the Zcoin address related to the masternode collateral.<br>' \
                   'This may take a while (<a href="break">break</a>)....'
 
         if not self.dmn_collateral_tx_address_path and not self.finishing:

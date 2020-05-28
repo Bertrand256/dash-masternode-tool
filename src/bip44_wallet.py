@@ -1961,7 +1961,7 @@ def get_tx_address_thread(ctrl: CtrlObject, addresses: List[str], bip44_wallet: 
     ret_addresses = []
     break_scanning = False
     txes_cnt = 0
-    msg = 'Looking for a BIP32 path of the Dash address related to the masternode collateral.<br>' \
+    msg = 'Looking for a BIP32 path of the address related to the masternode collateral.<br>' \
           'This may take a while (<a href="break">break</a>)....'
     ctrl.dlg_config_fun(dlg_title="Looking for address", show_progress_bar=False)
     ctrl.display_msg_fun(msg)

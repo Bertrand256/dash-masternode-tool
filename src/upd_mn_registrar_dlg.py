@@ -178,7 +178,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
             return f'<table style="float:right;{style_to_color(style)}"><tr><td><b>{lbl}</b></td><td>{change_mode}' \
                 f'</td></tr></table>'
 
-        self.edtPayoutAddress.setToolTip('Enter a new payout Dash address.')
+        self.edtPayoutAddress.setToolTip('Enter a new payout address.')
 
         if self.dmn_operator_key_type == InputKeyType.PRIVATE:
             key_type, tooltip_anchor, placeholder_text = ('privkey', 'pubkey', 'Enter a new operator private key.')
@@ -193,7 +193,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
             key_type, tooltip_anchor, placeholder_text = ('privkey','address', 'Enter a new voting private key.')
             style = ''
         else:
-            key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter a new voting Dash address.')
+            key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter a new voting address.')
             style = ''
         self.lblVotingKey.setText(get_label_text('Voting', key_type, None, style))
         self.edtVotingKey.setToolTip(placeholder_text)
@@ -279,7 +279,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
         payout_address = self.edtPayoutAddress.text()
         if payout_address:
             if not validate_address(payout_address, self.app_config.dash_network):
-                raise Exception('Invalid payout Dash address')
+                raise Exception('Invalid payout address')
             else:
                 self.dmn_new_payout_address = payout_address
         else:
@@ -332,7 +332,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                 self.dmn_new_voting_privkey = ''
                 if not validate_address(self.dmn_new_voting_address, self.app_config.dash_network):
                     self.edtVotingKey.setFocus()
-                    raise Exception('Invalid voting Dash address.')
+                    raise Exception('Invalid voting address.')
         else:
             self.dmn_new_voting_address = self.dmn_prev_voting_address
             self.dmn_new_voting_privkey = ''
@@ -386,7 +386,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
         if self.dmn_prev_payout_address == self.dmn_new_payout_address and \
             self.dmn_prev_operator_pubkey == self.dmn_new_operator_pubkey and \
             self.dmn_prev_voting_address == self.dmn_new_voting_address:
-            WndUtils.warnMsg('Nothing is changed compared to the data stored in the Dash network.')
+            WndUtils.warnMsg('Nothing is changed compared to the data stored in the Zcoin network.')
         else:
             self.send_upd_tx()
 
@@ -397,7 +397,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                                                    self.app_config.dash_network)
             if owner_address != self.dmn_owner_address:
                 raise Exception('Inconsistency of the owner key between the app configuration and the data '
-                                'on the Dash network.')
+                                'on the Zcoin network.')
 
         try:
             funding_address = ''

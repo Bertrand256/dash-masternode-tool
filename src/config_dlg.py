@@ -741,7 +741,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                     self.disable_cfg_update = True
                     if isinstance(dashd_conf, tuple) and len(dashd_conf) >= 3:
                         if not dashd_conf[0]:
-                            self.infoMsg('Remore Dash daemon seems to be shut down')
+                            self.infoMsg('Remore Zcoin daemon seems to be shut down')
                         elif not dashd_conf[1]:
                             self.infoMsg('Could not find remote dashd.conf file')
                         else:
@@ -768,13 +768,13 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                                 self.is_modified = modified
 
                             if file.get('server', '1') == '0':
-                                self.warnMsg("Remote dash.conf parameter 'server' is set to '0', so RPC interface will "
+                                self.warnMsg("Remote zcoin.conf parameter 'server' is set to '0', so RPC interface will "
                                              "not work.")
                             if not rpcuser:
-                                self.warnMsg("Remote dash.conf parameter 'rpcuser' is not set, so RPC interface will  "
+                                self.warnMsg("Remote zcoin.conf parameter 'rpcuser' is not set, so RPC interface will  "
                                              "not work.")
                             if not rpcpassword:
-                                self.warnMsg("Remote dash.conf parameter 'rpcpassword' is not set, so RPC interface will  "
+                                self.warnMsg("Remote zcoin.conf parameter 'rpcpassword' is not set, so RPC interface will  "
                                              "not work.")
                         self.update_connection_details_ui()
                     elif isinstance(dashd_conf, str):

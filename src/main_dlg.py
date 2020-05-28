@@ -771,7 +771,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if self.dashd_connection_ok:
                 self.show_connection_successful()
                 if self.is_dashd_syncing:
-                    self.infoMsg('Connection successful, but Dash daemon is synchronizing.')
+                    self.infoMsg('Connection successful, but Zcoin daemon is synchronizing.')
                 else:
                     self.infoMsg('Connection successful.')
             else:
@@ -938,7 +938,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                         if not found_testnet_support:
                             url = get_note_url('DMT0002')
-                            msg = f'Your hardware wallet device does not support Dash TESTNET ' \
+                            msg = f'Your hardware wallet device does not support Zcoin TESTNET ' \
                                   f'(<a href="{url}">see details</a>).'
                             self.errorMsg(msg)
                             try:
@@ -1603,7 +1603,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                             owner_public_address_mismatch = True
                             logging.warning(
                                 f'The owner public address mismatch for masternode: {masternode.name}, '
-                                f'address from the app configuration: {owner_address_cfg}, address from the Dash '
+                                f'address from the app configuration: {owner_address_cfg}, address from the Zcoin '
                                 f'network: {owner_address_network}')
 
                         voting_address_network = dmn_tx_state.get('votingAddress')
@@ -1612,7 +1612,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                             voting_public_address_mismatch = True
                             logging.warning(
                                 f'The voting public address mismatch for masternode: {masternode.name}. '
-                                f'address from the app configuration: {voting_address_cfg}, address from the Dash '
+                                f'address from the app configuration: {voting_address_cfg}, address from the Zcoin '
                                 f'network: {voting_address_network}')
 
                         if not no_operator_pub_key:
@@ -1623,7 +1623,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 operator_pubkey_mismatch = True
                                 logging.warning(
                                     f'The operator public key mismatch for masternode: {masternode.name}. '
-                                    f'pubkey from the app configuration: {operator_pubkey_cfg}, pubkey from the Dash '
+                                    f'pubkey from the app configuration: {operator_pubkey_cfg}, pubkey from the Zcoin '
                                     f'network: {operator_pubkey_network}')
 
                 if mn_data_modified:
@@ -1742,7 +1742,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         errors.append('<td class="error" colspan="2">Masternode IP and&frasl;or TCP port number '
                                       'missing&frasl;mismatch</td>')
                     if owner_public_address_mismatch and not skip_data_mismatch:
-                        errors.append('<td class="error" colspan="2">Owner Dash address mismatch</td>')
+                        errors.append('<td class="error" colspan="2">Owner address mismatch</td>')
                     if operator_pubkey_mismatch and not skip_data_mismatch:
                         errors.append('<td class="error" colspan="2">Operator public key mismatch</td>')
                     if voting_public_address_mismatch and not skip_data_mismatch:
@@ -1832,7 +1832,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             enable_buttons()
             self.lblMnStatus.setText('')
-            self.errorMsg('Dash daemon not connected')
+            self.errorMsg('Zcoin daemon not connected')
 
     @pyqtSlot(bool)
     def on_action_transfer_funds_for_cur_mn_triggered(self):
@@ -1845,7 +1845,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.errorMsg("Enter the masternode collateral BIP32 path. You can use the 'right arrow' button "
                               "on the right of the 'Collateral' edit box.")
             elif not self.cur_masternode.collateralAddress:
-                self.errorMsg("Enter the masternode collateral Dash address. You can use the 'left arrow' "
+                self.errorMsg("Enter the masternode collateral address. You can use the 'left arrow' "
                               "button on the left of the 'BIP32 path' edit box.")
             else:
                 src_addresses.append((self.cur_masternode.collateralAddress, self.cur_masternode.collateralBip32Path))
@@ -1881,7 +1881,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
           if the value is None, show the default utxo source type
         """
         if not self.dashd_intf.open():
-            self.errorMsg('Dash daemon not connected')
+            self.errorMsg('Zcoin daemon not connected')
         else:
             ui = wallet_dlg.WalletDlg(self, initial_mn_sel=initial_mn)
             ui.exec_()

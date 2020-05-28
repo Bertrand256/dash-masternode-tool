@@ -579,7 +579,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     log.info(f'UTXO satosis: {utxo.satoshis}')
                     if utxo.is_collateral:
                         if self.queryDlg(
-                                "Warning: you are going to transfer masternode's collateral (1000 Dash) transaction "
+                                "Warning: you are going to transfer masternode's collateral (1000 XZC) transaction "
                                 "output. Proceeding will result in broken masternode.\n\n"
                                 "Do you really want to continue?",
                                 buttons=QMessageBox.Yes | QMessageBox.Cancel,
@@ -599,7 +599,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         bip32_to_address[bip32_path] = addr_hw
 
                     if addr_hw != utxo.address:
-                        self.errorMsg("<html style=\"font-weight:normal\">Dash address inconsistency between UTXO "
+                        self.errorMsg("<html style=\"font-weight:normal\">Zcoin address inconsistency between UTXO "
                                       f"({utxo_idx+1}) and HW path: {bip32_path}.<br><br>"
                                       f"<b>HW address</b>: {addr_hw}<br>"
                                       f"<b>UTXO address</b>: {utxo.address}<br><br>"

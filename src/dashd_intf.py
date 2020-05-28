@@ -921,10 +921,10 @@ class DashdInterface(WndUtils):
             if verify_node:
                 node_under_testnet = info.get('testnet')
                 if self.app_config.is_testnet() and not node_under_testnet:
-                    raise Exception('This RPC node works under Dash MAINNET, but your current configuration is '
+                    raise Exception('This RPC node works under Zcoin MAINNET, but your current configuration is '
                                     'for TESTNET.')
                 elif self.app_config.is_mainnet() and node_under_testnet:
-                    raise Exception('This RPC node works under Dash TESTNET, but your current configuration is '
+                    raise Exception('This RPC node works under Zcoin TESTNET, but your current configuration is '
                                     'for MAINNET.')
             return info
         else:

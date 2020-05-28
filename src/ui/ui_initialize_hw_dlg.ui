@@ -847,7 +847,7 @@
              <item>
               <widget class="QLabel" name="label_5">
                <property name="text">
-                <string>Dash addresses which will be available in the device after finishing the process:</string>
+                <string>Zcoin addresses which will be available in the device after finishing the process:</string>
                </property>
                <property name="wordWrap">
                 <bool>true</bool>

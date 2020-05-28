@@ -810,7 +810,7 @@
          <item>
           <widget class="QLineEdit" name="edtManualFundingAddress">
            <property name="toolTip">
-            <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Enter the address from your Dash Core wallet that has sufficient funds to cover transaction fees.&lt;br&gt;&lt;br&gt;You can check the balances of individual addresses by entering the following command in the debug console: &lt;code&gt;listaddressbalances&lt;/code&gt;.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+            <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Enter the address from your Zcoin Core wallet that has sufficient funds to cover transaction fees.&lt;br&gt;&lt;br&gt;You can check the balances of individual addresses by entering the following command in the debug console: &lt;code&gt;listaddressbalances&lt;/code&gt;.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
            </property>
           </widget>
          </item>

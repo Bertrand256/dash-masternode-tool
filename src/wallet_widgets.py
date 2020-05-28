@@ -1117,7 +1117,7 @@ class WalletMnItemDelegate(QItemDelegate):
 
             r.setTop(r.top() + fm.height() + WalletMnItemDelegate.CellLinesMargin)
             if mn.address.balance is not None:
-                balance_str = 'Balance: ' + app_utils.to_string(mn.address.balance / 1e8) + ' Dash'
+                balance_str = 'Balance: ' + app_utils.to_string(mn.address.balance / 1e8) + ' XZC'
             else:
                 balance_str = 'Balance: unknown'
             painter.drawText(r, Qt.AlignLeft, balance_str)

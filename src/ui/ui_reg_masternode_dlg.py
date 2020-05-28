@@ -632,7 +632,7 @@ class Ui_RegMasternodeDlg(object):
         self.lblProtxTransaction4.setText(_translate("RegMasternodeDlg", "3."))
         self.label_10.setText(_translate("RegMasternodeDlg", "<span style=\"color:red\"><b>Important:</b></span> A Zcoin Core wallet with sufficient funds to cover transaction fees is required to complete the steps below. The operations are performed from the Debug console in the Tools menu."))
         self.label_12.setText(_translate("RegMasternodeDlg", "<b>1. Enter the funding address from your Zcoin Core wallet:</b>"))
-        self.edtManualFundingAddress.setToolTip(_translate("RegMasternodeDlg", "<html><head/><body><p>Enter the address from your Dash Core wallet that has sufficient funds to cover transaction fees.<br><br>You can check the balances of individual addresses by entering the following command in the debug console: <code>listaddressbalances</code>.</p></body></html>"))
+        self.edtManualFundingAddress.setToolTip(_translate("RegMasternodeDlg", "<html><head/><body><p>Enter the address from your Zcoin Core wallet that has sufficient funds to cover transaction fees.<br><br>You can check the balances of individual addresses by entering the following command in the debug console: <code>listaddressbalances</code>.</p></body></html>"))
         self.btnManualFundingAddressPaste.setToolTip(_translate("RegMasternodeDlg", "Paste text from clipboard"))
         self.label_13.setText(_translate("RegMasternodeDlg", "<b>2. Execute the following command in the Zcoin wallet\'s debug console:</b>"))
         self.btnManualProtxPrepareCopy.setToolTip(_translate("RegMasternodeDlg", "Copy text to clipboard"))

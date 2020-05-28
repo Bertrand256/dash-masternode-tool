@@ -156,7 +156,7 @@ class UpdMnServiceDlg(QDialog, ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg, WndUtil
             payout_address = self.edtOperatorPayoutAddress.text()
             if payout_address:
                 if not validate_address(payout_address, self.app_config.dash_network):
-                    raise Exception('Invalid payout Dash address')
+                    raise Exception('Invalid payout address')
                 else:
                     self.dmn_new_operator_payout_address = payout_address
             else:
@@ -196,8 +196,8 @@ class UpdMnServiceDlg(QDialog, ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg, WndUtil
                 f'"{self.masternode.dmn_operator_private_key}" "{self.dmn_new_operator_payout_address}" ' \
                 f'"<span style="color:green">feeSourceAddress</span>"'
             msg = '<ol>' \
-                  '<li>Start a Dash Core wallet with sufficient funds to cover a transaction fee.</li>'
-            msg += '<li>Execute the following command in the Dash Core debug console:<br><br>'
+                  '<li>Start a Zcoin Core wallet with sufficient funds to cover a transaction fee.</li>'
+            msg += '<li>Execute the following command in the Zcoin Core debug console:<br><br>'
             msg += '  <code style=\"background-color:#e6e6e6\">' + cmd + '</code></li><br>'
             msg += 'Replace <span style="color:green">feeSourceAddress</span> with the address being the ' \
                    'source of the transaction fee.'

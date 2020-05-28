@@ -214,7 +214,7 @@ class ListCollateralTxsDlg(QDialog, ui_find_coll_tx_dlg.Ui_ListCollateralTxsDlg,
     def display_title(self):
         if len(self.utxos):
             if self.read_only:
-                msg = f'<span>Found 1000 Dash transaction(s):</span>'
+                msg = f'<span>Found 1000 Zcoin transaction(s):</span>'
             else:
                 msg = f'<span><b>Select the appropriate UTXO then press the &lt;Apply&gt; button or ' \
                     f'double click on the corresponding row.</b></span>'
@@ -222,7 +222,7 @@ class ListCollateralTxsDlg(QDialog, ui_find_coll_tx_dlg.Ui_ListCollateralTxsDlg,
             self.lblMessage.setText(msg)
             self.lblMessage.setVisible(True)
         else:
-            self.lblMessage.setText('<span style="color:red"><b>Found no unspent 1000 Dash transactions in your '
+            self.lblMessage.setText('<span style="color:red"><b>Found no unspent 1000 Zcoin transactions in your '
                                     'wallet</b></span>')
             self.lblMessage.setVisible(True)
 

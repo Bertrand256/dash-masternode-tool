@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'src/ui/ui_about_dlg.ui'
 #
-# Created by: PyQt5 UI code generator 5.14.0
+# Created by: PyQt5 UI code generator 5.14.2
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -82,7 +82,7 @@ class Ui_AboutDlg(object):
     def retranslateUi(self, AboutDlg):
         _translate = QtCore.QCoreApplication.translate
         AboutDlg.setWindowTitle(_translate("AboutDlg", "Dialog"))
-        self.lblAppName.setText(_translate("AboutDlg", "Dash Masternode Tool"))
+        self.lblAppName.setText(_translate("AboutDlg", "Znode Tool"))
         self.textAbout.setHtml(_translate("AboutDlg", "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
 "<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
 "p, li { white-space: pre-wrap; }\n"

@@ -110,7 +110,7 @@
            </font>
           </property>
           <property name="text">
-           <string>Dash Masternode Tool</string>
+           <string>Znode Tool</string>
           </property>
          </widget>
         </item>
