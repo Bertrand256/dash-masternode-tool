@@ -10,6 +10,12 @@ jobs:
     steps:
     - name: Checkout Source
       uses: actions/checkout@v2
+    - name: Get Binary for libusb
+      run: |
+        Invoke-WebRequest -Uri https://github.com/libusb/libusb/releases/download/v1.0.23/libusb-1.0.23.7z -OutFile libusb.7z -UseBasicParsing
+        Start-Process -FilePath "C:\Program Files\7-Zip\7z.exe" -ArgumentList x,-olibusb,libusb.7z -NoNewWindow
+    - name: Install libusb
+      run: Copy-Item -Path "libusb\MS64\dll\libusb-1.0.dll" -Destination C:\Windows\System32\
     - name: Install Application Dependencies
       run: pip install -r requirements.txt
     - name: Bundle Application
@@ -25,6 +31,8 @@ jobs:
     steps:
     - name: Checkout Source
       uses: actions/checkout@v2
+    - name: Install Required System Packages
+      run: brew install libusb
     - name: Install Application Dependencies
       run: pip3 install --user -r requirements.txt
     - name: Add Local Bin To Path
