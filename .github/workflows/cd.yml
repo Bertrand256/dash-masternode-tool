@@ -63,7 +63,7 @@ jobs:
     - name: Install Required Flatpak Runtimes
       run: flatpak install --user -y flathub org.freedesktop.Platform//19.08 org.freedesktop.Sdk//19.08
     - name: Build Application
-      run: flatpak-builder --repo="$FLATPAK_LOCAL_REPO" "$FLATPAK_BUILD_ROOT/znode-tool" flatpak.json
+      run: mkdir -p "$FLATPAK_LOCAL_REPO" && flatpak-builder --repo="$FLATPAK_LOCAL_REPO" "$FLATPAK_BUILD_ROOT/znode-tool" flatpak.json
     - name: Bundle Application
       run: flatpak build-bundle --runtime-repo="$FLATPAK_FLATHUB_REPO" "$FLATPAK_LOCAL_REPO" znode-tool.flatpak io.zcoin.ZnodeTool
     - name: Upload Release Artifact
