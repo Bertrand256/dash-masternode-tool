@@ -217,7 +217,7 @@ def sign_message(hw_session: HwSessionInfo, bip32_path, message):
         raise Exception('Invalid signature returned (code 1).')
 
     return MessageSignature(
-        pubkey.get('address').decode('ascii'),
+        pubkey.get('address') if isinstance(pubkey.get('address'), str) else pubkey.get('address').decode('ascii'),
         bytes(chr(27 + 4 + (signature[0] & 0x01)), "utf-8") + r + s
     )
 
@@ -231,7 +231,7 @@ def get_address_and_pubkey(client, bip32_path, show_display=False):
 
     nodedata = client.getWalletPublicKey(bip32_path, showOnScreen=show_display)
     return {
-        'address': nodedata.get('address').decode('utf-8'),
+        'address': nodedata.get('address') if isinstance(nodedata.get('address'), str) else nodedata.get('address').decode('utf-8'),
         'publicKey': compress_public_key(nodedata.get('publicKey'))
     }
 

@@ -192,7 +192,13 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             else:
                 self.connections_mainnet.append(cfg)
 
-        self.local_config.hw_type = HWType.trezor
+        if self.local_config.hw_type == HWType.trezor:
+            self.chbHwTrezor.setChecked(True)
+        elif self.local_config.hw_type == HWType.keepkey:
+            self.chbHwKeepKey.setChecked(True)
+        else:
+            self.chbHwLedgerNanoS.setChecked(True)
+
         self.update_keepkey_pass_encoding_ui()
         self.set_modified()
 
@@ -665,6 +671,28 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         finally:
             self.disable_cfg_update = dis_old
 
+    def on_HwType_toggled(self):
+        if self.chbHwTrezor.isChecked():
+            self.local_config.hw_type = HWType.trezor
+        elif self.chbHwKeepKey.isChecked():
+            self.local_config.hw_type = HWType.keepkey
+        else:
+            self.local_config.hw_type = HWType.ledger_nano_s
+
+        self.update_keepkey_pass_encoding_ui()
+        self.set_modified()
+
+    @pyqtSlot(bool)
+    def on_chbHwTrezor_toggled(self, checked):
+        self.on_HwType_toggled()
+
+    @pyqtSlot(bool)
+    def on_chbHwKeepKey_toggled(self, checked):
+        self.on_HwType_toggled()
+
+    @pyqtSlot(bool)
+    def on_chbHwLedgerNanoS_toggled(self, checked):
+        self.on_HwType_toggled()
     @pyqtSlot(int)
     def on_cboKeepkeyPassEncoding_currentIndexChanged(self, index):
         if index == 0:
