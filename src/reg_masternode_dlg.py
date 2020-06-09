@@ -85,9 +85,9 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.dmn_operator_pubkey: str = None
         self.dmn_voting_privkey: str = None
         self.dmn_voting_address: str = None
-        self.dmn_owner_key_type = InputKeyType.PUBLIC
+        self.dmn_owner_key_type = InputKeyType.PRIVATE
         self.dmn_operator_key_type = InputKeyType.PRIVATE
-        self.dmn_voting_key_type = InputKeyType.PUBLIC
+        self.dmn_voting_key_type = InputKeyType.PRIVATE
 
         self.collateral_validation_err_msg = ''
         self.ip_port_validation_err_msg = ''
@@ -180,7 +180,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             lbl = prefix + ' ' + \
                   {'privkey': 'private key', 'pubkey': 'public key', 'address': 'address'}.get(key_type, '???')
 
-            return f'<table style="float:right;{style_to_color(style)}"><tr><td><b>{lbl}</b></td></tr></table>'
+            change_mode = f'(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)'
+            return f'<table style="float:right;{style_to_color(style)}"><tr><td><b>{lbl}</b></td><td>{change_mode}</td></tr></table>'
 
         if self.masternode:
 
@@ -189,7 +190,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 style = ''
             else:
                 key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Zcoin address')
-                style = ''
+                style = 'hl1'
             self.lblOwnerKey.setText(get_label_text('Owner', key_type, tooltip_anchor, style))
             self.edtOwnerKey.setPlaceholderText(placeholder_text)
 
@@ -207,7 +208,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 style = ''
             else:
                 key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Zcoin address')
-                style = ''
+                style = 'hl1'
             self.lblVotingKey.setText(get_label_text('Voting', key_type, tooltip_anchor, style))
             self.edtVotingKey.setPlaceholderText(placeholder_text)
 
@@ -327,11 +328,15 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                  not self.masternode.dmn_voting_address):
             gen_voting = True
 
-        if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
-            self.edtOwnerKey.setText(self.masternode.dmn_owner_private_key)
+        if gen_owner:
+            self.owner_pkey_generated =  generate_wif_privkey(self.app_config.dash_network, compressed=True)
+            self.edtOwnerKey.setText(self.owner_pkey_generated)
         else:
-            self.edtOwnerKey.setText(self.masternode.dmn_owner_address)
-        self.dmn_owner_key_type = self.masternode.dmn_owner_key_type
+            if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+                self.edtOwnerKey.setText(self.masternode.dmn_owner_private_key)
+            else:
+                self.edtOwnerKey.setText(self.masternode.dmn_owner_address)
+            self.dmn_owner_key_type = self.masternode.dmn_owner_key_type
 
         if gen_operator:
             try:
@@ -347,10 +352,14 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             self.dmn_operator_key_type = self.masternode.dmn_operator_key_type
 
         if self.deterministic_mns_spork_active:
-            if self.dmn_voting_key_type == InputKeyType.PRIVATE:
-                self.edtVotingKey.setText(self.masternode.dmn_voting_private_key)
+            if gen_voting:
+                self.voting_pkey_generated = generate_wif_privkey(self.app_config.dash_network, compressed=True)
+                self.edtVotingKey.setText(self.voting_pkey_generated)
             else:
-                self.edtVotingKey.setText(self.masternode.dmn_voting_address)
+                if self.dmn_voting_key_type == InputKeyType.PRIVATE:
+                    self.edtVotingKey.setText(self.masternode.dmn_voting_private_key)
+                else:
+                    self.edtVotingKey.setText(self.masternode.dmn_voting_address)
 
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
@@ -497,7 +506,10 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                         msg = 'Enter the owner private key or generate a new one by clicking the button on the right.'
                     style = 'info'
                 else:
-                    msg = 'The private key for this address must be stored in Zcoin Core.'
+                    msg = 'You can use Zcoin address if the related private key is stored elsewhere, eg in ' \
+                          'the Zcoin Core wallet.<br><span class="warning">Note, that if you provide an address ' \
+                          'instead of a private key, you will not be able to publish ProRegTx ' \
+                          'transaction through public RPC nodes in the next steps.</span>'
                     style = 'info'
 
         self.set_ctrl_message(self.lblOwnerMsg, msg, style)
@@ -545,7 +557,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                                   'the right.'
                         style = 'info'
                     else:
-                        msg = 'The private key for this address must be stored in Zcoin Core.'
+                        msg = 'You can use Zcoin address if the related private key is stored elsewhere, eg in ' \
+                              'the Zcoin Core wallet.'
                         style = 'info'
 
         self.set_ctrl_message(self.lblVotingMsg, msg, style)
@@ -566,8 +579,16 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                   '(eg Zcoin-Qt). <b>Note, that this requires incurring a certain transaction fee, as with any ' \
                   'other ("normal") transaction.</b>'
         elif nt == NODE_TYPE_PUBLIC_RPC:
-            msg = 'If the operation fails, choose the manual method.'
+            msg = 'The ProRegTx transaction will be processed via the remote RPC node stored in the app configuration.' \
+                  '<br><br>' \
+                  '<b>Note 1:</b> this operation will involve signing transaction data with your <span style="color:red">owner key on the remote node</span>, ' \
+                  'so use this method only if you trust the operator of that node.<br><br>' \
+                  '<b>Note 2:</b> if the operation fails (e.g. due to a lack of funds), choose the manual method ' \
+                  'using your own Zcoin wallet.'
 
+        elif nt == NODE_TYPE_OWN:
+            msg = 'A Zcoin Core wallet with sufficient funds to cover transaction fees is required to ' \
+                  'complete the next steps.'
         self.lblDashNodeTypeMessage.setText(msg)
 
     def update_ctrl_state(self):
@@ -676,9 +697,11 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             self.summary_info = \
                 [f'Network address\t{self.dmn_ip}:{self.dmn_tcp_port}',
                  f'Payout address\t{self.dmn_owner_payout_addr}',
+                 f'Owner private key\t{owner_privkey}',
                  f'Owner address\t{self.dmn_owner_address}',
                  f'Operator private key\t{operator_privkey}',
                  f'Operator public key\t{self.dmn_operator_pubkey}',
+                 f'Voting private key\t{voting_privkey}',
                  f'Voting address\t{self.dmn_voting_address}',
                  f'Protx hash\t{self.dmn_reg_tx_hash}']
 

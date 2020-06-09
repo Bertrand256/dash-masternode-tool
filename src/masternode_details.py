@@ -274,7 +274,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
         def get_label_text(prefix:str, cur_key_type: str, tooltip_anchor: str, group: QActionGroup, style: str):
             lbl = '???'
-            if self.edit_mode and tooltip_anchor:
+            if self.edit_mode:
                 change_mode = f'<td>(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)</td>'
             else:
                 a = group.checkedAction()
@@ -302,8 +302,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             else:
                 key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Zcoin address')
                 if not self.edit_mode:
-                    style = '' if self.act_view_as_owner_public_address.isChecked() else 'hl1'
-            self.lblOwnerKey.setText(get_label_text('Owner', key_type, None, self.ag_owner_key, style))
+                    style = 'hl1' if self.act_view_as_owner_public_address.isChecked() else 'hl2'
+            self.lblOwnerKey.setText(get_label_text('Owner', key_type, tooltip_anchor, self.ag_owner_key, style))
             self.edtOwnerKey.setPlaceholderText(placeholder_text)
 
             style = ''
@@ -327,8 +327,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             else:
                 key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Zcoin address')
                 if not self.edit_mode:
-                    style = '' if self.act_view_as_voting_public_address.isChecked() else 'hl1'
-            self.lblVotingKey.setText(get_label_text('Voting', key_type, None, self.ag_voting_key, style))
+                    style = 'hl1' if self.act_view_as_voting_public_address.isChecked() else 'hl2'
+            self.lblVotingKey.setText(get_label_text('Voting', key_type, tooltip_anchor, self.ag_voting_key, style))
             self.edtVotingKey.setPlaceholderText(placeholder_text)
 
             self.set_left_label_width(self.get_max_left_label_width())
