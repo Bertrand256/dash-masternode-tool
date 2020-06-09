@@ -749,11 +749,11 @@ class AppConfig(QObject):
 
                                 mn.dmn_tx_hash = config.get(section, 'dmn_tx_hash', fallback='').strip()
                                 mn.dmn_owner_key_type = int(config.get(section, 'dmn_owner_key_type',
-                                                                   fallback=str(InputKeyType.PUBLIC)).strip())
+                                                                   fallback=str(InputKeyType.PRIVATE)).strip())
                                 mn.dmn_operator_key_type = int(config.get(section, 'dmn_operator_key_type',
                                                                    fallback=str(InputKeyType.PRIVATE)).strip())
                                 mn.dmn_voting_key_type = int(config.get(section, 'dmn_voting_key_type',
-                                                                   fallback=str(InputKeyType.PUBLIC)).strip())
+                                                                   fallback=str(InputKeyType.PRIVATE)).strip())
                                 if mn.dmn_owner_key_type == InputKeyType.PRIVATE:
                                     mn.dmn_owner_private_key = self.simple_decrypt(
                                         config.get(section, 'dmn_owner_private_key', fallback='').strip(), False)
@@ -1485,9 +1485,9 @@ class MasternodeConfig:
         self.__protocol_version = ''
         self.__dmn_user_roles = DMN_ROLE_OWNER | DMN_ROLE_OPERATOR | DMN_ROLE_VOTING
         self.__dmn_tx_hash = ''
-        self.__dmn_owner_key_type = InputKeyType.PUBLIC
+        self.__dmn_owner_key_type = InputKeyType.PRIVATE
         self.__dmn_operator_key_type = InputKeyType.PRIVATE
-        self.__dmn_voting_key_type = InputKeyType.PUBLIC
+        self.__dmn_voting_key_type = InputKeyType.PRIVATE
         self.__dmn_owner_private_key = ''
         self.__dmn_operator_private_key = ''
         self.__dmn_voting_private_key = ''
