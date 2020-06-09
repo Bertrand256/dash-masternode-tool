@@ -970,7 +970,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 return False
 
             msg = ''
-            if addr != self.dmn_collateral_tx_address:
+            if addr != self.dmn_collateral_tx_address and self.app_config.dash_network != 'TESTNET':
                 log.warning(
                     f'The address returned by the hardware wallet ({addr}) for the BIP32 path '
                     f'{self.dmn_collateral_tx_address_path} differs from the address stored the mn configuration '
@@ -1107,7 +1107,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             hw_intf.hw_sign_message, self.main_dlg.hw_session, self.dmn_collateral_tx_address_path,
             msg_to_sign, 'Click the confirmation button on your hardware wallet to sign the ProTx payload message.')
 
-        if sig.address != self.dmn_collateral_tx_address:
+        if sig.address != self.dmn_collateral_tx_address and self.app_config.dash_network != "TESTNET":
             log.error(f'Protx payload signature address mismatch. Is: {sig.address}, should be: '
                       f'{self.dmn_collateral_tx_address}.')
             raise Exception(f'Protx payload signature address mismatch. Is: {sig.address}, should be: '

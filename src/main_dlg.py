@@ -938,15 +938,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                         if not found_testnet_support:
                             url = get_note_url('DMT0002')
-                            msg = f'Your hardware wallet device does not support Zcoin TESTNET ' \
-                                  f'(<a href="{url}">see details</a>).'
+                            msg = f'Your hardware wallet device does not fully support Zcoin TESTNET. ' \
+                                  f'It will be displaying mainnet addresses instead of testnet ones. ' \
+                                  f'(<a href="{url}">See details</a>).'
                             self.errorMsg(msg)
-                            try:
-                                self.disconnect_hardware_wallet()
-                            except Exception:
-                                pass
-                            self.set_status_text2(msg, 'red')
-                            return
 
                     logging.info('Connected to a hardware wallet')
                     self.set_status_text2('<b>HW status:</b> connected to %s' % hw_intf.get_hw_label(self.hw_client),

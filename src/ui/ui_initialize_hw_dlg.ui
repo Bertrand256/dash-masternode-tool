@@ -75,6 +75,20 @@
             </property>
            </widget>
           </item>
+          <item>
+           <widget class="QRadioButton" name="rbDeviceKeepkey">
+            <property name="text">
+             <string>KeepKey</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="rbDeviceLedger">
+            <property name="text">
+             <string>Ledger Nano S</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>
