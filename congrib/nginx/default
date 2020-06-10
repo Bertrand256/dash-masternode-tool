@@ -1,0 +1,40 @@
+
+upstream mainnet {
+    server 127.10.10.1:8888;
+}
+
+server {
+	root /var/www/html;
+
+	# Add index.php to the list if you are using PHP
+	index index.html index.htm index.nginx-debian.html;
+        server_name test-ztnode.zcoin.io; # managed by Certbot
+
+
+        listen [::]:443 ssl ipv6only=on; # managed by Certbot
+        listen 443 ssl; # managed by Certbot
+        ssl_certificate /etc/letsencrypt/live/test-ztnode.zcoin.io/fullchain.pem; # managed by Certbot
+        ssl_certificate_key /etc/letsencrypt/live/test-ztnode.zcoin.io/privkey.pem; # managed by Certbot
+        include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+        ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+    location / {
+        set $jsonrpc_whitelist 'decoderawtransaction,getaddressbalance,getaddressmempool,getaddressutxos,getaddresstxids,getblockcount,getblockheader,getblockhash,getrawtransaction,listunspent,znodebroadcast,znodelist,getinfo,sendrawtransaction,validateaddress,protx,getaddressdeltas,listaddressbalances';
+        access_by_lua_file 'zcoin-jsonrpc-access.lua';
+        proxy_pass http://mainnet;
+    }
+}
+
+server {
+    if ($host = test-ztnode.zcoin.io) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+	listen 80 ;
+	listen [::]:80 ;
+    server_name test-ztnode.zcoin.io;
+    return 404; # managed by Certbot
+
+
+}
