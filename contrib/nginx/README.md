@@ -1,3 +1,5 @@
+This configuration is based on https://github.com/chaeplin/dash-ticker/tree/master/web/nginx
+
 ## Installation recommendations
 Based on Ubuntu 20.04
 
