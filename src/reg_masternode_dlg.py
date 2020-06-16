@@ -1223,7 +1223,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                     owner_key = self.dmn_owner_address
 
                 params = ['register_prepare', self.dmn_collateral_tx, self.dmn_collateral_tx_index,
-                          self.dmn_ip + ':' + str(self.dmn_tcp_port) if self.dmn_ip else '0', owner_key,
+                          self.dmn_ip + ':' + str(self.dmn_tcp_port) if self.dmn_ip else '', owner_key,
                           self.dmn_operator_pubkey, self.dmn_voting_address, str(round(self.dmn_operator_reward, 2)),
                           self.dmn_owner_payout_addr]
                 if funding_address:
