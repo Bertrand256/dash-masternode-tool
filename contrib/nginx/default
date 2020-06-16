@@ -19,7 +19,7 @@ server {
         ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
 
     location / {
-        set $jsonrpc_whitelist 'decoderawtransaction,getaddressbalance,getaddressmempool,getaddressutxos,getaddresstxids,getblockcount,getblockheader,getblockhash,getrawtransaction,listunspent,znodebroadcast,znodelist,getinfo,sendrawtransaction,validateaddress,protx,getaddressdeltas,listaddressbalances';
+        set $jsonrpc_whitelist 'decoderawtransaction,getaddressbalance,getaddressmempool,getaddressutxos,getaddresstxids,getblockcount,getblockheader,getblockhash,getrawtransaction,listunspent,znodebroadcast,evoznodelist,getinfo,sendrawtransaction,validateaddress,protx,getaddressdeltas,listaddressbalances';
         access_by_lua_file 'zcoin-jsonrpc-access.lua';
         proxy_pass http://mainnet;
     }
