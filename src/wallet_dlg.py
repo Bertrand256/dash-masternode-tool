@@ -598,7 +598,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.main_ui.hw_session, bip32_path)
                         bip32_to_address[bip32_path] = addr_hw
 
-                    if addr_hw != utxo.address:
+                    if addr_hw != utxo.address and self.app_config.dash_network != 'TESTNET':
                         self.errorMsg("<html style=\"font-weight:normal\">Zcoin address inconsistency between UTXO "
                                       f"({utxo_idx+1}) and HW path: {bip32_path}.<br><br>"
                                       f"<b>HW address</b>: {addr_hw}<br>"
@@ -815,7 +815,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     # for security purposes get the address from hardware wallet and compare it to the one
                     # read from db cache
                     addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, addr.bip32_path, False)
-                    if addr_hw != addr.address:
+                    if addr_hw != addr.address and self.app_config.dash_network != 'TESTNET':
                         self.errorMsg('Inconsistency between the wallet cache and the hardware wallet data occurred. '
                                       'Please clear the wallet cache.')
                         return
@@ -1606,7 +1606,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         # for security reasons get the address from hardware wallet and compare it to the one
                         # read from db cache
                         addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, addr.bip32_path, False)
-                        if addr_hw != addr.address:
+                        if addr_hw != addr.address and self.app_config.dash_network != 'TESTNET':
                             addr_str = 'Address inconsistency. Please clear the wallet cache.'
 
             elif self.hw_selected_account_id:
