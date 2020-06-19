@@ -40,7 +40,7 @@ jobs:
         prefix=$(python3 -m site --user-base)
         echo "::add-path::$prefix/bin"
     - name: Bundle Application
-      run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
+      run: pyinstaller -w --distpath=bin --workpath=work dash_masternode_tool.spec
     - name: Upload Release Artifact
       uses: actions/upload-artifact@v2
       with:

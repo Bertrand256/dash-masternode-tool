@@ -85,9 +85,6 @@ exe = EXE(pyz,
           console=False,
           icon=os.path.join('img',('znode-tool.%s' % ('icns' if os_type=='darwin' else 'ico'))))
 
-if os_type != 'win32':
-    chmod("znode-tool", 0o100)
-
 if os_type == 'darwin':
     app = BUNDLE(exe,
                  name='znode-tool.app',
