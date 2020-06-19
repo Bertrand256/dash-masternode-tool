@@ -1,5 +1,5 @@
 # -*- mode: python -*-
-import sys
+import sys, stat
 from os import path, chmod
 import platform
 
@@ -110,6 +110,7 @@ if os_type == 'win32':
     os.system('"7z.exe" a %s %s -mx0' % (os.path.join(all_bin_dir, 'znode-tool-' + version_str + '.win' + no_bits + '.zip'),  'znode-tool.exe'))
 elif os_type == 'darwin':
     print('Compressing Mac executable')
+    os.chmod("znode-tool.app/Contents/MacOS/znode-tool", 0o754)
     os.system('zip -r "%s" "%s"' % (os.path.join(all_bin_dir, 'znode-tool-' + version_str + '.mac.zip'),  'znode-tool.app'))
 elif os_type == 'linux':
     print('Compressing Linux executable')
