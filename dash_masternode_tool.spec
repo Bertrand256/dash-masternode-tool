@@ -1,6 +1,6 @@
 # -*- mode: python -*-
 import sys
-import os.path
+from os import path, chmod
 import platform
 
 block_cipher = None
@@ -84,6 +84,9 @@ exe = EXE(pyz,
           upx=False,
           console=False,
           icon=os.path.join('img',('znode-tool.%s' % ('icns' if os_type=='darwin' else 'ico'))))
+
+if os_type != 'win32':
+    chmod("znode-tool", "u+x")
 
 if os_type == 'darwin':
     app = BUNDLE(exe,
