@@ -33,7 +33,7 @@ from hw_common import ask_for_pass_callback, ask_for_pin_callback, \
 import logging
 import wallet_common
 from wnd_utils import WndUtils
-
+from dash_tx import DashTxType, serialize_cbTx
 
 log = logging.getLogger('dmt.hw_intf_trezor')
 
@@ -274,8 +274,9 @@ def connect_trezor(device_id: Optional[str] = None,
         raise Exception(msg)
 
 
-def is_dash(coin):
-    return coin["coin_name"].lower().startswith("dash")
+def is_extra_payload(coin):
+    return coin["coin_name"].lower().startswith("dash") \
+        or coin["coin_name"].lower().startswith("zcoin")
 
 
 def json_to_tx(coin, data):
@@ -304,11 +305,18 @@ def json_to_tx(coin, data):
             extra_data_len = 1 + joinsplit_cnt * 1802 + 32 + 64
             t.extra_data = rawtx[-extra_data_len:]
 
-    if is_dash(coin):
+    if is_extra_payload(coin):
         dip2_type = data.get("type", 0)
 
         if t.version == 3 and dip2_type != 0:
             # It's a DIP2 special TX with payload
+            if dip2_type == DashTxType.SPEC_CB_TX:
+                data["extraPayload"] = serialize_cbTx(data)
+            else:
+                raise NotImplementedError("Only spending of V3 coinbase outputs has been inplemented. "
+                    "Please file an issue at https://github.com/zcoinofficial/znode-tool-evo/issues containg "
+                    "the tx type=" + str(dip2_type))
+            data["extraPayloadSize"] = len(data["extraPayload"]) >> 1
 
             if "extraPayloadSize" not in data or "extraPayload" not in data:
                 raise ValueError("Payload data missing in DIP2 transaction")

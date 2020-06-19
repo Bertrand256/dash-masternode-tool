@@ -23,7 +23,7 @@ import keepkeylib.types_pb2 as proto_types
 import wallet_common
 from wnd_utils import WndUtils
 from hw_common import clean_bip32_path
-
+from dash_tx import DashTxType, serialize_cbTx
 
 class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):
 
@@ -260,6 +260,13 @@ class MyTxApiInsight(TxApiInsight):
 
         if t.version == 3 and dip2_type != 0:
             # It's a DIP2 special TX with payload
+            if dip2_type == DashTxType.SPEC_CB_TX:
+                data["extraPayload"] = serialize_cbTx(data)
+            else:
+                raise NotImplementedError("Only spending of V3 coinbase outputs has been inplemented. "
+                    "Please file an issue at https://github.com/zcoinofficial/znode-tool-evo/issues containg "
+                    "the tx type=" + str(dip2_type))
+            data["extraPayloadSize"] = len(data["extraPayload"]) >> 1
 
             if "extraPayloadSize" not in data or "extraPayload" not in data:
                 raise ValueError("Payload data missing in DIP2 transaction")

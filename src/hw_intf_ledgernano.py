@@ -15,6 +15,7 @@ from dash_utils import *
 from PyQt5.QtWidgets import QMessageBox
 import unicodedata
 from bip32utils import Base58
+from dash_tx import DashTxType, serialize_cbTx
 
 
 class btchip_dmt(btchip):
@@ -401,6 +402,14 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
         dip2_type = data.get("type", 0)
         if data['version'] == 3 and dip2_type != 0:
             # It's a DIP2 special TX with payload
+            if dip2_type == DashTxType.SPEC_CB_TX:
+                data["extraPayload"] = serialize_cbTx(data)
+            else:
+                raise NotImplementedError("Only spending of V3 coinbase outputs has been inplemented. "
+                    "Please file an issue at https://github.com/zcoinofficial/znode-tool-evo/issues containg "
+                    "the tx type=" + str(dip2_type))
+
+            data["extraPayloadSize"] = len(data["extraPayload"]) >> 1
 
             if "extraPayloadSize" not in data or "extraPayload" not in data:
                 raise ValueError("Payload data missing in DIP2 transaction")
@@ -412,6 +421,7 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
                 )
             prev_transaction.extra_data = dash_utils.num_to_varint(data["extraPayloadSize"]) + bytes.fromhex(
                 data["extraPayload"])
+            print(bh2u(prev_transaction.extra_data))
         else:
             prev_transaction.extra_data = bytes()
 
