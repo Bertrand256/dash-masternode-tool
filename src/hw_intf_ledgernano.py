@@ -421,7 +421,6 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
                 )
             prev_transaction.extra_data = dash_utils.num_to_varint(data["extraPayloadSize"]) + bytes.fromhex(
                 data["extraPayload"])
-            print(bh2u(prev_transaction.extra_data))
         else:
             prev_transaction.extra_data = bytes()
 
