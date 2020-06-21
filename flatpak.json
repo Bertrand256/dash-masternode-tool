@@ -191,7 +191,7 @@
         "install -D 'src/main_dlg.py' '/app/opt/znode-tool/src/main_dlg.py'",
         "install -D 'src/upd_mn_registrar_dlg.py' '/app/opt/znode-tool/src/upd_mn_registrar_dlg.py'",
         "install -D 'src/masternode_details.py' '/app/opt/znode-tool/src/masternode_details.py'",
-        "install -D 'src/initialize_hw_dlg.py' '/app/opt/znode-tool/src/initialize_hw_dlg.py'"
+        "install -D 'src/initialize_hw_dlg.py' '/app/opt/znode-tool/src/initialize_hw_dlg.py'",
         "install -D 'src/dash_tx.py' '/app/opt/znode-tool/src/dash_tx.py'"
       ],
       "post-install": [
