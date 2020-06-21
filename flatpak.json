@@ -972,6 +972,11 @@
           "type": "file",
           "path": "src/initialize_hw_dlg.py",
           "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "src/dash_tx.py",
+          "dest": "src"
         }
       ]
     }
