@@ -3,7 +3,7 @@ bitcoin>=1.1.42
 trezor==0.11.3
 keepkey==6.1.0
 libusb1==1.7.1
-PyQt5==5.14.0
+PyQt5==5.13.0
 pyinstaller>=3.3
 paramiko>=2.2.1
 requests>=2.18.4
