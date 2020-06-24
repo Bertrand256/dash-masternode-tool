@@ -12,6 +12,7 @@ from enum import Enum
 from functools import partial
 from typing import List, Union, Callable
 import ipaddress
+import random
 
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtCore import pyqtSlot, Qt, QTimerEvent, QTimer
@@ -1209,6 +1210,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                         if not bal_list:
                             raise Exception("No address can be found in the node's wallet with sufficient funds to "
                                             "cover the transaction fees.")
+                        random.seed()
+                        random.shuffle(bal_list)
                         funding_address = bal_list[0]['address']
                     except JSONRPCException as e:
                         log.info("Couldn't list the node address balances. We assume you are using a public RPC node and "
