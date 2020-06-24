@@ -1471,6 +1471,11 @@ class AppConfig(QObject):
     def get_app_img_dir(self):
         return os.path.join(self.app_dir, '', 'img')
 
+    def is_vote_address_restricted(self, height):
+        if self.is_mainnet() and height < 284400:
+            return True
+        return False
+
 
 class MasternodeConfig:
     def __init__(self):

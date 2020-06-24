@@ -892,6 +892,9 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                     if not validate_address(self.dmn_voting_address, self.app_config.dash_network):
                         self.edtVotingKey.setFocus()
                         self.voting_key_validation_err_msg = 'Invalid voting address.'
+                if self.app_config.is_vote_address_restricted(self.bip44_wallet.get_block_height()) and \
+                            key != self.edtOwnerKey.text().strip():
+                    self.voting_key_validation_err_msg = 'Voting key should be equal to Owner key untill block 284400.'
         else:
             # spork 15 not active - use the owner private key for voting
             self.dmn_voting_address = self.dmn_owner_address
