@@ -18,6 +18,9 @@ from thread_utils import EnhRLock
 from wnd_utils import WndUtils
 
 
+PASSPHRASE_ON_DEVICE = object()
+
+
 class HardwareWalletPinException(Exception):
     def __init__(self, msg):
         self.msg = msg
@@ -167,11 +170,14 @@ def ask_for_pin_callback(msg, hide_numbers=True):
         return dlg()
 
 
-def ask_for_pass_callback():
+def ask_for_pass_callback(pass_available_on_device: bool = False):
     def dlg():
-        ui = hw_pass_dlg.HardwareWalletPassDlg()
+        ui = hw_pass_dlg.HardwareWalletPassDlg(pass_available_on_device)
         if ui.exec_():
-            return ui.getPassphrase()
+            if ui.getEnterOnDevice():
+                return PASSPHRASE_ON_DEVICE
+            else:
+                return ui.getPassphrase()
         else:
             return None
 

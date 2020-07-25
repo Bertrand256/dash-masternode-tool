@@ -13,20 +13,16 @@ from typing import Optional, Tuple, List, Dict, Callable, Iterable, Type, Set
 import binascii
 from decimal import Decimal
 
-import trezorlib
-from bitcoinrpc.authproxy import EncodeDecimal
 from mnemonic import Mnemonic
-from trezorlib.client import TrezorClient
-from trezorlib.tools import CallException
+from trezorlib.client import TrezorClient, PASSPHRASE_ON_DEVICE
+from trezorlib.exceptions import TrezorFailure
 from trezorlib.transport import Transport
-from trezorlib.tx_api import TxApi, _json_to_input, _json_to_bin_output, is_zcash
 from trezorlib import messages as trezor_proto, exceptions, btc, messages
 from trezorlib.ui import PIN_CURRENT, PIN_NEW, PIN_CONFIRM
-#from trezorlib.transport import enumerate_devices, get_transport
 from trezorlib import device
-from trezorlib import coins
 
 import dash_utils
+import hw_common
 from common import CancelException
 from hw_common import ask_for_pass_callback, ask_for_pin_callback, \
     ask_for_word_callback, select_hw_device, HwSessionInfo
@@ -58,11 +54,14 @@ class TrezorUi(object):
             raise exceptions.Cancelled
         return pin
 
-    def get_passphrase(self) -> str:
-        passphrase = ask_for_pass_callback()
-        if passphrase is None:
-            raise exceptions.Cancelled
-        return passphrase
+    def get_passphrase(self, available_on_device: bool) -> str:
+        passphrase = ask_for_pass_callback(available_on_device)
+        if passphrase is hw_common.PASSPHRASE_ON_DEVICE:
+            return PASSPHRASE_ON_DEVICE
+        else:
+            if passphrase is None:
+                raise exceptions.Cancelled
+            return passphrase
 
     def button_request(self, msg_code):
         if not self.prompt_shown:
@@ -258,12 +257,12 @@ def connect_trezor(device_id: Optional[str] = None,
     client = WndUtils.call_in_main_thread(get_client)
     if client:
         logging.info('Trezor connected. Firmware version: %s.%s.%s, vendor: %s, initialized: %s, '
-                     'pp_protection: %s, pp_cached: %s, bootloader_mode: %s ' %
+                     'pp_protection: %s, bootloader_mode: %s ' %
                      (str(client.features.major_version),
                       str(client.features.minor_version),
                       str(client.features.patch_version), str(client.features.vendor),
                       str(client.features.initialized),
-                      str(client.features.passphrase_protection), str(client.features.passphrase_cached),
+                      str(client.features.passphrase_protection),
                       str(client.features.bootloader_mode)))
         return client
     else:
@@ -278,62 +277,46 @@ def is_dash(coin):
     return coin["coin_name"].lower().startswith("dash")
 
 
-def json_to_tx(coin, data):
-    t = messages.TransactionType()
-    t.version = data["version"]
-    t.lock_time = data.get("locktime")
+def json_to_tx(tx_json):
+    t = btc.from_json(tx_json)
+    # t = messages.TransactionType()
+    # t.version = tx_json["version"]
+    # t.lock_time = tx_json.get("locktime")
 
-    if coin["decred"]:
-        t.expiry = data["expiry"]
+    # if coin["decred"]:
+    #     t.expiry = tx_json["expiry"]
 
-    t.inputs = [_json_to_input(coin, vin) for vin in data["vin"]]
-    t.bin_outputs = [_json_to_bin_output(coin, vout) for vout in data["vout"]]
+    # t.inputs = [_json_to_input(coin, vin) for vin in tx_json["vin"]]
+    # t.bin_outputs = [_json_to_bin_output(coin, vout) for vout in tx_json["vout"]]
 
-    # zcash extra data
-    if is_zcash(coin) and t.version >= 2:
-        joinsplit_cnt = len(data["vjoinsplit"])
-        if joinsplit_cnt == 0:
-            t.extra_data = b"\x00"
-        elif joinsplit_cnt >= 253:
-            # we assume cnt < 253, so we can treat varIntLen(cnt) as 1
-            raise ValueError("Too many joinsplits")
-        elif "hex" not in data:
-            raise ValueError("Raw TX data required for Zcash joinsplit transaction")
-        else:
-            rawtx = bytes.fromhex(data["hex"])
-            extra_data_len = 1 + joinsplit_cnt * 1802 + 32 + 64
-            t.extra_data = rawtx[-extra_data_len:]
+    dip2_type = tx_json.get("type", 0)
 
-    if is_dash(coin):
-        dip2_type = data.get("type", 0)
+    if t.version == 3 and dip2_type != 0:
+        # It's a DIP2 special TX with payload
 
-        if t.version == 3 and dip2_type != 0:
-            # It's a DIP2 special TX with payload
+        if "extraPayloadSize" not in tx_json or "extraPayload" not in tx_json:
+            raise ValueError("Payload data missing in DIP2 transaction")
 
-            if "extraPayloadSize" not in data or "extraPayload" not in data:
-                raise ValueError("Payload data missing in DIP2 transaction")
-
-            if data["extraPayloadSize"] * 2 != len(data["extraPayload"]):
-                raise ValueError(
-                    "extra_data_len (%d) does not match calculated length (%d)"
-                    % (data["extraPayloadSize"], len(data["extraPayload"]) * 2)
-                )
-            t.extra_data = dash_utils.num_to_varint(data["extraPayloadSize"]) + bytes.fromhex(
-                data["extraPayload"]
+        if tx_json["extraPayloadSize"] * 2 != len(tx_json["extraPayload"]):
+            raise ValueError(
+                "extra_data_len (%d) does not match calculated length (%d)"
+                % (tx_json["extraPayloadSize"], len(tx_json["extraPayload"]) * 2)
             )
+        t.extra_data = dash_utils.num_to_varint(tx_json["extraPayloadSize"]) + bytes.fromhex(
+            tx_json["extraPayload"]
+        )
 
-        # Trezor firmware doesn't understand the split of version and type, so let's mimic the
-        # old serialization format
-        t.version |= dip2_type << 16
+    # Trezor firmware doesn't understand the split of version and type, so let's mimic the
+    # old serialization format
+    t.version |= dip2_type << 16
 
     return t
 
 
 
-class MyTxApiInsight(TxApi):
+class MyTxApiInsight(object):
 
-    def __init__(self, network, url, dashd_inf, cache_dir):
-        TxApi.__init__(self, network)
+    def __init__(self, dashd_inf, cache_dir):
         self.dashd_inf = dashd_inf
         self.cache_dir = cache_dir
         self.skip_cache = False
@@ -354,24 +337,14 @@ class MyTxApiInsight(TxApi):
         else:
             raise Exception('No arguments')
 
-    def get_block_hash(self, block_number):
-        return self.dashd_inf.getblockhash(block_number)
-
-    def current_height(self):
-        return self.dashd_inf.getheight()
-
-    def get_tx_data(self, txhash):
-        data = self.fetch_json("tx", txhash)
-        return data
-
-    def get_tx(self, txhash):
-        data = None
+    def get_tx(self, txhash:str):
+        tx_json = None
         try:
-            data = self.get_tx_data(txhash)
-            return json_to_tx(self.coin_data, data)
+            tx_json = self.fetch_json("tx", txhash)
+            return json_to_tx(tx_json)
         except Exception as e:
             log.error(str(e))
-            log.error('tx data: ' + str(data))
+            log.error('tx data: ' + str(tx_json))
             raise
 
 
@@ -389,10 +362,10 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
         txes = {}
         tx_api.skip_cache = skip_cache
         for utxo in utxos_to_spend:
-            prev_hash = bytes.fromhex(utxo.txid)
-            if prev_hash not in txes:
-                tx = tx_api[prev_hash]
-                txes[prev_hash] = tx
+            prev_hash_bin = bytes.fromhex(utxo.txid)
+            if prev_hash_bin not in txes:
+                tx = tx_api.get_tx(utxo.txid)
+                txes[prev_hash_bin] = tx
         return txes
 
     insight_network = 'insight_dash'
@@ -400,13 +373,7 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
         insight_network += '_testnet'
     dash_network = hw_session.app_config.dash_network
 
-    c_name = hw_session.app_config.hw_coin_name
-    coin = coins.by_name[c_name]
-    url = hw_session.app_config.get_tx_api_url()
-    coin['bitcore'].clear()
-    coin['bitcore'].append(url)
-
-    tx_api = MyTxApiInsight(coin, '', hw_session.dashd_intf, hw_session.app_config.tx_cache_dir)
+    tx_api = MyTxApiInsight(hw_session.dashd_intf, hw_session.app_config.tx_cache_dir)
     client = hw_session.hw_client
     inputs = []
     outputs = []
@@ -514,13 +481,15 @@ def wipe_device(hw_device_id) -> Tuple[str, bool]:
         else:
             raise Exception('Couldn\'t connect to Trezor device.')
 
-    except CallException as e:
+    except TrezorFailure as e:
         if client:
             client.close()
         if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
             raise
         else:
             return hw_device_id, True  # cancelled by user
+    except exceptions.Cancelled as e:
+        return hw_device_id, True  # cancelled by user
 
     except CancelException:
         if client:
@@ -612,7 +581,7 @@ def reset_device(hw_device_id: str, strength: int, passphrase_enabled: bool, pin
         else:
             raise Exception('Couldn\'t connect to Trezor device.')
 
-    except CallException as e:
+    except TrezorFailure as e:
         if client:
             client.close()
         if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
