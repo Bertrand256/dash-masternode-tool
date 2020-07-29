@@ -2237,7 +2237,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             mns.append(mn_info)
 
         if vote:
-            self.vote_on_selected_proposals(vote, mns)
+            try:
+                self.vote_on_selected_proposals(vote, mns)
+            except Exception as e:
+                self.errorMsg(str(e))
 
     def draw_chart(self):
         """Draws a voting chart if proposal has changed.
