@@ -2,7 +2,7 @@ import os
 import sys
 from enum import Enum
 from functools import partial
-from typing import Callable
+from typing import Callable, Optional
 
 import bitcoin
 from PyQt5 import QtCore
@@ -602,7 +602,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.lblOperatorKey.setFixedWidth(width)
         self.lblVotingKey.setFixedWidth(width)
 
-    def set_masternode(self, masternode: MasternodeConfig):
+    def set_masternode(self, masternode: Optional[MasternodeConfig]):
         self.updating_ui = True
         self.masternode = masternode
         self.masternode_data_to_ui()
