@@ -32,7 +32,7 @@
    <item>
     <widget class="QStackedWidget" name="tabSteps">
      <property name="currentIndex">
-      <number>6</number>
+      <number>8</number>
      </property>
      <widget class="QWidget" name="pgStepDeviceType">
       <layout class="QVBoxLayout" name="verticalLayout_12">
@@ -252,7 +252,7 @@
           <item>
            <widget class="QRadioButton" name="rbActUploadFirmware">
             <property name="text">
-             <string>Upload firmware</string>
+             <string>Update firmware</string>
             </property>
            </widget>
           </item>
@@ -1097,7 +1097,7 @@ For an official firmware, you can uncheck this option.</string>
             <string>Clear device data</string>
            </property>
            <property name="checked">
-            <bool>true</bool>
+            <bool>false</bool>
            </property>
           </widget>
          </item>

@@ -61,6 +61,7 @@ __KNOWN_LOGGERS = [
     KnownLoggerType(name='dmt.db_intf', external=False),
     KnownLoggerType(name='dmt.proposals', external=False),
     KnownLoggerType(name='dmt.ext_item_model', external=False),
+    KnownLoggerType(name='dmt.hw_intf', external=False),
     KnownLoggerType(name='dmt.hw_intf_trezor', external=False),
     KnownLoggerType(name='dmt.reg_masternode', external=False),
     KnownLoggerType(name='dmt.transaction_dlg', external=False),

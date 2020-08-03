@@ -6,6 +6,7 @@ import hashlib
 import sqlite3
 import threading
 from functools import partial
+from io import BytesIO
 from typing import Optional, Tuple, List, ByteString, Callable, Dict
 import sys
 
@@ -30,6 +31,9 @@ DEFAULT_HW_BUSY_TITLE = 'Please confirm'
 bip32_address_map: Dict[str, Dict[str, Tuple[str, int]]] = {}
 
 hd_tree_db_map: Dict[str, int] = {}  # Dict[str <hd tree ident>, int <db id>]
+
+
+log = logging.getLogger('dmt.hw_intf')
 
 
 def control_trezor_keepkey_libs(connecting_to_hw):
@@ -306,6 +310,17 @@ def get_hw_firmware_version(hw_session: HwSessionInfo):
         return hw_session.hw_client.getFirmwareVersion().get('version')
 
 
+def firmware_update(hw_client, raw_data: bytes):
+    hw_type = get_hw_type(hw_client)
+    if hw_type == HWType.trezor:
+        import hw_intf_trezor as trezor
+        trezor.firmware_update(hw_client, raw_data)
+    elif HWType.keepkey:
+        hw_client.firmware_update(fp=BytesIO(raw_data))
+    elif hw_type == HWType.ledger_nano_s:
+        raise Exception('Ledger Nano S is not supported.')
+
+
 @control_hw_call
 def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType],
             tx_outputs: List[TxOutputType], tx_fee):
@@ -401,7 +416,7 @@ def change_pin(hw_session: HwSessionInfo, remove=False):
 
     elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
 
-        raise Exception('Ledger Nano S not supported.')
+        raise Exception('Ledger Nano S is not supported.')
 
     else:
         logging.error('Invalid HW type: ' + str(hw_session.app_config.hw_type))
@@ -420,8 +435,54 @@ def enable_passphrase(hw_session: HwSessionInfo, passphrase_enabled):
 
     elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
 
-        raise Exception('Ledger Nano S not supported.')
+        raise Exception('Ledger Nano S is not supported.')
 
+    else:
+        logging.error('Invalid HW type: ' + str(hw_session.app_config.hw_type))
+
+
+@control_hw_call
+def set_passphrase_always_on_device(hw_session: HwSessionInfo, enabled):
+    if hw_session.app_config.hw_type == HWType.trezor:
+        import hw_intf_trezor
+
+        def set(ctrl):
+            if ctrl:
+                ctrl.dlg_config_fun(dlg_title=DEFAULT_HW_BUSY_TITLE, show_progress_bar=False)
+                ctrl.display_msg_fun(DEFAULT_HW_BUSY_TITLE)
+
+            hw_intf_trezor.set_passphrase_always_on_device(hw_session, enabled)
+
+        return WndUtils.run_thread_dialog(set, (), True, show_window_delay_ms=100,
+                                          force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
+
+    elif hw_session.app_config.hw_type == HWType.keepkey:
+        raise Exception('Keepkey not supported.')
+    elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
+        raise Exception('Ledger Nano S is not supported.')
+    else:
+        logging.error('Invalid HW type: ' + str(hw_session.app_config.hw_type))
+
+
+@control_hw_call
+def set_wipe_code(hw_session: HwSessionInfo, enabled):
+    if hw_session.app_config.hw_type == HWType.trezor:
+        import hw_intf_trezor
+
+        def set(ctrl):
+            if ctrl:
+                ctrl.dlg_config_fun(dlg_title=DEFAULT_HW_BUSY_TITLE, show_progress_bar=False)
+                ctrl.display_msg_fun(DEFAULT_HW_BUSY_TITLE)
+
+            hw_intf_trezor.set_wipe_code(hw_session, enabled)
+
+        return WndUtils.run_thread_dialog(set, (), True, show_window_delay_ms=100,
+                                          force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
+
+    elif hw_session.app_config.hw_type == HWType.keepkey:
+        raise Exception('Keepkey not supported.')
+    elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
+        raise Exception('Ledger Nano S is not supported.')
     else:
         logging.error('Invalid HW type: ' + str(hw_session.app_config.hw_type))
 
@@ -662,7 +723,7 @@ def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemon
                                           True)
 
 
-def recovery_device(hw_type: HWType, hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool,
+def recover_device(hw_type: HWType, hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool,
                     hw_label: str, parent_window = None) -> Tuple[Optional[str], bool]:
     """
     :param hw_type: app_config.HWType
@@ -690,13 +751,13 @@ def recovery_device(hw_type: HWType, hw_device_id: str, word_count: int, passphr
         if hw_device_id:
             if hw_type == HWType.trezor:
 
-                from hw_intf_trezor import recovery_device
-                return recovery_device(hw_device_id, word_count, passphrase_enabled, pin_enabled, hw_label)
+                from hw_intf_trezor import recover_device
+                return recover_device(hw_device_id, word_count, passphrase_enabled, pin_enabled, hw_label)
 
             elif hw_type == HWType.keepkey:
 
-                from hw_intf_keepkey import recovery_device
-                return recovery_device(hw_device_id, word_count, passphrase_enabled, pin_enabled, hw_label)
+                from hw_intf_keepkey import recover_device
+                return recover_device(hw_device_id, word_count, passphrase_enabled, pin_enabled, hw_label)
 
             else:
                 raise Exception('Not supported by Ledger Nano S.')

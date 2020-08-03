@@ -20,6 +20,7 @@ from trezorlib.transport import Transport
 from trezorlib import messages as trezor_proto, exceptions, btc, messages
 from trezorlib.ui import PIN_CURRENT, PIN_NEW, PIN_CONFIRM
 from trezorlib import device
+import trezorlib.firmware as firmware
 
 import dash_utils
 import hw_common
@@ -273,22 +274,8 @@ def connect_trezor(device_id: Optional[str] = None,
         raise Exception(msg)
 
 
-def is_dash(coin):
-    return coin["coin_name"].lower().startswith("dash")
-
-
 def json_to_tx(tx_json):
     t = btc.from_json(tx_json)
-    # t = messages.TransactionType()
-    # t.version = tx_json["version"]
-    # t.lock_time = tx_json.get("locktime")
-
-    # if coin["decred"]:
-    #     t.expiry = tx_json["expiry"]
-
-    # t.inputs = [_json_to_input(coin, vin) for vin in tx_json["vin"]]
-    # t.bin_outputs = [_json_to_bin_output(coin, vout) for vout in tx_json["vout"]]
-
     dip2_type = tx_json.get("type", 0)
 
     if t.version == 3 and dip2_type != 0:
@@ -311,7 +298,6 @@ def json_to_tx(tx_json):
     t.version |= dip2_type << 16
 
     return t
-
 
 
 class MyTxApiInsight(object):
@@ -459,6 +445,20 @@ def enable_passphrase(hw_session: HwSessionInfo, passphrase_enabled):
         pass
 
 
+def set_passphrase_always_on_device(hw_session: HwSessionInfo, enabled: bool):
+    try:
+        device.apply_settings(hw_session.hw_client, passphrase_always_on_device=enabled)
+    except exceptions.Cancelled:
+        pass
+
+
+def set_wipe_code(hw_session: HwSessionInfo, remove=False):
+    if hw_session.hw_client:
+        device.change_wipe_code(hw_session.hw_client, remove)
+    else:
+        raise Exception('HW client not set.')
+
+
 def wipe_device(hw_device_id) -> Tuple[str, bool]:
     """
     :param hw_device_id:
@@ -497,7 +497,17 @@ def wipe_device(hw_device_id) -> Tuple[str, bool]:
         return hw_device_id, True  # cancelled by user
 
 
-def recovery_device(hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool, hw_label: str) \
+def firmware_update(hw_client, raw_data: bytes):
+    try:
+        return firmware.update(hw_client, raw_data)
+    except TrezorFailure as e:
+        if e.args and e.args[0] == 99:
+            raise CancelException('Cancelled')
+        else:
+            raise
+
+
+def recover_device(hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool, hw_label: str) \
         -> Tuple[str, bool]:
     """
     :param hw_device_id:

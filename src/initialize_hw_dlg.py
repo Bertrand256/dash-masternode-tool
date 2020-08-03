@@ -21,6 +21,7 @@ from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QDialog, QMenu, QApplication, QLineEdit, QShortcut, QMessageBox, QTableWidgetItem
 import app_cache
 import app_defs
+import hw_intf
 from dash_utils import pubkey_to_address
 from thread_fun_dlg import CtrlObject
 from ui import ui_initialize_hw_dlg
@@ -485,7 +486,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
         elif self.action_type == ACTION_RECOVER_FROM_WORDS_SAFE:
 
-            device_id, cancelled = recovery_device(self.hw_type, self.hw_device_id_selected, self.word_count,
+            device_id, cancelled = recover_device(self.hw_type, self.hw_device_id_selected, self.word_count,
                                                    self.hw_action_use_passphrase, self.hw_action_use_pin, self.hw_action_label, parent_window=self.main_ui)
 
         elif self.action_type == ACTION_INITIALIZE_NEW_SAFE:
@@ -548,14 +549,6 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             logging.exception('Exeption while counting firmware fingerprint')
             return None
 
-    def verify_hw_firmware_fingerprint(self, hw_model: str, data: ByteString, valid_fingerprint: str) \
-            -> Tuple[bool, str]:
-        if hw_model == '1':
-            cur_fp = hashlib.sha256(data[256:]).hexdigest()
-            if valid_fingerprint and cur_fp != valid_fingerprint:
-                return False, cur_fp
-        return True, valid_fingerprint
-
     def apply_upload_firmware(self) -> bool:
 
         def do_wipe(ctrl, hw_client):
@@ -611,12 +604,9 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                             continue
 
                     ret = self.run_thread_dialog(self.apply_upload_firmware_thread, (hw_client, wipe))
-                    if not ret:
-                        raise Exception('Unknown error while uploading firmware')
-                    else:
+                    if ret:
                         self.set_next_step(STEP_FINISHED)
-                        break
-
+                    break
                 finally:
                     for c in boot_clients:
                         try:
@@ -631,144 +621,198 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
         return ret
 
+    def verify_keepkey_firmware(self, firmware_fingerprint: str, data):
+        try:
+            if data[:8] == b'4b504b59':
+                data = binascii.unhexlify(data)
+        except Exception as e:
+            logging.exception('Error while decoding hex data.')
+            raise Exception(f'Error while decoding hex data: ' + str(e))
+
+        if data[:4] != b'KPKY':
+            raise Exception('KeepKey firmware header expected')
+
+        cur_fp = hashlib.sha256(data[256:]).hexdigest()
+        if firmware_fingerprint and cur_fp != firmware_fingerprint:
+            raise Exception("Fingerprints do not match, aborting.")
+
+    def verify_trezor_firmware(self, hw_client, firmware_fingerprint, firmware_data: bytes) -> bytes:
+        import trezorlib.firmware as firmware
+
+        ALLOWED_FIRMWARE_FORMATS = {
+            1: (firmware.FirmwareFormat.TREZOR_ONE, firmware.FirmwareFormat.TREZOR_ONE_V2),
+            2: (firmware.FirmwareFormat.TREZOR_T,),
+        }
+        f = hw_client.features
+        bootloader_version = (f.major_version, f.minor_version, f.patch_version)
+        bootloader_onev2 = f.major_version == 1 and bootloader_version >= (1, 8, 0)
+
+        try:
+            version, fw = firmware.parse(firmware_data)
+        except Exception as e:
+            raise Exception(f'Error while parsing firmware data: ' + str(e))
+
+        try:
+            firmware.validate(version, fw, allow_unsigned=False)
+            log.info("Signatures are valid.")
+        except firmware.Unsigned:
+            if self.queryDlg('No signatures found. Continue?',
+                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                             default_button=QMessageBox.Cancel,
+                             icon=QMessageBox.Warning) == QMessageBox.Yes:
+                raise CancelException('Cancelled')
+
+            try:
+                firmware.validate(version, fw, allow_unsigned=True)
+                log.info("Unsigned firmware looking OK.")
+            except firmware.FirmwareIntegrityError as e:
+                raise Exception("Firmware validation failed, aborting.")
+        except firmware.FirmwareIntegrityError as e:
+            raise Exception("Firmware validation failed, aborting.")
+
+        fingerprint = firmware.digest(version, fw).hex()
+        log.info(f"Firmware fingerprint: {fingerprint}")
+        if firmware_fingerprint and fingerprint != firmware_fingerprint:
+            raise Exception("Fingerprints do not match, aborting.")
+
+        if bootloader_onev2 and version == firmware.FirmwareFormat.TREZOR_ONE and not fw.embedded_onev2:
+            raise Exception("Firmware is too old for your device. Aborting.")
+        elif not bootloader_onev2 and version == firmware.FirmwareFormat.TREZOR_ONE_V2:
+            raise Exception("You need to upgrade to bootloader 1.8.0 first.")
+
+        if f.major_version not in ALLOWED_FIRMWARE_FORMATS:
+            raise Exception("Unknown device version. Aborting.")
+        elif version not in ALLOWED_FIRMWARE_FORMATS[f.major_version]:
+            raise Exception("Firmware does not match your device, aborting.")
+
+        # special handling for embedded-OneV2 format:
+        # for bootloader < 1.8, keep the embedding
+        # for bootloader 1.8.0 and up, strip the old OneV1 header
+        if bootloader_onev2 and firmware_data[:4] == b"TRZR" and firmware_data[256: 256 + 4] == b"TRZF":
+            log.info("Extracting embedded firmware image (fingerprint may change).")
+            firmware_data = firmware_data[256:]
+        return firmware_data
+
     def apply_upload_firmware_thread(self, ctrl: CtrlObject, hw_client, wipe_data: bool) -> bool:
         ret = False
         ctrl.dlg_config_fun(dlg_title='Firmware update')
         firmware_fingerprint = None
-        firmware_hw_model = None
 
-        if self.hw_firmware_source_type == 0:
-            local_file_path = self.hw_firmware_source_file
-            with open(local_file_path, 'rb') as fptr:
-                data = fptr.read()
+        try:
+            if self.hw_firmware_source_type == 0:
+                local_file_path = self.hw_firmware_source_file
+                with open(local_file_path, 'rb') as fptr:
+                    data = fptr.read()
 
-        elif self.hw_firmware_source_type == 1:
-            ctrl.display_msg_fun('Downloading firmware, please wait....')
-            url = self.hw_firmware_url_selected.get('url')
-            firmware_fingerprint = self.hw_firmware_url_selected.get("fingerprint")
-            firmware_hw_model = self.hw_firmware_url_selected.get('model')
-            file_name = os.path.basename(urllib.parse.urlparse(url).path)
-            local_file_path = os.path.join(self.main_ui.app_config.cache_dir, file_name)
+            elif self.hw_firmware_source_type == 1:
+                ctrl.display_msg_fun('Downloading firmware, please wait....')
+                url = self.hw_firmware_url_selected.get('url')
+                firmware_fingerprint = self.hw_firmware_url_selected.get("fingerprint")
+                file_name = os.path.basename(urllib.parse.urlparse(url).path)
+                local_file_path = os.path.join(self.main_ui.app_config.cache_dir, file_name)
 
-            response = urllib.request.urlopen(url, context=ssl._create_unverified_context())
-            data = response.read()
-            try:
-                # save firmware file in cache
-                with open(local_file_path, 'wb') as out_fptr:
-                    out_fptr.write(data)
-            except Exception as e:
-                pass
-        else:
-            raise Exception('Invalid firmware source')
+                response = urllib.request.urlopen(url, context=ssl._create_unverified_context())
+                data = response.read()
+                try:
+                    # save firmware file in cache
+                    with open(local_file_path, 'wb') as out_fptr:
+                        out_fptr.write(data)
+                except Exception as e:
+                    pass
+            else:
+                raise Exception('Invalid firmware source')
 
-        if data:
-            ctrl.display_msg_fun('<b>Uploading firmware...</b>'
-                                 '<br>Click the confirmation button on your device if necessary.')
-            with open(local_file_path, 'rb') as fptr:
-                data = fptr.read()
+            if data:
+                ctrl.display_msg_fun('<b>Uploading firmware...</b>'
+                                     '<br>Click the confirmation button on your device if necessary.')
+                with open(local_file_path, 'rb') as fptr:
+                    data = fptr.read()
 
-                if self.hw_type == HWType.trezor:
-
-                    try:
+                    if self.hw_type == HWType.trezor:
                         if data[:8] == b'54525a52' or data[:8] == b'54525a56':
                             data = binascii.unhexlify(data)
-                    except Exception as e:
-                        logging.exception('Error while decoding hex data.')
-                        raise Exception(f'Error while decoding hex data: ' + str(e))
+                        data = self.verify_trezor_firmware(hw_client, firmware_fingerprint, data)
+                        hw_intf.firmware_update(hw_client, data)
+                        ret = True
 
-                    if data[:4] != b'TRZR' and data[:4] != b'TRZV':
-                        raise Exception('TREZOR firmware header expected')
-
-                elif self.hw_type == HWType.keepkey:
-
-                    try:
+                    elif self.hw_type == HWType.keepkey:
                         if data[:8] == b'4b504b59':
                             data = binascii.unhexlify(data)
-                    except Exception as e:
-                        logging.exception('Error while decoding hex data.')
-                        raise Exception(f'Error while decoding hex data: ' + str(e))
+                        self.verify_keepkey_firmware(firmware_fingerprint, data)
+                        hw_intf.firmware_update(hw_client, data)
+                        ret = True
 
-                    if data[:4] != b'KPKY':
-                        raise Exception('KeepKey firmware header expected')
-
-                if firmware_fingerprint and firmware_hw_model:
-                    valid, cur_fp = self.verify_hw_firmware_fingerprint(firmware_hw_model, data, firmware_fingerprint)
-
-                    if not valid:
-                        raise Exception(f'Firmware fingerpring mismatch, expected: '
-                                        f'{firmware_fingerprint}, current: {cur_fp}')
-
-                ret = hw_client.firmware_update(fp=BytesIO(data))
-
+        except CancelException:
+            ret = False
+        except Exception as e:
+            log.exception(str(e))
+            self.errorMsg(str(e))
+            ret = False
         return ret
 
     @pyqtSlot(bool)
     def on_btnNext_clicked(self, clicked):
-        success = False
-        if self.current_step == STEP_SELECT_DEVICE_TYPE:
+        try:
+            success = False
+            if self.current_step == STEP_SELECT_DEVICE_TYPE:
+                success = self.apply_step_select_device_type()
 
-            success = self.apply_step_select_device_type()
+            elif self.current_step == STEP_SELECT_DEVICE_INSTANCE:
+                success = self.apply_step_select_device_id()
 
-        elif self.current_step == STEP_SELECT_DEVICE_INSTANCE:
+            elif self.current_step == STEP_SELECT_ACTION:
+                success = self.apply_step_select_action()
 
-            success = self.apply_step_select_device_id()
+            elif self.current_step == STEP_INPUT_NUMBER_OF_WORDS:
+                success = self.apply_step_select_number_of_words()
 
-        elif self.current_step == STEP_SELECT_ACTION:
+            elif self.current_step == STEP_INPUT_ENTROPY:
+                success = self.apply_step_input_entropy()
 
-            success = self.apply_step_select_action()
+            elif self.current_step == STEP_INPUT_WORDS:
+                success = self.apply_step_input_words()
 
-        elif self.current_step == STEP_INPUT_NUMBER_OF_WORDS:
+            elif self.current_step == STEP_INPUT_HW_OPTIONS:
+                 success = self.apply_step_input_hw_options()
 
-            success = self.apply_step_select_number_of_words()
+            elif self.current_step == STEP_FINISHED:
+                self.close()
 
-        elif self.current_step == STEP_INPUT_ENTROPY:
+            elif self.current_step == STEP_INPUT_FIRMWARE_SOURCE:
+                success = self.apply_input_firmware_source()
 
-            success = self.apply_step_input_entropy()
+            elif self.current_step == STEP_UPLOAD_FIRMWARE:
+                success = self.apply_upload_firmware()
 
-        elif self.current_step == STEP_INPUT_WORDS:
+            else:
+                raise Exception("Internal error: invalid step.")
 
-            success = self.apply_step_input_words()
-
-        elif self.current_step == STEP_INPUT_HW_OPTIONS:
-
-             success = self.apply_step_input_hw_options()
-
-        elif self.current_step == STEP_FINISHED:
-
-            self.close()
-
-        elif self.current_step == STEP_INPUT_FIRMWARE_SOURCE:
-
-            success = self.apply_input_firmware_source()
-
-        elif self.current_step == STEP_UPLOAD_FIRMWARE:
-
-            success = self.apply_upload_firmware()
-
-        else:
-            raise Exception("Internal error: invalid step.")
-
-        if success:
-            self.update_current_tab()
-            self.btnBack.setEnabled(True)
+            if success:
+                self.update_current_tab()
+                self.btnBack.setEnabled(True)
+        except Exception as e:
+            self.errorMsg(str(e))
 
     @pyqtSlot(bool)
     def on_btnBack_clicked(self, clicked):
-        if self.current_step > 0:
-            if self.current_step == STEP_FINISHED:
-                self.btnNext.setText('Continue')
+        try:
+            if self.current_step > 0:
+                if self.current_step == STEP_FINISHED:
+                    self.btnNext.setText('Continue')
 
-            if self.current_step == STEP_INPUT_ENTROPY:
-                if self.action_type in (ACTION_RECOVER_FROM_ENTROPY,):
-                    # clear the generated words
-                    for idx in range(len(self.mnemonic_words)):
-                        self.mnemonic_words[idx] = ''
+                if self.current_step == STEP_INPUT_ENTROPY:
+                    if self.action_type in (ACTION_RECOVER_FROM_ENTROPY,):
+                        # clear the generated words
+                        for idx in range(len(self.mnemonic_words)):
+                            self.mnemonic_words[idx] = ''
 
-            self.current_step = self.step_history.pop()
-            self.apply_current_step_to_ui()
-            if self.current_step == 0:
-                self.btnBack.setEnabled(False)
-            self.update_current_tab()
+                self.current_step = self.step_history.pop()
+                self.apply_current_step_to_ui()
+                if self.current_step == 0:
+                    self.btnBack.setEnabled(False)
+                self.update_current_tab()
+        except Exception as e:
+            self.errorMsg(str(e))
 
     def update_current_tab(self):
         # display/hide controls on the current page (step), depending on the options set in prevous steps
@@ -978,7 +1022,10 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         self.close()
 
     def connect_hardware_wallet(self):
-        return self.main_ui.connect_hardware_wallet()
+        try:
+            return self.main_ui.connect_hardware_wallet()
+        except Exception as e:
+            self.errorMsg(str(e))
 
     def set_word_count(self, word_count, checked=True):
         if checked:
@@ -996,7 +1043,10 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
     @pyqtSlot(QPoint)
     def on_viewMnemonic_customContextMenuRequested(self, point):
-        self.popMenuWords.exec_(self.viewMnemonic.mapToGlobal(point))
+        try:
+            self.popMenuWords.exec_(self.viewMnemonic.mapToGlobal(point))
+        except Exception as e:
+            self.errorMsg(str(e))
 
     def get_cur_mnemonic_words(self):
         ws = []
@@ -1007,29 +1057,38 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         return ws
 
     def on_actCopyWords_triggered(self):
-        ws = self.get_cur_mnemonic_words()
-        ws_str = '\n'.join(ws)
-        clipboard = QApplication.clipboard()
-        if clipboard:
-            clipboard.setText(ws_str)
+        try:
+            ws = self.get_cur_mnemonic_words()
+            ws_str = '\n'.join(ws)
+            clipboard = QApplication.clipboard()
+            if clipboard:
+                clipboard.setText(ws_str)
+        except Exception as e:
+            self.errorMsg(str(e))
 
     def on_actPasteWords_triggered(self):
-        clipboard = QApplication.clipboard()
-        if clipboard:
-            ws_str = clipboard.text()
-            if isinstance(ws_str, str):
-                ws_str = ws_str.replace('\n',' ').replace('\r',' ').replace(",",' ')
-                ws = ws_str.split()
-                for idx, w in enumerate(ws):
-                    if idx >= self.word_count:
-                        break
-                    self.mnemonic_words[idx] = w
-                self.grid_model.refresh_view()
+        try:
+            clipboard = QApplication.clipboard()
+            if clipboard:
+                ws_str = clipboard.text()
+                if isinstance(ws_str, str):
+                    ws_str = ws_str.replace('\n',' ').replace('\r',' ').replace(",",' ')
+                    ws = ws_str.split()
+                    for idx, w in enumerate(ws):
+                        if idx >= self.word_count:
+                            break
+                        self.mnemonic_words[idx] = w
+                    self.grid_model.refresh_view()
+        except Exception as e:
+            self.errorMsg(str(e))
 
     @pyqtSlot(bool)
     def on_btnHwOptionsDetails_clicked(self):
-        self.hw_options_details_visible = not self.hw_options_details_visible
-        self.update_current_tab()
+        try:
+            self.hw_options_details_visible = not self.hw_options_details_visible
+            self.update_current_tab()
+        except Exception as e:
+            self.errorMsg(str(e))
 
     @staticmethod
     def bip32_descend(*args):
@@ -1071,20 +1130,32 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
     @pyqtSlot(bool)
     def on_btnRefreshAddressesPreview_clicked(self, check):
-        self.refresh_adresses_preview()
+        try:
+            self.refresh_adresses_preview()
+        except Exception as e:
+            self.errorMsg(str(e))
 
     @pyqtSlot(bool)
     def on_btnPreviewShowNextAddresses_clicked(self, check):
-        self.preview_address_count += PREVIEW_ADDRESSES_PER_PAGE
-        self.refresh_adresses_preview()
+        try:
+            self.preview_address_count += PREVIEW_ADDRESSES_PER_PAGE
+            self.refresh_adresses_preview()
+        except Exception as e:
+            self.errorMsg(str(e))
 
     @pyqtSlot()
     def on_edtHwOptionsPassphrase_returnPressed(self):
-        self.refresh_adresses_preview()
+        try:
+            self.refresh_adresses_preview()
+        except Exception as e:
+            self.errorMsg(str(e))
 
     @pyqtSlot()
     def on_edtHwOptionsBip32Path_returnPressed(self):
-        self.refresh_adresses_preview()
+        try:
+            self.refresh_adresses_preview()
+        except Exception as e:
+            self.errorMsg(str(e))
 
     def load_hw_devices(self):
         """
@@ -1124,9 +1195,12 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
     @pyqtSlot(bool)
     def on_device_type_changed(self, checked):
-        if checked:
-            self.read_device_type_from_ui()
-            self.update_current_tab()
+        try:
+            if checked:
+                self.read_device_type_from_ui()
+                self.update_current_tab()
+        except Exception as e:
+            self.errorMsg(str(e))
 
     def read_device_type_from_ui(self):
         if self.rbDeviceTrezor.isChecked():
@@ -1140,97 +1214,121 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
     @pyqtSlot(bool)
     def on_rbActionType_changed(self, checked):
-        if checked:
-            self.read_action_type_from_ui()
-            self.update_current_tab()
+        try:
+            if checked:
+                self.read_action_type_from_ui()
+                self.update_current_tab()
+        except Exception as e:
+            self.errorMsg(str(e))
 
     @pyqtSlot(str)
     def on_lblStepDeviceTypeMessage_linkActivated(self, link_text):
-        text = '<h4>To enable hardware wallet devices on your linux system execute the following commands from ' \
-               'the command line.</h4>' \
-               '<b>For Trezor hardware wallets:</b><br>' \
-               '<code>echo "SUBSYSTEM==\\"usb\\", ATTR{idVendor}==\\"534c\\", ATTR{idProduct}==\\"0001\\", ' \
-               'TAG+=\\"uaccess\\", TAG+=\\"udev-acl\\", SYMLINK+=\\"trezor%n\\"" | ' \
-               'sudo tee /etc/udev/rules.d/51-trezor-udev.rules<br>' \
-               'sudo udevadm trigger<br>'\
-               'sudo udevadm control --reload-rules' \
-               '</code><br><br>' \
-               '<b>For Keepkey hardware wallets:</b><br>' \
-               '<code>echo "SUBSYSTEM==\\"usb\\", ATTR{idVendor}==\\"2b24\\", ATTR{idProduct}==\\"0001\\", ' \
-               'MODE=\\"0666\\", GROUP=\\"dialout\\", SYMLINK+=\\"keepkey%n\\"" | ' \
-               'sudo tee /etc/udev/rules.d/51-usb-keepkey.rules'\
-               '<br>echo "KERNEL==\\"hidraw*\\", ATTRS{idVendor}==\\"2b24\\", ATTRS{idProduct}==\\"0001\\", ' \
-               'MODE=\\"0666\\", GROUP=\\"dialout\\"" | sudo tee -a /etc/udev/rules.d/51-usb-keepkey.rules<br>' \
-               'sudo udevadm trigger<br>'\
-               'sudo udevadm control --reload-rules' \
-               '</code><br><br>' \
-               '<b>For Ledger hardware wallets:</b><br>' \
-               '<code>echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"1b7c\\", ' \
-               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee /etc/udev/rules.d/20-hw1.rules<br>' \
-               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"2b7c\\", ' \
-               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
-               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"3b7c\\", ' \
-               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
-               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"4b7c\\", ' \
-               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
-               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"1807\\", ' \
-               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
-               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"1808\\", ' \
-               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
-               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2c97\\", ATTRS{idProduct}==\\"0000\\", ' \
-               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
-               'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2c97\\", ATTRS{idProduct}==\\"0001\\", ' \
-               'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
-               'sudo udevadm trigger<br>'\
-               'sudo udevadm control --reload-rules' \
-               '</code>'
-        style_sheet = 'font-size:12px'
-        show_doc_dlg(self, text, style_sheet, 'Help')
+        try:
+            text = '<h4>To enable hardware wallet devices on your linux system execute the following commands from ' \
+                   'the command line.</h4>' \
+                   '<b>For Trezor hardware wallets:</b><br>' \
+                   '<code>echo "SUBSYSTEM==\\"usb\\", ATTR{idVendor}==\\"534c\\", ATTR{idProduct}==\\"0001\\", ' \
+                   'TAG+=\\"uaccess\\", TAG+=\\"udev-acl\\", SYMLINK+=\\"trezor%n\\"" | ' \
+                   'sudo tee /etc/udev/rules.d/51-trezor-udev.rules<br>' \
+                   'sudo udevadm trigger<br>'\
+                   'sudo udevadm control --reload-rules' \
+                   '</code><br><br>' \
+                   '<b>For Keepkey hardware wallets:</b><br>' \
+                   '<code>echo "SUBSYSTEM==\\"usb\\", ATTR{idVendor}==\\"2b24\\", ATTR{idProduct}==\\"0001\\", ' \
+                   'MODE=\\"0666\\", GROUP=\\"dialout\\", SYMLINK+=\\"keepkey%n\\"" | ' \
+                   'sudo tee /etc/udev/rules.d/51-usb-keepkey.rules'\
+                   '<br>echo "KERNEL==\\"hidraw*\\", ATTRS{idVendor}==\\"2b24\\", ATTRS{idProduct}==\\"0001\\", ' \
+                   'MODE=\\"0666\\", GROUP=\\"dialout\\"" | sudo tee -a /etc/udev/rules.d/51-usb-keepkey.rules<br>' \
+                   'sudo udevadm trigger<br>'\
+                   'sudo udevadm control --reload-rules' \
+                   '</code><br><br>' \
+                   '<b>For Ledger hardware wallets:</b><br>' \
+                   '<code>echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"1b7c\\", ' \
+                   'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee /etc/udev/rules.d/20-hw1.rules<br>' \
+                   'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"2b7c\\", ' \
+                   'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
+                   'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"3b7c\\", ' \
+                   'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
+                   'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"4b7c\\", ' \
+                   'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
+                   'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"1807\\", ' \
+                   'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
+                   'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2581\\", ATTRS{idProduct}==\\"1808\\", ' \
+                   'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
+                   'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2c97\\", ATTRS{idProduct}==\\"0000\\", ' \
+                   'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
+                   'echo "SUBSYSTEMS==\\"usb\\", ATTRS{idVendor}==\\"2c97\\", ATTRS{idProduct}==\\"0001\\", ' \
+                   'MODE=\\"0660\\", GROUP=\\"plugdev\\"" | sudo tee -a /etc/udev/rules.d/20-hw1.rules<br>' \
+                   'sudo udevadm trigger<br>'\
+                   'sudo udevadm control --reload-rules' \
+                   '</code>'
+            style_sheet = 'font-size:12px'
+            show_doc_dlg(self, text, style_sheet, 'Help')
+        except Exception as e:
+            self.errorMsg(str(e))
 
     @pyqtSlot(bool)
     def on_rbFirmwareSourceInternet_toggled(self, checked):
-        if checked:
-            self.hw_firmware_source_type = 1
-            self.update_current_tab()
+        try:
+            if checked:
+                self.hw_firmware_source_type = 1
+                self.update_current_tab()
+        except Exception as e:
+            self.errorMsg(str(e))
 
     @pyqtSlot(bool)
     def on_rbFirmwareSourceLocalFile_toggled(self, checked):
-        if checked:
-            self.hw_firmware_source_type = 0
-            self.update_current_tab()
+        try:
+            if checked:
+                self.hw_firmware_source_type = 0
+                self.update_current_tab()
+        except Exception as e:
+            self.errorMsg(str(e))
 
     @pyqtSlot(bool)
     def on_rbTrezorModelOne_toggled(self, checked):
-        if checked:
-            self.hw_model = '1'
-            self.update_current_tab()
+        try:
+            if checked:
+                self.hw_model = '1'
+                self.update_current_tab()
+        except Exception as e:
+            self.errorMsg(str(e))
 
     @pyqtSlot(bool)
     def on_rbTrezorModelT_toggled(self, checked):
-        if checked:
-            self.hw_model = 'T'
-            self.update_current_tab()
+        try:
+            if checked:
+                self.hw_model = 'T'
+                self.update_current_tab()
+        except Exception as e:
+            self.errorMsg(str(e))
 
     @pyqtSlot(bool)
     def on_btnChooseFirmwareFile_clicked(self, checked):
-        last_file = app_cache.get_value(CACHE_ITEM_LAST_FIRMWARE_FILE, '', str)
-        dir = os.path.dirname(last_file)
+        try:
+            last_file = app_cache.get_value(CACHE_ITEM_LAST_FIRMWARE_FILE, '', str)
+            dir = os.path.dirname(last_file)
 
-        file_name = WndUtils.open_file_query(self, self.app_config,
-                                             message='Enter the path to the firmware file',
-                                             directory=dir,
-                                             filter="All Files (*);;BIN files (*.bin)",
-                                             initial_filter="BIN files (*.bin)")
-        if file_name:
-            app_cache.set_value(CACHE_ITEM_LAST_FIRMWARE_FILE, file_name)
-            self.hw_firmware_source_file = file_name
-            self.edtFirmareFilePath.setText(file_name)
-            if self.hw_type == HWType.trezor and self.hw_model == '1':
-                fp = self.get_file_fingerprint(file_name, 256)
+            file_name = WndUtils.open_file_query(self, self.app_config,
+                                                 message='Enter the path to the firmware file',
+                                                 directory=dir,
+                                                 filter="All Files (*);;BIN files (*.bin)",
+                                                 initial_filter="BIN files (*.bin)")
+            if file_name:
+                app_cache.set_value(CACHE_ITEM_LAST_FIRMWARE_FILE, file_name)
+                self.hw_firmware_source_file = file_name
+                self.edtFirmareFilePath.setText(file_name)
+                if self.hw_type == HWType.trezor and self.hw_model == '1':
+                    fp = self.get_file_fingerprint(file_name, 256)
+        except Exception as e:
+            self.errorMsg(str(e))
 
     @pyqtSlot(str)
     def on_edtFirmwareFilePath_textChanged(self, text):
-        self.hw_firmware_source_file = text
+        try:
+            self.hw_firmware_source_file = text
+        except Exception as e:
+            self.errorMsg(str(e))
 
     def load_remote_firmware_list(self):
         self.run_thread_dialog(self.load_remote_firmware_list_thread, (), center_by_window=self)
@@ -1359,11 +1457,14 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                 self.tabFirmwareWebSources.setColumnWidth(idx, max_col_width)
 
     def on_tabFirmwareWebSources_itemSelectionChanged(self):
-        idx = self.tabFirmwareWebSources.currentIndex()
-        row_index = -1
-        if idx:
-            row_index = idx.row()
-        self.select_firmware(row_index)
+        try:
+            idx = self.tabFirmwareWebSources.currentIndex()
+            row_index = -1
+            if idx:
+                row_index = idx.row()
+            self.select_firmware(row_index)
+        except Exception as e:
+            self.errorMsg(str(e))
 
     def select_firmware(self, row_index):
         if row_index >= 0:

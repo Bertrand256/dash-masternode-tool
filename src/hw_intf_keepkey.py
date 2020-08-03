@@ -449,7 +449,7 @@ def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphra
         return hw_device_id, True  # cancelled by user
 
 
-def recovery_device(hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool, hw_label: str) \
+def recover_device(hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool, hw_label: str) \
         -> Tuple[str, bool]:
     """
     :param hw_device_id:
