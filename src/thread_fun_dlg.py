@@ -279,10 +279,10 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
 
 class CtrlObject(object):
     def __init__(self):
-        self.display_msg_fun: Callable[[str], None] = None
-        self.set_progress_value_fun: Callable[[int], None] = None
-        self.dlg_config_fun: Callable[[bool, bool, str, int],None] = None
-        self.show_dialog_fun: Callable[[bool], None] = None
+        self.display_msg_fun: Optional[Callable[[str], None]] = None
+        self.set_progress_value_fun: Optional[Callable[[int], None]] = None
+        self.dlg_config_fun: Optional[Callable[[bool, bool, str, int], None]] = None
+        self.show_dialog_fun: Optional[Callable[[bool], None]] = None
         self.finish: bool = False
         self.__msg_label = None
 
