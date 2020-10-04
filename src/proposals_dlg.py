@@ -1606,7 +1606,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         db_oper_duration = 0.0
                         db_oper_count = 0
                         network_duration = 0.0
-                        node_info = self.dashd_intf.rpc_call(False, False, 'getinfo')
+                        node_info = self.dashd_intf.rpc_call(False, False, 'getnetworkinfo')
                         if node_info.get('version', 140000) < 140000:
                             getvotes_fun_name = 'getvotes'
                         else:
