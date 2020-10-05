@@ -840,7 +840,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     t += '<br>'
                 # t += f'<span style="{s}">{m.message}</span><a href="{str(m_id)}"><img height={h} src="{img_path+"/highlight-off@16px"}"></img></a>'
                 t += f'<span style="{s}">{m.message}</span>&nbsp;' \
-                    f'<span style="display:inline-box"><a style="text-decoration:none;color:black;" href="{str(m_id)}">\u274E</img></a><span>'
+                    f'<span style="display:inline-box"><a style="text-decoration:none;color:black;" href="{str(m_id)}">\u2715</img></a><span>'
 
         if not t:
             self.lblMessage.setVisible(False)

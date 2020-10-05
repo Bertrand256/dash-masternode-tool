@@ -104,7 +104,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
 
         # layout for button for reading RPC configuration from remote host over SSH:
         hl = QHBoxLayout()
-        self.btnSshReadRpcConfig = QPushButton("\u2B07 Read RPC configuration from SSH host \u2B07")
+        self.btnSshReadRpcConfig = QPushButton("\u2193 Read RPC configuration from SSH host \u2193")
         self.btnSshReadRpcConfig.clicked.connect(self.on_btnSshReadRpcConfig_clicked)
         hl.addWidget(self.btnSshReadRpcConfig)
         hl.addStretch()
@@ -127,7 +127,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
 
         # layout for the 'test connection' button:
         hl = QHBoxLayout()
-        self.btnTestConnection = QPushButton("\u2705 Test connection")
+        self.btnTestConnection = QPushButton("\u2713 Test connection")
         self.btnTestConnection.clicked.connect(self.on_btnTestConnection_clicked)
         sp = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)
         sp.setHorizontalStretch(0)
