@@ -110,24 +110,25 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
                 if (not client.features.bootloader_mode or allow_bootloader_mode) and \
                     (client.features.device_id not in device_ids or client.features.bootloader_mode):
 
+                    device_id = client.features.device_id if client.features.device_id else 'unknown_id'
                     version = f'{client.features.major_version}.{client.features.minor_version}.' \
                               f'{client.features.patch_version}'
                     if client.features.label:
                         desc = client.features.label
                     else:
                         desc = '[UNNAMED]'
-                    desc = f'{desc} (ver: {version}, id: {client.features.device_id})'
+                    desc = f'{desc} (ver: {version}, id: {device_id})'
 
                     c = {
                         'client': client,
-                        'device_id': client.features.device_id,
+                        'device_id': device_id,
                         'desc': desc,
                         'model': client.features.model,
                         'bootloader_mode': client.features.bootloader_mode
                     }
 
                     ret_list.append(c)
-                    device_ids.append(client.features.device_id)  # beware: it's empty in bootloader mode
+                    device_ids.append(device_id)  # beware: it's empty in bootloader mode
                 else:
                     # the same device is already connected using different connection medium
                     client.close()
@@ -355,16 +356,16 @@ def sign_message(hw_session: HwSessionInfo, bip32path, message):
             raise
 
 
-def change_pin(hw_session: HwSessionInfo, remove=False):
-    if hw_session.hw_client:
-        hw_session.hw_client.change_pin(remove)
+def change_pin(hw_client, remove=False):
+    if hw_client:
+        hw_client.change_pin(remove)
     else:
         raise Exception('HW client not set.')
 
 
-def apply_settings(hw_session: HwSessionInfo, label=None, language=None, use_passphrase=None, homescreen=None):
-    if hw_session.hw_client:
-        hw_session.hw_client.apply_settings()
+def apply_settings(hw_client, label=None, language=None, use_passphrase=None, homescreen=None):
+    if hw_client:
+        hw_client.apply_settings()
     else:
         raise Exception('HW client not set.')
 
