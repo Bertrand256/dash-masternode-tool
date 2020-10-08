@@ -1606,11 +1606,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         db_oper_duration = 0.0
                         db_oper_count = 0
                         network_duration = 0.0
-                        node_info = self.dashd_intf.rpc_call(False, False, 'getinfo')
-                        if node_info.get('version', 140000) < 140000:
-                            getvotes_fun_name = 'getvotes'
-                        else:
-                            getvotes_fun_name = 'getcurrentvotes'
 
                         for row_idx, prop in enumerate(proposals):
                             try:
@@ -1620,7 +1615,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 self.display_message('Reading voting data %d of %d' % (row_idx+1, len(proposals)))
                                 tm_begin = time.time()
                                 try:
-                                    votes = self.dashd_intf.rpc_call(False, False, 'gobject', getvotes_fun_name,
+                                    votes = self.dashd_intf.rpc_call(False, False, 'gobject', 'getcurrentvotes',
                                                                      prop.get_value('hash'))
                                 except Exception:
                                     log.exception('Exception occurred while calling getvotes')

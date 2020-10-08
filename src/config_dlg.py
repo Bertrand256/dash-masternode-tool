@@ -854,7 +854,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             dashd_intf.initialize(self.local_config, connection=self.current_network_cfg,
                                   for_testing_connections_only=True)
             try:
-                info = dashd_intf.getinfo(verify_node=True)
+                info = dashd_intf.getblockchaininfo(verify_node=True)
                 if info:
                     try:
                         ret = dashd_intf.rpc_call(True, False, "checkfeaturesupport", "enhanced_proxy")

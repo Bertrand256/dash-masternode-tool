@@ -913,11 +913,11 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
-    def getinfo(self, verify_node: bool = True):
+    def getblockchaininfo(self, verify_node: bool = True):
         if self.open():
-            info = self.proxy.getinfo()
+            info = self.proxy.getblockchaininfo()
             if verify_node:
-                node_under_testnet = info.get('testnet')
+                node_under_testnet = (info.get('chain') == 'test')
                 if self.app_config.is_testnet() and not node_under_testnet:
                     raise Exception('This RPC node works under Dash MAINNET, but your current configuration is '
                                     'for TESTNET.')
@@ -1335,13 +1335,6 @@ class DashdInterface(WndUtils):
     def listaddressbalances(self, minfee):
         if self.open():
             return self.proxy.listaddressbalances(minfee)
-        else:
-            raise Exception('Not connected')
-
-    @control_rpc_call
-    def getblockchaininfo(self):
-        if self.open():
-            return self.proxy.getblockchaininfo()
         else:
             raise Exception('Not connected')
 

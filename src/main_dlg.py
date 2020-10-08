@@ -98,7 +98,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.app_config,
             dashd_intf=self.dashd_intf)
 
-        self.dashd_info = {}
         self.is_dashd_syncing = False
         self.dashd_connection_ok = False
         self.connecting_to_dashd = False
@@ -745,7 +744,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             """
             try:
                 synced = self.dashd_intf.issynchronized()
-                self.dashd_info = self.dashd_intf.getinfo(verify_node=True)
+                self.dashd_intf.getblockchaininfo(verify_node=True)
                 self.dashd_connection_ok = True
                 if not synced:
                     logging.info("dashd not synced")
@@ -1039,6 +1038,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def btnConnectTrezorClick(self):
         try:
             self.connect_hardware_wallet()
+        except CancelException:
+            return
         except Exception as e:
             self.errorMsg(str(e))
 
@@ -1255,7 +1256,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                                  default_button=QMessageBox.Yes) == QMessageBox.Yes:
                                     # scan all Dash addresses from imported masternodes for BIP32 path, starting from
                                     # first standard Dash BIP32 path
-                                    if not self.connect_hardware_wallet():
+                                    try:
+                                        if not self.connect_hardware_wallet():
+                                            return
+                                    except CancelException:
                                         return
 
                                     addresses_to_scan = []
@@ -1990,6 +1994,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         ui = SignMessageDlg(self, self.hw_session, self.cur_masternode.collateralBip32Path,
                                             self.cur_masternode.collateralAddress)
                         ui.exec_()
+            except CancelException:
+                return
             except Exception as e:
                 self.errorMsg(str(e))
         else:
@@ -2035,6 +2041,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if self.hw_client:
                 ui = HwSetupDlg(self)
                 ui.exec_()
+        except CancelException:
+            pass
         except Exception as e:
             self.errorMsg(str(e))
 
