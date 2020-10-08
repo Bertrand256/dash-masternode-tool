@@ -402,89 +402,99 @@ def hw_sign_message(hw_session: HwSessionInfo, bip32path, message, display_label
     return sig
 
 
-@control_hw_call
-def change_pin(hw_session: HwSessionInfo, remove=False):
-    if hw_session.app_config.hw_type == HWType.trezor:
+def change_pin(hw_client, remove=False):
+    hw_type = get_hw_type(hw_client)
+    if hw_type == HWType.trezor:
         import hw_intf_trezor as trezor
 
-        return trezor.change_pin(hw_session, remove)
+        return trezor.change_pin(hw_client, remove)
 
-    elif hw_session.app_config.hw_type == HWType.keepkey:
+    elif hw_type == HWType.keepkey:
         import hw_intf_keepkey as keepkey
 
-        return keepkey.change_pin(hw_session, remove)
+        return keepkey.change_pin(hw_client, remove)
 
-    elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
-
-        raise Exception('Ledger Nano S is not supported.')
-
-    else:
-        logging.error('Invalid HW type: ' + str(hw_session.app_config.hw_type))
-
-
-@control_hw_call
-def enable_passphrase(hw_session: HwSessionInfo, passphrase_enabled):
-    if hw_session.app_config.hw_type == HWType.trezor:
-        import hw_intf_trezor
-
-        hw_intf_trezor.enable_passphrase(hw_session, passphrase_enabled)
-
-    elif hw_session.app_config.hw_type == HWType.keepkey:
-
-        hw_session.hw_client.apply_settings(use_passphrase=passphrase_enabled)
-
-    elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
+    elif hw_type == HWType.ledger_nano_s:
 
         raise Exception('Ledger Nano S is not supported.')
 
     else:
-        logging.error('Invalid HW type: ' + str(hw_session.app_config.hw_type))
+        logging.error('Invalid HW type: ' + str(hw_type))
 
 
-@control_hw_call
-def set_passphrase_always_on_device(hw_session: HwSessionInfo, enabled):
-    if hw_session.app_config.hw_type == HWType.trezor:
+def action_on_device_message(message=DEFAULT_HW_BUSY_MESSAGE, title=DEFAULT_HW_BUSY_TITLE):
+    def decorator_f(func):
+        def wrapped_f(*args, **kwargs):
+            hw_client = None
+            hw_client_names = ('MyTrezorClient', 'KeepkeyClient')
+
+            # look for hw client:
+            for arg in args:
+                name = type(arg).__name__
+                if name in hw_client_names:
+                    hw_client = arg
+                    break
+
+            if not hw_client:
+                for arg_name in kwargs:
+                    name = type(kwargs[arg_name]).__name__
+                    if name in hw_client_names:
+                        hw_client = kwargs[arg_name]
+                        break
+
+            def thread_dialog(ctrl):
+                if ctrl:
+                    ctrl.dlg_config_fun(dlg_title=title, show_progress_bar=False)
+                    ctrl.display_msg_fun(message)
+
+                return func(*args, **kwargs)
+
+            return WndUtils.run_thread_dialog(thread_dialog, (), True, show_window_delay_ms=1000,
+                                              force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_client))
+        return wrapped_f
+    return decorator_f
+
+
+@action_on_device_message()
+def enable_passphrase(hw_client, passphrase_enabled):
+    hw_type = get_hw_type(hw_client)
+    if hw_type == HWType.trezor:
         import hw_intf_trezor
+        hw_intf_trezor.enable_passphrase(hw_client, passphrase_enabled)
+    elif hw_type == HWType.keepkey:
+        hw_client.apply_settings(use_passphrase=passphrase_enabled)
+    elif hw_type == HWType.ledger_nano_s:
+        raise Exception('Ledger Nano S is not supported.')
+    else:
+        logging.error('Invalid HW type: ' + str(hw_type))
 
-        def set(ctrl):
-            if ctrl:
-                ctrl.dlg_config_fun(dlg_title=DEFAULT_HW_BUSY_TITLE, show_progress_bar=False)
-                ctrl.display_msg_fun(DEFAULT_HW_BUSY_TITLE)
 
-            hw_intf_trezor.set_passphrase_always_on_device(hw_session, enabled)
-
-        return WndUtils.run_thread_dialog(set, (), True, show_window_delay_ms=100,
-                                          force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
-
-    elif hw_session.app_config.hw_type == HWType.keepkey:
+@action_on_device_message()
+def set_passphrase_always_on_device(hw_client, enabled):
+    hw_type = get_hw_type(hw_client)
+    if hw_type == HWType.trezor:
+        import hw_intf_trezor
+        hw_intf_trezor.set_passphrase_always_on_device(hw_client, enabled)
+    elif hw_type == HWType.keepkey:
         raise Exception('Keepkey not supported.')
-    elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
+    elif hw_type == HWType.ledger_nano_s:
         raise Exception('Ledger Nano S is not supported.')
     else:
-        logging.error('Invalid HW type: ' + str(hw_session.app_config.hw_type))
+        logging.error('Invalid HW type: ' + str(hw_type))
 
 
-@control_hw_call
-def set_wipe_code(hw_session: HwSessionInfo, enabled):
-    if hw_session.app_config.hw_type == HWType.trezor:
+@action_on_device_message()
+def set_wipe_code(hw_client, enabled):
+    hw_type = get_hw_type(hw_client)
+    if hw_type == HWType.trezor:
         import hw_intf_trezor
-
-        def set(ctrl):
-            if ctrl:
-                ctrl.dlg_config_fun(dlg_title=DEFAULT_HW_BUSY_TITLE, show_progress_bar=False)
-                ctrl.display_msg_fun(DEFAULT_HW_BUSY_TITLE)
-
-            hw_intf_trezor.set_wipe_code(hw_session, enabled)
-
-        return WndUtils.run_thread_dialog(set, (), True, show_window_delay_ms=100,
-                                          force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
-
-    elif hw_session.app_config.hw_type == HWType.keepkey:
+        hw_intf_trezor.set_wipe_code(hw_client, enabled)
+    elif hw_type == HWType.keepkey:
         raise Exception('Keepkey not supported.')
-    elif hw_session.app_config.hw_type == HWType.ledger_nano_s:
+    elif hw_type == HWType.ledger_nano_s:
         raise Exception('Ledger Nano S is not supported.')
     else:
-        logging.error('Invalid HW type: ' + str(hw_session.app_config.hw_type))
+        logging.error('Invalid HW type: ' + str(hw_type))
 
 
 @control_hw_call

@@ -431,30 +431,30 @@ def sign_message(hw_session: HwSessionInfo, bip32path, message):
         raise CancelException('Cancelled')
 
 
-def change_pin(hw_session: HwSessionInfo, remove=False):
-    if hw_session.hw_client:
-        device.change_pin(hw_session.hw_client, remove)
+def change_pin(hw_client, remove=False):
+    if hw_client:
+        device.change_pin(hw_client, remove)
     else:
         raise Exception('HW client not set.')
 
 
-def enable_passphrase(hw_session: HwSessionInfo, passphrase_enabled):
+def enable_passphrase(hw_client, passphrase_enabled):
     try:
-        device.apply_settings(hw_session.hw_client, use_passphrase=passphrase_enabled)
+        device.apply_settings(hw_client, use_passphrase=passphrase_enabled)
     except exceptions.Cancelled:
         pass
 
 
-def set_passphrase_always_on_device(hw_session: HwSessionInfo, enabled: bool):
+def set_passphrase_always_on_device(hw_client, enabled: bool):
     try:
-        device.apply_settings(hw_session.hw_client, passphrase_always_on_device=enabled)
+        device.apply_settings(hw_client, passphrase_always_on_device=enabled)
     except exceptions.Cancelled:
         pass
 
 
-def set_wipe_code(hw_session: HwSessionInfo, remove=False):
-    if hw_session.hw_client:
-        device.change_wipe_code(hw_session.hw_client, remove)
+def set_wipe_code(hw_client, remove=False):
+    if hw_client:
+        device.change_wipe_code(hw_client, remove)
     else:
         raise Exception('HW client not set.')
 
