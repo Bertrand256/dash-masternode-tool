@@ -654,7 +654,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     except CloseDialogException:
                         pass
                     except Exception as e:
-                        log.exception('Exception while realoading proposal external attributes')
+                        log.exception('Exception while reloading proposal external attributes')
                         self.errorMsg('Error while retrieving proposals data: ' + str(e))
                     finally:
                         self.db_intf.release_cursor()
@@ -802,7 +802,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     f'{app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes))} Dash '
                 if self.next_budget_amount:
                     budget_approved_user_yes += \
-                        f'({app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_amount, 2))}% of the available buget'
+                        f'({app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_amount, 2))}% of the available budget'
                     if self.next_budget_approved:
                         budget_approved_user_yes += f', {app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_approved, 2))}% of the approved budget'
                     budget_approved_user_yes += ')'
@@ -1114,7 +1114,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
         except Exception as e:
             log.exception('Exception while reading governance info.')
-            self.errorMsg("Coundn't read governanceinfo from the Dash network. "
+            self.errorMsg("Couldn't read governance info from the Dash network. "
                       "Some features may not work correctly because of this. Details: " + str(e))
 
     def get_block_timestamp(self, superblock: int):
@@ -1879,7 +1879,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             log.debug("Display proposals' data time: " + str(time.time() - tm_begin))
         except Exception as e:
-            log.exception("Exception occurred while displaing proposals.")
+            log.exception("Exception occurred while displaying proposals.")
             self.lblMessage.setVisible(False)
             raise Exception('Error occurred while displaying proposals: ' + str(e))
 
