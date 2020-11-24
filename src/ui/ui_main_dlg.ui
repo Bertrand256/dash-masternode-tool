@@ -524,14 +524,13 @@ QLineEdit:read-only {
      <addaction name="action_clear_wallet_cache"/>
      <addaction name="action_clear_proposals_cache"/>
     </widget>
-    <addaction name="action_transfer_funds_for_any_address"/>
+    <addaction name="action_hw_wallet"/>
     <addaction name="separator"/>
     <addaction name="action_sign_message_with_collateral_addr"/>
     <addaction name="action_sign_message_with_owner_key"/>
     <addaction name="action_sign_message_with_voting_key"/>
     <addaction name="separator"/>
-    <addaction name="action_hw_configuration"/>
-    <addaction name="action_hw_initialization_recovery"/>
+    <addaction name="action_hw_tools"/>
     <addaction name="separator"/>
     <addaction name="action_import_masternode_conf"/>
     <addaction name="separator"/>
@@ -587,25 +586,14 @@ QLineEdit:read-only {
    <addaction name="separator"/>
    <addaction name="action_check_network_connection"/>
    <addaction name="separator"/>
-   <addaction name="action_run_trezor_emulator"/>
    <addaction name="action_test_hw_connection"/>
    <addaction name="action_disconnect_hw"/>
    <addaction name="separator"/>
    <addaction name="action_open_proposals_window"/>
    <addaction name="separator"/>
-   <addaction name="action_transfer_funds_for_any_address"/>
+   <addaction name="action_hw_wallet"/>
   </widget>
-  <action name="action_transfer_funds_for_cur_mn">
-   <property name="text">
-    <string>Transfer Funds for Current Masternode...</string>
-   </property>
-  </action>
-  <action name="action_transfer_funds_for_all_mns">
-   <property name="text">
-    <string>Transfer Funds for All Masternodes</string>
-   </property>
-  </action>
-  <action name="action_transfer_funds_for_any_address">
+  <action name="action_hw_wallet">
    <property name="text">
     <string>Transfer Funds / Wallet</string>
    </property>
@@ -616,11 +604,6 @@ QLineEdit:read-only {
    </property>
    <property name="toolTip">
     <string>Sign message with the collateral address of the current masternode</string>
-   </property>
-  </action>
-  <action name="action_hw_configuration">
-   <property name="text">
-    <string>Hardware Wallet PIN/passphrase Configuration...</string>
    </property>
   </action>
   <action name="action_load_config_file">
@@ -687,9 +670,9 @@ QLineEdit:read-only {
     <string>Disconnect Hardware Wallet</string>
    </property>
   </action>
-  <action name="action_hw_initialization_recovery">
+  <action name="action_hw_tools">
    <property name="text">
-    <string>Hardware Wallet Initialization/Recovery...</string>
+    <string>Hardware Wallet Tools...</string>
    </property>
   </action>
   <action name="action_check_for_updates">

@@ -40,7 +40,7 @@ import hw_pass_dlg
 import hw_pin_dlg
 import wallet_dlg
 import app_utils
-from initialize_hw_dlg import HwInitializeDlg
+from hw_tools_dlg import HwToolsDlg
 from masternode_details import WdgMasternodeDetails
 from proposals_dlg import ProposalsDlg
 from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
@@ -142,9 +142,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.setIcon(self.action_open_proposals_window, "thumbs-up-down.png")
         self.setIcon(self.action_test_hw_connection, "hw-test.png")
         self.setIcon(self.action_disconnect_hw, "hw-disconnect.png")
-        self.setIcon(self.action_transfer_funds_for_any_address, "wallet.png")
-        self.setIcon(self.action_hw_configuration, "hw.png")
-        self.setIcon(self.action_hw_initialization_recovery, "recover.png")
+        self.setIcon(self.action_hw_wallet, "wallet.png")
+        self.setIcon(self.action_hw_tools, "hw.png")
         self.setIcon(self.btnMoveMnUp, "arrow-downward@16px.png", rotate=180)
         self.setIcon(self.btnMoveMnDown, "arrow-downward@16px.png")
 
@@ -168,9 +167,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.action_disconnect_hw.setIconVisibleInMenu(False)
         self.action_run_trezor_emulator.setIconVisibleInMenu(False)
         self.action_run_trezor_emulator.setVisible(False)
-        self.action_transfer_funds_for_any_address.setIconVisibleInMenu(False)
-        self.action_hw_configuration.setIconVisibleInMenu(False)
-        self.action_hw_initialization_recovery.setIconVisibleInMenu(False)
+        self.action_hw_wallet.setIconVisibleInMenu(False)
+        self.action_hw_tools.setIconVisibleInMenu(False)
 
         # register dialog-type actions:
         self.addAction(self.action_gen_mn_priv_key_uncompressed)
@@ -811,7 +809,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.btnRegisterDmn.setEnabled(True)
             self.btnUpdMnPayoutAddr.setEnabled(True)
             self.btnRefreshMnStatus.setEnabled(True)
-            self.action_transfer_funds_for_any_address.setEnabled(True)
+            self.action_hw_wallet.setEnabled(True)
 
             if self.dashd_connection_ok:
                 self.show_connection_successful()
@@ -830,7 +828,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.btnRegisterDmn.setEnabled(False)
             self.btnUpdMnPayoutAddr.setEnabled(False)
             self.btnRefreshMnStatus.setEnabled(False)
-            self.action_transfer_funds_for_any_address.setEnabled(False)
+            self.action_hw_wallet.setEnabled(False)
             self.connect_dash_network(call_on_check_finished=connection_test_finished)
         else:
             # configuration not complete: show config window
@@ -1919,42 +1917,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.errorMsg(str(e))
 
     @pyqtSlot(bool)
-    def on_action_transfer_funds_for_cur_mn_triggered(self):
+    def on_action_hw_wallet_triggered(self):
         """
-        Shows tranfser funds window with utxos related to current masternode. 
-        """
-        if self.cur_masternode:
-            src_addresses = []
-            if not self.cur_masternode.collateralBip32Path:
-                self.errorMsg("Enter the masternode collateral BIP32 path. You can use the 'right arrow' button "
-                              "on the right of the 'Collateral' edit box.")
-            elif not self.cur_masternode.collateralAddress:
-                self.errorMsg("Enter the masternode collateral Dash address. You can use the 'left arrow' "
-                              "button on the left of the 'BIP32 path' edit box.")
-            else:
-                src_addresses.append((self.cur_masternode.collateralAddress, self.cur_masternode.collateralBip32Path))
-                mn_index = self.app_config.masternodes.index(self.cur_masternode)
-                try:
-                    self.show_wallet_window(mn_index)
-                except Exception as e:
-                    self.errorMsg(str(e))
-        else:
-            self.errorMsg('No masternode selected')
-
-    @pyqtSlot(bool)
-    def on_action_transfer_funds_for_all_mns_triggered(self):
-        """
-        Shows tranfser funds window with utxos related to all masternodes. 
-        """
-        try:
-            self.show_wallet_window(None)
-        except Exception as e:
-            self.errorMsg(str(e))
-
-    @pyqtSlot(bool)
-    def on_action_transfer_funds_for_any_address_triggered(self):
-        """
-        Shows tranfser funds window for address/path specified by the user.
+        Shows the hardware wallet window.
         """
         if self.cur_masternode:
             mn_index = self.app_config.masternodes.index(self.cur_masternode)
@@ -2032,25 +1997,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.errorMsg("To sign messages, you must select a masternode.")
 
     @pyqtSlot(bool)
-    def on_action_hw_configuration_triggered(self):
-        """
-        Hardware wallet setup.
-        """
-        try:
-            self.connect_hardware_wallet()
-            if self.hw_client:
-                ui = HwSetupDlg(self)
-                ui.exec_()
-        except CancelException:
-            pass
-        except Exception as e:
-            self.errorMsg(str(e))
-
-    @pyqtSlot(bool)
-    def on_action_hw_initialization_recovery_triggered(self):
+    def on_action_hw_tools_triggered(self):
         """Hardware wallet initialization from a seed."""
         try:
-            ui = HwInitializeDlg(self)
+            ui = HwToolsDlg(self)
             ui.exec_()
         except Exception as e:
             self.errorMsg(str(e))

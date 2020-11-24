@@ -9,7 +9,7 @@ import ssl
 import time
 import urllib, urllib.parse, urllib.request
 from io import BytesIO
-from typing import List
+from typing import List, Any
 import simplejson
 from PyQt5 import QtGui, QtWidgets
 import bitcoin
@@ -24,7 +24,7 @@ import app_defs
 import hw_intf
 from dash_utils import pubkey_to_address
 from thread_fun_dlg import CtrlObject
-from ui import ui_initialize_hw_dlg
+from ui import ui_hw_tools_dlg
 from doc_dlg import show_doc_dlg
 from hw_intf import *
 from mnemonic import Mnemonic
@@ -37,6 +37,7 @@ ACTION_RECOVER_FROM_ENTROPY = 3
 ACTION_INITIALIZE_NEW_SAFE = 4
 ACTION_WIPE_DEVICE = 5
 ACTION_UPLOAD_FIRMWARE = 6
+ACTION_HW_SETTINGS = 7
 
 
 STEP_SELECT_DEVICE_TYPE = 0
@@ -49,15 +50,17 @@ STEP_INPUT_HW_OPTIONS = 6
 STEP_FINISHED = 7
 STEP_INPUT_FIRMWARE_SOURCE = 8
 STEP_UPLOAD_FIRMWARE = 9
+STEP_HW_SETTINGS = 10
+
 
 CACHE_ITEM_LAST_FIRMWARE_FILE = 'HwInitializeDlg_LastFirmwareFile'
 
 PREVIEW_ADDRESSES_PER_PAGE = 50
 
-class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils):
+class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
     def __init__(self, parent) -> None:
         QDialog.__init__(self, parent)
-        ui_initialize_hw_dlg.Ui_HwInitializeDlg.__init__(self)
+        ui_hw_tools_dlg.Ui_HwInitializeDlg.__init__(self)
         WndUtils.__init__(self, parent.app_config)
         self.main_ui = parent
         self.app_config = parent.app_config
@@ -74,8 +77,9 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         self.hw_type: Optional[HWType] = None  # HWType
         self.hw_model: Optional[str] = None
         self.hw_device_id_selected = Optional[str]  # device id of the hw client selected
-        self.hw_device_instances: List[List[str]] = []  # list of 3-element list: 0: device_id, 1: device label, 2: device model
-        self.hw_device_index_selected: int = None  # index in self.hw_device_instances
+        self.hw_device_instances: List[Tuple[str, str, str, Any]] = []  # list of 3-element list: 0: device_id,
+                                                                        # 1: device label, 2: device model, 3: hw client
+        self.hw_device_index_selected: Optional[int] = None  # index in self.hw_device_instances
         self.act_paste_words = None
         self.hw_action_mnemonic_words: Optional[str] = None
         self.hw_action_use_pin: Optional[bool] = None
@@ -89,15 +93,24 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         self.hw_firmware_web_sources: List[Dict] = []
         # subset of self.hw_firmware_web_sources dedicated to current hardware wallet type:
         self.hw_firmware_web_sources_cur_hw: List = []
-        self.hw_firmware_url_selected: Dict = None
+        self.hw_firmware_url_selected: Optional[Dict] = None
         self.hw_firmware_last_hw_type = None
         self.hw_firmware_last_hw_model = None
         self.preview_address_count = PREVIEW_ADDRESSES_PER_PAGE
+        # hardware wallet settings page
+        self.hw_opt_pin_protection = None
+        self.hw_opt_passphrase_protection = None
+        self.hw_opt_passphrase_always_on_device = None
+        self.hw_opt_wipe_code_protection = None  # https://wiki.trezor.io/User_manual:Wipe_code
+        self.hw_opt_sd_protection = None  # https://wiki.trezor.io/User_manual:SD_card_protection
+        self.hw_opt_auto_lock_delay_ms = None
+        self.hw_opt_firmware_version = 'unknown'
+
         self.setupUi()
 
     def setupUi(self):
-        ui_initialize_hw_dlg.Ui_HwInitializeDlg.setupUi(self, self)
-        self.setWindowTitle("Hardware wallet initialization/recovery")
+        ui_hw_tools_dlg.Ui_HwInitializeDlg.setupUi(self, self)
+        self.setWindowTitle("Hardware wallet tools")
 
         self.viewMnemonic.verticalHeader().setDefaultSectionSize(
             self.viewMnemonic.verticalHeader().fontMetrics().height() + 6)
@@ -180,6 +193,8 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             self.action_type = ACTION_WIPE_DEVICE
         elif self.rbActUploadFirmware.isChecked():
             self.action_type = ACTION_UPLOAD_FIRMWARE
+        elif self.rbActHwSettings.isChecked():
+            self.action_type = ACTION_HW_SETTINGS
         else:
             raise Exception('Invalid action')
 
@@ -204,6 +219,8 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             idx = 8
         elif self.current_step == STEP_UPLOAD_FIRMWARE:
             idx = 9
+        elif self.current_step == STEP_HW_SETTINGS:
+            idx = 10
         else:
             raise Exception('Invalid step.')
         self.tabSteps.setCurrentIndex(idx)
@@ -213,7 +230,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             self.step_history.append(self.current_step)
             self.current_step = step
             self.apply_current_step_to_ui()
-            if self.current_step == STEP_FINISHED:
+            if self.current_step in (STEP_FINISHED, STEP_HW_SETTINGS):
                 self.btnNext.setText('Close')
 
     def apply_step_select_device_type(self) -> bool:
@@ -263,7 +280,6 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                             self.set_next_step(STEP_SELECT_DEVICE_INSTANCE)
                             success = True
                     except CancelException:
-                        self.warnMsg('Operation cancelled.')
                         success = False
                 else:
                     success = False
@@ -278,6 +294,25 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                 self.errorMsg(f'{HWType.get_desc(self.hw_type)} is not supported.')
                 success = False
 
+        elif self.action_type == ACTION_HW_SETTINGS:
+
+            try:
+                self.load_hw_devices(return_hw_clients=True)
+                cnt = len(self.hw_device_instances)
+                if cnt == 0:
+                    self.errorMsg('Couldn\'t find any %s devices connected to your computer.' %
+                                  HWType.get_desc(self.hw_type))
+                    success = False
+                elif cnt == 1:
+                    # there is only one instance of this device type
+                    self.hw_device_id_selected = self.hw_device_instances[0][0]
+                    self.hw_device_index_selected = 0
+                    self.set_next_step(STEP_HW_SETTINGS)
+                else:
+                    # there is more than one instance of this device type; go to the device instance selection tab
+                    self.set_next_step(STEP_SELECT_DEVICE_INSTANCE)
+            except CancelException:
+                success = False
         else:
             raise Exception('Not implemented')
         return success
@@ -467,6 +502,11 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                     # for uploading from the file, we cannot verify model compatibility
                     self.set_next_step(STEP_UPLOAD_FIRMWARE)
                     success = True
+
+            elif self.action_type == ACTION_HW_SETTINGS:
+                self.set_next_step(STEP_HW_SETTINGS)
+                success = True
+
             else:
                 success = self.apply_action_on_hardware_wallet()
                 if success:
@@ -777,12 +817,18 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
             elif self.current_step == STEP_FINISHED:
                 self.close()
+                return
 
             elif self.current_step == STEP_INPUT_FIRMWARE_SOURCE:
                 success = self.apply_input_firmware_source()
 
             elif self.current_step == STEP_UPLOAD_FIRMWARE:
                 success = self.apply_upload_firmware()
+
+            elif self.current_step == STEP_HW_SETTINGS:
+                self.close_hw_clients()
+                success = self.close()
+                return
 
             else:
                 raise Exception("Internal error: invalid step.")
@@ -797,7 +843,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
     def on_btnBack_clicked(self, clicked):
         try:
             if self.current_step > 0:
-                if self.current_step == STEP_FINISHED:
+                if self.current_step in (STEP_FINISHED, STEP_HW_SETTINGS):
                     self.btnNext.setText('Continue')
 
                 if self.current_step == STEP_INPUT_ENTROPY:
@@ -806,11 +852,18 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                         for idx in range(len(self.mnemonic_words)):
                             self.mnemonic_words[idx] = ''
 
-                self.current_step = self.step_history.pop()
+                new_step = self.step_history.pop()
+
+                if self.current_step == STEP_SELECT_DEVICE_INSTANCE or \
+                        (self.current_step == STEP_HW_SETTINGS and new_step == STEP_SELECT_ACTION):
+                    self.close_hw_clients()
+
+                self.current_step = new_step
                 self.apply_current_step_to_ui()
                 if self.current_step == 0:
                     self.btnBack.setEnabled(False)
                 self.update_current_tab()
+
         except Exception as e:
             self.errorMsg(str(e))
 
@@ -850,11 +903,13 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                 if self.rbActRecoverWordsSafe.isChecked() or self.rbActInitializeNewSeed.isChecked() or \
                    self.rbActWipeDevice.isChecked():
                     self.rbActRecoverMnemonicWords.setChecked(True)
+                self.rbActHwSettings.setVisible(False)
             else:
                 self.rbActRecoverWordsSafe.setEnabled(True)
                 self.rbActInitializeNewSeed.setEnabled(True)
                 self.rbActWipeDevice.setEnabled(True)
                 self.rbActUploadFirmware.setEnabled(True)
+                self.rbActHwSettings.setVisible(True)
 
             if self.action_type in (ACTION_RECOVER_FROM_WORDS_CONV, ACTION_RECOVER_FROM_ENTROPY):
                 self.lblActionTypeMessage.setText(
@@ -1017,8 +1072,103 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             else:
                 self.lblStepSummaryTitle.setText('<h2>Operation successfully finished.</h2>')
 
+        elif self.current_step == STEP_HW_SETTINGS:
+            self.update_hw_settings_page()
+
+    def read_hw_features(self):
+        def has_field(features, field_name):
+            try:
+                #todo: improve this
+                return features.HasField(field_name)
+            except Exception:
+                return False
+
+        if self.hw_device_index_selected >= 0 and self.hw_device_id_selected:
+            hw_client = self.hw_device_instances[self.hw_device_index_selected][3]
+            if hw_client:
+                features = hw_client.features
+                self.hw_opt_pin_protection = features.pin_protection
+                self.hw_opt_passphrase_protection = features.passphrase_protection
+                if has_field(features, 'passphrase_always_on_device'):
+                    self.hw_opt_passphrase_always_on_device = features.passphrase_always_on_device
+                if has_field(features, 'wipe_code_protection'):
+                    self.hw_opt_wipe_code_protection = features.wipe_code_protection
+                if has_field(features, 'sd_protection'):
+                    self.hw_opt_sd_protection = features.sd_protection
+                self.hw_opt_firmware_version = str(hw_client.features.major_version) + '.' + \
+                       str(hw_client.features.minor_version) + '.' + \
+                       str(hw_client.features.patch_version)
+
+    def update_hw_settings_page(self):
+        self.read_hw_features()
+        if self.hw_device_index_selected >= 0 and self.hw_device_id_selected:
+            self.lblFirmwareVersion.setText(self.hw_opt_firmware_version)
+
+            if self.hw_opt_pin_protection is True:
+                self.lblPinStatus.setText('enabled')
+                self.btnEnDisPin.setText('Disable')
+                self.btnChangePin.setEnabled(True)
+                self.lblPinStatus.setStyleSheet('QLabel{color: green}')
+            elif self.hw_opt_pin_protection is False:
+                self.lblPinStatus.setText('disabled')
+                self.btnEnDisPin.setText('Enable')
+                self.btnChangePin.setEnabled(False)
+                self.lblPinStatus.setStyleSheet('QLabel{color: red}')
+            else:
+                self.lblPinStatus.setVisible(False)
+                self.lblPinStatusLabel.setVisible(False)
+                self.btnEnDisPin.setVisible(False)
+                self.btnChangePin.setVisible(False)
+
+            if self.hw_opt_passphrase_protection is True:
+                self.lblPassStatus.setText('enabled')
+                self.lblPassStatus.setStyleSheet('QLabel{color: green}')
+                self.btnEnDisPass.setText('Disable')
+            elif self.hw_opt_passphrase_protection is False:
+                self.lblPassStatus.setText('disabled')
+                self.lblPassStatus.setStyleSheet('QLabel{color: red}')
+                self.btnEnDisPass.setText('Enable')
+            else:
+                self.lblPassStatus.setVisible(False)
+                self.lblPassStatusLabel.setVisible(False)
+                self.lblPassStatus.setVisible(False)
+                self.btnEnDisPass.setVisible(False)
+
+            if self.hw_opt_passphrase_always_on_device is True:
+                self.lblPassAlwaysOnDeviceStatus.setText('enabled')
+                self.lblPassAlwaysOnDeviceStatus.setStyleSheet('QLabel{color: green}')
+                self.btnEnDisPassAlwaysOnDevice.setText('Disable')
+                self.btnEnDisPassAlwaysOnDevice.setEnabled(True)
+            elif self.hw_opt_passphrase_always_on_device is False:
+                self.lblPassAlwaysOnDeviceStatus.setText('disabled')
+                self.lblPassAlwaysOnDeviceStatus.setStyleSheet('QLabel{color: red}')
+                self.btnEnDisPassAlwaysOnDevice.setText('Enable')
+                self.btnEnDisPassAlwaysOnDevice.setEnabled(True)
+            else:
+                self.lblPassAlwaysOnDeviceStatus.setText('not available')
+                self.lblPassAlwaysOnDeviceStatus.setStyleSheet('QLabel{color: orange}')
+                self.btnEnDisPassAlwaysOnDevice.setText('Enable')
+                self.btnEnDisPassAlwaysOnDevice.setDisabled(True)
+
+            if self.hw_opt_wipe_code_protection is True:
+                self.lblWipeCodeStatus.setText('enabled')
+                self.lblWipeCodeStatus.setStyleSheet('QLabel{color: green}')
+                self.btnEnDisWipeCode.setText('Disable')
+                self.btnEnDisWipeCode.setEnabled(True)
+            elif self.hw_opt_wipe_code_protection is False:
+                self.lblWipeCodeStatus.setText('disabled')
+                self.lblWipeCodeStatus.setStyleSheet('QLabel{color: red}')
+                self.btnEnDisWipeCode.setText('Enable')
+                self.btnEnDisWipeCode.setEnabled(True)
+            else:
+                self.lblWipeCodeStatus.setText('not available')
+                self.lblWipeCodeStatus.setStyleSheet('QLabel{color: orange}')
+                self.btnEnDisWipeCode.setText('Enable')
+                self.btnEnDisWipeCode.setDisabled(True)
+
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
+        self.close_hw_clients()
         self.close()
 
     def connect_hardware_wallet(self):
@@ -1157,7 +1307,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         except Exception as e:
             self.errorMsg(str(e))
 
-    def load_hw_devices(self):
+    def load_hw_devices(self, return_hw_clients=False):
         """
         Load all instances of the selected hardware wallet type. If there is more than one, user has to select which
         one he is going to use.
@@ -1170,12 +1320,13 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
         if self.hw_type in (HWType.trezor, HWType.keepkey):
 
-            devs, _ = get_device_list(self.hw_type, return_clients=False)
+            devs, _ = get_device_list(self.hw_type, return_clients=return_hw_clients)
             for dev in devs:
                 device_id = dev['device_id']
                 label = dev['desc']
                 model = dev['model']
-                self.hw_device_instances.append([device_id, label, model])
+                client = dev.get('client')
+                self.hw_device_instances.append([device_id, label, model, client])
                 self.cboDeviceInstance.addItem(label)
 
         elif self.hw_type == HWType.ledger_nano_s:
@@ -1192,6 +1343,15 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
             except BTChipException as e:
                 if e.message != 'No dongle found':
                     raise
+
+    def close_hw_clients(self):
+        try:
+            for idx, (_, _, _, client) in enumerate(self.hw_device_instances):
+                if client:
+                    client.close()
+                    self.hw_device_instances[idx][3] = None
+        except Exception as e:
+            log.exception(str(e))
 
     @pyqtSlot(bool)
     def on_device_type_changed(self, checked):
@@ -1484,6 +1644,117 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                         return
         self.hw_firmware_url_selected = None
         self.edtFirmwareNotes.clear()
+
+    @pyqtSlot()
+    def on_btnEnDisPin_clicked(self):
+        try:
+            if self.hw_device_index_selected >= 0 and self.hw_device_id_selected:
+                hw_client = self.hw_device_instances[self.hw_device_index_selected][3]
+                if self.hw_opt_pin_protection is True:
+                    # disable
+                    if self.queryDlg('Do you really want to disable PIN protection?',
+                                     buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                     icon=QMessageBox.Warning) == QMessageBox.Yes:
+                        hw_intf.change_pin(hw_client, remove=True)
+                        self.read_hw_features()
+                        self.update_hw_settings_page()
+                elif self.hw_opt_pin_protection is False:
+                    # enable PIN
+                    hw_intf.change_pin(hw_client, remove=False)
+                    self.read_hw_features()
+                    self.update_hw_settings_page()
+        except Exception as e:
+            log.exception(str(e))
+            self.errorMsg(str(e))
+
+    @pyqtSlot()
+    def on_btnChangePin_clicked(self):
+        try:
+            if self.hw_device_index_selected >= 0 and self.hw_device_id_selected:
+                hw_client = self.hw_device_instances[self.hw_device_index_selected][3]
+                if hw_client and self.hw_opt_pin_protection is True:
+                    hw_intf.change_pin(hw_client, remove=False)
+                    self.read_hw_features()
+                    self.update_hw_settings_page()
+
+        except Exception as e:
+            log.exception(str(e))
+            self.errorMsg(str(e))
+
+    @pyqtSlot()
+    def on_btnEnDisPass_clicked(self):
+        try:
+            if self.hw_device_index_selected >= 0 and self.hw_device_id_selected:
+                hw_client = self.hw_device_instances[self.hw_device_index_selected][3]
+                if hw_client:
+                    if self.hw_opt_passphrase_protection is True:
+                        # disable passphrase
+                        if self.queryDlg('Do you really want to disable passphrase protection?',
+                                         buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                         icon=QMessageBox.Warning) == QMessageBox.Yes:
+                            hw_intf.enable_passphrase(hw_client=hw_client, passphrase_enabled=False)
+                            self.read_hw_features()
+                            self.update_hw_settings_page()
+                    elif self.hw_opt_passphrase_protection is False:
+                        # enable passphrase
+                        if self.queryDlg('Do you really want to enable passphrase protection?',
+                                         buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                         icon=QMessageBox.Warning) == QMessageBox.Yes:
+                            hw_intf.enable_passphrase(hw_client=hw_client, passphrase_enabled=True)
+                            self.read_hw_features()
+                            self.update_hw_settings_page()
+        except Exception as e:
+            log.exception(str(e))
+            self.errorMsg(str(e))
+
+    @pyqtSlot()
+    def on_btnEnDisPassAlwaysOnDevice_clicked(self):
+        try:
+            if self.hw_device_index_selected >= 0 and self.hw_device_id_selected:
+                hw_client = self.hw_device_instances[self.hw_device_index_selected][3]
+                if hw_client:
+                    if self.hw_opt_passphrase_always_on_device is True:
+                        message = 'Do you really want to disable the "Passphrase always on device" option?'
+                        new_enabled = False
+                    elif self.hw_opt_passphrase_always_on_device is False:
+                        message = 'Do you really want to enable the "Passphrase always on device" option?'
+                        new_enabled = True
+                    else:
+                        return
+
+                    if self.queryDlg(message,
+                                     buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                     icon=QMessageBox.Warning) == QMessageBox.Yes:
+                        hw_intf.set_passphrase_always_on_device(hw_client, enabled=new_enabled)
+                        self.read_hw_features()
+                        self.update_hw_settings_page()
+        except Exception as e:
+            log.exception(str(e))
+            self.errorMsg(str(e))
+
+    @pyqtSlot()
+    def on_btnEnDisWipeCode_clicked(self):
+        try:
+            if self.hw_device_index_selected >= 0 and self.hw_device_id_selected:
+                hw_client = self.hw_device_instances[self.hw_device_index_selected][3]
+                if hw_client:
+                    if self.hw_opt_wipe_code_protection is True:
+                        message = 'Do you really want to disable wipe code protection?'
+                        new_enabled = False
+                    elif self.hw_opt_wipe_code_protection is False:
+                        message = 'Do you really want to enable wipe code protection?'
+                        new_enabled = True
+                    else:
+                        return
+
+                    if self.queryDlg(message,
+                                     buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                     icon=QMessageBox.Warning) == QMessageBox.Yes:
+                        hw_intf.set_wipe_code(hw_client, enabled=new_enabled)
+                        self.read_hw_features()
+                        self.update_hw_settings_page()
+        except Exception as e:
+            self.errorMsg(str(e))
 
 
 class MnemonicModel(QAbstractTableModel):
