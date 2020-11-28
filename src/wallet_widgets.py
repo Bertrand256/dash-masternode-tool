@@ -269,7 +269,6 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.add_to_fee = 0.0
         self.inputs_count = 0
         self.change_amount = 0.0
-        self.use_instant_send = False
         self.values_unit = OUTPUT_VALUE_UNIT_AMOUNT
         self.tm_calculate_change_value = QTimer(self)
         self.tm_debounce__ = QTimer(self)
@@ -396,15 +395,6 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.lbl_change_value.setText('')
         self.lay_fee_value.addWidget(self.lbl_change_value)
         self.lay_fee_value.addStretch(0)
-
-        # instant send
-        self.lbl_instant_send = QLabel(self.scroll_area_widget)
-        self.lbl_instant_send.setAlignment(QtCore.Qt.AlignRight|QtCore.Qt.AlignTrailing|QtCore.Qt.AlignVCenter)
-        self.lbl_instant_send.setText('Use InstantSend')
-        self.chb_instant_send = QCheckBox(self.scroll_area_widget)
-        self.chb_instant_send.toggled.connect(self.on_chb_instant_send_toggled)
-        self.lay_addresses.addWidget(self.lbl_instant_send, 2, 0)
-        self.lay_addresses.addWidget(self.chb_instant_send, 2, 1)
 
         # below the addresses grid place a label dedicated do display messages
         self.lbl_message = QLabel(Form)
@@ -616,10 +606,6 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         else:
             fee = 0.0
 
-        if self.use_instant_send:
-            is_fee = 0.0001 * self.inputs_count
-            fee = max(is_fee, fee)
-
         return fee
 
     def set_total_value_to_recipients(self):
@@ -705,15 +691,6 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
 
     def on_edt_fee_value_textChanged(self, text):
         self.debounce_call('fee_value', self.read_fee_value_from_ui, 400)
-
-    @pyqtSlot(bool)
-    def on_chb_instant_send_toggled(self, checked):
-        self.use_instant_send = checked
-        if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT and len(self.recipients) >= 1:
-            self.update_fee()
-            self.use_all_funds_for_address(self.recipients[0])
-        else:
-            self.update_change_and_fee()
 
     def show_hide_change_address(self, visible):
         if visible != self.change_controls_visible:
@@ -1069,9 +1046,6 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         if self.fee_amount + self.add_to_fee < 0.0:
             raise Exception('Invalid the fee value.')
         return round((self.fee_amount + self.add_to_fee) * 1e8)
-
-    def get_use_instant_send(self):
-        return self.use_instant_send
 
 
 class WalletMnItemDelegate(QItemDelegate):

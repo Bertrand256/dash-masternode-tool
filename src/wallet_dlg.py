@@ -650,8 +650,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                 out.address_ref = change_addr
                                 tx_outputs.append(out)
 
-                        use_is = self.wdg_dest_adresses.get_use_instant_send()
-
                         try:
                             serialized_tx, amount_to_send = self.hw_call_wrapper(hw_intf.sign_tx)\
                                 (self.main_ui.hw_session, tx_inputs, tx_outputs, fee)
@@ -670,7 +668,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                             self.errorMsg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
                         else:
                             after_send_tx_fun = partial(self.process_after_sending_transaction, tx_inputs, tx_outputs)
-                            tx_dlg = TransactionDlg(self, self.main_ui.app_config, self.dashd_intf, tx_hex, use_is,
+                            tx_dlg = TransactionDlg(self, self.main_ui.app_config, self.dashd_intf, tx_hex,
                                                     tx_inputs, tx_outputs, self.cur_hd_tree_id, self.hw_session,
                                                     after_send_tx_fun, fn_show_address_on_hw=self.show_address_on_hw)
                             tx_dlg.exec_()
