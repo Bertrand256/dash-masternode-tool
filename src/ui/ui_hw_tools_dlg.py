@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/Users/blogin/Projects/dash-masternode-tool/src/ui/ui_initialize_hw_dlg.ui'
+# Form implementation generated from reading ui file '/Users/blogin/Projects/dash-masternode-tool/src/ui/ui_hw_tools_dlg.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.0
 #
