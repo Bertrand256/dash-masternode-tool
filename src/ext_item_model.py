@@ -3,7 +3,8 @@
 # Author: Bertrand256
 # Created on: 2018-07
 import logging
-from PyQt5.QtCore import Qt, pyqtSlot, QSortFilterProxyModel, QAbstractTableModel, QVariant
+from PyQt5.QtCore import Qt, pyqtSlot, QSortFilterProxyModel, QVariant, QAbstractItemModel, \
+    QModelIndex
 from PyQt5.QtWidgets import QTableView, QWidget, QAbstractItemView, QTreeView
 from typing import List, Optional, Any, Dict, Generator
 
@@ -35,7 +36,7 @@ class TableModelColumn(AttrsProtected):
 class ColumnedSortFilterProxyModel(QSortFilterProxyModel):
     def __init__(self, parent):
         QSortFilterProxyModel.__init__(self, parent)
-        self.source_model: ExtSortFilterTableModel = None
+        self.source_model: ExtSortFilterItemModel = None
 
     def setSourceModel(self, source_model):
         try:
@@ -61,9 +62,10 @@ class ColumnedSortFilterProxyModel(QSortFilterProxyModel):
             return is_less
 
 
-class ColumnedItemModelMixin(object):
-    def __init__(self, parent, columns: List[TableModelColumn], columns_movable):
-        object.__init__(self)
+class ExtSortFilterItemModel(QAbstractItemModel, AttrsProtected):
+    def __init__(self, parent, columns: List[TableModelColumn], columns_movable, filtering_sorting):
+        AttrsProtected.__init__(self)
+        QAbstractItemModel.__init__(self, parent)
         self.parent_widget = parent
         self._columns = columns
         self._col_idx_by_name: Dict[str, int] = {}
@@ -73,6 +75,50 @@ class ColumnedItemModelMixin(object):
         self.sorting_column_name = ''
         self.sorting_order = Qt.AscendingOrder
         self.proxy_model: ColumnedSortFilterProxyModel = None
+        self.data_lock = thread_utils.EnhRLock()
+        if filtering_sorting:
+            self.enable_filter_proxy_model(self)
+
+    def acquire_lock(self):
+        self.data_lock.acquire()
+
+    def release_lock(self):
+        self.data_lock.release()
+
+    def __enter__(self):
+        self.acquire_lock()
+
+    def __exit__(self, type, value, traceback):
+        self.release_lock()
+
+    def index(self, row, column, parent=None, *args, **kwargs):
+        return self.createIndex(row, column)
+
+    def parent(self, index=None):
+        return QModelIndex()
+
+    def selected_rows(self) -> Generator[int, None, None]:
+        if self.view:
+            sel = self.view.selectionModel()
+            rows = sel.selectedRows()
+            for row in rows:
+                if self.proxy_model:
+                    source_row = self.proxy_model.mapToSource(row)
+                    row_idx = source_row.row()
+                else:
+                    row_idx = row.row()
+                if row_idx >= 0:
+                    yield row_idx
+
+    def data_by_row_index(self, row_index):
+        # Reimplement in derived classes. Used by selected_data_items
+        pass
+
+    def selected_data_items(self) -> Generator[Any, None, None]:
+        for row in self.selected_rows():
+            d = self.data_by_row_index(row)
+            if d:
+                yield d
 
     def enable_filter_proxy_model(self, source_model):
         if not self.proxy_model:
@@ -250,49 +296,3 @@ class ColumnedItemModelMixin(object):
             return self.proxy_model.mapFromSource(index)
         else:
             return index
-
-
-class ExtSortFilterTableModel(ColumnedItemModelMixin, QAbstractTableModel, AttrsProtected):
-    def __init__(self, parent, columns: List[TableModelColumn], columns_movable, filtering_sorting):
-        AttrsProtected.__init__(self)
-        ColumnedItemModelMixin.__init__(self, parent, columns, columns_movable)
-        QAbstractTableModel.__init__(self, parent)
-
-        if filtering_sorting:
-            self.enable_filter_proxy_model(self)
-        self.data_lock = thread_utils.EnhRLock()
-
-    def acquire_lock(self):
-        self.data_lock.acquire()
-
-    def release_lock(self):
-        self.data_lock.release()
-
-    def __enter__(self):
-        self.acquire_lock()
-
-    def __exit__(self, type, value, traceback):
-        self.release_lock()
-
-    def selected_rows(self) -> Generator[int, None, None]:
-        if self.view:
-            sel = self.view.selectionModel()
-            rows = sel.selectedRows()
-            for row in rows:
-                if self.proxy_model:
-                    source_row = self.proxy_model.mapToSource(row)
-                    row_idx = source_row.row()
-                else:
-                    row_idx = row.row()
-                if row_idx >= 0:
-                    yield row_idx
-
-    def data_by_row_index(self, row_index):
-        # Reimplement in derived classes. Used by selected_data_items
-        pass
-
-    def selected_data_items(self) -> Generator[Any, None, None]:
-        for row in self.selected_rows():
-            d = self.data_by_row_index(row)
-            if d:
-                yield d

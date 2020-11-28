@@ -36,7 +36,7 @@ import dash_utils
 from app_config import MasternodeConfig, InputKeyType
 from common import AttrsProtected
 from dashd_intf import DashdIndexException, Masternode
-from ext_item_model import ExtSortFilterTableModel, TableModelColumn
+from ext_item_model import TableModelColumn, ExtSortFilterItemModel
 from ui import ui_proposals
 from wnd_utils import WndUtils, CloseDialogException
 
@@ -138,7 +138,7 @@ class Proposal(AttrsProtected):
         self.find_prev_superblock = find_prev_superblock
         self.find_next_superblock = find_next_superblock
         self.budget_cycle_hours: int = None
-        self.data_model: ExtSortFilterTableModel = data_model
+        self.data_model: ExtSortFilterItemModel = data_model
         self.values: Dict[ProposalColumn, Any] = {}  # dictionary of proposal values (key: ProposalColumn)
         self.db_id = None
         self.marker = None
@@ -2906,9 +2906,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.update_proposals_order_no()
 
 
-class ProposalsModel(ExtSortFilterTableModel):
+class ProposalsModel(ExtSortFilterItemModel):
     def __init__(self, parent, proposals):
-        ExtSortFilterTableModel.__init__(self, parent, columns=[
+        ExtSortFilterItemModel.__init__(self, parent, columns=[
             ProposalColumn('no', 'No', True),
             ProposalColumn('name', 'Name', False),
             ProposalColumn('title', 'Title', True),

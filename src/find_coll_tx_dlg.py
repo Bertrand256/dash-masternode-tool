@@ -15,15 +15,14 @@ import app_utils
 import wnd_utils as wnd_utils
 from app_config import MasternodeConfig, AppConfig
 from bip44_wallet import UNCONFIRMED_TX_BLOCK_HEIGHT
-from dashd_intf import DashdIndexException
-from ext_item_model import ExtSortFilterTableModel, TableModelColumn
+from ext_item_model import TableModelColumn, ExtSortFilterItemModel
 from ui import ui_find_coll_tx_dlg
 from wallet_common import UtxoType
 
 
-class CollTxsTableModel(ExtSortFilterTableModel):
+class CollTxsTableModel(ExtSortFilterItemModel):
     def __init__(self, parent, utxos: List[UtxoType], masternode_list: List[MasternodeConfig], tx_explorer_url: str):
-        ExtSortFilterTableModel.__init__(self, parent, [
+        ExtSortFilterItemModel.__init__(self, parent, [
             TableModelColumn('address', 'Wallet address', True, 100),
             TableModelColumn('bip32_path', 'Wallet path', True, 100),
             TableModelColumn('assigned_to_mn', 'Assigned to MN', True, 100),
@@ -177,7 +176,7 @@ class ListCollateralTxsDlg(QDialog, ui_find_coll_tx_dlg.Ui_ListCollateralTxsDlg,
         self.block_count = 0
         self.read_only = read_only
         self.collaterals_table_model = CollTxsTableModel(self, utxos, self.app_config.masternodes,
-                                                         self.app_config.get_block_explorer_tx())
+                                                         self.app_config.get_block_explorer_tx())  #todo: test after implementing Qt 5.15 changes
         self.setupUi()
 
     def setupUi(self):

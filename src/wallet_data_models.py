@@ -18,7 +18,7 @@ import wnd_utils
 from app_config import MasternodeConfig
 from app_defs import DEBUG_MODE
 from bip44_wallet import Bip44Wallet, UNCONFIRMED_TX_BLOCK_HEIGHT
-from ext_item_model import TableModelColumn, ExtSortFilterTableModel
+from ext_item_model import TableModelColumn, ExtSortFilterItemModel
 from wallet_common import Bip44AccountType, Bip44AddressType, UtxoType, TxType
 
 log = logging.getLogger('dmt.wallet_dlg')
@@ -36,9 +36,9 @@ class MnAddressItem(object):
         self.address: Bip44AddressType = None
 
 
-class MnAddressTableModel(ExtSortFilterTableModel):
+class MnAddressTableModel(ExtSortFilterItemModel):
     def __init__(self, parent, masternode_list: List[MasternodeConfig], bip44_wallet: Bip44Wallet):
-        ExtSortFilterTableModel.__init__(self, parent, [
+        ExtSortFilterItemModel.__init__(self, parent, [
             TableModelColumn('description', 'Description', True, 100)
         ], False, False)
 
@@ -121,9 +121,9 @@ class MnAddressTableModel(ExtSortFilterTableModel):
             self.dataChanged.emit(index, index)
 
 
-class AccountListModel(ExtSortFilterTableModel):
+class AccountListModel(ExtSortFilterItemModel):
     def __init__(self, parent):
-        ExtSortFilterTableModel.__init__(self, parent, [
+        ExtSortFilterItemModel.__init__(self, parent, [
             TableModelColumn('address', 'Address', True, 100)
         ], False, True)
         self.accounts: List[Bip44AccountType] = []
@@ -191,10 +191,6 @@ class AccountListModel(ExtSortFilterTableModel):
             if data:
                 if role in (Qt.DisplayRole, Qt.EditRole):
                     if col == 0:
-                        # if isinstance(data, Bip44AccountType):
-                        #     return data.get_account_name()
-                        # else:
-                        #     return f'/{data.address_index}: {data.address}'
                         return data
                     elif col == 1:
                         b = data.balance
@@ -377,9 +373,9 @@ class AccountListModel(ExtSortFilterTableModel):
         return cur_index + 1
 
 
-class UtxoTableModel(ExtSortFilterTableModel):
+class UtxoTableModel(ExtSortFilterItemModel):
     def __init__(self, parent, masternode_list: List[MasternodeConfig], tx_explorer_url: str):
-        ExtSortFilterTableModel.__init__(self, parent, [
+        ExtSortFilterItemModel.__init__(self, parent, [
             TableModelColumn('satoshis', 'Amount (Dash)', True, 100),
             TableModelColumn('confirmations', 'Confirmations', True, 100),
             TableModelColumn('bip32_path', 'Path', True, 100),
@@ -592,9 +588,9 @@ class UtxoTableModel(ExtSortFilterTableModel):
             #     self.view.dataChanged(tl_index, br_index, [Qt.DisplayRole, Qt.ForegroundRole, Qt.BackgroundColorRole])
 
 
-class TransactionTableModel(ExtSortFilterTableModel):
+class TransactionTableModel(ExtSortFilterItemModel):
     def __init__(self, parent, tx_explorer_url: str):
-        ExtSortFilterTableModel.__init__(self, parent, [
+        ExtSortFilterItemModel.__init__(self, parent, [
             TableModelColumn('direction', 'Direction', True, 50),
             TableModelColumn('satoshis', 'Amount', True, 100),
             TableModelColumn('block_time_str', 'Date', True, 100),
@@ -730,7 +726,7 @@ class TransactionTableModel(ExtSortFilterTableModel):
                 idx = self.mapFromSource(idx)
                 return str(idx.row() + 1)
         else:
-            return ExtSortFilterTableModel.headerData(self, column, orientation, role)
+            return ExtSortFilterItemModel.headerData(self, column, orientation, role)
 
     def set_blockheight(self, cur_blockheight):
         if self.__current_block_height != cur_blockheight:
