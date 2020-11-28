@@ -1,6 +1,6 @@
 python-bitcoinrpc>=1.0
 bitcoin>=1.1.42
-trezor==0.12.1
+trezor==0.12.2
 keepkey==6.1.0
 libusb1==1.8
 PyQt5
