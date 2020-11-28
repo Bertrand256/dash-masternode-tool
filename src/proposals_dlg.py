@@ -2042,7 +2042,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 <head>
 <style type="text/css">
     td.first-col-label, td.padding {{padding-top:2px;padding-bottom:2px;}}
-    td {{border-style: solid; border-color:darkgray}}
+    td {{border-style: none}}
     .first-col-label {{font-weight: bold; text-align: right; padding-right:6px; white-space:nowrap}}
     .inter-label {{font-weight: bold; padding-right: 5px; padding-left: 5px; white-space:nowrap}}
     .status-1{{background-color:{COLOR_YES};color:white}}
