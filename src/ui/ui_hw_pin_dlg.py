@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_hw_pin_dlg.ui'
+# Form implementation generated from reading ui file ui_hw_pin_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -225,13 +225,3 @@ class Ui_HardwareWalletPinDlg(object):
         self.btnPin2.setText(_translate("HardwareWalletPinDlg", "*"))
         self.btnDelete.setToolTip(_translate("HardwareWalletPinDlg", "Delete last character"))
         self.btnEnterPin.setText(_translate("HardwareWalletPinDlg", "Enter"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    HardwareWalletPinDlg = QtWidgets.QDialog()
-    ui = Ui_HardwareWalletPinDlg()
-    ui.setupUi(HardwareWalletPinDlg)
-    HardwareWalletPinDlg.show()
-    sys.exit(app.exec_())

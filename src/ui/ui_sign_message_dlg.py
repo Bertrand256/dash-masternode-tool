@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_sign_message_dlg.ui'
+# Form implementation generated from reading ui file ui_sign_message_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -89,13 +89,3 @@ class Ui_SignMessageDlg(object):
         self.btnSignMessage.setText(_translate("SignMessageDlg", "Sign message"))
         self.label_2.setText(_translate("SignMessageDlg", "Signed message:"))
         self.btnClose.setText(_translate("SignMessageDlg", "Close"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    SignMessageDlg = QtWidgets.QDialog()
-    ui = Ui_SignMessageDlg()
-    ui.setupUi(SignMessageDlg)
-    SignMessageDlg.show()
-    sys.exit(app.exec_())

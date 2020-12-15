@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_thread_fun_dlg.ui'
+# Form implementation generated from reading ui file ui_thread_fun_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -57,13 +57,3 @@ class Ui_ThreadFunDlg(object):
     def retranslateUi(self, ThreadFunDlg):
         _translate = QtCore.QCoreApplication.translate
         ThreadFunDlg.setWindowTitle(_translate("ThreadFunDlg", "Dialog"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    ThreadFunDlg = QtWidgets.QDialog()
-    ui = Ui_ThreadFunDlg()
-    ui.setupUi(ThreadFunDlg)
-    ThreadFunDlg.show()
-    sys.exit(app.exec_())

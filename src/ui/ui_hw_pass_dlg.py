@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_hw_pass_dlg.ui'
+# Form implementation generated from reading ui file ui_hw_pass_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -87,13 +87,3 @@ class Ui_HardwareWalletPassDlg(object):
         self.label_2.setText(_translate("HardwareWalletPassDlg", "Confirm passphrase:"))
         self.btnEnterPass.setText(_translate("HardwareWalletPassDlg", "Enter"))
         self.btnEnterOnDevice.setText(_translate("HardwareWalletPassDlg", "Enter on device"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    HardwareWalletPassDlg = QtWidgets.QDialog()
-    ui = Ui_HardwareWalletPassDlg()
-    ui.setupUi(HardwareWalletPassDlg)
-    HardwareWalletPassDlg.show()
-    sys.exit(app.exec_())

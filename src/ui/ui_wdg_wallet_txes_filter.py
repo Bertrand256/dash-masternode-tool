@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_wdg_wallet_txes_filter.ui'
+# Form implementation generated from reading ui file ui_wdg_wallet_txes_filter.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -202,13 +202,3 @@ class Ui_WdgWalletTxesFilter(object):
         self.rbFilterTypeOr.setText(_translate("WdgWalletTxesFilter", "Any condition is met (OR)"))
         self.rbFilterTypeAnd.setText(_translate("WdgWalletTxesFilter", "All conditions are met (AND)"))
         self.btnApply.setText(_translate("WdgWalletTxesFilter", "Apply"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    WdgWalletTxesFilter = QtWidgets.QWidget()
-    ui = Ui_WdgWalletTxesFilter()
-    ui.setupUi(WdgWalletTxesFilter)
-    WdgWalletTxesFilter.show()
-    sys.exit(app.exec_())

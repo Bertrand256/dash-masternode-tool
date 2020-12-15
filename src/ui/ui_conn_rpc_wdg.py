@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_conn_rpc_wdg.ui'
+# Form implementation generated from reading ui file ui_conn_rpc_wdg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -90,13 +90,3 @@ class Ui_RpcConnection(object):
         self.lblRpcHost.setText(_translate("RpcConnection", "RPC host:"))
         self.lblRpcPassword.setText(_translate("RpcConnection", "RPC password:"))
         self.lblRpcPort.setText(_translate("RpcConnection", "RPC port:"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    RpcConnection = QtWidgets.QWidget()
-    ui = Ui_RpcConnection()
-    ui.setupUi(RpcConnection)
-    RpcConnection.show()
-    sys.exit(app.exec_())

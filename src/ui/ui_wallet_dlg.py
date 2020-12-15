@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_wallet_dlg.ui'
+# Form implementation generated from reading ui file ui_wallet_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -334,13 +334,3 @@ class Ui_WalletDlg(object):
         self.detailsTab.setTabText(self.detailsTab.indexOf(self.tabTransactions), _translate("WalletDlg", "Transactions"))
         self.detailsTab.setTabText(self.detailsTab.indexOf(self.tabDetails), _translate("WalletDlg", "Details"))
         self.btnClose.setText(_translate("WalletDlg", "Close"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    WalletDlg = QtWidgets.QDialog()
-    ui = Ui_WalletDlg()
-    ui.setupUi(WalletDlg)
-    WalletDlg.show()
-    sys.exit(app.exec_())

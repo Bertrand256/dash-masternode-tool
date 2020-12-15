@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_find_coll_tx_dlg.ui'
+# Form implementation generated from reading ui file ui_find_coll_tx_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -47,13 +47,3 @@ class Ui_ListCollateralTxsDlg(object):
     def retranslateUi(self, ListCollateralTxsDlg):
         _translate = QtCore.QCoreApplication.translate
         ListCollateralTxsDlg.setWindowTitle(_translate("ListCollateralTxsDlg", "Dialog"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    ListCollateralTxsDlg = QtWidgets.QDialog()
-    ui = Ui_ListCollateralTxsDlg()
-    ui.setupUi(ListCollateralTxsDlg)
-    ListCollateralTxsDlg.show()
-    sys.exit(app.exec_())

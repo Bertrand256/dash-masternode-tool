@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_about_dlg.ui'
+# Form implementation generated from reading ui file ui_about_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -99,13 +99,3 @@ class Ui_AboutDlg(object):
 "<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:8.25pt;\"><br /></p>\n"
 "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">Author:</span><span style=\" font-size:11pt;\"> Bertrand256 (</span><a href=\"mailto:blogin@protonmail.com\"><span style=\" text-decoration: underline; color:#0000ff;\">blogin@protonmail.com</span></a><span style=\" font-size:11pt;\">)</span></p></body></html>"))
         self.btnClose.setText(_translate("AboutDlg", "Close"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    AboutDlg = QtWidgets.QDialog()
-    ui = Ui_AboutDlg()
-    ui.setupUi(AboutDlg)
-    AboutDlg.show()
-    sys.exit(app.exec_())

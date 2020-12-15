@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_masternode_details.ui'
+# Form implementation generated from reading ui file ui_masternode_details.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -331,13 +331,3 @@ class Ui_WdgMasternodeDetails(object):
         self.btnCopyVotingKey.setToolTip(_translate("WdgMasternodeDetails", "Copy key to clipboard"))
         self.btnShowVotingPrivateKey.setToolTip(_translate("WdgMasternodeDetails", "Show/hide private key"))
         self.btnGenerateVotingPrivateKey.setText(_translate("WdgMasternodeDetails", "Generate new"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    WdgMasternodeDetails = QtWidgets.QWidget()
-    ui = Ui_WdgMasternodeDetails()
-    ui.setupUi(WdgMasternodeDetails)
-    WdgMasternodeDetails.show()
-    sys.exit(app.exec_())

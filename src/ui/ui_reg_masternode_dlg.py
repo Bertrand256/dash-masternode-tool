@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_reg_masternode_dlg.ui'
+# Form implementation generated from reading ui file ui_reg_masternode_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -653,13 +653,3 @@ class Ui_RegMasternodeDlg(object):
         self.btnBack.setText(_translate("RegMasternodeDlg", "Back"))
         self.btnContinue.setText(_translate("RegMasternodeDlg", "Continue"))
         self.btnClose.setText(_translate("RegMasternodeDlg", "Close"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    RegMasternodeDlg = QtWidgets.QDialog()
-    ui = Ui_RegMasternodeDlg()
-    ui.setupUi(RegMasternodeDlg)
-    RegMasternodeDlg.show()
-    sys.exit(app.exec_())

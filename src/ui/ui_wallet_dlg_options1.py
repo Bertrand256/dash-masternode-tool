@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_wallet_dlg_options1.ui'
+# Form implementation generated from reading ui file ui_wallet_dlg_options1.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -63,13 +63,3 @@ class Ui_WdgOptions1(object):
         self.chbShowZeroBalanceAddresses.setText(_translate("WdgOptions1", "Show addresses with zero balance"))
         self.chbShowNotUsedAddresses.setText(_translate("WdgOptions1", "Show addresses not yet used"))
         self.btnApply.setText(_translate("WdgOptions1", "Apply"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    WdgOptions1 = QtWidgets.QWidget()
-    ui = Ui_WdgOptions1()
-    ui.setupUi(WdgOptions1)
-    WdgOptions1.show()
-    sys.exit(app.exec_())

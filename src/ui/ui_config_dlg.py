@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_config_dlg.ui'
+# Form implementation generated from reading ui file ui_config_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -274,13 +274,3 @@ class Ui_ConfigDlg(object):
         self.cboLogLevel.setItemText(3, _translate("ConfigDlg", "Info"))
         self.cboLogLevel.setItemText(4, _translate("ConfigDlg", "Debug"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tabMisc), _translate("ConfigDlg", "Miscellaneous"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    ConfigDlg = QtWidgets.QDialog()
-    ui = Ui_ConfigDlg()
-    ui.setupUi(ConfigDlg)
-    ConfigDlg.show()
-    sys.exit(app.exec_())
