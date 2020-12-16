@@ -2,13 +2,16 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
-import PyQt5.QtWidgets as qwi
+
 from PyQt5.QtGui import QIcon
+from PyQt5.QtWidgets import QApplication
+
 import main_dlg
 import traceback
 import logging
 
 from wnd_utils import WndUtils
+
 
 if __name__ == '__main__':
     def my_excepthook(type, value, tback):
@@ -36,7 +39,7 @@ if __name__ == '__main__':
         if tail == 'src':
             app_dir = path
 
-    app = qwi.QApplication(sys.argv)
+    app = QApplication(sys.argv)
     ui = main_dlg.MainWindow(app_dir)
     ui.show()
 

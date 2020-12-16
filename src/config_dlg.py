@@ -357,7 +357,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                     self.lstConns.setCurrentRow(row_selected)
                     
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnRestoreDefault_clicked(self, enabled):
@@ -842,7 +842,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                                      dashd_conf)
                     ssh.disconnect()
             except Exception as e:
-                self.errorMsg(str(e))
+                self.errorMsg(str(e), True)
                 return
             finally:
                 self.disable_cfg_update = False

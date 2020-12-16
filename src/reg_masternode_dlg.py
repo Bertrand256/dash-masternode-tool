@@ -342,7 +342,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 self.operator_pkey_generated = generate_bls_privkey()
                 self.edtOperatorKey.setText(self.operator_pkey_generated)
             except Exception as e:
-                self.errorMsg(str(e))
+                self.errorMsg(str(e), True)
         else:
             if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
                 self.edtOperatorKey.setText(self.masternode.dmn_operator_private_key)

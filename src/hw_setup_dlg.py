@@ -135,7 +135,7 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
                     self.read_hw_features()
                     self.updateControlsState()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot()
     def on_btnChangePin_clicked(self):

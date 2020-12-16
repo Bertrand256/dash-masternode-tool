@@ -32,7 +32,7 @@
    <item>
     <widget class="QStackedWidget" name="tabSteps">
      <property name="currentIndex">
-      <number>10</number>
+      <number>2</number>
      </property>
      <widget class="QWidget" name="pgStepDeviceType">
       <layout class="QVBoxLayout" name="verticalLayout_12">

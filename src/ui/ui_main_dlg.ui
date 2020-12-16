@@ -531,6 +531,7 @@ QLineEdit:read-only {
     <addaction name="action_sign_message_with_voting_key"/>
     <addaction name="separator"/>
     <addaction name="action_hw_tools"/>
+    <addaction name="action_wallet_tools"/>
     <addaction name="separator"/>
     <addaction name="action_import_masternode_conf"/>
     <addaction name="separator"/>
@@ -592,6 +593,7 @@ QLineEdit:read-only {
    <addaction name="action_open_proposals_window"/>
    <addaction name="separator"/>
    <addaction name="action_hw_wallet"/>
+   <addaction name="action_wallet_tools"/>
   </widget>
   <action name="action_hw_wallet">
    <property name="text">
@@ -803,6 +805,11 @@ QLineEdit:read-only {
    </property>
    <property name="toolTip">
     <string>Import Configuration</string>
+   </property>
+  </action>
+  <action name="action_wallet_tools">
+   <property name="text">
+    <string>Wallet Tools</string>
    </property>
   </action>
  </widget>

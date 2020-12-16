@@ -673,8 +673,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                                     after_send_tx_fun, fn_show_address_on_hw=self.show_address_on_hw)
                             tx_dlg.exec_()
                 except Exception as e:
-                    log.exception('Unknown error occurred.')
-                    self.errorMsg(str(e))
+                    self.errorMsg(str(e), True)
             else:
                 self.errorMsg('No UTXO to send.')
         finally:

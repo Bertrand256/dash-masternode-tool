@@ -56,7 +56,10 @@ class WndUtils:
         return msg.exec_()
 
     @staticmethod
-    def errorMsg(message):
+    def errorMsg(message: str, log_as_exception: bool = False):
+        if log_as_exception:
+            logging.exception(str(message))
+
         if threading.current_thread() != threading.main_thread():
             return WndUtils.call_in_main_thread(WndUtils.displayMessage, QMessageBox.Critical, message)
         else:

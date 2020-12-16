@@ -271,7 +271,6 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.change_amount = 0.0
         self.values_unit = OUTPUT_VALUE_UNIT_AMOUNT
         self.tm_calculate_change_value = QTimer(self)
-        self.tm_debounce__ = QTimer(self)
         self.current_file_name = ''
         self.current_file_encrypted = False
         self.recent_data_files = []  # recent used data files
