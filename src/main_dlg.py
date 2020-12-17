@@ -52,8 +52,12 @@ import hw_intf
 from hw_setup_dlg import HwSetupDlg
 from psw_cache import SshPassCache
 from sign_message_dlg import SignMessageDlg
+from wallet_tools_dlg import WalletToolsDlg
 from wnd_utils import WndUtils
 from ui import ui_main_dlg
+
+
+log = logging.getLogger('dmt.main')
 
 
 class DispMessage(object):
@@ -146,6 +150,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.setIcon(self.action_hw_tools, "hw.png")
         self.setIcon(self.btnMoveMnUp, "arrow-downward@16px.png", rotate=180)
         self.setIcon(self.btnMoveMnDown, "arrow-downward@16px.png")
+        self.setIcon(self.action_wallet_tools, "../img/png/business-center-tools@32px.png")  # todo: move image to base dir
 
         self.mnuSignMessage = QMenu()
         self.mnuSignMessage.addAction(self.action_sign_message_with_collateral_addr)
@@ -333,7 +338,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if file_name != self.app_config.app_config_file_name:
                 self.load_configuration_from_file(file_name)
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     def on_config_file_mru_clear_triggered(self):
         """Clear items in the recent config files menu."""
@@ -342,7 +347,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             app_cache.set_value('MainWindow_ConfigFileMRUList', self.recent_config_files)
             self.update_config_files_mru_menu_items()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     def display_window_title(self):
         """
@@ -393,7 +398,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 else:
                     WndUtils.errorMsg(f'File \'{file_name}\' does not exist.')
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     def save_configuration(self, file_name: str = None):
         self.app_config.save_to_file(hw_session=self.hw_session, file_name=file_name)
@@ -411,7 +416,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         try:
             self.save_configuration()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_save_config_file_as_triggered(self, checked):
@@ -425,7 +430,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if file_name:
                 self.save_configuration(file_name)
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_export_configuration_triggered(self, checked):
@@ -440,7 +445,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.app_config.save_to_file(hw_session=self.hw_session, file_name=file_name, update_current_file_name=False)
                 WndUtils.infoMsg('Configuration has been exported.')
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_import_configuration_triggered(self, checked):
@@ -461,7 +466,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 else:
                     WndUtils.errorMsg(f'File \'{file_name}\' does not exist.')
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_open_log_file_triggered(self, checked):
@@ -471,7 +476,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if not ret:
                     self.warnMsg('Could not open "%s" file using a default OS application.' % self.app_config.log_file)
             except Exception as e:
-                self.errorMsg(str(e))
+                self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_restore_config_from_backup_triggered(self, checked):
@@ -517,7 +522,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             else:
                 self.errorMsg("Couldn't find any backup file.")
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_open_data_folder_triggered(self, checked):
@@ -527,7 +532,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if not ret:
                     self.warnMsg('Could not open "%s" folder using a default OS application.' % self.app_config.data_dir)
             except Exception as e:
-                self.errorMsg(str(e))
+                self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_clear_wallet_cache_triggered(self, checked):
@@ -565,7 +570,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         try:
             self.run_thread(self, self.get_project_config_params_thread, (force_check,))
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_command_console_triggered(self, checked):
@@ -574,7 +579,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.cmd_console_dlg = CmdConsoleDlg(self, self.app_config)
             self.cmd_console_dlg.exec_()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     def get_project_config_params_thread(self, ctrl, force_check):
         """
@@ -662,7 +667,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.update_edit_controls_state()
             del dlg
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_about_app_triggered(self):
@@ -670,7 +675,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             ui = about_dlg.AboutDlg(self, self.app_config.app_version)
             ui.exec_()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     def show_connection_initiated(self):
         """Shows status information related to a initiated process of connection to a dash RPC. """
@@ -800,7 +805,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         try:
             self.test_dash_network_connection()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     def test_dash_network_connection(self):
         def connection_test_finished():
@@ -930,7 +935,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         self.del_app_message(int(link))
                         break
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     def getHwName(self):
         if self.app_config.hw_type == HWType.trezor:
@@ -1020,12 +1025,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.hw_client.clear_session()
                 self.update_edit_controls_state()
             except OSError as e:
-                logging.exception('Exception occurred')
-                self.errorMsg('Cannot open %s device.' % self.getHwName())
+                self.errorMsg('Cannot open %s device.' % self.getHwName(), True)
                 self.update_edit_controls_state()
             except Exception as e:
-                logging.exception('Exception occurred')
-                self.errorMsg(str(e))
+                self.errorMsg(str(e), True)
                 if self.hw_client:
                     self.hw_client.init_device()
                 self.update_edit_controls_state()
@@ -1039,7 +1042,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         except CancelException:
             return
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_test_hw_connection_triggered(self):
@@ -1075,14 +1078,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         try:
             self.disconnect_hardware_wallet()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnNewMn_clicked(self):
         try:
             self.add_new_masternode_cfg(copy_values_from_current=False)
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnDeleteMn_clicked(self):
@@ -1101,14 +1104,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.app_config.modified = True
                 self.update_edit_controls_state()
             except Exception as e:
-                self.errorMsg(str(e))
+                self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnDuplicateMn_clicked(self):
         try:
             self.add_new_masternode_cfg(copy_values_from_current=True)
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnEditMn_clicked(self):
@@ -1118,7 +1121,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.update_edit_controls_state()
             self.update_mn_controls_state()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnCancelEditingMn_clicked(self, checked):
@@ -1148,7 +1151,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.update_edit_controls_state()
             self.update_mn_controls_state()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_import_masternode_conf_triggered(self, checked):
@@ -1310,7 +1313,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     if file_name:
                         self.errorMsg("File '" + file_name + "' does not exist")
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     def update_edit_controls_state(self):
         def update_fun():
@@ -1412,7 +1415,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.cur_masternode = None
             self.display_masternode_config(False)
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     def on_mn_name_modified(self, new_name):
         if self.cur_masternode:
@@ -1914,7 +1917,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.lblMnStatus.setText('')
                 self.errorMsg('Dash daemon not connected')
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_hw_wallet_triggered(self):
@@ -1928,7 +1931,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         try:
             self.show_wallet_window(mn_index)
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     def show_wallet_window(self, initial_mn: Optional[int]):
         """ Shows the wallet/send payments dialog.
@@ -1945,7 +1948,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 ui = wallet_dlg.WalletDlg(self, initial_mn_sel=initial_mn)
                 ui.exec_()
             except Exception as e:
-                self.errorMsg(str(e))
+                self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_sign_message_with_collateral_addr_triggered(self):
@@ -1962,7 +1965,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             except CancelException:
                 return
             except Exception as e:
-                self.errorMsg(str(e))
+                self.errorMsg(str(e), True)
         else:
             self.errorMsg("To sign messages, you must select a masternode.")
 
@@ -1977,7 +1980,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     ui = SignMessageDlg(self, None, None, None, pk)
                     ui.exec_()
             except Exception as e:
-                self.errorMsg(str(e))
+                self.errorMsg(str(e), True)
         else:
             self.errorMsg("To sign messages, you must select a masternode.")
 
@@ -1992,18 +1995,25 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     ui = SignMessageDlg(self, None, None, None, pk)
                     ui.exec_()
             except Exception as e:
-                self.errorMsg(str(e))
+                self.errorMsg(str(e), True)
         else:
             self.errorMsg("To sign messages, you must select a masternode.")
 
     @pyqtSlot(bool)
     def on_action_hw_tools_triggered(self):
-        """Hardware wallet initialization from a seed."""
         try:
             ui = HwToolsDlg(self)
             ui.exec_()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
+
+    @pyqtSlot(bool)
+    def on_action_wallet_tools_triggered(self):
+        try:
+            ui = WalletToolsDlg(self)
+            ui.exec_()
+        except Exception as e:
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_open_proposals_window_triggered(self):
@@ -2011,7 +2021,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             ui = ProposalsDlg(self, self.dashd_intf)
             ui.exec_()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_about_qt_triggered(self, enabled):
@@ -2079,7 +2089,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                                               on_proregtx_success_callback=on_proregtx_finished)
                 reg_dlg.exec_()
             except Exception as e:
-                self.errorMsg(str(e))
+                self.errorMsg(str(e), True)
         else:
             self.errorMsg('No masternode selected')
 
@@ -2137,33 +2147,33 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         try:
             self.update_registrar(show_upd_payout=True, show_upd_operator=False, show_upd_voting=False)
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot()
     def on_btnUpdMnOperatorKey_clicked(self):
         try:
             self.update_registrar(show_upd_payout=False, show_upd_operator=True, show_upd_voting=False)
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot()
     def on_btnUpdMnVotingKey_clicked(self):
         try:
             self.update_registrar(show_upd_payout=False, show_upd_operator=False, show_upd_voting=True)
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot()
     def on_btnUpdMnService_clicked(self):
         try:
             self.update_service()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
     @pyqtSlot()
     def on_btnRevokeMn_clicked(self):
         try:
             self.revoke_mn_operator()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.errorMsg(str(e), True)
 
