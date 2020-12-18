@@ -140,11 +140,8 @@ def get_device_list(
         use_webusb=True,
         use_bridge=True,
         use_udp=True,
-        use_hid=True) -> Tuple[List[Dict], List[Exception]]:
-    """
-    :return: Tuple[List[Dict <{'client': MyTrezorClient, 'device_id': str, 'desc',: str, 'model': str}>],
-                   List[Exception]]
-    """
+        use_hid=True) -> Tuple[List[hw_common.HardwareWalletInstance], List[Exception]]:
+
     ret_list = []
     exceptions: List[Exception] = []
     device_ids = []
@@ -172,20 +169,20 @@ def get_device_list(
                 version = f'{client.features.major_version}.{client.features.minor_version}.' \
                           f'{client.features.patch_version}'
                 if client.features.label:
-                    desc = client.features.label
+                    lbl = client.features.label
                 else:
-                    desc = '[UNNAMED]'
-                desc = f'{desc} (ver: {version}, id: {client.features.device_id})'
+                    lbl = '[UNNAMED]'
+                desc = f'{lbl} (ver: {version}, id: {client.features.device_id})'
 
-                c = {
-                    'client': client,
-                    'device_id': client.features.device_id,
-                    'desc': desc,
-                    'model': client.features.model,
-                    'bootloader_mode': client.features.bootloader_mode
-                }
-
-                ret_list.append(c)
+                ret_list.append(
+                    hw_common.HardwareWalletInstance(
+                        device_id=client.features.device_id,
+                        device_label=lbl,
+                        device_desc=desc,
+                        device_model=client.features.model,
+                        client=client,
+                        bootloader_mode=client.features.bootloader_mode
+                    ))
                 device_ids.append(client.features.device_id)  # beware: it's empty in bootloader mode
             else:
                 # the same device is already connected using different connection medium
@@ -197,8 +194,9 @@ def get_device_list(
 
     if not return_clients:
         for cli in ret_list:
-            cli['client'].close()
-            cli['client'] = None
+            if cli.client:  # it shouldn't be None, but we uset it to suppress IDE warnings
+                cli.client.close()
+            cli.client = None
 
     return ret_list, exceptions
 

@@ -79,7 +79,7 @@ class Ui_WalletToolsDlg(object):
         self.verticalLayout.addWidget(self.widget)
 
         self.retranslateUi(WalletToolsDlg)
-        self.tabsMain.setCurrentIndex(1)
+        self.tabsMain.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(WalletToolsDlg)
 
     def retranslateUi(self, WalletToolsDlg):

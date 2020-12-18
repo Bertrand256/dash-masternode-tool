@@ -608,10 +608,10 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 boot_clients = []
                 for c in hw_clients:
                     try:
-                        if c['bootloader_mode']:
-                            boot_clients.append(c['client'])
+                        if c.bootloader_mode:
+                            boot_clients.append(c.client)
                         else:
-                            c['client'].close()
+                            c.client.close()
                     except Exception:
                         pass
 
@@ -1322,10 +1322,10 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
 
             devs, _ = get_device_list(self.hw_type, return_clients=return_hw_clients)
             for dev in devs:
-                device_id = dev['device_id']
-                label = dev['desc']
-                model = dev['model']
-                client = dev.get('client')
+                device_id = dev.device_id
+                label = dev.device_desc
+                model = dev.device_model
+                client = dev.client
                 self.hw_device_instances.append([device_id, label, model, client])
                 self.cboDeviceInstance.addItem(label)
 

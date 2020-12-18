@@ -11,9 +11,9 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
         QWidget.__init__(self, parent=parent)
         Ui_WdgRecoverHw.__init__(self)
         ActionPageBase.__init__(self)
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dlg):
         Ui_WdgRecoverHw.setupUi(self, self)
 
     def initialize(self):

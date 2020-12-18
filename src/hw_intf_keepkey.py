@@ -18,7 +18,7 @@ from mnemonic import Mnemonic
 import dash_utils
 from common import CancelException
 from hw_common import ask_for_pin_callback, ask_for_pass_callback, ask_for_word_callback, \
-    HwSessionInfo, select_hw_device
+    HwSessionInfo, select_hw_device, HardwareWalletInstance
 import keepkeylib.types_pb2 as proto_types
 import wallet_common
 from wnd_utils import WndUtils
@@ -76,11 +76,8 @@ class MyKeepkeyClient(keepkey_ProtocolMixin, MyKeepkeyTextUIMixin, keepkey_BaseC
 
 def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[str] = 'NFC',
                     allow_bootloader_mode: bool = False) \
-        -> Tuple[List[Dict], List[Exception]]:
-    """
-    :return: Tuple[List[Dict <{'client': MyTrezorClient, 'device_id': str, 'desc',: str, 'model': str}>],
-                   List[Exception]]
-    """
+        -> Tuple[List[HardwareWalletInstance], List[Exception]]:
+
     from keepkeylib.transport_hid import HidTransport
     from keepkeylib.transport_webusb import WebUsbTransport
 
@@ -114,20 +111,20 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
                     version = f'{client.features.major_version}.{client.features.minor_version}.' \
                               f'{client.features.patch_version}'
                     if client.features.label:
-                        desc = client.features.label
+                        lbl = client.features.label
                     else:
-                        desc = '[UNNAMED]'
-                    desc = f'{desc} (ver: {version}, id: {device_id})'
+                        lbl = '[UNNAMED]'
+                    desc = f'{lbl} (ver: {version}, id: {device_id})'
 
-                    c = {
-                        'client': client,
-                        'device_id': device_id,
-                        'desc': desc,
-                        'model': client.features.model,
-                        'bootloader_mode': client.features.bootloader_mode
-                    }
-
-                    ret_list.append(c)
+                    ret_list.append(
+                        HardwareWalletInstance(
+                            device_id=device_id,
+                            device_label=lbl,
+                            device_desc=desc,
+                            device_model=client.features.model,
+                            client=client,
+                            bootloader_mode=client.features.bootloader_mode
+                        ))
                     device_ids.append(device_id)  # beware: it's empty in bootloader mode
                 else:
                     # the same device is already connected using different connection medium
@@ -139,8 +136,9 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
 
     if not return_clients:
         for cli in ret_list:
-            cli['client'].close()
-            cli['client'] = None
+            if cli.client:
+                cli.client.close()
+            cli.client = None
 
     return ret_list, exceptions
 

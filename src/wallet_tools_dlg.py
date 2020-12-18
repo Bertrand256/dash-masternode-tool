@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-12
+import logging
 from typing import Optional
 
 from PyQt5 import QtWidgets
@@ -11,12 +12,14 @@ from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QDialog, QMenu, QApplication, QLineEdit, QShortcut, QMessageBox, QTableWidgetItem
 import app_cache
 import app_defs
+import hw_intf
+from app_config import AppConfig
 from hw_settings_wdg import WdgHwSettings
 from recover_hw_wdg import WdgRecoverHw
+from select_hw_device_wdg import SelectHwDeviceWdg
 from ui import ui_wallet_tools_dlg
-from wallet_tools_common import ActionPageBase
+from wallet_tools_common import ActionPageBase, HardwareWalletList
 from wnd_utils import WndUtils
-
 
 ACTION_NONE = 0
 ACTION_HW_SETTINGS = 1
@@ -26,6 +29,8 @@ ACTION_WIPE_HW = 4
 ACTION_UPDATE_HW_FIRMWARE = 5
 ACTION_SPLIT_MERGE_SEED = 6
 
+log = logging.getLogger('dmt.wallet_tools_dlg')
+
 
 class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
     def __init__(self, parent) -> None:
@@ -33,16 +38,22 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         ui_wallet_tools_dlg.Ui_WalletToolsDlg.__init__(self)
         WndUtils.__init__(self, parent.app_config)
         self.main_ui = parent
-        self.app_config = parent.app_config
+        self.app_config: AppConfig = parent.app_config
         self.current_action = ACTION_NONE
         self.action_widget: Optional[ActionPageBase] = None
         self.action_layout: Optional[QtWidgets.QVBoxLayout] = None
-        self.setupUi()
+        self.hw_devices = HardwareWalletList(self.main_ui, self.app_config.hw_type)
+        self.wdg_select_hw_device = SelectHwDeviceWdg(self, self.hw_devices)
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dlg):
         ui_wallet_tools_dlg.Ui_WalletToolsDlg.setupUi(self, self)
         self.setWindowTitle("Wallet tools")
         self.activate_menu_page()
+
+        lay = self.layout()
+        lay.insertWidget(1, self.wdg_select_hw_device)  # hardware wallet selection panel is inserted just below the
+                                                     # main title
 
         self.action_layout = QtWidgets.QVBoxLayout(self.tabActionContainer)
         self.action_layout.setContentsMargins(0, 0, 0, 0)
@@ -77,14 +88,14 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
             self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
-    def on_actHwSettings_clicked(self, checked):
+    def on_actHwSettings_clicked(self):
         try:
             self.setup_action_widget(ACTION_HW_SETTINGS)
         except Exception as e:
             self.errorMsg(str(e), True)
 
     @pyqtSlot(bool)
-    def on_actRecoverHw_clicked(self, checked):
+    def on_actRecoverHw_clicked(self):
         try:
             self.setup_action_widget(ACTION_RECOVER_HW)
         except Exception as e:
@@ -102,6 +113,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         self.btnContinue.setText('Continue')
         self.btnContinue.setVisible(False)
         self.btnContinue.setEnabled(True)
+        self.wdg_select_hw_device.setVisible(False)
         self.current_action = ACTION_NONE
 
     def set_action_title(self, title: str):
@@ -140,6 +152,12 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         if tool_tip:
             self.btnContinue.setToolTip(tool_tip)
 
+    def set_hw_panel_visible(self, visible: bool):
+        if visible:
+            self.wdg_select_hw_device.update()
+
+        self.wdg_select_hw_device.setVisible(visible)
+
     def get_widget_action_type(self) -> int:
         # returns one of action type constants based on the widget class type in self.action_widget
         if self.action_widget:
@@ -161,7 +179,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
                     self.action_widget = None
 
                 if action == ACTION_HW_SETTINGS:
-                    self.action_widget = WdgHwSettings(self.tabActionContainer)
+                    self.action_widget = WdgHwSettings(self.tabActionContainer, self.hw_devices)
                     self.action_layout.addWidget(self.action_widget)
                 elif action == ACTION_RECOVER_HW:
                     self.action_widget = WdgRecoverHw(self.tabActionContainer)
@@ -170,17 +188,19 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
                     raise Exception('Internal error: not supported action type')
 
                 self.action_widget.set_control_functions(
-                    fn_exit_page= self.activate_menu_page,
+                    fn_exit_page=self.activate_menu_page,
                     fn_set_action_title=self.set_action_title,
-                    fn_set_btn_cancel_visible = self.set_btn_cancel_visible,
-                    fn_set_btn_cancel_enabled = self.set_btn_cancel_enabled,
-                    fn_set_btn_cancel_text = self.set_btn_cancel_text,
-                    fn_set_btn_back_visible = self.set_btn_back_visible,
-                    fn_set_btn_back_enabled = self.set_btn_back_enabled,
-                    fn_set_btn_back_text = self.set_btn_back_text,
-                    fn_set_btn_continue_visible = self.set_btn_continue_visible,
-                    fn_set_btn_continue_enabled = self.set_btn_continue_enabled,
-                    fn_set_btn_continue_text = self.set_btn_continue_text)
+                    fn_set_btn_cancel_visible=self.set_btn_cancel_visible,
+                    fn_set_btn_cancel_enabled=self.set_btn_cancel_enabled,
+                    fn_set_btn_cancel_text=self.set_btn_cancel_text,
+                    fn_set_btn_back_visible=self.set_btn_back_visible,
+                    fn_set_btn_back_enabled=self.set_btn_back_enabled,
+                    fn_set_btn_back_text=self.set_btn_back_text,
+                    fn_set_btn_continue_visible=self.set_btn_continue_visible,
+                    fn_set_btn_continue_enabled=self.set_btn_continue_enabled,
+                    fn_set_btn_continue_text=self.set_btn_continue_text,
+                    fn_set_hw_panel_visible=self.set_hw_panel_visible
+                )
 
             self.current_action = action
             self.tabsMain.setCurrentIndex(1)

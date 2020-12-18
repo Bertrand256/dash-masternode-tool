@@ -21,6 +21,7 @@ import logging
 from app_defs import HWType
 from wallet_common import UtxoType, TxOutputType
 from wnd_utils import WndUtils
+from hw_common import HardwareWalletInstance
 
 
 DEFAULT_HW_BUSY_MESSAGE = '<b>Complete the action on your hardware wallet device</b>'
@@ -121,7 +122,7 @@ def control_hw_call(func):
 
 
 def get_device_list(hw_type: HWType, return_clients: bool = True, allow_bootloader_mode: bool = False) \
-    -> Tuple[List[Dict], List[Exception]]:
+    -> Tuple[List[HardwareWalletInstance], List[Exception]]:
     """
     :return: Tuple[List[Dict <{'client': MyTrezorClient, 'device_id': str, 'desc',: str, 'model': str}>],
                    List[Exception]]

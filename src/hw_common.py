@@ -5,7 +5,7 @@
 import threading
 from functools import partial
 from PyQt5 import QtWidgets, QtCore
-from typing import List, Optional, Callable, ByteString, Tuple
+from typing import List, Optional, Callable, ByteString, Tuple, Any
 
 from PyQt5.QtCore import QObject
 from PyQt5.QtWidgets import QDialog, QCheckBox, QRadioButton
@@ -266,5 +266,15 @@ def select_hw_device(parent, label: str, devices: List[str]) -> Optional[int]:
     if dlg.exec_():
         return dlg.device_selected_index
     return None
+
+
+class HardwareWalletInstance(object):
+    def __init__(self, device_id: str, device_label: str, device_desc: str, device_model: str, client: Any, bootloader_mode):
+        self.device_id = device_id
+        self.device_label = device_label
+        self.device_desc = device_desc
+        self.device_model = device_model
+        self.client = client
+        self.bootloader_mode = bootloader_mode
 
 
