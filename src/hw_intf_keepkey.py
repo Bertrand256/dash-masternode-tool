@@ -164,28 +164,28 @@ def connect_keepkey(passphrase_encoding: Optional[str] = 'NFC',
             if device_id:
                 # we have to select a device with the particular id number
                 for cli in hw_clients:
-                    if cli['device_id'] == device_id:
-                        selected_client = cli['client']
+                    if cli.device_id == device_id:
+                        selected_client = cli.client
                         break
-                    else:
-                        cli['client'].close()
-                        cli['client'] = None
+                    elif cli.client:
+                        cli.client.close()
+                        cli.client = None
             else:
                 # we are not forced to automatically select the particular device
                 if len(hw_clients) > 1:
-                    hw_names = [a['desc'] for a in hw_clients]
+                    hw_names = [a.device_desc for a in hw_clients]
 
                     selected_index = select_hw_device(None, 'Select Keepkey device', hw_names)
                     if selected_index is not None and (0 <= selected_index < len(hw_clients)):
                         selected_client = hw_clients[selected_index]
                 else:
-                    selected_client = hw_clients[0]['client']
+                    selected_client = hw_clients[0].client
 
             # close all the clients but the selected one
             for cli in hw_clients:
-                if cli['client'] != selected_client:
-                    cli['client'].close()
-                    cli['client'] = None
+                if cli.client != selected_client and cli.client:
+                    cli.client.close()
+                    cli.client = None
 
             return selected_client
         return None

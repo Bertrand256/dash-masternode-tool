@@ -23,16 +23,13 @@ from wallet_common import UtxoType, TxOutputType
 from wnd_utils import WndUtils
 from hw_common import HardwareWalletInstance
 
-
 DEFAULT_HW_BUSY_MESSAGE = '<b>Complete the action on your hardware wallet device</b>'
 DEFAULT_HW_BUSY_TITLE = 'Please confirm'
-
 
 # Dict[str <hd tree ident>, Dict[str <bip32 path>, Tuple[str <address>, int <db id>]]]
 bip32_address_map: Dict[str, Dict[str, Tuple[str, int]]] = {}
 
 hd_tree_db_map: Dict[str, int] = {}  # Dict[str <hd tree ident>, int <db id>]
-
 
 log = logging.getLogger('dmt.hw_intf')
 
@@ -45,7 +42,7 @@ def control_trezor_keepkey_libs(connecting_to_hw):
     :return:
     """
     if sys.platform == 'linux' and ((connecting_to_hw == HWType.trezor and 'keepkeylib' in sys.modules.keys()) or
-       (connecting_to_hw == HWType.keepkey and 'trezorlib' in sys.modules.keys())):
+                                    (connecting_to_hw == HWType.keepkey and 'trezorlib' in sys.modules.keys())):
         raise Exception('On linux OS switching between Trezor/Keepkey wallets requires restarting the '
                         'application.\n\nPlease restart the application to continue.')
 
@@ -57,6 +54,7 @@ def control_hw_call(func):
     hw cable. After this, connection has to be closed and opened again, otherwise 'read error' occurrs. 
     :param func: function decorated. First argument of the function has to be the reference to the MainWindow object.
     """
+
     def catch_hw_client(*args, **kwargs):
         hw_session: HwSessionInfo = args[0]
         client = hw_session.hw_client
@@ -122,12 +120,7 @@ def control_hw_call(func):
 
 
 def get_device_list(hw_type: HWType, return_clients: bool = True, allow_bootloader_mode: bool = False) \
-    -> Tuple[List[HardwareWalletInstance], List[Exception]]:
-    """
-    :return: Tuple[List[Dict <{'client': MyTrezorClient, 'device_id': str, 'desc',: str, 'model': str}>],
-                   List[Exception]]
-    """
-
+        -> Tuple[List[HardwareWalletInstance], List[Exception]]:
     if hw_type == HWType.trezor:
 
         import hw_intf_trezor as trezor
@@ -169,6 +162,7 @@ def connect_hw(hw_session: Optional[HwSessionInfo], hw_type: HWType, device_id: 
         standard (NFKD), which is used by Trezor devices; by default Keepkey uses non-standard encoding (NFC).
     :return:
     """
+
     def get_session_info_trezor(get_public_node_fun, hw_session: HwSessionInfo, hw_client):
         nonlocal hw_type
 
@@ -335,6 +329,7 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType],
     :param rawtransactions: dict mapping txid to rawtransaction
     :return: tuple (serialized tx, total transaction amount in satoshis)
     """
+
     def sign(ctrl):
         ctrl.dlg_config_fun(dlg_title="Confirm transaction signing.", show_progress_bar=False)
         ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet<br>'
@@ -452,7 +447,9 @@ def action_on_device_message(message=DEFAULT_HW_BUSY_MESSAGE, title=DEFAULT_HW_B
 
             return WndUtils.run_thread_dialog(thread_dialog, (), True, show_window_delay_ms=1000,
                                               force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_client))
+
         return wrapped_f
+
     return decorator_f
 
 
@@ -500,7 +497,6 @@ def set_wipe_code(hw_client, enabled):
 
 @control_hw_call
 def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool = False, message_to_display: str = None):
-
     def _get_address(ctrl, hw_session: HwSessionInfo, bip32_path: str, show_display: bool = False,
                      message_to_display: str = None):
         if ctrl:
@@ -646,7 +642,7 @@ def get_xpub(hw_session: HwSessionInfo, bip32_path):
         raise Exception('HW client not open.')
 
 
-def wipe_device(hw_type: HWType, hw_device_id: Optional[str], parent_window = None) -> Tuple[Optional[str], bool]:
+def wipe_device(hw_type: HWType, hw_device_id: Optional[str], parent_window=None) -> Tuple[Optional[str], bool]:
     """
     Wipes the hardware wallet device.
     :param hw_type: app_config.HWType
@@ -658,6 +654,7 @@ def wipe_device(hw_type: HWType, hw_device_id: Optional[str], parent_window = No
             exception, because in the case of changing of the device id (when wiping) we want to pass it back to
             the caller.
     """
+
     def wipe(ctrl):
         ctrl.dlg_config_fun(dlg_title="Confirm wiping device.", show_progress_bar=False)
         ctrl.display_msg_fun('<b>Read the messages displyed on your hardware wallet <br>'
@@ -686,7 +683,7 @@ def wipe_device(hw_type: HWType, hw_device_id: Optional[str], parent_window = No
 
 def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemonic_words: str,
                             pin: str, passphrase_enbled: bool, hw_label: str, passphrase: str,
-                            secondary_pin: str, parent_window = None) -> Tuple[Optional[str], bool]:
+                            secondary_pin: str, parent_window=None) -> Tuple[Optional[str], bool]:
     """
     Initializes hardware wallet with a mnemonic words. For security reasons use this function only on an offline
     system, that will never be connected to the Internet.
@@ -707,6 +704,7 @@ def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemon
             the caller.
         Ret[0] and Ret[1] are None for Ledger devices.
     """
+
     def load(ctrl, hw_device_id: str, mnemonic: str, pin: str, passphrase_enbled: bool, hw_label: str) -> \
             Tuple[Optional[str], bool]:
 
@@ -735,7 +733,7 @@ def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemon
 
 
 def recover_device(hw_type: HWType, hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool,
-                    hw_label: str, parent_window = None) -> Tuple[Optional[str], bool]:
+                   hw_label: str, parent_window=None) -> Tuple[Optional[str], bool]:
     """
     :param hw_type: app_config.HWType
     :param hw_device_id: id of the device selected by the user (TrezorClient, KeepkeyClient); None for Ledger Nano S
@@ -752,6 +750,7 @@ def recover_device(hw_type: HWType, hw_device_id: str, word_count: int, passphra
             it back to the caller function.
         Ret[0] and Ret[1] are None for Ledger devices.
     """
+
     def load(ctrl, hw_type: HWType, hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool,
              hw_label: str) -> Tuple[Optional[str], bool]:
 
@@ -783,7 +782,7 @@ def recover_device(hw_type: HWType, hw_device_id: str, word_count: int, passphra
 
 
 def reset_device(hw_type: HWType, hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool,
-                 hw_label: str, parent_window = None) -> Tuple[Optional[str], bool]:
+                 hw_label: str, parent_window=None) -> Tuple[Optional[str], bool]:
     """
     Initialize device with a newly generated words.
     :param hw_type: app_config.HWType
@@ -801,6 +800,7 @@ def reset_device(hw_type: HWType, hw_device_id: str, word_count: int, passphrase
             it back to the caller function.
         Ret[0] and Ret[1] are None for Ledger devices.
     """
+
     def load(ctrl, hw_type: HWType, hw_device_id: str, strength: int, passphrase_enabled: bool, pin_enabled: bool,
              hw_label: str) -> Tuple[Optional[str], bool]:
 
@@ -832,6 +832,7 @@ def reset_device(hw_type: HWType, hw_device_id: str, word_count: int, passphrase
 
         return WndUtils.run_thread_dialog(load, (hw_type, hw_device_id, strength, passphrase_enabled, pin_enabled,
                                                  hw_label), True, center_by_window=parent_window)
+
 
 @control_hw_call
 def hw_encrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: str,
@@ -938,5 +939,3 @@ def hw_decrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
 
     return WndUtils.run_thread_dialog(decrypt, (hw_session, bip32_path_n, label, value), True,
                                       force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
-
-
