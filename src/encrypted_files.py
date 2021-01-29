@@ -8,13 +8,12 @@ import os
 from typing import ByteString, List, Tuple
 from PyQt5.QtWidgets import QMessageBox
 from cryptography.fernet import Fernet, InvalidToken
-from app_defs import HWType, get_note_url
+from app_defs import get_note_url
 from app_utils import SHA256, write_bytes_buf, write_int_list_buf, read_bytes_from_file, read_int_list_from_file
 from common import CancelException
 from dash_utils import num_to_varint, read_varint_from_file, bip32_path_n_to_string
-from hw_common import HwSessionInfo
-from hw_intf import hw_encrypt_value, hw_decrypt_value, hw_sign_message, get_address_and_pubkey, connect_hw, \
-    disconnect_hw
+from hw_common import HWType
+from hw_intf import hw_encrypt_value, hw_decrypt_value, hw_sign_message, get_address_and_pubkey, HwSessionInfo
 from wnd_utils import WndUtils
 
 
@@ -43,7 +42,7 @@ def prepare_hw_encryption_attrs(hw_session: HwSessionInfo, label: str) -> \
     hw_type_bin = {
             HWType.trezor: 1,
             HWType.keepkey: 2,
-            HWType.ledger_nano_s: 3
+            HWType.ledger_nano: 3
         }[hw_session.hw_type]
 
     key = Fernet.generate_key()  # encryption key
@@ -58,7 +57,7 @@ def prepare_hw_encryption_attrs(hw_session: HwSessionInfo, label: str) -> \
         pub_key_hash = SHA256.new(pub_key).digest()
         return (protocol, hw_type_bin, bip32_path_n, key, encrypted_key_bin, pub_key_hash)
 
-    elif hw_session.hw_type == HWType.ledger_nano_s:
+    elif hw_session.hw_type == HWType.ledger_nano:
         # Ledger Nano S does not have encryption/decryption features, so for encryption and decryptionwe will use
         # a hash of a signed message, where the message the raw key itself;
         # The raw key will be part of the encrypted header.
@@ -137,7 +136,7 @@ def read_file_encrypted(file_name: str, ret_attrs: dict, hw_session: HwSessionIn
                     hw_type = {
                             1: HWType.trezor,
                             2: HWType.keepkey,
-                            3: HWType.ledger_nano_s
+                            3: HWType.ledger_nano
                         }.get(hw_type_bin)
 
                     if hw_type:
@@ -154,16 +153,17 @@ def read_file_encrypted(file_name: str, ret_attrs: dict, hw_session: HwSessionIn
                                 return hw_client_internal
 
                             try:
+                                #todo: adapt to refactoring
                                 hw_session = HwSessionInfo(get_hw_client_function=_get_client,
                                                            hw_connect_function=None,
                                                            hw_disconnect_function=None,
                                                            app_config=hw_session.app_config,
                                                            dashd_intf=hw_session.dashd_intf)
 
-                                hw_client_internal = connect_hw(hw_session=hw_session,
-                                                                device_id=None,
-                                                                passphrase_encoding='NFKD',
-                                                                hw_type=hw_type)
+                                hw_client_internal = open_hw_client(hw_session=hw_session,
+                                                                    device_id=None,
+                                                                    passphrase_encoding='NFKD',
+                                                                    hw_type=hw_type)
                             except Exception:
                                 raise
 
@@ -178,7 +178,7 @@ def read_file_encrypted(file_name: str, ret_attrs: dict, hw_session: HwSessionIn
                             if hw_session.hw_type in (HWType.trezor, HWType.keepkey):
                                 key_bin, pub_key = hw_decrypt_value(hw_session, bip32_path_n, label=label,
                                                                     value=encrypted_key_bin)
-                            elif hw_session.hw_type == HWType.ledger_nano_s:
+                            elif hw_session.hw_type == HWType.ledger_nano:
 
                                 display_label = f'<b>Click the sign message confirmation button on the <br>' \
                                                 f'hardware wallet to decrypt \'{label}\'.</b>'
@@ -210,11 +210,12 @@ def read_file_encrypted(file_name: str, ret_attrs: dict, hw_session: HwSessionIn
                                     default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
                                 raise CancelException('User cancelled.')
                             if hw_client_internal:
-                                disconnect_hw(hw_client_internal)
-                                hw_client_internal = connect_hw(hw_session=hw_session,
-                                                                device_id=None,
-                                                                passphrase_encoding='NFKD',
-                                                                hw_type=hw_type)
+                                close_hw_client(hw_client_internal)
+                                # todo: adapt to refactoring
+                                hw_client_internal = open_hw_client(hw_session=hw_session,
+                                                                    device_id=None,
+                                                                    passphrase_encoding='NFKD',
+                                                                    hw_type=hw_type)
                             else:
                                 hw_session.hw_disconnect()
 
@@ -261,4 +262,4 @@ def read_file_encrypted(file_name: str, ret_attrs: dict, hw_session: HwSessionIn
 
     finally:
         if hw_client_internal:
-            disconnect_hw(hw_client_internal)
+            close_hw_client(hw_client_internal)

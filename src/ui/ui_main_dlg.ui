@@ -587,7 +587,7 @@ QLineEdit:read-only {
    <addaction name="separator"/>
    <addaction name="action_check_network_connection"/>
    <addaction name="separator"/>
-   <addaction name="action_test_hw_connection"/>
+   <addaction name="action_connect_hw"/>
    <addaction name="action_disconnect_hw"/>
    <addaction name="separator"/>
    <addaction name="action_open_proposals_window"/>
@@ -662,9 +662,9 @@ QLineEdit:read-only {
     <string>Proposals</string>
    </property>
   </action>
-  <action name="action_test_hw_connection">
+  <action name="action_connect_hw">
    <property name="text">
-    <string>Test Hardware Wallet Connection</string>
+    <string>Connect Hardware Wallet</string>
    </property>
   </action>
   <action name="action_disconnect_hw">

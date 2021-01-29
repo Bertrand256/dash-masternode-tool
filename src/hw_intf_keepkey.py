@@ -2,23 +2,23 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
-import json
 import binascii
 import logging
-import struct
 import unicodedata
 from decimal import Decimal
-from typing import Optional, Tuple, List, Dict
+from typing import Optional, Tuple, List
+
 from keepkeylib.client import TextUIMixin as keepkey_TextUIMixin
 from keepkeylib.client import ProtocolMixin as keepkey_ProtocolMixin
 from keepkeylib.client import BaseClient as keepkey_BaseClient, CallException
 from keepkeylib import messages_pb2 as keepkey_proto
 from keepkeylib.tx_api import TxApiInsight
 from mnemonic import Mnemonic
+
 import dash_utils
 from common import CancelException
 from hw_common import ask_for_pin_callback, ask_for_pass_callback, ask_for_word_callback, \
-    HwSessionInfo, select_hw_device, HardwareWalletInstance
+    HWSessionBase, select_hw_device, HWDevice, HWType
 import keepkeylib.types_pb2 as proto_types
 import wallet_common
 from wnd_utils import WndUtils
@@ -75,15 +75,13 @@ class MyKeepkeyClient(keepkey_ProtocolMixin, MyKeepkeyTextUIMixin, keepkey_BaseC
 
 
 def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[str] = 'NFC',
-                    allow_bootloader_mode: bool = False) \
-        -> Tuple[List[HardwareWalletInstance], List[Exception]]:
-
+                    allow_bootloader_mode: bool = False) -> List[HWDevice]:
     from keepkeylib.transport_hid import HidTransport
     from keepkeylib.transport_webusb import WebUsbTransport
 
     ret_list = []
     transports = [HidTransport, WebUsbTransport]
-    exceptions: List[Exception] = []
+    exception: Optional[Exception] = None
     device_ids = []
     was_bootloader_mode = False
 
@@ -104,26 +102,26 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
                         continue
                     was_bootloader_mode = True
 
-                if (not client.features.bootloader_mode or allow_bootloader_mode) and \
-                    (client.features.device_id not in device_ids or client.features.bootloader_mode):
+                device_id = client.get_device_id()
+                if not device_id and d.__class__.__name__ == 'USBDevice' and hasattr(d, 'getSerialNumber'):
+                    device_id = d.getSerialNumber()
 
-                    device_id = client.features.device_id if client.features.device_id else 'unknown_id'
+                if (not client.features.bootloader_mode or allow_bootloader_mode) and \
+                        (device_id not in device_ids or client.features.bootloader_mode):
+
                     version = f'{client.features.major_version}.{client.features.minor_version}.' \
                               f'{client.features.patch_version}'
-                    if client.features.label:
-                        lbl = client.features.label
-                    else:
-                        lbl = '[UNNAMED]'
-                    desc = f'{lbl} (ver: {version}, id: {device_id})'
 
                     ret_list.append(
-                        HardwareWalletInstance(
+                        HWDevice(
+                            hw_type=HWType.keepkey,
                             device_id=device_id,
-                            device_label=lbl,
-                            device_desc=desc,
+                            device_label=client.features.label if client.features.label else None,
+                            device_version=version,
                             device_model=client.features.model,
                             client=client,
-                            bootloader_mode=client.features.bootloader_mode
+                            bootloader_mode=client.features.bootloader_mode,
+                            transport=d
                         ))
                     device_ids.append(device_id)  # beware: it's empty in bootloader mode
                 else:
@@ -132,7 +130,7 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
             except Exception as e:
                 logging.warning(
                     f'Cannot create Keepkey client ({d.__class__.__name__}) due to the following error: ' + str(e))
-                exceptions.append(e)
+                exception = e
 
     if not return_clients:
         for cli in ret_list:
@@ -140,59 +138,13 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
                 cli.client.close()
             cli.client = None
 
-    return ret_list, exceptions
+    if not ret_list and exception:
+        raise exception
+    return ret_list
 
 
-def connect_keepkey(passphrase_encoding: Optional[str] = 'NFC',
-                    device_id: Optional[str] = None) -> Optional[MyKeepkeyClient]:
-    """
-    Connect to a Keepkey device.
-    :passphrase_encoding: Allowed values: 'NFC' or 'NFKD'. Note: Keekpey uses NFC encoding for passphrases, which is
-        incompatible with BIP-39 standard (NFKD). This argument gives the possibility to enforce comforming the
-        standard encoding.
-    :return: ref to a keepkey client if connection successfull or None if we are sure that no Keepkey device connected.
-    """
-
-    logging.info('Started function')
-    def get_client() -> Optional[MyKeepkeyClient]:
-        hw_clients, exceptions = get_device_list(passphrase_encoding=passphrase_encoding)
-        if not hw_clients:
-            if exceptions:
-                raise exceptions[0]
-        else:
-            selected_client = None
-            if device_id:
-                # we have to select a device with the particular id number
-                for cli in hw_clients:
-                    if cli.device_id == device_id:
-                        selected_client = cli.client
-                        break
-                    elif cli.client:
-                        cli.client.close()
-                        cli.client = None
-            else:
-                # we are not forced to automatically select the particular device
-                if len(hw_clients) > 1:
-                    hw_names = [a.device_desc for a in hw_clients]
-
-                    selected_index = select_hw_device(None, 'Select Keepkey device', hw_names)
-                    if selected_index is not None and (0 <= selected_index < len(hw_clients)):
-                        selected_client = hw_clients[selected_index]
-                else:
-                    selected_client = hw_clients[0].client
-
-            # close all the clients but the selected one
-            for cli in hw_clients:
-                if cli.client != selected_client and cli.client:
-                    cli.client.close()
-                    cli.client = None
-
-            return selected_client
-        return None
-
-    # HidTransport.enumerate() has to be called in the main thread - second call from bg thread
-    # causes SIGSEGV
-    client = WndUtils.call_in_main_thread(get_client)
+def open_keepkey_client(hw_device_transport: object) -> Optional[MyKeepkeyClient]:
+    client = WndUtils.call_in_main_thread(hw_device_transport)
     if client:
         logging.info('Keepkey connected. Firmware version: %s.%s.%s, vendor: %s, initialized: %s, '
                      'pp_protection: %s, pp_cached: %s, bootloader_mode: %s ' %
@@ -202,13 +154,7 @@ def connect_keepkey(passphrase_encoding: Optional[str] = 'NFC',
                       str(client.features.initialized),
                       str(client.features.passphrase_protection), str(client.features.passphrase_cached),
                       str(client.features.bootloader_mode)))
-        return client
-    else:
-        if device_id:
-            msg = 'Cannot connect to the Keepkey device with this id: .' % device_id
-        else:
-            msg = 'Cannot find any Keepkey device.'
-        raise Exception(msg)
+    return client
 
 
 class MyTxApiInsight(TxApiInsight):
@@ -224,7 +170,7 @@ class MyTxApiInsight(TxApiInsight):
             try:
                 j = self.dashd_inf.getrawtransaction(resourceid, 1, skip_cache=self.skip_cache)
                 return j
-            except Exception as e:
+            except Exception:
                 raise
         else:
             raise Exception('Invalid operation type: ' + resource)
@@ -239,8 +185,8 @@ class MyTxApiInsight(TxApiInsight):
         for vin in data['vin']:
             i = t.inputs.add()
             if 'coinbase' in vin.keys():
-                i.prev_hash = b"\0"*32
-                i.prev_index = 0xffffffff # signed int -1
+                i.prev_hash = b"\0" * 32
+                i.prev_index = 0xffffffff  # signed int -1
                 i.script_sig = binascii.unhexlify(vin['coinbase'])
                 i.sequence = vin['sequence']
 
@@ -279,7 +225,7 @@ class MyTxApiInsight(TxApiInsight):
         return t
 
 
-def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoType],
+def sign_tx(hw_session: HWSessionBase, utxos_to_spend: List[wallet_common.UtxoType],
             tx_outputs: List[wallet_common.TxOutputType], tx_fee):
     """
     Creates a signed transaction.
@@ -291,9 +237,9 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
     """
 
     insight_network = 'insight_dash'
-    if hw_session.app_config.is_testnet():
+    if hw_session.is_testnet:
         insight_network += '_testnet'
-    dash_network = hw_session.app_config.dash_network
+    dash_network = hw_session.dash_network
 
     tx_api = MyTxApiInsight(insight_network, '', hw_session.dashd_intf, hw_session.app_config.tx_cache_dir)
     client = hw_session.hw_client
@@ -337,16 +283,16 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
     if outputs_amount + tx_fee != inputs_amount:
         raise Exception('Transaction validation failure: inputs + fee != outputs')
 
-    signed = client.sign_tx(hw_session.app_config.hw_coin_name, inputs, outputs)
+    signed = client.sign_tx(hw_session.hw_coin_name, inputs, outputs)
     logging.info('Signed transaction')
     return signed[1], inputs_amount
 
 
-def sign_message(hw_session: HwSessionInfo, bip32path, message):
+def sign_message(hw_session: HWSessionBase, bip32path, message):
     client = hw_session.hw_client
     address_n = client.expand_path(clean_bip32_path(bip32path))
     try:
-        return client.sign_message(hw_session.app_config.hw_coin_name, address_n, message)
+        return client.sign_message(hw_session.hw_coin_name, address_n, message)
     except CallException as e:
         if e.args and len(e.args) >= 2 and e.args[1].lower().find('cancelled') >= 0:
             raise CancelException('Cancelled')
@@ -404,13 +350,13 @@ def wipe_device(hw_device_id) -> Tuple[str, bool]:
         return hw_device_id, True  # cancelled by user
 
 
-def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphrase_enbled: bool, hw_label: str,
-                            language: Optional[str]=None) -> Tuple[str, bool]:
+def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphrase_enabled: bool, hw_label: str,
+                            language: Optional[str] = None) -> Tuple[str, bool]:
     """
     :param hw_device_id:
     :param mnemonic:
     :param pin:
-    :param passphrase_enbled:
+    :param passphrase_enabled:
     :param hw_label:
     :param language:
     :return: Tuple
@@ -428,7 +374,7 @@ def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphra
             if client.features.initialized:
                 client.wipe_device()
                 hw_device_id = client.features.device_id
-            client.load_device_by_mnemonic(mnemonic, pin, passphrase_enbled, hw_label, language=language)
+            client.load_device_by_mnemonic(mnemonic, pin, passphrase_enabled, hw_label, language=language)
             client.close()
             return hw_device_id, False
         else:
@@ -451,9 +397,10 @@ def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphra
 def recover_device(hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool, hw_label: str) \
         -> Tuple[str, bool]:
     """
+    :param word_count:
     :param hw_device_id:
-    :param passphrase_enbled:
-    :param pin_enbled:
+    :param passphrase_enabled:
+    :param pin_enabled:
     :param hw_label:
     :return: Tuple
         [0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
@@ -497,10 +444,9 @@ def reset_device(hw_device_id: str, strength: int, passphrase_enabled: bool, pin
                  hw_label: str) -> Tuple[str, bool]:
     """
     Initialize device with a newly generated words.
-    :param hw_type: app_config.HWType
     :param hw_device_id: id of the device selected by the user
     :param strength: number of bits of entropy (will have impact on number of words)
-    :param passphrase_enbled: if True, hw will have passphrase enabled
+    :param passphrase_enabled: if True, hw will have passphrase enabled
     :param pin_enabled: if True, hw will have pin enabled
     :param hw_label: label for device (Trezor/Keepkey)
     :return: Tuple
@@ -538,4 +484,3 @@ def reset_device(hw_device_id: str, strength: int, passphrase_enabled: bool, pin
         if client:
             client.close()
         return hw_device_id, True  # cancelled by user
-

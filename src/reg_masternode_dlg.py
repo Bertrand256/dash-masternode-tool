@@ -103,7 +103,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.show_field_hinds = True
         self.summary_info = []
         if self.masternode:
-            self.dmn_collateral_tx_address_path = self.masternode.collateralBip32Path
+            self.dmn_collateral_tx_address_path = self.masternode.collateral_bip32_path
         self.bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.main_dlg.hw_session,
                                         self.app_config.db_intf, self.dashd_intf, self.app_config.dash_network)
         self.finishing = False
@@ -113,14 +113,14 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         ui_reg_masternode_dlg.Ui_RegMasternodeDlg.setupUi(self, self)
         self.closeEvent = self.closeEvent
         self.restore_cache_settings()
-        self.edtCollateralTx.setText(self.masternode.collateralTx)
-        if self.masternode.collateralTx:
-            sz = self.edtCollateralTx.fontMetrics().size(0, self.masternode.collateralTx + '000')
+        self.edtCollateralTx.setText(self.masternode.collateral_tx)
+        if self.masternode.collateral_tx:
+            sz = self.edtCollateralTx.fontMetrics().size(0, self.masternode.collateral_tx + '000')
             self.edtCollateralTx.setMinimumWidth(sz.width())
-        self.edtCollateralIndex.setText(self.masternode.collateralTxIndex)
+        self.edtCollateralIndex.setText(self.masternode.collateral_tx_index)
         self.edtIP.setText(self.masternode.ip)
         self.edtPort.setText(self.masternode.port)
-        self.edtPayoutAddress.setText(self.masternode.collateralAddress)
+        self.edtPayoutAddress.setText(self.masternode.collateral_address)
         self.chbWholeMNReward.setChecked(True)
         self.lblProtxSummary2.linkActivated.connect(self.save_summary_info)
         self.lblCollateralTxMsg.sizePolicy().setHeightForWidth(True)
@@ -290,8 +290,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             for protx in self.dashd_intf.protx('list', 'registered', True):
                 protx_state = protx.get('state')
                 if (protx_state and protx_state.get('service') == self.masternode.ip + ':' + self.masternode.port) or \
-                        (protx.get('collateralHash') == self.masternode.collateralTx and
-                         str(protx.get('collateralIndex')) == str(self.masternode.collateralTxIndex)):
+                        (protx.get('collateralHash') == self.masternode.collateral_tx and
+                         str(protx.get('collateralIndex')) == str(self.masternode.collateral_tx_index)):
                     found_protx = True
                     break
         except Exception as e:

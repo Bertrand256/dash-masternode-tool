@@ -14,9 +14,7 @@ from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QInputDialog, QDialog, QLayout, QListWidgetItem, QPushButton, QCheckBox, QWidget, \
     QHBoxLayout, QMessageBox, QLineEdit, QMenu, QApplication, QDialogButtonBox, QAbstractButton, QPlainTextEdit, QLabel, \
     QAction, QFileDialog
-from cryptography.hazmat.primitives import serialization
 
-import app_config
 import app_cache
 from app_config import AppConfig, DashNetworkConnectionCfg
 from dashd_intf import DashdInterface, control_rpc_call
@@ -26,7 +24,8 @@ from ui.ui_conn_rpc_wdg import Ui_RpcConnection
 from ui.ui_conn_ssh_wdg import Ui_SshConnection
 from wnd_utils import WndUtils
 import default_config
-from app_defs import HWType, get_note_url
+from app_defs import get_note_url
+from hw_common import HWType
 
 
 class SshConnectionWidget(QWidget, Ui_SshConnection):
@@ -693,7 +692,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         elif self.chbHwKeepKey.isChecked():
             self.local_config.hw_type = HWType.keepkey
         else:
-            self.local_config.hw_type = HWType.ledger_nano_s
+            self.local_config.hw_type = HWType.ledger_nano
 
         self.update_keepkey_pass_encoding_ui()
         self.set_modified()

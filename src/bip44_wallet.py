@@ -16,7 +16,7 @@ import hw_intf
 from common import CancelException
 from dash_utils import bip32_path_string_to_n, pubkey_to_address, bip32_path_n_to_string, bip32_path_string_append_elem
 from dashd_intf import DashdInterface
-from hw_common import HwSessionInfo, HWNotConnectedException
+from hw_common import HWNotConnectedException
 from db_intf import DBCache
 from thread_fun_dlg import CtrlObject
 from thread_utils import EnhRLock
@@ -53,7 +53,8 @@ class SwitchedHDIdentityException(Exception):
 class Bip44Wallet(QObject):
     blockheight_changed = QtCore.pyqtSignal(int)
 
-    def __init__(self, coin_name: str, hw_session: HwSessionInfo, db_intf: DBCache, dashd_intf: DashdInterface,
+    # todo: adapt do hw code refactorings
+    def __init__(self, coin_name: str, hw_session: 'HwSessionInfo', db_intf: DBCache, dashd_intf: DashdInterface,
                  dash_network: str):
         QObject.__init__(self)
         self.db = None

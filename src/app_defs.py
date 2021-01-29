@@ -20,23 +20,6 @@ APP_PATH = ''
 APP_IMAGE_DIR = ''
 
 
-class HWType:
-    trezor = 'TREZOR'
-    keepkey = 'KEEPKEY'
-    ledger_nano_s = 'LEDGERNANOS'
-
-    @staticmethod
-    def get_desc(hw_type):
-        if hw_type == HWType.trezor:
-            return 'Trezor'
-        elif hw_type == HWType.keepkey:
-            return 'KeepKey'
-        elif hw_type == HWType.ledger_nano_s:
-            return 'Ledger Nano S'
-        else:
-            return '???'
-
-
 def get_note_url(note_symbol):
     """
     Returns an URL to a project documentation page related to the note symbol passed as an argument.

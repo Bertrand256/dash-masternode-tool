@@ -18,7 +18,8 @@ from hw_settings_wdg import WdgHwSettings
 from recover_hw_wdg import WdgRecoverHw
 from select_hw_device_wdg import SelectHwDeviceWdg
 from ui import ui_wallet_tools_dlg
-from wallet_tools_common import ActionPageBase, HardwareWalletList
+from wallet_tools_common import ActionPageBase
+from hw_intf import HWDevices
 from wnd_utils import WndUtils
 
 ACTION_NONE = 0
@@ -42,7 +43,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         self.current_action = ACTION_NONE
         self.action_widget: Optional[ActionPageBase] = None
         self.action_layout: Optional[QtWidgets.QVBoxLayout] = None
-        self.hw_devices = HardwareWalletList(self.main_ui, self.app_config.hw_type)
+        self.hw_devices = HWDevices(self.main_ui, self.app_config.hw_type)
         self.wdg_select_hw_device = SelectHwDeviceWdg(self, self.hw_devices)
         self.setupUi(self)
 

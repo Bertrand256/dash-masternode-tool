@@ -23,11 +23,11 @@ from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox, QSpli
     QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout, QAction, QAbstractItemView, QStatusBar, QCheckBox, \
     QApplication
 from cryptography.fernet import Fernet
+
 import app_cache
 import app_utils
 import dash_utils
 import hw_intf
-from app_defs import HWType, DEBUG_MODE
 from bip44_wallet import Bip44Wallet, Bip44Entry, BreakFetchTransactionsException, SwitchedHDIdentityException
 from common import CancelException
 from sign_message_dlg import SignMessageDlg
@@ -36,7 +36,8 @@ from ui.ui_wdg_wallet_txes_filter import Ui_WdgWalletTxesFilter
 from wallet_common import UtxoType, Bip44AccountType, Bip44AddressType, TxOutputType, TxType
 from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
-from hw_common import HwSessionInfo, HWNotConnectedException
+from hw_common import HWNotConnectedException, HWType
+from hw_intf import HwSessionInfo
 from thread_fun_dlg import WorkerThread, CtrlObject
 from wallet_data_models import UtxoTableModel, MnAddressTableModel, AccountListModel, MnAddressItem, \
     TransactionTableModel, FILTER_AND, FILTER_OR, FILTER_OPER_EQ, FILTER_OPER_GTEQ, FILTER_OPER_LTEQ
@@ -90,8 +91,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.masternodes = main_ui.app_config.masternodes
         self.masternode_addresses: List[Tuple[str, str]] = []  #  Tuple: address, bip32 path
         for idx, mn in enumerate(self.masternodes):
-            self.masternode_addresses.append((mn.collateralAddress.strip(), mn.collateralBip32Path.strip()))
-            log.debug(f'WalletDlg initial_mn_sel({idx}) addr - path: {mn.collateralAddress}-{mn.collateralBip32Path}')
+            self.masternode_addresses.append((mn.collateral_address.strip(), mn.collateral_bip32_path.strip()))
+            log.debug(f'WalletDlg initial_mn_sel({idx}) addr - path: {mn.collateral_address}-{mn.collateral_bip32_path}')
 
         self.dashd_intf: DashdInterface = main_ui.dashd_intf
         self.db_intf: DBCache = main_ui.app_config.db_intf

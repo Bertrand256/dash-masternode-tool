@@ -12,8 +12,8 @@ import threading
 import time
 import ssl
 from typing import Optional, Tuple, Dict, Callable, List
-import bitcoin
 import logging
+
 import urllib.request
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
@@ -32,24 +32,19 @@ from bip44_wallet import find_wallet_addresses, Bip44Wallet
 from cmd_console_dlg import CmdConsoleDlg
 from common import CancelException
 from config_dlg import ConfigDlg
-from find_coll_tx_dlg import ListCollateralTxsDlg
 import about_dlg
 import app_cache
-import dash_utils
-import hw_pass_dlg
-import hw_pin_dlg
 import wallet_dlg
 import app_utils
 from hw_tools_dlg import HwToolsDlg
 from masternode_details import WdgMasternodeDetails
 from proposals_dlg import ProposalsDlg
 from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
-from app_defs import PROJECT_URL, HWType, get_note_url
-from dash_utils import bip32_path_n_to_string
+from app_defs import PROJECT_URL
 from dashd_intf import DashdInterface, DashdIndexException
-from hw_common import HardwareWalletPinException, HwSessionInfo
+from hw_common import HWPinException, HWType, HWDevice
 import hw_intf
-from hw_setup_dlg import HwSetupDlg
+from hw_intf import HwSessionInfo
 from psw_cache import SshPassCache
 from sign_message_dlg import SignMessageDlg
 from wallet_tools_dlg import WalletToolsDlg
@@ -82,7 +77,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         WndUtils.__init__(self, None)
         ui_main_dlg.Ui_MainWindow.__init__(self)
 
-        self.hw_client = None
         self.finishing = False
         self.app_messages: Dict[int, DispMessage] = {}
         self.app_config = AppConfig()
@@ -95,12 +89,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                          on_connection_failed_callback=self.show_connection_failed,
                                          on_connection_successful_callback=self.show_connection_successful,
                                          on_connection_disconnected_callback=self.show_connection_disconnected)
-        self.hw_session = HwSessionInfo(
-            self.get_hw_client,
-            self.connect_hardware_wallet,
-            self.disconnect_hardware_wallet,
-            self.app_config,
-            dashd_intf=self.dashd_intf)
+        self.hw_session = HwSessionInfo(self, self.app_config, dashd_intf=self.dashd_intf)
+        self.hw_session.sig_hw_connected.connect(self.on_hardware_wallet_connected)
+        self.hw_session.sig_hw_disconnected.connect(self.on_hardware_wallet_disconnected)
+        self.hw_session.sig_hw_connection_error.connect(self.on_hardware_wallet_connection_error)
 
         self.is_dashd_syncing = False
         self.dashd_connection_ok = False
@@ -144,7 +136,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.setIcon(self.action_check_network_connection, "link-check.png")
         self.setIcon(self.action_open_settings_window, "gear.png")
         self.setIcon(self.action_open_proposals_window, "thumbs-up-down.png")
-        self.setIcon(self.action_test_hw_connection, "hw-test.png")
+        self.setIcon(self.action_connect_hw, "hw-test.png")
         self.setIcon(self.action_disconnect_hw, "hw-disconnect.png")
         self.setIcon(self.action_hw_wallet, "wallet.png")
         self.setIcon(self.action_hw_tools, "hw.png")
@@ -168,7 +160,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.action_check_network_connection.setIconVisibleInMenu(False)
         self.action_open_settings_window.setIconVisibleInMenu(False)
         self.action_open_proposals_window.setIconVisibleInMenu(False)
-        self.action_test_hw_connection.setIconVisibleInMenu(False)
+        self.action_connect_hw.setIconVisibleInMenu(False)
         self.action_disconnect_hw.setIconVisibleInMenu(False)
         self.action_run_trezor_emulator.setIconVisibleInMenu(False)
         self.action_run_trezor_emulator.setVisible(False)
@@ -234,9 +226,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def set_mn_labels_width(self, width):
         self.lblMasternodeStatus.setFixedWidth(width)
-
-    def get_hw_client(self):
-        return self.hw_client
 
     def configuration_to_ui(self):
         """
@@ -942,101 +931,24 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             return 'Trezor'
         elif self.app_config.hw_type == HWType.keepkey:
             return 'KeepKey'
-        elif self.app_config.hw_type == HWType.ledger_nano_s:
+        elif self.app_config.hw_type == HWType.ledger_nano:
             return 'Ledger Nano S'
         else:
             return 'Unknown HW Type'
 
+    @pyqtSlot(bool)
     def connect_hardware_wallet(self) -> Optional[object]:
-        """
-        Connects to hardware wallet if not connected before.
-        :return: Reference to hw client or None if not connected.
-        """
-        ret = None
-        if self.hw_client:
-            cur_hw_type = hw_intf.get_hw_type(self.hw_client)
-            if self.app_config.hw_type != cur_hw_type:
-                self.on_action_disconnect_hw_triggered()
+        return self.hw_session.connect_hardware_wallet()
 
-        if not self.hw_client:
-            try:
-                try:
-                    logging.info('Connecting to a hardware wallet device. self: ' + str(self))
-                    self.hw_client = hw_intf.connect_hw(hw_session=self.hw_session,
-                                                        device_id=None,
-                                                        passphrase_encoding=self.app_config.hw_keepkey_psw_encoding,
-                                                        hw_type=self.app_config.hw_type)
+    @pyqtSlot(bool)
+    def disconnect_hardware_wallet(self) -> None:
+        try:
+            self.hw_session.disconnect_hardware_wallet()
+        except Exception as e:
+            self.errorMsg(str(e), True)
 
-                    if self.app_config.dash_network == 'TESTNET':
-                        # check if Dash testnet is supported by this hardware wallet
-                        found_testnet_support = False
-                        if self.app_config.hw_type in (HWType.trezor, HWType.keepkey):
-                            try:
-                                path = dash_utils.get_default_bip32_base_path(self.app_config.dash_network)
-                                path += "/0'/0/0"
-                                path_n = dash_utils.bip32_path_string_to_n(path)
-                                addr = hw_intf.get_address(self.hw_session, path_n, False)
-                                if addr and dash_utils.validate_address(addr, self.app_config.dash_network):
-                                    found_testnet_support = True
-                            except Exception as e:
-                                if str(e).find('Invalid coin name') < 0:
-                                    logging.exception('Failed when looking for Dash testnet support')
-                        elif self.app_config.hw_type == HWType.ledger_nano_s:
-                            addr = hw_intf.get_address(self.hw_session,
-                                                       dash_utils.get_default_bip32_path(self.app_config.dash_network))
-                            if dash_utils.validate_address(addr, self.app_config.dash_network):
-                                found_testnet_support = False
-
-                        if not found_testnet_support:
-                            url = get_note_url('DMT0002')
-                            msg = f'Your hardware wallet device does not support Dash TESTNET ' \
-                                  f'(<a href="{url}">see details</a>).'
-                            self.errorMsg(msg)
-                            try:
-                                self.disconnect_hardware_wallet()
-                            except Exception:
-                                pass
-                            self.set_status_text2(msg, 'red')
-                            return
-
-                    logging.info('Connected to a hardware wallet')
-                    self.set_status_text2('<b>HW status:</b> connected to %s' % hw_intf.get_hw_label(self.hw_client),
-                                        'green')
-                    self.update_edit_controls_state()
-                    self.hw_session.signal_hw_connected()
-                except CancelException:
-                    raise
-                except Exception as e:
-                    logging.exception('Exception while connecting hardware wallet')
-                    try:
-                        self.disconnect_hardware_wallet()
-                    except Exception:
-                        pass
-                    logging.info('Could not connect to a hardware wallet')
-                    self.set_status_text2('<b>HW status:</b> cannot connect to %s device' % self.getHwName(), 'red')
-                    self.errorMsg(str(e))
-
-                ret = self.hw_client
-            except CancelException:
-                raise
-            except HardwareWalletPinException as e:
-                self.errorMsg(e.msg)
-                if self.hw_client:
-                    self.hw_client.clear_session()
-                self.update_edit_controls_state()
-            except OSError as e:
-                self.errorMsg('Cannot open %s device.' % self.getHwName(), True)
-                self.update_edit_controls_state()
-            except Exception as e:
-                self.errorMsg(str(e), True)
-                if self.hw_client:
-                    self.hw_client.init_device()
-                self.update_edit_controls_state()
-        else:
-            ret = self.hw_client
-        return ret
-
-    def btnConnectTrezorClick(self):
+    @pyqtSlot(bool)
+    def on_action_connect_hw_triggered(self):
         try:
             self.connect_hardware_wallet()
         except CancelException:
@@ -1044,34 +956,26 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         except Exception as e:
             self.errorMsg(str(e), True)
 
-    @pyqtSlot(bool)
-    def on_action_test_hw_connection_triggered(self):
-        try:
-            self.connect_hardware_wallet()
-        except CancelException:
-            return
-
         self.update_edit_controls_state()
-        if self.hw_client:
-            try:
-                if self.app_config.hw_type in (HWType.trezor, HWType.keepkey):
-                    self.infoMsg('Connection to %s device (%s) successful.' %
-                                 (self.getHwName(), hw_intf.get_hw_label(self.hw_client)))
-                elif self.app_config.hw_type == HWType.ledger_nano_s:
-                    self.infoMsg('Connection to %s device successful.' %
-                                 (self.getHwName(),))
-            except CancelException:
-                if self.hw_client:
-                    self.hw_client.init_device()
+        if self.hw_session.hw_client and self.hw_session.hw_device:
+            msg = 'Successfully connected to ' + self.hw_session.hw_device.get_description()
+            self.infoMsg(msg)
 
-    def disconnect_hardware_wallet(self) -> None:
-        if self.hw_client:
-            hw_intf.disconnect_hw(self.hw_client)
-            del self.hw_client
-            self.hw_client = None
-            self.set_status_text2('<b>HW status:</b> idle', 'black')
-            self.update_edit_controls_state()
-            self.hw_session.signal_hw_disconnected()
+    @pyqtSlot(HWDevice)
+    def on_hardware_wallet_connected(self, hw_device: HWDevice):
+        self.set_status_text2('<b>HW status:</b> connected to %s' % hw_device.get_description(), 'green')
+        self.update_edit_controls_state()
+
+    @pyqtSlot()
+    def on_hardware_wallet_disconnected(self):
+        self.set_status_text2('<b>HW status:</b> idle', 'black')
+        self.update_edit_controls_state()
+
+    @pyqtSlot(str)
+    def on_hardware_wallet_connection_error(self, message):
+        self.set_status_text2('<b>HW status:</b> connection error', 'red')
+        self.update_edit_controls_state()
+        self.errorMsg(message)
 
     @pyqtSlot(bool)
     def on_action_disconnect_hw_triggered(self):
@@ -1204,10 +1108,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                         else:
                                             in_mn.ip = mn_ipport
                                             in_mn.port = '9999'
-                                        in_mn.collateralAddress = mn_dash_addr
-                                        in_mn.collateralTx = mn_tx_hash
-                                        in_mn.collateralTxIndex = mn_tx_idx
-                                        in_mn.collateralBip32Path = ''
+                                        in_mn.collateral_address = mn_dash_addr
+                                        in_mn.collateral_tx = mn_tx_hash
+                                        in_mn.collateral_tx_index = mn_tx_idx
+                                        in_mn.collateral_bip32_path = ''
 
                                     mn = self.app_config.get_mn_by_name(mn_name)
                                     if mn:
@@ -1265,8 +1169,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                                     addresses_to_scan = []
                                     for mn in mns_imported:
-                                        if not mn.collateralBip32Path and mn.collateralAddress:
-                                            addresses_to_scan.append(mn.collateralAddress)
+                                        if not mn.collateral_bip32_path and mn.collateral_address:
+                                            addresses_to_scan.append(mn.collateral_address)
 
                                     found_paths = {}
                                     try:
@@ -1279,9 +1183,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                                     paths_missing = 0
                                     for mn in mns_imported:
-                                        if not mn.collateralBip32Path and mn.collateralAddress:
-                                            path = found_paths.get(mn.collateralAddress)
-                                            mn.collateralBip32Path = path
+                                        if not mn.collateral_bip32_path and mn.collateral_address:
+                                            path = found_paths.get(mn.collateral_address)
+                                            mn.collateral_bip32_path = path
                                             mn.set_modified()
                                             if path:
                                                 if self.cur_masternode == mn:
@@ -1325,7 +1229,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.btnCancelEditingMn.setEnabled(self.editing_enabled and self.cur_masternode is not None)
             self.btnDuplicateMn.setEnabled(self.cur_masternode is not None)
             self.action_save_config_file.setEnabled(self.app_config.is_modified())
-            self.action_disconnect_hw.setEnabled(True if self.hw_client else False)
+            self.action_disconnect_hw.setEnabled(True if self.hw_session.hw_client else False)
             self.btnRefreshMnStatus.setEnabled(self.cur_masternode is not None)
             self.btnRegisterDmn.setEnabled(self.cur_masternode is not None)
             self.action_sign_message_with_collateral_addr.setEnabled(self.cur_masternode is not None)
@@ -1504,15 +1408,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     pass
 
         if not (protx_state and ((protx_state.get('service') == masternode.ip + ':' + masternode.port) or
-                (protx.get('collateralHash') == masternode.collateralTx and
-                str(protx.get('collateralIndex')) == str(masternode.collateralTxIndex)))):
+                (protx.get('collateralHash') == masternode.collateral_tx and
+                 str(protx.get('collateralIndex')) == str(masternode.collateral_tx_index)))):
             try:
                 txes = self.dashd_intf.protx('list', 'registered', True)
                 for protx in txes:
                     protx_state = protx.get('state')
                     if (protx_state and ((protx_state.get('service') == masternode.ip + ':' + masternode.port) or
-                            (protx.get('collateralHash') == masternode.collateralTx and
-                             str(protx.get('collateralIndex')) == str(masternode.collateralTxIndex)))):
+                            (protx.get('collateralHash') == masternode.collateral_tx and
+                             str(protx.get('collateralIndex')) == str(masternode.collateral_tx_index)))):
                         return protx
             except Exception as e:
                 pass
@@ -1525,8 +1429,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         Get current masternode's extended status.
         """
         if self.dashd_connection_ok:
-            if masternode.collateralTx and str(masternode.collateralTxIndex):
-                collateral_id = masternode.collateralTx + '-' + masternode.collateralTxIndex
+            if masternode.collateral_tx and str(masternode.collateral_tx_index):
+                collateral_id = masternode.collateral_tx + '-' + masternode.collateral_tx_index
             else:
                 collateral_id = None
             if masternode.ip and masternode.port:
@@ -1535,7 +1439,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 ip_port = None
 
             if not collateral_id and not ip_port:
-                if not masternode.collateralTx:
+                if not masternode.collateral_tx:
                     return '<span style="color:red">Enter the collateral TX hash + index or IP + port</span>'
 
             self.dashd_intf.get_masternodelist('json', data_max_age=30)  # read new data from the network
@@ -1611,9 +1515,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                 if masternode not in self.mns_user_refused_updating:
                     missing_data = []
-                    if not masternode.collateralTx or not masternode.collateralTxIndex:
+                    if not masternode.collateral_tx or not masternode.collateral_tx_index:
                         missing_data.append('collateral tx/index')
-                    if not masternode.collateralAddress and masternode.dmn_user_roles & DMN_ROLE_OWNER:
+                    if not masternode.collateral_address and masternode.dmn_user_roles & DMN_ROLE_OWNER:
                         missing_data.append('collateral address')
                     if dmn_tx and masternode.dmn_tx_hash != dmn_tx.get('proTxHash'):
                         missing_data.append('protx hash')
@@ -1631,12 +1535,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         else:
                             self.mns_user_refused_updating[masternode] = self.cur_masternode
 
-                if masternode.collateralTx + '-' + str(masternode.collateralTxIndex) != mn_ident:
+                if masternode.collateral_tx + '-' + str(masternode.collateral_tx_index) != mn_ident:
                     elems = mn_ident.split('-')
                     if len(elems) == 2:
                         if update_mn_info:
-                            masternode.collateralTx = elems[0]
-                            masternode.collateralTxIndex = elems[1]
+                            masternode.collateral_tx = elems[0]
+                            masternode.collateral_tx_index = elems[1]
                             mn_data_modified = True
                         else:
                             collateral_tx_mismatch = True
@@ -1645,18 +1549,18 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     if masternode.dmn_user_roles & DMN_ROLE_OWNER:
 
                         # check outputs of the collateral transaction
-                        tx_json = self.dashd_intf.getrawtransaction(masternode.collateralTx, 1)
+                        tx_json = self.dashd_intf.getrawtransaction(masternode.collateral_tx, 1)
                         if tx_json:
                             vout = tx_json.get('vout')
-                            if vout and int(masternode.collateralTxIndex) < len(vout):
-                                v = vout[ int(masternode.collateralTxIndex)]
+                            if vout and int(masternode.collateral_tx_index) < len(vout):
+                                v = vout[ int(masternode.collateral_tx_index)]
                                 if v and v.get('scriptPubKey'):
                                     addrs = v.get('scriptPubKey').get('addresses')
                                     if addrs:
                                         collateral_address = addrs[0]
-                                        if masternode.collateralAddress != collateral_address:
+                                        if masternode.collateral_address != collateral_address:
                                             if update_mn_info:
-                                                masternode.collateralAddress = collateral_address
+                                                masternode.collateral_address = collateral_address
                                                 mn_data_modified = True
                                             else:
                                                 collateral_address_mismatch = True
@@ -1717,7 +1621,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                 if masternode == self.cur_masternode:
                     # get balance
-                    collateral_address = masternode.collateralAddress.strip()
+                    collateral_address = masternode.collateral_address.strip()
                     payout_address = dmn_tx_state.get('payoutAddress','')
                     payment_url = self.app_config.get_block_explorer_addr().replace('%ADDRESS%', payout_address)
                     payout_link = '<a href="%s">%s</a>' % (payment_url, payout_address)
@@ -1955,12 +1859,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.cur_masternode:
             try:
                 self.connect_hardware_wallet()
-                if self.hw_client:
-                    if not self.cur_masternode.collateralBip32Path:
+                if self.hw_session.hw_client:
+                    if not self.cur_masternode.collateral_bip32_path:
                         self.errorMsg("No masternode collateral BIP32 path")
                     else:
-                        ui = SignMessageDlg(self, self.hw_session, self.cur_masternode.collateralBip32Path,
-                                            self.cur_masternode.collateralAddress)
+                        ui = SignMessageDlg(self, self.hw_session, self.cur_masternode.collateral_bip32_path,
+                                            self.cur_masternode.collateral_address)
                         ui.exec_()
             except CancelException:
                 return

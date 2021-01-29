@@ -5,23 +5,24 @@
 import logging
 import math
 import re
-from PyQt5.QtGui import QPen, QBrush, QTextDocument, QFont, QFontMetrics, QPalette
-from functools import partial
-from typing import List, Callable, Optional, Tuple
-import sys
 import os
+from functools import partial
+from typing import List, Optional, Tuple
+
+from PyQt5.QtGui import QPen, QBrush, QTextDocument, QFont, QFontMetrics, QPalette
 from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import QSize, QEventLoop, QObject, QTimer, QVariant, pyqtSlot, QModelIndex, Qt, QRect, QPoint, \
     QMargins
 from PyQt5.QtWidgets import QPushButton, QToolButton, QWidgetItem, QSpacerItem, QLayout, QHBoxLayout, QLineEdit, \
     QLabel, QComboBox, QMenu, QMessageBox, QVBoxLayout, QCheckBox, QItemDelegate, QStyleOptionViewItem, QStyle
+
 import app_cache
 import app_utils
 import dash_utils
 from app_defs import FEE_DUFF_PER_BYTE, MIN_TX_FEE
 from common import CancelException
 from encrypted_files import write_file_encrypted, read_file_encrypted
-from hw_common import HwSessionInfo
+from hw_intf import HwSessionInfo
 from wallet_common import TxOutputType, Bip44AccountType, Bip44AddressType, TxType
 from wnd_utils import WndUtils
 

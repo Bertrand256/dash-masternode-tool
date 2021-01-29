@@ -9,16 +9,13 @@ import datetime
 import glob
 import json
 import os
-import pickle
 import re
 import copy
 import shutil
 import subprocess
 import sys
 import threading
-import time
-from enum import Enum
-from io import StringIO, BytesIO
+from io import StringIO
 from configparser import ConfigParser
 from random import randint
 from shutil import copyfile
@@ -26,22 +23,18 @@ import logging
 from typing import Optional, Callable, Dict, Tuple, List
 import bitcoin
 from logging.handlers import RotatingFileHandler
-import hashlib
 
 from PyQt5 import QtCore
 from PyQt5.QtCore import QLocale, QObject
 from PyQt5.QtWidgets import QMessageBox
 from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import (padding, rsa, utils)
 from cryptography.hazmat.primitives import serialization
 
 import app_defs
-import base58
 import dash_utils
 import hw_intf
-from app_defs import APP_NAME_SHORT, APP_NAME_LONG, HWType, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT, get_known_loggers
+from app_defs import APP_NAME_SHORT, APP_NAME_LONG, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT, get_known_loggers
 from app_utils import encrypt, decrypt
 import app_cache
 import default_config
@@ -49,7 +42,7 @@ import app_utils
 from common import CancelException
 from db_intf import DBCache
 from encrypted_files import read_file_encrypted, write_file_encrypted, NotConnectedToHardwareWallet
-from hw_common import HwSessionInfo
+from hw_common import HWType
 from wnd_utils import WndUtils
 
 
@@ -598,7 +591,7 @@ class AppConfig(QObject):
     def simple_encrypt(self, str_to_encrypt: str) -> str:
         return encrypt(str_to_encrypt, APP_NAME_LONG, iterations=5)
 
-    def read_from_file(self, hw_session: HwSessionInfo, file_name: Optional[str] = None,
+    def read_from_file(self, hw_session: 'HwSessionInfo', file_name: Optional[str] = None,
                        create_config_file: bool = False, update_current_file_name = True):
         if not file_name:
             file_name = self.app_config_file_name
@@ -681,7 +674,7 @@ class AppConfig(QObject):
                     self.last_bip32_base_path = def_bip32_path
                 self.bip32_recursive_search = config.getboolean(section, 'bip32_recursive', fallback=True)
                 self.hw_type = config.get(section, 'hw_type', fallback=HWType.trezor)
-                if self.hw_type not in (HWType.trezor, HWType.keepkey, HWType.ledger_nano_s):
+                if self.hw_type not in (HWType.trezor, HWType.keepkey, HWType.ledger_nano):
                     logging.warning('Invalid hardware wallet type: ' + self.hw_type)
                     self.hw_type = HWType.trezor
 
@@ -723,10 +716,10 @@ class AppConfig(QObject):
                                 mn.name = config.get(section, 'name', fallback='')
                                 mn.ip = config.get(section, 'ip', fallback='')
                                 mn.port = config.get(section, 'port', fallback='')
-                                mn.collateralBip32Path = config.get(section, 'collateral_bip32_path', fallback='').strip()
-                                mn.collateralAddress = config.get(section, 'collateral_address', fallback='').strip()
-                                mn.collateralTx = config.get(section, 'collateral_tx', fallback='').strip()
-                                mn.collateralTxIndex = config.get(section, 'collateral_tx_index', fallback='').strip()
+                                mn.collateral_bip32_path = config.get(section, 'collateral_bip32_path', fallback='').strip()
+                                mn.collateral_address = config.get(section, 'collateral_address', fallback='').strip()
+                                mn.collateral_tx = config.get(section, 'collateral_tx', fallback='').strip()
+                                mn.collateral_tx_index = config.get(section, 'collateral_tx_index', fallback='').strip()
                                 mn.use_default_protocol_version = self.value_to_bool(
                                     config.get(section, 'use_default_protocol_version', fallback='1'))
                                 mn.protocol_version = config.get(section, 'protocol_version', fallback='').strip()
@@ -920,7 +913,7 @@ class AppConfig(QObject):
 
         self.configure_cache()
 
-    def save_to_file(self, hw_session: HwSessionInfo, file_name: Optional[str] = None,
+    def save_to_file(self, hw_session: 'HwSessionInfo', file_name: Optional[str] = None,
                      update_current_file_name = True):
         """
         Saves current configuration to a file with the name 'file_name'. If the 'file_name' argument is empty
@@ -981,10 +974,10 @@ class AppConfig(QObject):
             config.set(section, 'port', str(mn.port))
             # the private key encryption method used below is a very basic one, just to not have them stored
             # in plain text; more serious encryption is used when enabling the 'Encrypt config file' option
-            config.set(section, 'collateral_bip32_path', mn.collateralBip32Path)
-            config.set(section, 'collateral_address', mn.collateralAddress)
-            config.set(section, 'collateral_tx', mn.collateralTx)
-            config.set(section, 'collateral_tx_index', str(mn.collateralTxIndex))
+            config.set(section, 'collateral_bip32_path', mn.collateral_bip32_path)
+            config.set(section, 'collateral_address', mn.collateral_address)
+            config.set(section, 'collateral_tx', mn.collateral_tx)
+            config.set(section, 'collateral_tx_index', str(mn.collateral_tx_index))
             config.set(section, 'use_default_protocol_version', '1' if mn.use_default_protocol_version else '0')
             config.set(section, 'protocol_version', str(mn.protocol_version))
             config.set(section, 'dmn_user_roles', str(mn.dmn_user_roles))
@@ -1425,7 +1418,7 @@ class AppConfig(QObject):
     def get_hw_type(self):
         return self.hw_type
 
-    def initialize_hw_encryption(self, hw_session: HwSessionInfo):
+    def initialize_hw_encryption(self, hw_session: 'HwSessionInfo'):
         if threading.current_thread() != threading.main_thread():
             raise Exception('This function must be called from the main thread.')
 
@@ -1476,10 +1469,10 @@ class MasternodeConfig:
         self.name = ''
         self.__ip = ''
         self.__port = '9999'
-        self.__collateralBip32Path = ''
-        self.__collateralAddress = ''
-        self.__collateralTx = ''
-        self.__collateralTxIndex = ''
+        self.__collateral_bip32_path = ''
+        self.__collateral_address = ''
+        self.__collateral_tx = ''
+        self.__collateral_tx_index = ''
         self.use_default_protocol_version = True
         self.__protocol_version = ''
         self.__dmn_user_roles = DMN_ROLE_OWNER | DMN_ROLE_OPERATOR | DMN_ROLE_VOTING
@@ -1504,10 +1497,10 @@ class MasternodeConfig:
     def copy_from(self, src_mn: 'MasternodeConfig'):
         self.ip = src_mn.ip
         self.port = src_mn.port
-        self.collateralBip32Path = src_mn.collateralBip32Path
-        self.collateralAddress = src_mn.collateralAddress
-        self.collateralTx = src_mn.collateralTx
-        self.collateralTxIndex = src_mn.collateralTxIndex
+        self.collateral_bip32_path = src_mn.collateral_bip32_path
+        self.collateral_address = src_mn.collateral_address
+        self.collateral_tx = src_mn.collateral_tx
+        self.collateral_tx_index = src_mn.collateral_tx_index
         self.use_default_protocol_version = src_mn.use_default_protocol_version
         self.protocol_version = src_mn.protocol_version
         self.dmn_user_roles = src_mn.dmn_user_roles
@@ -1554,60 +1547,60 @@ class MasternodeConfig:
             self.__port = new_port
 
     @property
-    def collateralBip32Path(self):
-        if self.__collateralBip32Path:
-            return self.__collateralBip32Path.strip()
+    def collateral_bip32_path(self):
+        if self.__collateral_bip32_path:
+            return self.__collateral_bip32_path.strip()
         else:
-            return self.__collateralBip32Path
+            return self.__collateral_bip32_path
 
-    @collateralBip32Path.setter
-    def collateralBip32Path(self, new_collateral_bip32_path):
+    @collateral_bip32_path.setter
+    def collateral_bip32_path(self, new_collateral_bip32_path):
         if new_collateral_bip32_path:
-            self.__collateralBip32Path = new_collateral_bip32_path.strip()
+            self.__collateral_bip32_path = new_collateral_bip32_path.strip()
         else:
-            self.__collateralBip32Path = new_collateral_bip32_path
+            self.__collateral_bip32_path = new_collateral_bip32_path
 
     @property
-    def collateralAddress(self):
-        if self.__collateralAddress:
-            return self.__collateralAddress.strip()
+    def collateral_address(self):
+        if self.__collateral_address:
+            return self.__collateral_address.strip()
         else:
-            return self.__collateralAddress
+            return self.__collateral_address
 
-    @collateralAddress.setter
-    def collateralAddress(self, new_collateral_address):
+    @collateral_address.setter
+    def collateral_address(self, new_collateral_address):
         if new_collateral_address:
-            self.__collateralAddress = new_collateral_address.strip()
+            self.__collateral_address = new_collateral_address.strip()
         else:
-            self.__collateralAddress = new_collateral_address
+            self.__collateral_address = new_collateral_address
 
     @property
-    def collateralTx(self):
-        if self.__collateralTx:
-            return self.__collateralTx.strip()
+    def collateral_tx(self):
+        if self.__collateral_tx:
+            return self.__collateral_tx.strip()
         else:
-            return self.__collateralTx
+            return self.__collateral_tx
 
-    @collateralTx.setter
-    def collateralTx(self, new_collateral_tx):
+    @collateral_tx.setter
+    def collateral_tx(self, new_collateral_tx):
         if new_collateral_tx:
-            self.__collateralTx = new_collateral_tx.strip()
+            self.__collateral_tx = new_collateral_tx.strip()
         else:
-            self.__collateralTx = new_collateral_tx
+            self.__collateral_tx = new_collateral_tx
 
     @property
-    def collateralTxIndex(self):
-        if self.__collateralTxIndex:
-            return self.__collateralTxIndex.strip()
+    def collateral_tx_index(self):
+        if self.__collateral_tx_index:
+            return self.__collateral_tx_index.strip()
         else:
-            return self.__collateralTxIndex
+            return self.__collateral_tx_index
 
-    @collateralTxIndex.setter
-    def collateralTxIndex(self, new_collateral_tx_index):
+    @collateral_tx_index.setter
+    def collateral_tx_index(self, new_collateral_tx_index):
         if new_collateral_tx_index:
-            self.__collateralTxIndex = new_collateral_tx_index.strip()
+            self.__collateral_tx_index = new_collateral_tx_index.strip()
         else:
-            self.__collateralTxIndex = new_collateral_tx_index
+            self.__collateral_tx_index = new_collateral_tx_index
 
     @property
     def protocol_version(self):

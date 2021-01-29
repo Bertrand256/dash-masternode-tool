@@ -20,9 +20,9 @@ from bitcoinrpc.authproxy import JSONRPCException
 import app_cache
 import app_utils
 from app_config import AppConfig
-from app_defs import HWType
+from hw_common import HWType
 from dashd_intf import DashdInterface
-from hw_common import HwSessionInfo
+from hw_intf import HwSessionInfo
 from ui.ui_transaction_dlg import Ui_TransactionDlg
 from wallet_common import UtxoType, TxOutputType, Bip44AddressType
 from wnd_utils import WndUtils, ProxyStyleNoFocusRect

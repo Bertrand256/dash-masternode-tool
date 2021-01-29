@@ -37,9 +37,9 @@ class CollTxsTableModel(ExtSortFilterItemModel):
         self.tx_explorer_url = tx_explorer_url
 
         for mn in masternode_list:
-            ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
+            ident = mn.collateral_tx + '-' + str(mn.collateral_tx_index)
             self.mn_by_collateral_tx[ident] = mn
-            self.mn_by_collateral_address[mn.collateralAddress] = mn
+            self.mn_by_collateral_address[mn.collateral_address] = mn
 
         self.set_attr_protection()
 

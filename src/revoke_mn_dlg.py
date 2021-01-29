@@ -87,8 +87,8 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
                     protx_state = protx.get('state')
                     if (protx_state and protx_state.get(
                             'service') == self.masternode.ip + ':' + self.masternode.port) or \
-                            (protx.get('collateralHash') == self.masternode.collateralTx and
-                             str(protx.get('collateralIndex')) == str(self.masternode.collateralTxIndex)):
+                            (protx.get('collateralHash') == self.masternode.collateral_tx and
+                             str(protx.get('collateralIndex')) == str(self.masternode.collateral_tx_index)):
                         self.dmn_protx_hash = protx.get("proTxHash")
                         break
                 if not self.dmn_protx_hash:

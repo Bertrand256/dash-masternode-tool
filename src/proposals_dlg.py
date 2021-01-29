@@ -335,7 +335,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         pkeys = []
         mn_idents = []
         for idx, mn in enumerate(self.app_config.masternodes):
-            mn_ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
+            mn_ident = mn.collateral_tx + '-' + str(mn.collateral_tx_index)
             if mn_ident not in mn_idents:
                 if mn.dmn_voting_key_type == InputKeyType.PRIVATE:
                     voting_key = mn.get_current_key_for_voting(self.app_config, self.dashd_intf)
@@ -493,7 +493,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
         # define "dynamic" columns showing the user voting results
         for idx, mn in enumerate(self.masternodes_cfg):
-            mn_ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
+            mn_ident = mn.collateral_tx + '-' + str(mn.collateral_tx_index)
             self.add_voting_column(mn_ident, 'Vote (' + mn.name + ')', my_masternode=True,
                                    insert_before_column=self.propsModel.col_index_by_name('absolute_yes_count'))
 
@@ -691,7 +691,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 # check if the specified masternode exists in the user configuration; if so, mark the column
                 # that it can't be removed
                 for mn in enumerate(self.masternodes_cfg):
-                    mn_ident_cfg = mn.collateralTx + '-' + str(mn.collateralTxIndex)
+                    mn_ident_cfg = mn.collateral_tx + '-' + str(mn.collateral_tx_index)
                     if mn_ident_cfg == mn_ident:
                         col.my_masternode = True
                         break
@@ -1191,7 +1191,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     # ident (transaction id-transaction index)
                     users_mn_configs_by_ident = {}
                     for mn_cfg in self.masternodes_cfg:
-                        ident = mn_cfg.collateralTx + '-' + mn_cfg.collateralTxIndex
+                        ident = mn_cfg.collateral_tx + '-' + mn_cfg.collateral_tx_index
                         if not ident in users_mn_configs_by_ident:
                             users_mn_configs_by_ident[ident] = mn_cfg
 
@@ -2684,8 +2684,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                     step = 3
                     v_res = self.dashd_intf.voteraw(
-                        masternode_tx_hash=mn_info.masternode_config.collateralTx,
-                        masternode_tx_index=int(mn_info.masternode_config.collateralTxIndex),
+                        masternode_tx_hash=mn_info.masternode_config.collateral_tx,
+                        masternode_tx_index=int(mn_info.masternode_config.collateral_tx_index),
                         governance_hash=prop_hash,
                         vote_signal='funding',
                         vote=vote,
@@ -2720,8 +2720,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                      str(dash_utils.pubkey_to_address(dash_utils.wif_privkey_to_pubkey(
                                          mn_info.masternode_config.get_current_key_for_voting(
                                              self.app_config, self.dashd_intf)), self.app_config.dash_network)))
-                        log.info('masternode_tx_hash: %s' % str(mn_info.masternode_config.collateralTx))
-                        log.info('masternode_tx_index: %s' % str(mn_info.masternode_config.collateralTxIndex))
+                        log.info('masternode_tx_hash: %s' % str(mn_info.masternode_config.collateral_tx))
+                        log.info('masternode_tx_index: %s' % str(mn_info.masternode_config.collateral_tx_index))
                         log.info('governance_hash: %s' % prop_hash)
                         log.info('vote_sig: %s' % vote_sig)
                         log.info('sig_time: %s' % str(sig_time))

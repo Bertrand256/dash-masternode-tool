@@ -3,12 +3,12 @@ from typing import Callable, Optional
 from PyQt5.QtWidgets import QWidget
 
 from ui.ui_hw_settings_wdg import Ui_WdgHwSettings
-from wallet_tools_common import ActionPageBase, HardwareWalletList
-from wnd_utils import WndUtils
+from wallet_tools_common import ActionPageBase
+from hw_intf import HWDevices
 
 
 class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
-    def __init__(self, parent, hw_list: HardwareWalletList):
+    def __init__(self, parent, hw_list: HWDevices):
         QWidget.__init__(self, parent=parent)
         Ui_WdgHwSettings.__init__(self)
         ActionPageBase.__init__(self)

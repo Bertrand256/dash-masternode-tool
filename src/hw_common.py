@@ -2,26 +2,29 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+import logging
 import threading
+from enum import Enum
 from functools import partial
+
 from PyQt5 import QtWidgets, QtCore
 from typing import List, Optional, Callable, ByteString, Tuple, Any
+from PyQt5.QtCore import QObject, pyqtSlot
+from PyQt5.QtWidgets import QDialog, QCheckBox, QRadioButton, QWidget
 
-from PyQt5.QtCore import QObject
-from PyQt5.QtWidgets import QDialog, QCheckBox, QRadioButton
 import hw_pass_dlg
 import hw_pin_dlg
 import hw_word_dlg
-from app_defs import HWType
-from app_utils import SHA256
-from thread_utils import EnhRLock
 from wnd_utils import WndUtils
 
+
+DEFAULT_HW_BUSY_MESSAGE = '<b>Complete the action on your hardware wallet device</b>'
+DEFAULT_HW_BUSY_TITLE = 'Please confirm'
 
 PASSPHRASE_ON_DEVICE = object()
 
 
-class HardwareWalletPinException(Exception):
+class HWPinException(Exception):
     def __init__(self, msg):
         self.msg = msg
 
@@ -33,7 +36,24 @@ class HWNotConnectedException(Exception):
         Exception.__init__(self, msg)
 
 
-def get_hw_type(hw_client):
+class HWType(Enum):
+    trezor = 'TREZOR'
+    keepkey = 'KEEPKEY'
+    ledger_nano = 'LEDGERNANOS'
+
+    @staticmethod
+    def get_desc(hw_type):
+        if hw_type == HWType.trezor:
+            return 'Trezor'
+        elif hw_type == HWType.keepkey:
+            return 'KeepKey'
+        elif hw_type == HWType.ledger_nano:
+            return 'Ledger Nano'
+        else:
+            return '???'
+
+
+def get_hw_type_from_client(hw_client) -> HWType:
     """
     Return hardware wallet type (HWType) based on reference to a hw client.
     """
@@ -45,106 +65,36 @@ def get_hw_type(hw_client):
         elif t.lower().find('keepkey') >= 0:
             return HWType.keepkey
         elif t.lower().find('btchip') >= 0:
-            return HWType.ledger_nano_s
+            return HWType.ledger_nano
         else:
             raise Exception('Unknown hardware wallet type')
     else:
         raise Exception('Hardware wallet not connected')
 
 
-class HwSessionInfo(QObject):
-    sig_hw_connected = QtCore.pyqtSignal()
-    sig_hw_disconnected = QtCore.pyqtSignal()
+class HWDevice(object):
+    """
+    Represents a hardware wallet device connected to the computer.
+    """
+    def __init__(self, hw_type: HWType, device_id: Optional[str], device_label: Optional[str],
+                 device_model: Optional[str], device_version: Optional[str],
+                 client: Any, bootloader_mode: bool, transport: Optional[object]):
+        self.transport = transport
+        self.hw_type: HWType = hw_type
+        self.device_id = device_id
+        self.device_label = device_label
+        self.device_version = device_version
+        self.device_model = device_model
+        self.client = client
+        self.bootloader_mode = bootloader_mode
 
-    def __init__(self,
-                 get_hw_client_function: Callable[[], object],
-                 hw_connect_function: Callable[[object], None],
-                 hw_disconnect_function: Callable[[], None],
-                 app_config: object,
-                 dashd_intf: object):
-        QObject.__init__(self)
-
-        self.__locks = {}  # key: hw_client, value: EnhRLock
-        self.__app_config = app_config
-        self.__dashd_intf = dashd_intf
-        self.__get_hw_client_function = get_hw_client_function
-        self.__hw_connect_function: Callable = hw_connect_function
-        self.__hw_disconnect_function: Callable = hw_disconnect_function
-        self.__base_bip32_path: str = ''
-        self.__base_public_key: bytes = ''
-        self.__hd_tree_ident: str = ''
-
-    @property
-    def hw_client(self):
-        return self.__get_hw_client_function()
-
-    @property
-    def hw_connect(self):
-        return self.__hw_connect_function
-
-    @property
-    def hw_disconnect(self):
-        return self.__hw_disconnect_function
-
-    def signal_hw_connected(self):
-        self.sig_hw_connected.emit()
-
-    def signal_hw_disconnected(self):
-        self.sig_hw_disconnected.emit()
-
-    @property
-    def hw_type(self):
-        hw_client = self.hw_client
-        hw_type = None
-        if hw_client:
-            hw_type = get_hw_type(hw_client)
-        return hw_type
-
-    @property
-    def app_config(self):
-        return self.__app_config
-
-    @property
-    def dashd_intf(self):
-        return self.__dashd_intf
-
-    def set_dashd_intf(self, dashd_intf):
-        self.__dashd_intf = dashd_intf
-
-    def acquire_client(self):
-        cli = self.__get_hw_client_function()
-        lock = self.__locks.get(cli)
-        if not lock:
-            lock = EnhRLock()
-            self.__locks[cli] = lock
-        lock.acquire()
-
-    def release_client(self):
-        cli = self.__get_hw_client_function()
-        lock = self.__locks.get(cli)
-        if not lock:
-            raise Exception(f'Lock for client {str(cli)} not acquired before.')
-        lock.release()
-
-    def set_base_info(self, bip32_path: str, public_key: bytes):
-        self.__base_bip32_path = bip32_path
-        self.__base_public_key = public_key
-        self.__hd_tree_ident = SHA256.new(public_key).digest().hex()
-
-    @property
-    def base_bip32_path(self):
-        return self.__base_bip32_path
-
-    @property
-    def base_public_key(self):
-        return self.__base_public_key
-
-    def get_hd_tree_ident(self, coin_name: str):
-        if not coin_name:
-            raise Exception('Missing coin name')
-        if not self.__hd_tree_ident:
-            raise HWNotConnectedException()
-        return self.__hd_tree_ident + bytes(coin_name, 'ascii').hex()
+    def get_description(self, show_hw_type: bool = False):
+        desc = self.device_model
+        if self.device_label:
+            desc += ' (' + self.device_label +')'
+        if not desc:
+            desc = HWType.get_desc(self.hw_type)
+        return desc
 
 
 def clean_bip32_path(bip32_path):
@@ -201,80 +151,63 @@ def ask_for_word_callback(msg: str, wordlist: List[str]) -> str:
         return dlg()
 
 
-class SelectHWDevice(QDialog):
-    def __init__(self, parent, label: str, device_list: List[str]):
-        QDialog.__init__(self, parent=parent)
-        self.device_list = device_list
-        self.device_radiobutton_list = []
-        self.device_selected_index = None
-        self.label = label
-        self.setupUi(self)
-
-    def setupUi(self, Form):
-        Form.setObjectName("SelectHWDevice")
-        self.lay_main = QtWidgets.QVBoxLayout(Form)
-        self.lay_main.setContentsMargins(-1, 3, -1, 3)
-        self.lay_main.setObjectName("lay_main")
-        self.gb_devices = QtWidgets.QGroupBox(Form)
-        self.gb_devices.setFlat(False)
-        self.gb_devices.setCheckable(False)
-        self.gb_devices.setObjectName("gb_devices")
-        self.lay_main.addWidget(self.gb_devices)
-
-        self.lay_devices = QtWidgets.QVBoxLayout(self.gb_devices)
-        for idx, dev in enumerate(self.device_list):
-            rb = QRadioButton(self.gb_devices)
-            rb.setText(dev)
-            rb.toggled.connect(partial(self.on_item_toggled, idx))
-            self.device_radiobutton_list.append(rb)
-            self.lay_devices.addWidget(rb)
-
-        self.btn_main = QtWidgets.QDialogButtonBox(Form)
-        self.btn_main.setStandardButtons(QtWidgets.QDialogButtonBox.Cancel | QtWidgets.QDialogButtonBox.Ok)
-        self.btn_main.setObjectName("btn_main")
-        self.lay_main.addWidget(self.btn_main)
-        self.retranslateUi(Form)
-        QtCore.QMetaObject.connectSlotsByName(Form)
-        self.setFixedSize(self.sizeHint())
-
-    def retranslateUi(self, Form):
-        _translate = QtCore.QCoreApplication.translate
-        Form.setWindowTitle('Select hardware wallet device')
-        self.gb_devices.setTitle(self.label)
-
-    def on_btn_main_accepted(self):
-        if self.device_selected_index is None:
-            WndUtils.errorMsg('No item selected.')
-        else:
-            self.accept()
-
-    def on_btn_main_rejected(self):
-        self.reject()
-
-    def on_item_toggled(self, index, checked):
-        if checked:
-            self.device_selected_index = index
-
-
 def select_hw_device(parent, label: str, devices: List[str]) -> Optional[int]:
-    """ Invokes dialog for selecting the particular instance of hardware wallet device.
-    :param parent:
-    :param devices:
-    :return: index of selected device from 'devices' list or None if user cancelled the action.
     """
-    dlg = SelectHWDevice(parent, label, devices)
-    if dlg.exec_():
-        return dlg.device_selected_index
+    Invokes dialog for selecting the particular instance of hardware wallet device.
+    """
+    # todo: adapt to refactorings
+    # dlg = SelectHWDevice(parent, label, devices)
+    # if dlg.exec_():
+    #     return dlg.device_selected_index
     return None
 
 
-class HardwareWalletInstance(object):
-    def __init__(self, device_id: str, device_label: str, device_desc: str, device_model: str, client: Any, bootloader_mode):
-        self.device_id = device_id
-        self.device_label = device_label
-        self.device_desc = device_desc
-        self.device_model = device_model
-        self.client = client
-        self.bootloader_mode = bootloader_mode
+class HWSessionBase(QObject):
+    def __init__(self, app_config: Optional['AppConfig']):
+        super().__init__()
+        self._app_config = app_config
 
+    def get_hw_client(self):
+        return None
+
+    @property
+    def hw_client(self):
+        return self.get_hw_client()
+
+    @property
+    def hw_coin_name(self):
+        return self._app_config.hw_coin_name
+
+    @property
+    def is_testnet(self):
+        return self._app_config.is_testnet()
+
+    @property
+    def dash_network(self):
+        return self._app_config.dash_network
+
+    @property
+    def tx_cache_dir(self):
+        return self._app_config.tx_cache_dir
+
+    @property
+    def app_config(self):
+        return self._app_config
+
+    @app_config.setter
+    def app_config(self, app_config):
+        self._app_config = app_config
+
+    @property
+    def dashd_intf(self):
+        return self.__dashd_intf
+
+    def set_dashd_intf(self, dashd_intf):
+        self.__dashd_intf = dashd_intf
+
+    def connect_hardware_wallet(self) -> Optional[object]:
+        raise Exception('Not connected')
+
+    def disconnect_hardware_wallet(self) -> None:
+        raise Exception('Not connected')
 

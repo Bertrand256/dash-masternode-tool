@@ -256,9 +256,9 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.btnGenerateOperatorPrivateKey.setEnabled(self.edit_mode is True)
         self.btnGenerateVotingPrivateKey.setEnabled(self.edit_mode is True)
         self.btnLocateCollateral.setEnabled(self.edit_mode)
-        col_btn_visible = self.masternode is not None and (not self.masternode.collateralTx or
-                                               not self.masternode.collateralAddress or
-                                               not self.masternode.collateralBip32Path)
+        col_btn_visible = self.masternode is not None and (not self.masternode.collateral_tx or
+                                                           not self.masternode.collateral_address or
+                                                           not self.masternode.collateral_bip32_path)
         self.update_key_controls_state()
 
     def update_dynamic_labels(self):
@@ -371,10 +371,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             self.edtName.setText(self.masternode.name)
             self.edtIP.setText(self.masternode.ip)
             self.edtPort.setText(self.masternode.port)
-            self.edtCollateralAddress.setText(self.masternode.collateralAddress)
-            self.edtCollateralPath.setText(self.masternode.collateralBip32Path)
-            self.edtCollateralTxHash.setText(self.masternode.collateralTx)
-            self.edtCollateralTxIndex.setText(self.masternode.collateralTxIndex)
+            self.edtCollateralAddress.setText(self.masternode.collateral_address)
+            self.edtCollateralPath.setText(self.masternode.collateral_bip32_path)
+            self.edtCollateralTxHash.setText(self.masternode.collateral_tx)
+            self.edtCollateralTxIndex.setText(self.masternode.collateral_tx_index)
             self.edtDMNTxHash.setText(self.masternode.dmn_tx_hash)
             self.edtOwnerKey.setText(self.get_owner_key_to_display())
             self.edtVotingKey.setText(self.get_voting_key_to_display())
@@ -676,27 +676,27 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     @pyqtSlot(str)
     def on_edtCollateralAddress_textEdited(self, text):
         if self.masternode and not self.updating_ui:
-            update_ui = ((not text) != (not self.masternode.collateralAddress))
+            update_ui = ((not text) != (not self.masternode.collateral_address))
             self.set_modified()
-            self.masternode.collateralAddress = text.strip()
+            self.masternode.collateral_address = text.strip()
             if update_ui:
                 self.update_ui_controls_state()
 
     @pyqtSlot(str)
     def on_edtCollateralPath_textEdited(self, text):
         if self.masternode and not self.updating_ui:
-            update_ui = ((not text) != (not self.masternode.collateralBip32Path))
+            update_ui = ((not text) != (not self.masternode.collateral_bip32_path))
             self.set_modified()
-            self.masternode.collateralBip32Path = text.strip()
+            self.masternode.collateral_bip32_path = text.strip()
             if update_ui:
                 self.update_ui_controls_state()
 
     @pyqtSlot(str)
     def on_edtCollateralTxHash_textEdited(self, text):
         if self.masternode and not self.updating_ui:
-            update_ui = ((not text) != (not self.masternode.collateralTx))
+            update_ui = ((not text) != (not self.masternode.collateral_tx))
             self.set_modified()
-            self.masternode.collateralTx = text.strip()
+            self.masternode.collateral_tx = text.strip()
             if update_ui:
                 self.update_ui_controls_state()
 
@@ -704,7 +704,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     def on_edtCollateralTxIndex_textEdited(self, text):
         if self.masternode and not self.updating_ui:
             self.set_modified()
-            self.masternode.collateralTxIndex = text.strip()
+            self.masternode.collateral_tx_index = text.strip()
 
     @pyqtSlot(str)
     def on_edtDMNTxHash_textEdited(self, text):
@@ -717,7 +717,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         if self.masternode and not self.updating_ui:
             found_protx = None
             if not ((self.masternode.ip and self.masternode.port) or
-                    (self.masternode.collateralTx and self.masternode.collateralTxIndex)):
+                    (self.masternode.collateral_tx and self.masternode.collateral_tx_index)):
                 WndUtils.errorMsg('To be able to locate the deterministic masternode transaction you need to '
                                   'provide the masternode ip + port or collateral tx + tx index.')
                 return
@@ -728,8 +728,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                     state = protx.get('state')
                     if state:
                         if (state.get('service') == self.masternode.ip + ':' + self.masternode.port) or \
-                           (protx.get('collateralHash') == self.masternode.collateralTx and
-                            str(protx.get('collateralIndex', '')) == self.masternode.collateralTxIndex):
+                           (protx.get('collateralHash') == self.masternode.collateral_tx and
+                            str(protx.get('collateralIndex', '')) == self.masternode.collateral_tx_index):
                             found_protx = protx
                             break
             except Exception as e:
@@ -748,13 +748,13 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
     @pyqtSlot(bool)
     def on_btnBip32PathToAddress_clicked(self, checked):
-        if self.masternode.collateralBip32Path:
+        if self.masternode.collateral_bip32_path:
             if self.main_dlg.connect_hardware_wallet():
                 try:
                     hw_session = self.main_dlg.hw_session
-                    addr = hw_intf.get_address(hw_session, self.masternode.collateralBip32Path, show_display=True)
+                    addr = hw_intf.get_address(hw_session, self.masternode.collateral_bip32_path, show_display=True)
                     if addr:
-                        self.masternode.collateralAddress = addr.strip()
+                        self.masternode.collateral_address = addr.strip()
                         self.edtCollateralAddress.setText(addr.strip())
                         self.set_modified()
                         self.update_ui_controls_state()
@@ -763,13 +763,13 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
     @pyqtSlot(bool)
     def on_btnShowCollateralPathAddress_clicked(self, checked):
-        if self.masternode.collateralBip32Path:
+        if self.masternode.collateral_bip32_path:
             try:
                 if self.main_dlg.connect_hardware_wallet():
                     hw_session = self.main_dlg.hw_session
                     addr = hw_intf.get_address(
-                        hw_session, self.masternode.collateralBip32Path, True,
-                        f'Displaying address for the BIP32 path <b>{self.masternode.collateralBip32Path}</b>.'
+                        hw_session, self.masternode.collateral_bip32_path, True,
+                        f'Displaying address for the BIP32 path <b>{self.masternode.collateral_bip32_path}</b>.'
                         f'<br>Click the confirmation button on your device.')
             except CancelException:
                 pass
@@ -876,13 +876,13 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             return break_scanning
 
         def apply_utxo(utxo):
-            self.masternode.collateralAddress = utxo.address
+            self.masternode.collateral_address = utxo.address
             self.edtCollateralAddress.setText(utxo.address)
-            self.masternode.collateralBip32Path = utxo.bip32_path
+            self.masternode.collateral_bip32_path = utxo.bip32_path
             self.edtCollateralPath.setText(utxo.bip32_path)
-            self.masternode.collateralTx = utxo.txid
+            self.masternode.collateral_tx = utxo.txid
             self.edtCollateralTxHash.setText(utxo.txid)
-            self.masternode.collateralTxIndex = str(utxo.output_index)
+            self.masternode.collateral_tx_index = str(utxo.output_index)
             self.edtCollateralTxIndex.setText(str(utxo.output_index))
             self.update_ui_controls_state()
             self.set_modified()
@@ -897,9 +897,9 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
         if utxos:
             if len(utxos) == 1 and \
-                    (not self.masternode.collateralAddress or
-                     (utxos[0].address_obj and self.masternode.collateralAddress == utxos[0].address_obj.address)) \
-                    and (not self.masternode.collateralTx or utxos[0].txid == self.masternode.collateralTx):
+                    (not self.masternode.collateral_address or
+                     (utxos[0].address_obj and self.masternode.collateral_address == utxos[0].address_obj.address)) \
+                    and (not self.masternode.collateral_tx or utxos[0].txid == self.masternode.collateral_tx):
                 apply_utxo(utxos[0])
                 return
 

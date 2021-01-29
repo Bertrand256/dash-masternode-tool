@@ -6,7 +6,7 @@ from PyQt5.QtCore import pyqtSlot
 from PyQt5.QtWidgets import QMessageBox, QDialog, QLayout
 import hw_intf as hw_intf
 import wnd_utils as wnd_utils
-from app_defs import HWType
+from hw_common import HWType
 from ui import ui_hw_setup_dlg
 
 
@@ -34,7 +34,7 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
         self.setWindowTitle('Hardware Wallet Setup')
         self.lblFirmwareVersion.setText(self.version)
         self.updateControlsState()
-        if self.main_ui.app_config.hw_type == HWType.ledger_nano_s:
+        if self.main_ui.app_config.hw_type == HWType.ledger_nano:
             self.lblMessage.setVisible(True)
         else:
             self.lblMessage.setVisible(False)

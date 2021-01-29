@@ -414,7 +414,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                     self.errorMsg('Invalid PIN length. It can only have 4 or 8 characters.')
                     success = False
                 else:
-                    if self.hw_type == HWType.ledger_nano_s:
+                    if self.hw_type == HWType.ledger_nano:
                         if not re.match("^[0-9]+$", self.hw_action_pin):
                             self.errorMsg('Invalid PIN. Allowed characters: 0-9.')
                             success = False
@@ -425,7 +425,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             if not success:
                 self.edtHwOptionsPIN.setFocus()
             else:
-                if self.hw_type == HWType.ledger_nano_s:
+                if self.hw_type == HWType.ledger_nano:
                     if self.hw_action_use_passphrase:
                         self.hw_action_passphrase = self.edtHwOptionsLedgerPassphrase.text()
                         if not self.hw_action_passphrase:
@@ -522,7 +522,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             device_id, cancelled = load_device_by_mnemonic(
                 self.hw_type, self.hw_device_id_selected, self.hw_action_mnemonic_words, self.hw_action_pin,
                 self.hw_action_use_passphrase, self.hw_action_label,
-                self.hw_action_passphrase, self.hw_action_secondary_pin, parent_window=self.main_ui)
+                self.hw_action_passphrase, self.hw_action_secondary_pin)
 
         elif self.action_type == ACTION_RECOVER_FROM_WORDS_SAFE:
 
@@ -603,7 +603,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             while True:
                 # in bootloader mode, there is not possibility do get the device_id; to know which of the devices has
                 # to be flashed, user has to leave only one device in bootloader mode at the time of this step
-                hw_clients, _ = get_device_list(hw_type=self.hw_type, allow_bootloader_mode=True)
+                hw_clients = get_device_list(hw_type=self.hw_type, allow_bootloader_mode=True)
 
                 boot_clients = []
                 for c in hw_clients:
@@ -872,7 +872,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         if self.current_step == STEP_SELECT_DEVICE_TYPE:
             msg_text = ''
 
-            if self.hw_type == HWType.ledger_nano_s:
+            if self.hw_type == HWType.ledger_nano:
                 msg_text = '<span><b>Important! Start your Ledger Nano S wallet in recovery mode:</b></span>' \
                            '<ol><li>Clear the device by selecting the \'Settings->Device->Reset all\' menu item.</li>' \
                            '<li>Power the device off.</li>' \
@@ -894,7 +894,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         elif self.current_step == STEP_SELECT_ACTION:
             self.rbActRecoverMnemonicWords.setVisible(self.hw_type != HWType.trezor)
             self.rbActRecoverHexEntropy.setVisible(self.hw_type != HWType.trezor)
-            if self.hw_type == HWType.ledger_nano_s:
+            if self.hw_type == HWType.ledger_nano:
                 # turn off options not applicable for ledger walltes
                 self.rbActRecoverWordsSafe.setDisabled(True)
                 self.rbActInitializeNewSeed.setDisabled(True)
@@ -983,7 +983,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             else:
                 raise Exception('Invalid action.')
 
-            if self.hw_type == HWType.ledger_nano_s:
+            if self.hw_type == HWType.ledger_nano:
                 # for Ledger Nano we have to use PIN
                 self.chbHwOptionsUsePIN.setChecked(True)
                 self.chbHwOptionsUsePIN.setEnabled(False)
@@ -1320,16 +1320,16 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
 
         if self.hw_type in (HWType.trezor, HWType.keepkey):
 
-            devs, _ = get_device_list(self.hw_type, return_clients=return_hw_clients)
+            devs = get_device_list(self.hw_type, return_clients=return_hw_clients)
             for dev in devs:
                 device_id = dev.device_id
-                label = dev.device_desc
+                label = dev.get_description()
                 model = dev.device_model
                 client = dev.client
                 self.hw_device_instances.append([device_id, label, model, client])
                 self.cboDeviceInstance.addItem(label)
 
-        elif self.hw_type == HWType.ledger_nano_s:
+        elif self.hw_type == HWType.ledger_nano:
             from btchip.btchipComm import getDongle
             from btchip.btchipException import BTChipException
             try:
@@ -1368,7 +1368,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         elif self.rbDeviceKeepkey.isChecked():
             self.hw_type = HWType.keepkey
         elif self.rbDeviceLedger.isChecked():
-            self.hw_type = HWType.ledger_nano_s
+            self.hw_type = HWType.ledger_nano
         else:
             self.hw_type = None
 

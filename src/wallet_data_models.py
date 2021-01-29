@@ -46,22 +46,22 @@ class MnAddressTableModel(ExtSortFilterItemModel):
         for mn in masternode_list:
             mni = MnAddressItem()
             mni.masternode = mn
-            if mni.masternode.collateralAddress:
+            if mni.masternode.collateral_address:
                 self.mn_items.append(mni)
         self.load_mn_addresses_in_bip44_wallet(bip44_wallet)
 
     def load_mn_addresses_in_bip44_wallet(self, bip44_wallet: Bip44Wallet):
         addr_ids = []
         for mni in self.mn_items:
-            if mni.masternode.collateralAddress:
-                a = bip44_wallet.get_address_item(mni.masternode.collateralAddress, True)
+            if mni.masternode.collateral_address:
+                a = bip44_wallet.get_address_item(mni.masternode.collateral_address, True)
                 address_loc = Bip44AddressType(tree_id=None)
                 address_loc.copy_from(a)
                 if not address_loc.bip32_path:
-                    address_loc.bip32_path = mni.masternode.collateralBip32Path
-                    a.bip32_path = mni.masternode.collateralBip32Path
+                    address_loc.bip32_path = mni.masternode.collateral_bip32_path
+                    a.bip32_path = mni.masternode.collateral_bip32_path
                 mni.address = address_loc
-                if mni.masternode.collateralAddress not in addr_ids:
+                if mni.masternode.collateral_address not in addr_ids:
                     addr_ids.append(mni.address.id)
         if addr_ids:
             bip44_wallet.subscribe_addresses_for_chbalance(addr_ids, True)
@@ -397,9 +397,9 @@ class UtxoTableModel(ExtSortFilterItemModel):
         self.mn_by_collateral_address: Dict[str, MasternodeConfig] = {}
 
         for mn in masternode_list:
-            ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
+            ident = mn.collateral_tx + '-' + str(mn.collateral_tx_index)
             self.mn_by_collateral_tx[ident] = mn
-            self.mn_by_collateral_address[mn.collateralAddress] = mn
+            self.mn_by_collateral_address[mn.collateral_address] = mn
 
         self.set_attr_protection()
 

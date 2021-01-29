@@ -25,6 +25,7 @@ from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QIt
     QProxyStyle
 import math
 import message_dlg
+from common import CancelException
 from thread_fun_dlg import ThreadFunDlg, WorkerThread, CtrlObject
 
 
@@ -504,6 +505,8 @@ class ThreadWndUtils(QObject):
             else:
                 return fun_to_call(*args, **kwargs)
         except DeadlockException:
+            raise
+        except CancelException:
             raise
         except Exception as e:
             logging.exception('ThreadWndUtils.call_in_main_thread error: %s' % str(e))

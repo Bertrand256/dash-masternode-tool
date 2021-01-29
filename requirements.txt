@@ -13,5 +13,5 @@ simplejson
 cryptography
 bip32utils
 more-itertools
--e git+https://github.com/Bertrand256/btchip-python#egg=btchip-python
+btchip-python==0.1.31
 python-bls
