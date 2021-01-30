@@ -158,7 +158,7 @@ def get_dongles() -> List[HIDDongleHIDAPI]:
                 dev.open_path(hidDevicePath)
                 dev.set_nonblocking(True)
                 hdev = HIDDongleHIDAPI(dev, ledger, False)
-                hdev.hidDevicePath = str(hidDevicePath)  # we need this to distinguish particular devices
+                hdev.hidDevicePath = hidDevicePath.decode('ascii')  # we need this to distinguish particular devices
                 devices.append(hdev)
                 hidDevicePath = None
                 ledger = False
@@ -174,16 +174,15 @@ def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = F
         dongles = get_dongles()
         if dongles:
             for d in dongles:
-                app = btchipDMT(d)
+                client = btchipDMT(d)
                 device_model = d.device.get_manufacturer_string() + ' ' + d.device.get_product_string()
                 in_bootloader_mode = True if re.match(".*[Bb]ootloader", device_model) else False
                 if not in_bootloader_mode:
                     try:
-                        ver = app.getFirmwareVersion()
+                        ver = client.getFirmwareVersion()
                     except BTChipException as e:
                         # if the Dash application isn't running then we cannot read a version number of the app
-                        pass
-
+                        ver = None
                 else:
                     ver = None
 
@@ -192,48 +191,61 @@ def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = F
                         hw_common.HWDevice(
                             hw_type=HWType.ledger_nano,
                             device_id=d.__getattribute__('hidDevicePath'),
-                            device_model=d.device.get_product_string(),
+                            device_model=device_model,
                             device_label=None,
                             device_version=ver,
-                            client=app,
+                            client=client if return_clients else None,
                             bootloader_mode=in_bootloader_mode,
-                            transport=d
-                        ))
+                            transport=d))
+                if not return_clients:
+                    del client
                 d.close()
-                del d
 
     except BTChipException as e:
         if e.message != 'No dongle found':
             logging.exception(str(e))
             exception = e
 
-    if not return_clients:
-        for cli in ret_list:
-            # todo: consider closing HIDDongleHIDAPI devices and using hidDevicePath as an idenfier
-            # of the device when calling open_ledgernano_client
-            # if cli.client:  # it shouldn't be None, but we uset it to suppress IDE warnings
-            #     cli.client.close()
-            cli.client = None
-
     if not ret_list and exception:
         raise exception
+    ret_list = sorted(ret_list, key=lambda x: x.get_description())
     return ret_list
 
 
 @process_ledger_exceptions
-def open_ledgernano_client(dongle):
+def open_session(dongle: HIDDongleHIDAPI):
+    if not dongle.opened:
+        dev = hid.device()
+        dev.open_path(bytes(dongle.__getattribute__('hidDevicePath'), 'ascii'))
+        dev.set_nonblocking(True)
+        dongle.device = dev
+        dongle.opened = True
+
     client = btchipDMT(dongle)
     ver = client.getFirmwareVersion()
-    logging.info('Ledger Nano S connected. Firmware version: %s, specialVersion: %s, compressedKeys: %s' %
+    logging.info('Ledger Nano connected. Firmware version: %s, specialVersion: %s, compressedKeys: %s' %
                  (str(ver.get('version')), str(ver.get('specialVersion')), ver.get('compressedKeys')))
-
     return client
+
+
+@process_ledger_exceptions
+def close_session(dongle: HIDDongleHIDAPI):
+    dongle.close()
 
 
 class MessageSignature:
     def __init__(self, address, signature):
         self.address = address
         self.signature = signature
+
+
+def _ledger_exctract_address(addr: str, hw_session: HWSessionBase) -> str:
+    match = re.search('bytearray\(b?["\']([a-zA-Z0-9]+)["\']\)', addr)
+    if match and len(match.groups()) == 1:
+        addr = match.group(1)
+    elif not dash_utils.validate_address(addr, hw_session.dash_network):
+        raise Exception("Invalid Dash address format returned from getWalletPublicKey: " + addr)
+    return addr
 
 
 @process_ledger_exceptions
@@ -305,22 +317,25 @@ def sign_message(hw_session: HWSessionBase, bip32_path, message):
         logging.error('client.signMessageSign() returned invalid response (code 1): ' + signature.hex())
         raise Exception('Invalid signature returned (code 1).')
 
+    addr = _ledger_exctract_address(pubkey.get('address'), hw_session)
     return MessageSignature(
-        pubkey.get('address').decode('ascii'),
+        addr,
         bytes(chr(27 + 4 + (signature[0] & 0x01)), "utf-8") + r + s
     )
 
 
 @process_ledger_exceptions
-def get_address_and_pubkey(client, bip32_path, show_display=False):
+def get_address_and_pubkey(hw_session: HWSessionBase, bip32_path, show_display=False):
     bip32_path = clean_bip32_path(bip32_path)
     bip32_path.strip()
     if bip32_path.lower().find('m/') >= 0:
         bip32_path = bip32_path[2:]
 
-    nodedata = client.getWalletPublicKey(bip32_path, showOnScreen=show_display)
+    nodedata = hw_session.hw_client.getWalletPublicKey(bip32_path, showOnScreen=show_display)
+    addr = _ledger_exctract_address(nodedata.get('address'), hw_session)
+
     return {
-        'address': nodedata.get('address').decode('utf-8'),
+        'address': addr,
         'publicKey': compress_public_key(nodedata.get('publicKey'))
     }
 

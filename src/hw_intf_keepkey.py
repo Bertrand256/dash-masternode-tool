@@ -119,7 +119,7 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
                             device_label=client.features.label if client.features.label else None,
                             device_version=version,
                             device_model=client.features.model,
-                            client=client,
+                            client=client if return_clients else None,
                             bootloader_mode=client.features.bootloader_mode,
                             transport=d
                         ))
@@ -143,7 +143,7 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
     return ret_list
 
 
-def open_keepkey_client(hw_device_transport: object) -> Optional[MyKeepkeyClient]:
+def open_session(hw_device_transport: object) -> Optional[MyKeepkeyClient]:
     client = WndUtils.call_in_main_thread(hw_device_transport)
     if client:
         logging.info('Keepkey connected. Firmware version: %s.%s.%s, vendor: %s, initialized: %s, '
@@ -155,6 +155,10 @@ def open_keepkey_client(hw_device_transport: object) -> Optional[MyKeepkeyClient
                       str(client.features.passphrase_protection), str(client.features.passphrase_cached),
                       str(client.features.bootloader_mode)))
     return client
+
+
+def close_session(client: MyKeepkeyClient):
+    client.close()
 
 
 class MyTxApiInsight(TxApiInsight):

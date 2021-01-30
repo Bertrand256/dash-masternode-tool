@@ -415,7 +415,7 @@ def get_address(hw_session: 'HwSessionInfo', bip32_path: str, show_display: bool
                     # ledger requires bip32 path argument as a string
                     bip32_path_ = bip32_path_n_to_string(bip32_path_)
 
-                adr_pubkey = ledger.get_address_and_pubkey(client, bip32_path_, show_display_)
+                adr_pubkey = ledger.get_address_and_pubkey(hw_session_, bip32_path_, show_display_)
                 return adr_pubkey.get('address')
             else:
                 raise Exception('Unknown hardware wallet type: ' + str(hw_session_.hw_type))
@@ -466,7 +466,7 @@ def get_address_and_pubkey(hw_session: 'HwSessionInfo', bip32_path):
                 # ledger requires bip32 path argument as a string
                 bip32_path = bip32_path_n_to_string(bip32_path)
 
-            return ledger.get_address_and_pubkey(client, bip32_path)
+            return ledger.get_address_and_pubkey(hw_session, bip32_path)
         else:
             raise Exception('Unknown hardware wallet type: ' + str(hw_session.hw_type))
 
@@ -878,25 +878,27 @@ class HWDevices(object):
             raise Exception('Device index out of bounds.')
 
     @staticmethod
-    def open_hw_client_for_device(hw_device: HWDevice):
+    def open_hw_session(hw_device: HWDevice):
         if not hw_device.client:
             if hw_device.hw_type == HWType.trezor:
-                hw_device.client = trezor.open_trezor_client(hw_device.transport)
+                hw_device.client = trezor.open_session(hw_device.transport)
             elif hw_device.hw_type == HWType.keepkey:
-                hw_device.client = keepkey.open_keepkey_client(hw_device.transport)
+                hw_device.client = keepkey.open_session(hw_device.transport)
             elif hw_device.hw_type == HWType.ledger_nano:
-                hw_device.client = ledger.open_ledgernano_client(hw_device.transport)
+                hw_device.client = ledger.open_session(cast(ledger.HIDDongleHIDAPI, hw_device.transport))
             else:
                 raise Exception('Invalid HW type: ' + str(hw_device.hw_type))
 
     @staticmethod
-    def close_hw_client_for_device(hw_device: HWDevice):
+    def close_hw_session(hw_device: HWDevice):
         if hw_device.client:
             try:
-                if hw_device.hw_type in (HWType.trezor, HWType.keepkey):
-                    hw_device.client.close()
+                if hw_device.hw_type == HWType.trezor:
+                    trezor.close_session(hw_device.client)
+                elif hw_device.hw_type == HWType.keepkey:
+                    keepkey.close_session(hw_device.client)
                 elif hw_device.hw_type == HWType.ledger_nano:
-                    hw_device.client.close()
+                    ledger.close_session(cast(ledger.HIDDongleHIDAPI, hw_device.transport))
 
                 del hw_device.client
                 hw_device.client = None
@@ -936,7 +938,7 @@ class HwSessionInfo(HWSessionBase):
         self.sig_hw_disconnected.emit()
 
     def signal_hw_connection_error(self, message):
-        self.sig_hw_disconnected.emit(message)
+        self.sig_hw_connection_error.emit(message)
 
     @property
     def hw_device(self):
@@ -1029,7 +1031,7 @@ class HwSessionInfo(HWSessionBase):
         hw_device = self.hw_device
         if not hw_device:
             raise Exception('Internal error: hw device not ready')
-        self.__hw_devices.open_hw_client_for_device(hw_device)
+        self.__hw_devices.open_hw_session(hw_device)
 
         try:
             if hw_device.hw_type == HWType.trezor:
@@ -1049,16 +1051,16 @@ class HwSessionInfo(HWSessionBase):
 
             elif hw_device.hw_type == HWType.ledger_nano:
                 path = dash_utils.get_default_bip32_base_path(self.dash_network)
-                ap = ledger.get_address_and_pubkey(hw_device.client, path)
+                ap = ledger.get_address_and_pubkey(self, path)
                 self.set_base_info(path, ap['publicKey'])
 
         except CancelException:
             cancel_hw_operation(hw_device.client)
-            self.__hw_devices.close_hw_client_for_device(hw_device)
+            self.__hw_devices.close_hw_session(hw_device)
             raise
         except Exception:
             # in the case of error close the session
-            self.__hw_devices.close_hw_client_for_device(hw_device)
+            self.__hw_devices.close_hw_session(hw_device)
             raise
 
     def connect_hardware_wallet_main_th(self, reload_devices: bool = False) -> Optional[object]:
@@ -1067,9 +1069,6 @@ class HwSessionInfo(HWSessionBase):
         :return: Reference to hw client or None if not connected.
         """
         ret = None
-        if self.hw_client and self._app_config.hw_type is not None and self._app_config.hw_type != self.hw_type:
-            self.disconnect_hardware_wallet()
-
         reload_devices_ = reload_devices
         if (not reload_devices_ and not self.__hw_devices.get_devices()) or not self.hw_client:
             # (re)load hardware wallet devices connected to the computer, if they haven't been loaded yet
@@ -1161,9 +1160,7 @@ class HwSessionInfo(HWSessionBase):
 
     def disconnect_hardware_wallet(self) -> None:
         if self.hw_client:
-            self.__hw_devices.close_hw_client_for_device(self.hw_device)
-            # hw_intf.disconnect_hw(self.hw_client)
-            # self.set_status_text2('<b>HW status:</b> idle', 'black')
+            self.__hw_devices.close_hw_session(self.hw_device)
             self.signal_hw_disconnected()
 
 
@@ -1173,7 +1170,8 @@ class HWDevicesListWdg(QWidget):
     def __init__(self, parent, hw_devices: HWDevices):
         QWidget.__init__(self, parent=parent)
         self.hw_devices: HWDevices = hw_devices
-        self.layout_main: Optional[QtWidgets] = None
+        self.layout_main: Optional[QtWidgets.QVBoxLayout] = None
+        self.spacer: Optional[QtWidgets.QSpacerItem] = None
         self.setupUi(self)
 
     def setupUi(self, dlg):
@@ -1182,8 +1180,8 @@ class HWDevicesListWdg(QWidget):
         self.layout_main.setContentsMargins(0, 0, 0, 0)
         self.layout_main.setSpacing(6)
         self.layout_main.setObjectName("verticalLayout")
-        spacer = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.layout_main.addItem(spacer)
+        self.spacer = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.layout_main.addItem(self.spacer)
         self.retranslateUi(dlg)
         QtCore.QMetaObject.connectSlotsByName(dlg)
         self.devices_to_ui()
@@ -1198,13 +1196,15 @@ class HWDevicesListWdg(QWidget):
             if ctrl is QtWidgets.QRadioButton:
                 del ctrl
 
+        insert_idx = self.layout_main.indexOf(self.spacer)
         for dev in self.hw_devices.get_devices():
             ctrl = QtWidgets.QRadioButton(self)
-            ctrl.setText(dev.get_description(True))
-            self.layout_main.insertWidget(0, ctrl)
+            ctrl.setText(dev.get_description())
+            self.layout_main.insertWidget(insert_idx, ctrl)
             ctrl.toggled.connect(partial(self.on_device_rb_toggled, dev))
             if selected_device == dev:
                 ctrl.setChecked(True)
+            insert_idx += 1
 
     def on_device_rb_toggled(self, hw_device: HWDevice, checked: bool):
         self.sig_device_toggled.emit(hw_device, checked)
@@ -1220,7 +1220,7 @@ class SelectHWDeviceDlg(QDialog):
     def __init__(self, parent, label: str, hw_devices: HWDevices):
         QDialog.__init__(self, parent=parent)
         self.hw_devices: HWDevices = hw_devices
-        self.selected_hw_device: Optional[HWDevice] = None
+        self.selected_hw_device: Optional[HWDevice] = self.hw_devices.get_selected_device()
         self.label = label
         self.lay_main: Optional[QtWidgets.QVBoxLayout] = None
         self.device_list_wdg: Optional[HWDevicesListWdg] = None

@@ -174,7 +174,7 @@ def get_device_list(
                         device_label=client.features.label if client.features.label else None,
                         device_version=version,
                         device_model=device_model,
-                        client=client,
+                        client=client if return_clients else None,
                         bootloader_mode=client.features.bootloader_mode,
                         transport=d
                     ))
@@ -198,7 +198,7 @@ def get_device_list(
     return ret_list
 
 
-def open_trezor_client(hw_device_transport: object) -> Optional[MyTrezorClient]:
+def open_session(hw_device_transport: object) -> Optional[MyTrezorClient]:
     client = MyTrezorClient(hw_device_transport, ui=TrezorUi())
     logging.info('Trezor connected. Firmware version: %s.%s.%s, vendor: %s, initialized: %s, '
                  'pp_protection: %s, bootloader_mode: %s ' %
@@ -209,6 +209,10 @@ def open_trezor_client(hw_device_transport: object) -> Optional[MyTrezorClient]:
                   str(client.features.passphrase_protection),
                   str(client.features.bootloader_mode)))
     return client
+
+
+def close_session(client: MyTrezorClient):
+    client.close()
 
 
 def json_to_tx(tx_json):
@@ -410,7 +414,7 @@ def wipe_device(hw_device_id) -> Tuple[str, bool]:
     """
     client = None
     try:
-        client = open_trezor_client(hw_device_id)
+        client = open_session(hw_device_id)
 
         if client:
             device.wipe(client)
@@ -474,7 +478,7 @@ def recover_device(hw_device_id: str, word_count: int, passphrase_enabled: bool,
 
     client = None
     try:
-        client = open_trezor_client(hw_device_id)
+        client = open_session(hw_device_id)
 
         if client:
             if client.features.initialized:
@@ -517,7 +521,7 @@ def reset_device(hw_device_id: str, strength: int, passphrase_enabled: bool, pin
     """
     client = None
     try:
-        client = open_trezor_client(hw_device_id)
+        client = open_session(hw_device_id)
 
         if client:
             if client.features.initialized:

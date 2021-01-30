@@ -42,7 +42,7 @@ class SelectHwDeviceWdg(QWidget):
 
         for dev in self.hw_devices.get_devices():
             ctrl = QtWidgets.QRadioButton(self)
-            ctrl.setText(dev.get_description(True))
+            ctrl.setText(dev.get_description())
             self.layout_main.insertWidget(0, ctrl)
 
     def update(self):

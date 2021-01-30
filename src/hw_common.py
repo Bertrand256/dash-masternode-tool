@@ -88,7 +88,7 @@ class HWDevice(object):
         self.client = client
         self.bootloader_mode = bootloader_mode
 
-    def get_description(self, show_hw_type: bool = False):
+    def get_description(self):
         desc = self.device_model
         if self.device_label:
             desc += ' (' + self.device_label +')'
