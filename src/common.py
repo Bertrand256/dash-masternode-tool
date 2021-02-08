@@ -44,6 +44,18 @@ class CancelException(Exception):
         Exception.__init__(self, *args, *kwargs)
 
 
+class InternalError(Exception):
+    def __init__(self, message: str, error_code: int = -1):
+        if message:
+            self.message = message
+        else:
+            self.message = 'Internal error'
+        self.error_code = error_code
+
+    def __str__(self):
+        return self.message
+
+
 def namedtuple_defaults(typename, field_names, default_values=()):
     T = collections.namedtuple(typename, field_names)
     T.__new__.__defaults__ = (None,) * len(T._fields)

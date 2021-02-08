@@ -5,18 +5,19 @@
 import logging
 from typing import Optional
 
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import pyqtSlot, QAbstractTableModel, QVariant, Qt, QPoint, QItemSelection, QItemSelectionModel, \
     QEventLoop
 from PyQt5.QtGui import QKeySequence
-from PyQt5.QtWidgets import QDialog, QMenu, QApplication, QLineEdit, QShortcut, QMessageBox, QTableWidgetItem
+from PyQt5.QtWidgets import QDialog, QMenu, QApplication, QLineEdit, QShortcut, QMessageBox, QTableWidgetItem, QWidget
 import app_cache
 import app_defs
 import hw_intf
 from app_config import AppConfig
+from common import InternalError
+from hw_common import HWDevice
 from hw_settings_wdg import WdgHwSettings
 from recover_hw_wdg import WdgRecoverHw
-from select_hw_device_wdg import SelectHwDeviceWdg
 from ui import ui_wallet_tools_dlg
 from wallet_tools_common import ActionPageBase
 from hw_intf import HWDevices
@@ -43,8 +44,12 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         self.current_action = ACTION_NONE
         self.action_widget: Optional[ActionPageBase] = None
         self.action_layout: Optional[QtWidgets.QVBoxLayout] = None
-        self.hw_devices = HWDevices(self.main_ui, self.app_config.hw_type)
-        self.wdg_select_hw_device = SelectHwDeviceWdg(self, self.hw_devices)
+        self.hw_devices = HWDevices.get_instance()
+        self.hw_devices.save_state()  # save the hw device currently connected in the main window
+        if not self.hw_devices:
+            raise InternalError('HWDevices not initialized')
+        self.wdg_select_hw_device = CurrentHwDeviceWdg(self, self.hw_devices)
+        self.hw_devices.sig_selected_hw_device_changed.connect(self.on_selected_hw_device_changed)
         self.setupUi(self)
 
     def setupUi(self, dlg):
@@ -60,6 +65,13 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         self.action_layout.setContentsMargins(0, 0, 0, 0)
         self.action_layout.setSpacing(3)
         self.action_layout.setObjectName("action_layout")
+
+    def on_close(self):
+        self.hw_devices.sig_selected_hw_device_changed.disconnect(self.on_selected_hw_device_changed)
+        self.hw_devices.restore_state()
+
+    def closeEvent(self, event):
+        self.on_close()
 
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
@@ -101,6 +113,9 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
             self.setup_action_widget(ACTION_RECOVER_HW)
         except Exception as e:
             self.errorMsg(str(e), True)
+
+    def on_selected_hw_device_changed(self, cur_hw_device: HWDevice):
+        self.wdg_select_hw_device.update()
 
     def activate_menu_page(self):
         self.tabsMain.setCurrentIndex(0)
@@ -156,7 +171,6 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
     def set_hw_panel_visible(self, visible: bool):
         if visible:
             self.wdg_select_hw_device.update()
-
         self.wdg_select_hw_device.setVisible(visible)
 
     def get_widget_action_type(self) -> int:
@@ -209,3 +223,49 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
 
         except Exception as e:
             self.errorMsg(str(e), True)
+
+
+
+class CurrentHwDeviceWdg(QWidget):
+    """
+    Widget presenting the currently selected hardware wallet and allowing it to be changed to another one.
+
+    It is displayed at the top of the dialog, but only in the tabs whose functionality relates to operations
+    using the hardware wallets.
+    """
+
+    def __init__(self, parent, hw_devices: HWDevices):
+        QWidget.__init__(self, parent=parent)
+        self.hw_devices: HWDevices = hw_devices
+        self.setupUi(self)
+
+    def setupUi(self, dlg):
+        dlg.setObjectName("SelectHwDeviceWdg")
+        self.layout_main = QtWidgets.QHBoxLayout(dlg)
+        self.layout_main.setContentsMargins(0, 0, 0, 0)
+        self.layout_main.setSpacing(0)
+
+        self.lbl_current_hw_device = QtWidgets.QLabel(dlg)
+        self.lbl_current_hw_device.linkActivated.connect(self.on_hw_device_selected)
+        self.layout_main.addWidget(self.lbl_current_hw_device)
+
+        spacer = QtWidgets.QSpacerItem(20, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.layout_main.addItem(spacer)
+
+    def update(self):
+        try:
+            dev = self.hw_devices.get_selected_device()
+            if dev:
+                lbl = 'Device selected: <b>' + dev.get_description() + '</b> [<a href="select-hw-device">change</a>]'
+            else:
+                lbl = 'No hardware wallet device selected [<a href="select-hw-device">select</a>]'
+            self.lbl_current_hw_device.setText(lbl)
+
+        except Exception as e:
+            logging.exception(str(e))
+
+    def on_hw_device_selected(self, anchor: str):
+        prev_dev = self.hw_devices.get_selected_device()
+        cur_dev = self.hw_devices.select_device(self.parent())
+        if cur_dev and cur_dev != prev_dev:
+            pass

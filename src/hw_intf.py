@@ -14,7 +14,7 @@ import trezorlib.exceptions
 import trezorlib.misc
 import keepkeylib.client
 import usb1
-from PyQt5.QtCore import pyqtSlot
+from PyQt5.QtCore import pyqtSlot, QObject
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QDialog, QWidget
 from trezorlib.tools import Address
@@ -791,19 +791,23 @@ def hw_decrypt_value(hw_session: 'HwSessionInfo', bip32_path_n: List[int], label
                                       force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
 
 
-class HWDevices(object):
+class HWDevices(QObject):
     """
     Manages information about all hardware wallet devices connected to the computer.
     """
+    sig_selected_hw_device_changed = QtCore.pyqtSignal(HWDevice)
+
     __instance = None
 
     @staticmethod
-    def get_instance():
+    def get_instance() -> 'HWDevices':
         return HWDevices.__instance
 
     def __init__(self, use_webusb=True, use_bridge=True, use_udp=True, use_hid=True, passphrase_encoding='NFC'):
+        super(HWDevices, self).__init__()
         if HWDevices.__instance is not None:
             raise Exception('Internal error: cannot create another instance of this class')
+        HWDevices.__instance = self
         self.__hw_devices: List[HWDevice] = []
         self.__hw_device_id_selected: Optional[str] = None  # device id of the hw client selected
         self.__devices_fetched = False
@@ -813,6 +817,12 @@ class HWDevices(object):
         self.__use_hid = use_hid
         self.__hw_types_allowed: Tuple[HWType, ...] = (HWType.trezor, HWType.keepkey, HWType.ledger_nano)
         self.__passphrase_encoding: Optional[str] = passphrase_encoding
+
+    def save_state(self):
+        pass  # todo: to be implemented
+
+    def restore_state(self):
+        pass  # todo: to be implemented
 
     def load_hw_devices(self, force_fetch: bool = False):
         """
@@ -865,15 +875,20 @@ class HWDevices(object):
         else:
             return None
 
-    def select_device(self, device: HWDevice):
-        if device in self.__hw_devices:
-            self.__hw_device_id_selected = device.device_id
+    def set_current_device(self, device: HWDevice):
+        if not device:
+            if self.__hw_device_id_selected:
+                self.sig_selected_hw_device_changed.emit(device)  # we are deselecting hw device
+        elif device in self.__hw_devices:
+            if device.device_id != self.__hw_device_id_selected:
+                self.__hw_device_id_selected = device.device_id
+                self.sig_selected_hw_device_changed.emit(device)
         else:
             raise Exception('Non existent hw device object.')
 
-    def select_device_by_index(self, index: int):
+    def set_current_device_by_index(self, index: int):
         if 0 <= index < len(self.__hw_devices):
-            self.__hw_device_id_selected = self.__hw_devices[index].device_id
+            self.set_current_device(self.__hw_devices[index])
         else:
             raise Exception('Device index out of bounds.')
 
@@ -905,6 +920,15 @@ class HWDevices(object):
             except Exception:
                 # probably already disconnected
                 logging.exception('Disconnect HW error')
+
+    def select_device(self, parent_dialog) -> Optional[HWDevice]:
+        self.load_hw_devices()
+
+        dlg = SelectHWDeviceDlg(parent_dialog, "Select hardware wallet device", self)
+        if dlg.exec_():
+            self.set_current_device(dlg.selected_hw_device)
+            return dlg.selected_hw_device
+        return None
 
 
 class HwSessionInfo(HWSessionBase):
@@ -995,13 +1019,6 @@ class HwSessionInfo(HWSessionBase):
             raise HWNotConnectedException()
         return self.__hd_tree_ident + bytes(coin_name, 'ascii').hex()
 
-    def select_device(self) -> Optional[HWDevice]:
-        dlg = SelectHWDeviceDlg(self.__main_dlg, "Select hardware wallet device", self.__hw_devices)
-        if dlg.exec_():
-            self.__hw_devices.select_device(dlg.selected_hw_device)
-            return dlg.selected_hw_device
-        return None
-
     def initiate_hw_session(self):
         """
         Read this information from the hw device, that will cause it to ask the user for a BIP39 passphrase, if
@@ -1079,9 +1096,9 @@ class HwSessionInfo(HWSessionBase):
 
         if not self.hw_client:
             if len(self.__hw_devices.get_devices()) == 1:
-                self.__hw_devices.select_device_by_index(0)
+                self.__hw_devices.set_current_device_by_index(0)
             elif len(self.__hw_devices.get_devices()) > 1:
-                device = self.select_device()
+                device = self.__hw_devices.select_device(self.__main_dlg)
                 if not device:
                     raise CancelException('Cancelled')
             else:
@@ -1188,7 +1205,7 @@ class HWDevicesListWdg(QWidget):
 
     def retranslateUi(self, widget):
         _translate = QtCore.QCoreApplication.translate
-        widget.setWindowTitle(_translate("SelectHwDeviceWdg", "Form"))
+        widget.setWindowTitle(_translate("HWDevicesListWdg", "Form"))
 
     def devices_to_ui(self):
         selected_device = self.hw_devices.get_selected_device()
