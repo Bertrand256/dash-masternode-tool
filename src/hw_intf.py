@@ -330,6 +330,18 @@ def action_on_device_message(message=DEFAULT_HW_BUSY_MESSAGE, title=DEFAULT_HW_B
 
 
 @action_on_device_message()
+def ping_device(hw_device: HWDevice, message: str):
+    if hw_device.hw_type == HWType.trezor:
+        trezor.ping(hw_device.client, message)
+    elif hw_device.hw_type == HWType.keepkey:
+        keepkey.ping(hw_device.client, message)
+    elif hw_device.hw_type == HWType.ledger_nano:
+        raise Exception('Ledger Nano S is not supported.')
+    else:
+        logging.error('Invalid HW type: ' + str(hw_device.hw_type))
+
+
+@action_on_device_message()
 def enable_passphrase(hw_client, passphrase_enabled):
     hw_type = get_hw_type_from_client(hw_client)
     if hw_type == HWType.trezor:
@@ -892,13 +904,12 @@ class HWDevices(QObject):
         else:
             raise Exception('Device index out of bounds.')
 
-    @staticmethod
-    def open_hw_session(hw_device: HWDevice):
+    def open_hw_session(self, hw_device: HWDevice):
         if not hw_device.client:
             if hw_device.hw_type == HWType.trezor:
                 hw_device.client = trezor.open_session(hw_device.transport)
             elif hw_device.hw_type == HWType.keepkey:
-                hw_device.client = keepkey.open_session(hw_device.transport)
+                hw_device.client = keepkey.open_session(hw_device.device_id, self.__passphrase_encoding)
             elif hw_device.hw_type == HWType.ledger_nano:
                 hw_device.client = ledger.open_session(cast(ledger.HIDDongleHIDAPI, hw_device.transport))
             else:
@@ -929,6 +940,20 @@ class HWDevices(QObject):
             self.set_current_device(dlg.selected_hw_device)
             return dlg.selected_hw_device
         return None
+
+    def ping_device(self, hw_device: HWDevice):
+        opened_session_here = False
+        try:
+            if not hw_device.client:
+                self.open_hw_session(hw_device)
+                opened_session_here = True
+            ping_device(hw_device, 'Hello from DMT')
+        except Exception as e:
+            log.warning('Could not open hw session: ' + str(e))
+        finally:
+            if opened_session_here:
+                self.close_hw_session(hw_device)
+
 
 
 class HwSessionInfo(HWSessionBase):
@@ -1062,7 +1087,7 @@ class HwSessionInfo(HWSessionBase):
 
             elif hw_device.hw_type == HWType.keepkey:
                 try:
-                    get_session_info_trezor(hw_device.client.get_public_node, hw_device.client)
+                    get_session_info_trezor(hw_device.client.get_public_node, hw_device)
                 except keepkeylib.client.PinException as e:
                     raise HWPinException(e.args[1])
 
@@ -1210,21 +1235,42 @@ class HWDevicesListWdg(QWidget):
     def devices_to_ui(self):
         selected_device = self.hw_devices.get_selected_device()
         for ctrl in self.layout_main.children():
-            if ctrl is QtWidgets.QRadioButton:
+            if ctrl is QtWidgets.QHBoxLayout:
                 del ctrl
 
+        # create a list of radio buttons associated with each hw device connected to the computer;
+        # each radio button is enclosed inside a horizontal layout along with a hyperlink control
+        # allowing the identification of the appropriate hw device by highlighting its screen
         insert_idx = self.layout_main.indexOf(self.spacer)
+        dev_cnt = len(self.hw_devices.get_devices())
         for dev in self.hw_devices.get_devices():
-            ctrl = QtWidgets.QRadioButton(self)
-            ctrl.setText(dev.get_description())
-            self.layout_main.insertWidget(insert_idx, ctrl)
-            ctrl.toggled.connect(partial(self.on_device_rb_toggled, dev))
+            rb = QtWidgets.QRadioButton(self)
+            rb.setText(dev.get_description())
+            rb.toggled.connect(partial(self.on_device_rb_toggled, dev))
             if selected_device == dev:
-                ctrl.setChecked(True)
+                rb.setChecked(True)
+
+            hl = QtWidgets.QHBoxLayout(self)
+            hl.setSpacing(4)
+            self.layout_main.insertLayout(insert_idx, hl)
+            hl.addWidget(rb)
+
+            if dev_cnt > 1:
+                # link to identify hw devices show only if there are more then one connected to the computer
+                lnk = QtWidgets.QLabel(self)
+                lnk.setText('<a href="identify-hw-device">show</a>')
+                lnk.linkActivated.connect(partial(self.on_hw_show_link_activated, dev))
+                hl.addWidget(lnk)
+
+            hl.addSpacerItem(QtWidgets.QSpacerItem(10, 10, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum))
+
             insert_idx += 1
 
     def on_device_rb_toggled(self, hw_device: HWDevice, checked: bool):
         self.sig_device_toggled.emit(hw_device, checked)
+
+    def on_hw_show_link_activated(self, hw_device, link ):
+        self.hw_devices.ping_device(hw_device)
 
     def update(self):
         try:

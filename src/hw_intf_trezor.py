@@ -178,7 +178,9 @@ def get_device_list(
                         bootloader_mode=client.features.bootloader_mode,
                         transport=d
                     ))
-                device_ids.append(client.features.device_id)  # beware: it's empty in bootloader mode
+                device_ids.append(client.features.device_id)  #it's empty in bootloader mode
+                if not return_clients:
+                    client.close()
             else:
                 # the same device is already connected using different connection medium
                 client.close()
@@ -186,12 +188,6 @@ def get_device_list(
             logging.warning(f'Cannot create Trezor client ({d.__class__.__name__}) due to the following error: ' +
                             str(e))
             exception = e
-
-    if not return_clients:
-        for cli in ret_list:
-            if cli.client:  # it shouldn't be None, but we uset it to suppress IDE warnings
-                cli.client.close()
-            cli.client = None
 
     if not ret_list and exception:
         raise exception
@@ -371,6 +367,10 @@ def sign_message(hw_session: HWSessionBase, bip32path, message):
         return btc.sign_message(client, hw_session.hw_coin_name, address_n, message)
     except exceptions.Cancelled:
         raise CancelException('Cancelled')
+
+
+def ping(hw_client, message: str):
+    hw_client.ping(message, True)
 
 
 def change_pin(hw_client, remove=False):

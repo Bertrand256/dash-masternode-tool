@@ -8,6 +8,8 @@ import unicodedata
 from decimal import Decimal
 from typing import Optional, Tuple, List
 
+from keepkeylib.transport_hid import HidTransport
+from keepkeylib.transport_webusb import WebUsbTransport
 from keepkeylib.client import TextUIMixin as keepkey_TextUIMixin
 from keepkeylib.client import ProtocolMixin as keepkey_ProtocolMixin
 from keepkeylib.client import BaseClient as keepkey_BaseClient, CallException
@@ -74,87 +76,96 @@ class MyKeepkeyClient(keepkey_ProtocolMixin, MyKeepkeyTextUIMixin, keepkey_BaseC
         keepkey_BaseClient.__init__(self, transport)
 
 
+
+def enumerate_devices(limit_to_serial_number: Optional[str]):
+    transports = [HidTransport, WebUsbTransport]
+    for t in transports:
+        for d in t.enumerate():
+            if limit_to_serial_number and hasattr(d, 'getSerialNumber'):
+                if limit_to_serial_number == d.getSerialNumber():
+                    yield t, d
+                    return
+            else:
+                yield t, d
+
+
 def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[str] = 'NFC',
                     allow_bootloader_mode: bool = False) -> List[HWDevice]:
-    from keepkeylib.transport_hid import HidTransport
-    from keepkeylib.transport_webusb import WebUsbTransport
 
     ret_list = []
-    transports = [HidTransport, WebUsbTransport]
     exception: Optional[Exception] = None
     device_ids = []
     was_bootloader_mode = False
 
-    for t in transports:
-        for d in t.enumerate():
-            try:
-                transport = t(d)
-                client = MyKeepkeyClient(transport, ask_for_pin_callback, ask_for_pass_callback, passphrase_encoding)
+    for t, d in enumerate_devices(None):
+        try:
+            transport = t(d)
+            client = MyKeepkeyClient(transport, ask_for_pin_callback, ask_for_pass_callback, passphrase_encoding)
 
-                if client.features.bootloader_mode:
-                    if was_bootloader_mode:
-                        # in bootloader mode the device_id attribute isn't available, so for a given client object
-                        # we are unable to distinguish between being the same device reached with the different
-                        # transport and being another device
-                        # for that reason, to avoid returning duplicate clients for the same device, we don't return
-                        # more than one instance of a device in bootloader mod
-                        client.close()
-                        continue
-                    was_bootloader_mode = True
-
-                device_id = client.get_device_id()
-                if not device_id and d.__class__.__name__ == 'USBDevice' and hasattr(d, 'getSerialNumber'):
-                    device_id = d.getSerialNumber()
-
-                if (not client.features.bootloader_mode or allow_bootloader_mode) and \
-                        (device_id not in device_ids or client.features.bootloader_mode):
-
-                    version = f'{client.features.major_version}.{client.features.minor_version}.' \
-                              f'{client.features.patch_version}'
-
-                    ret_list.append(
-                        HWDevice(
-                            hw_type=HWType.keepkey,
-                            device_id=device_id,
-                            device_label=client.features.label if client.features.label else None,
-                            device_version=version,
-                            device_model=client.features.model,
-                            client=client if return_clients else None,
-                            bootloader_mode=client.features.bootloader_mode,
-                            transport=d
-                        ))
-                    device_ids.append(device_id)  # beware: it's empty in bootloader mode
-                else:
-                    # the same device is already connected using different connection medium
+            if client.features.bootloader_mode:
+                if was_bootloader_mode:
+                    # in bootloader mode the device_id attribute isn't available, so for a given client object
+                    # we are unable to distinguish between being the same device reached with the different
+                    # transport and being another device
+                    # for that reason, to avoid returning duplicate clients for the same device, we don't return
+                    # more than one instance of a device in bootloader mod
                     client.close()
-            except Exception as e:
-                logging.warning(
-                    f'Cannot create Keepkey client ({d.__class__.__name__}) due to the following error: ' + str(e))
-                exception = e
+                    continue
+                was_bootloader_mode = True
 
-    if not return_clients:
-        for cli in ret_list:
-            if cli.client:
-                cli.client.close()
-            cli.client = None
+            device_id = client.get_device_id()
+            if not device_id and d.__class__.__name__ == 'USBDevice' and hasattr(d, 'getSerialNumber'):
+                device_id = d.getSerialNumber()
+
+            if (not client.features.bootloader_mode or allow_bootloader_mode) and \
+                    (device_id not in device_ids or client.features.bootloader_mode):
+
+                version = f'{client.features.major_version}.{client.features.minor_version}.' \
+                          f'{client.features.patch_version}'
+                device_model = 'Keepkey'
+
+                ret_list.append(
+                    HWDevice(
+                        hw_type=HWType.keepkey,
+                        device_id=device_id,
+                        device_label=client.features.label if client.features.label else None,
+                        device_version=version,
+                        device_model=device_model,
+                        client=client if return_clients else None,
+                        bootloader_mode=client.features.bootloader_mode,
+                        transport=None
+                    ))
+                device_ids.append(device_id)  # beware: it's empty in bootloader mode
+                if not return_clients:
+                    client.close()
+            else:
+                # the same device is already connected using different connection medium
+                client.close()
+        except Exception as e:
+            logging.warning(
+                f'Cannot create Keepkey client ({d.__class__.__name__}) due to the following error: ' + str(e))
+            exception = e
 
     if not ret_list and exception:
         raise exception
     return ret_list
 
 
-def open_session(hw_device_transport: object) -> Optional[MyKeepkeyClient]:
-    client = WndUtils.call_in_main_thread(hw_device_transport)
-    if client:
-        logging.info('Keepkey connected. Firmware version: %s.%s.%s, vendor: %s, initialized: %s, '
-                     'pp_protection: %s, pp_cached: %s, bootloader_mode: %s ' %
-                     (str(client.features.major_version),
-                      str(client.features.minor_version),
-                      str(client.features.patch_version), str(client.features.vendor),
-                      str(client.features.initialized),
-                      str(client.features.passphrase_protection), str(client.features.passphrase_cached),
-                      str(client.features.bootloader_mode)))
-    return client
+def open_session(device_id: str, passphrase_encoding: Optional[str] = 'NFC') -> Optional[MyKeepkeyClient]:
+    for t, d in enumerate_devices(device_id):
+        transport = t(d)
+        client = MyKeepkeyClient(transport, ask_for_pin_callback, ask_for_pass_callback, passphrase_encoding)
+        if client:
+            logging.info('Keepkey connected. Firmware version: %s.%s.%s, vendor: %s, initialized: %s, '
+                         'pp_protection: %s, pp_cached: %s, bootloader_mode: %s ' %
+                         (str(client.features.major_version),
+                          str(client.features.minor_version),
+                          str(client.features.patch_version), str(client.features.vendor),
+                          str(client.features.initialized),
+                          str(client.features.passphrase_protection), str(client.features.passphrase_cached),
+                          str(client.features.bootloader_mode)))
+        return client
+    return None
 
 
 def close_session(client: MyKeepkeyClient):
@@ -302,6 +313,10 @@ def sign_message(hw_session: HWSessionBase, bip32path, message):
             raise CancelException('Cancelled')
         else:
             raise
+
+
+def ping(hw_client, message: str):
+    hw_client.ping(message, True)
 
 
 def change_pin(hw_client, remove=False):
