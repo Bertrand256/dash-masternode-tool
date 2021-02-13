@@ -831,8 +831,8 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
             self.lbl_data_file_badge.setVisible(False)
 
     def clear_outputs(self):
-        if WndUtils.queryDlg("Do you really want to clear all outputs?", default_button=QMessageBox.Cancel,
-                             icon=QMessageBox.Warning) == QMessageBox.Ok:
+        if WndUtils.query_dlg("Do you really want to clear all outputs?", default_button=QMessageBox.Cancel,
+                              icon=QMessageBox.Warning) == QMessageBox.Ok:
             self.set_dest_addresses([('', '')])
             self.use_all_funds_for_address(self.recipients[0])
             self.current_file_name = ''
@@ -910,7 +910,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
             if file_name:
                 self.read_from_file(file_name)
         except Exception as e:
-            self.parent_dialog.errorMsg(str(e))
+            self.parent_dialog.error_msg(str(e))
 
     def read_from_file(self, file_name):
         try:
@@ -981,7 +981,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         except Exception as e:
             self.update_mru_menu_items()
             logging.exception('Exception while reading file with recipients data.')
-            self.parent_dialog.errorMsg(str(e))
+            self.parent_dialog.error_msg(str(e))
 
     def add_menu_item_to_mru(self, file_name: str) -> None:
         if file_name:

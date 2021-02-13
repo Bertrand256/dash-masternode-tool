@@ -221,7 +221,7 @@ class ExtSortFilterItemModel(QAbstractItemModel, AttrsProtected):
                 self._apply_columns_to_ui()
         except Exception as e:
             logging.exception('Exception while configuring table view columns')
-            WndUtils.errorMsg(str(e))
+            WndUtils.error_msg(str(e))
 
     def columnCount(self, parent=None, *args, **kwargs):
         return self.col_count()

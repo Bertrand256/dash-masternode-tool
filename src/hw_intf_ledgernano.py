@@ -261,12 +261,12 @@ def sign_message(hw_session: HWSessionBase, bip32_path, message):
         info = client.signMessagePrepare(bip32_path, message)
         if info['confirmationNeeded'] and info['confirmationType'] == 34:
             if i == 1 or \
-                    WndUtils.queryDlg('Another application (such as Ledger Wallet Bitcoin app) has probably taken over '
+                    WndUtils.query_dlg('Another application (such as Ledger Wallet Bitcoin app) has probably taken over '
                                       'the communication with the Ledger device.'
                                       '\n\nTo continue, close that application and click the <b>Retry</b> button.'
                                       '\nTo cancel, click the <b>Abort</b> button',
-                                      buttons=QMessageBox.Retry | QMessageBox.Abort,
-                                      default_button=QMessageBox.Retry, icon=QMessageBox.Warning) == QMessageBox.Retry:
+                                       buttons=QMessageBox.Retry | QMessageBox.Abort,
+                                       default_button=QMessageBox.Retry, icon=QMessageBox.Warning) == QMessageBox.Retry:
 
                 # we need to reconnect the device; first, we'll try to reconnect to HW without closing the intefering
                 # application; it it doesn't help we'll display a message requesting the user to close the app

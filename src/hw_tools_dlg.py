@@ -237,7 +237,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         """Moves forward from the 'device type selection' step."""
         success = True
         if not self.hw_type:
-            self.errorMsg('Select your hardware wallet type.')
+            self.error_msg('Select your hardware wallet type.')
             success = False
         else:
             self.set_next_step(STEP_SELECT_ACTION)
@@ -258,15 +258,15 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
 
         elif self.action_type == ACTION_WIPE_DEVICE:
             if self.hw_type in (HWType.trezor, HWType.keepkey):
-                if self.queryDlg('Do you really want to wipe your %s device?' % self.hw_type,
-                                 buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                                 default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
+                if self.query_dlg('Do you really want to wipe your %s device?' % self.hw_type,
+                                  buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                  default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
                     try:
                         self.load_hw_devices()
                         cnt = len(self.hw_device_instances)
                         if cnt == 0:
-                            self.errorMsg('Couldn\'t find any %s devices connected to your computer.' %
-                                          HWType.get_desc(self.hw_type))
+                            self.error_msg('Couldn\'t find any %s devices connected to your computer.' %
+                                           HWType.get_desc(self.hw_type))
                             success = False
                         elif cnt == 1:
                             # there is only one instance of this device type
@@ -291,7 +291,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 self.set_next_step(STEP_INPUT_FIRMWARE_SOURCE)
 
             else:
-                self.errorMsg(f'{HWType.get_desc(self.hw_type)} is not supported.')
+                self.error_msg(f'{HWType.get_desc(self.hw_type)} is not supported.')
                 success = False
 
         elif self.action_type == ACTION_HW_SETTINGS:
@@ -300,8 +300,8 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 self.load_hw_devices(return_hw_clients=True)
                 cnt = len(self.hw_device_instances)
                 if cnt == 0:
-                    self.errorMsg('Couldn\'t find any %s devices connected to your computer.' %
-                                  HWType.get_desc(self.hw_type))
+                    self.error_msg('Couldn\'t find any %s devices connected to your computer.' %
+                                   HWType.get_desc(self.hw_type))
                     success = False
                 elif cnt == 1:
                     # there is only one instance of this device type
@@ -337,7 +337,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         try:
             entropy = bytes.fromhex(ent_str)
             if len(entropy) not in (32, 24, 16):
-                self.warnMsg('The entropy hex-string can only have 16, 24 or 32 bytes.')
+                self.warn_msg('The entropy hex-string can only have 16, 24 or 32 bytes.')
                 success = False
             else:
                 self.entropy = entropy
@@ -346,7 +346,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 self.set_word_count(len(words))
                 self.set_next_step(STEP_INPUT_WORDS)
         except Exception as e:
-            self.warnMsg(str(e))
+            self.warn_msg(str(e))
             success = False
         return success
 
@@ -360,7 +360,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             suppress_error_message = False
             for idx, word in enumerate(self.get_cur_mnemonic_words()):
                 if not word:
-                    self.errorMsg('Cannot continue - not all words are entered.')
+                    self.error_msg('Cannot continue - not all words are entered.')
                     success = False
                     suppress_error_message = True
                     break
@@ -371,7 +371,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             if not success:
                 # verify the whole word-set entered by the user (checksum)
                 if not suppress_error_message:
-                    self.errorMsg('Cannot continue - invalid word(s): %s.' %
+                    self.error_msg('Cannot continue - invalid word(s): %s.' %
                                   ','.join(['#' + str(x + 1) for x in invalid_indexes]))
             else:
                 try:
@@ -380,10 +380,10 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 except Exception as e:
                     success = False
                     if str(e) == 'Failed checksum.':
-                        self.errorMsg('Invalid checksum of the provided words. You\'ve probably mistyped some'
+                        self.error_msg('Invalid checksum of the provided words. You\'ve probably mistyped some'
                                       ' words or changed their order.')
                     else:
-                        self.errorMsg('There was an error in the provided word-list. Error details: ' + str(e))
+                        self.error_msg('There was an error in the provided word-list. Error details: ' + str(e))
         elif self.action_type == ACTION_RECOVER_FROM_ENTROPY:
             pass
         else:
@@ -411,16 +411,16 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             if self.hw_action_use_pin:
                 self.hw_action_pin = self.edtHwOptionsPIN.text()
                 if len(self.hw_action_pin) not in (4, 8):
-                    self.errorMsg('Invalid PIN length. It can only have 4 or 8 characters.')
+                    self.error_msg('Invalid PIN length. It can only have 4 or 8 characters.')
                     success = False
                 else:
                     if self.hw_type == HWType.ledger_nano:
                         if not re.match("^[0-9]+$", self.hw_action_pin):
-                            self.errorMsg('Invalid PIN. Allowed characters: 0-9.')
+                            self.error_msg('Invalid PIN. Allowed characters: 0-9.')
                             success = False
                     else:
                         if not re.match("^[1-9]+$", self.hw_action_pin):
-                            self.errorMsg('Invalid PIN. Allowed characters: 1-9.')
+                            self.error_msg('Invalid PIN. Allowed characters: 1-9.')
                             success = False
             if not success:
                 self.edtHwOptionsPIN.setFocus()
@@ -429,7 +429,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                     if self.hw_action_use_passphrase:
                         self.hw_action_passphrase = self.edtHwOptionsLedgerPassphrase.text()
                         if not self.hw_action_passphrase:
-                            self.errorMsg('For Ledger Nano S you need to provide your passphrase - it will be '
+                            self.error_msg('For Ledger Nano S you need to provide your passphrase - it will be '
                                           'stored in the device and secured by secondary PIN.')
                             self.edtHwOptionsLedgerPassphrase.setFocus()
                             success = False
@@ -437,17 +437,17 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                             # validate secondary PIN
                             self.hw_action_secondary_pin = self.edtHwOptionsLedgerSecondaryPIN.text()
                             if not self.hw_action_secondary_pin:
-                                self.errorMsg('Secondary PIN is required if you want to save passphrase '
+                                self.error_msg('Secondary PIN is required if you want to save passphrase '
                                               'in your Ledger Nano S.')
                                 self.edtHwOptionsLedgerSecondaryPIN.setFocus()
                                 success = False
                             else:
                                 if len(self.hw_action_secondary_pin) not in (4, 8):
-                                    self.errorMsg('Invalid secondary PIN length. '
+                                    self.error_msg('Invalid secondary PIN length. '
                                                   'It can only have 4 or 8 characters.')
                                     success = False
                                 elif not re.match("^[0-9]+$", self.hw_action_secondary_pin):
-                                    self.errorMsg('Invalid secondary PIN. Allowed characters: 0-9.')
+                                    self.error_msg('Invalid secondary PIN. Allowed characters: 0-9.')
                                     success = False
 
                                 if not success:
@@ -462,8 +462,8 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             self.load_hw_devices()
             cnt = len(self.hw_device_instances)
             if cnt == 0:
-                self.errorMsg('Couldn\'t find any %s devices connected to your computer.' %
-                              HWType.get_desc(self.hw_type))
+                self.error_msg('Couldn\'t find any %s devices connected to your computer.' %
+                               HWType.get_desc(self.hw_type))
             elif cnt == 1:
                 # there is only one instance of this device type
                 self.hw_device_id_selected = self.hw_device_instances[0][0]
@@ -491,13 +491,13 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                     if self.hw_firmware_url_selected:
                         fw_model = self.hw_firmware_url_selected.get('model')
                         if str(fw_model) != str(device_model):
-                            self.errorMsg(f'The firmware selected is dedicated the device model "{fw_model}", '
-                                          f'but the selected device is model "{device_model}".' )
+                            self.error_msg(f'The firmware selected is dedicated the device model "{fw_model}", '
+                                          f'but the selected device is model "{device_model}".')
                         else:
                             self.set_next_step(STEP_UPLOAD_FIRMWARE)
                             success = True
                     else:
-                        self.errorMsg('No firmware selected!')
+                        self.error_msg('No firmware selected!')
                 else:
                     # for uploading from the file, we cannot verify model compatibility
                     self.set_next_step(STEP_UPLOAD_FIRMWARE)
@@ -512,7 +512,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 if success:
                     self.set_next_step(STEP_FINISHED)
         else:
-            self.errorMsg('No %s device instances.' % HWType.get_desc(self.hw_type))
+            self.error_msg('No %s device instances.' % HWType.get_desc(self.hw_type))
         return success
 
     def apply_action_on_hardware_wallet(self) -> bool:
@@ -554,7 +554,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 self.cboDeviceInstance.setItemText(idx, lbl)
 
         if cancelled:
-            self.warnMsg('Operation cancelled.')
+            self.warn_msg('Operation cancelled.')
             return False
         else:
             self.set_next_step(STEP_FINISHED)
@@ -564,14 +564,14 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         ret = False
         if self.hw_firmware_source_type == 0:
             if not self.hw_firmware_source_file:
-                self.errorMsg('Enter the file name of the firmware.')
+                self.error_msg('Enter the file name of the firmware.')
             elif not os.path.isfile(self.hw_firmware_source_file):
-                self.errorMsg(f'File \'{self.hw_firmware_source_file}\' does not exist.')
+                self.error_msg(f'File \'{self.hw_firmware_source_file}\' does not exist.')
             else:
                 ret = True
         elif self.hw_firmware_source_type == 1:
             if not self.hw_firmware_url_selected:
-                self.errorMsg('No firmware selected.')
+                self.error_msg('No firmware selected.')
             else:
                 ret = True
 
@@ -635,9 +635,9 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                                                  re.IGNORECASE):
                                 raise
 
-                        if self.queryDlg('Reconnect the device in bootloader mode and click "OK" to continue.',
-                                         buttons=QMessageBox.Ok | QMessageBox.Cancel, default_button=QMessageBox.Ok,
-                                         icon=QMessageBox.Information) != QMessageBox.Ok:
+                        if self.query_dlg('Reconnect the device in bootloader mode and click "OK" to continue.',
+                                          buttons=QMessageBox.Ok | QMessageBox.Cancel, default_button=QMessageBox.Ok,
+                                          icon=QMessageBox.Information) != QMessageBox.Ok:
                             return False
                         else:
                             wiped = True
@@ -657,7 +657,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         except Exception as e:
             msg = str(e).replace('<', '').replace('>', '')
             logging.exception('Error while uploading firmware')
-            self.errorMsg(msg)
+            self.error_msg(msg)
 
         return ret
 
@@ -696,10 +696,10 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             firmware.validate(version, fw, allow_unsigned=False)
             log.info("Signatures are valid.")
         except firmware.Unsigned:
-            if self.queryDlg('No signatures found. Continue?',
-                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                             default_button=QMessageBox.Cancel,
-                             icon=QMessageBox.Warning) == QMessageBox.Yes:
+            if self.query_dlg('No signatures found. Continue?',
+                              buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                              default_button=QMessageBox.Cancel,
+                              icon=QMessageBox.Warning) == QMessageBox.Yes:
                 raise CancelException('Cancelled')
 
             try:
@@ -786,7 +786,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             ret = False
         except Exception as e:
             log.exception(str(e))
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
             ret = False
         return ret
 
@@ -837,7 +837,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 self.update_current_tab()
                 self.btnBack.setEnabled(True)
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot(bool)
     def on_btnBack_clicked(self, clicked):
@@ -865,7 +865,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 self.update_current_tab()
 
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     def update_current_tab(self):
         # display/hide controls on the current page (step), depending on the options set in prevous steps
@@ -1052,7 +1052,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                     self.lblUploadFirmwareMessage.setText(msg_text)
 
                 else:
-                    self.errorMsg('Invalid model of the selected device...')
+                    self.error_msg('Invalid model of the selected device...')
 
             elif self.hw_type == HWType.keepkey:
                 msg_text = '<span style="color:red"><b>WARNING: Before updating firmware, please make sure that ' \
@@ -1175,7 +1175,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         try:
             return self.main_ui.connect_hardware_wallet()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     def set_word_count(self, word_count, checked=True):
         if checked:
@@ -1196,7 +1196,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         try:
             self.popMenuWords.exec_(self.viewMnemonic.mapToGlobal(point))
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     def get_cur_mnemonic_words(self):
         ws = []
@@ -1214,7 +1214,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             if clipboard:
                 clipboard.setText(ws_str)
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     def on_actPasteWords_triggered(self):
         try:
@@ -1230,7 +1230,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                         self.mnemonic_words[idx] = w
                     self.grid_model.refresh_view()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot(bool)
     def on_btnHwOptionsDetails_clicked(self):
@@ -1238,7 +1238,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             self.hw_options_details_visible = not self.hw_options_details_visible
             self.update_current_tab()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @staticmethod
     def bip32_descend(*args):
@@ -1283,7 +1283,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         try:
             self.refresh_adresses_preview()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot(bool)
     def on_btnPreviewShowNextAddresses_clicked(self, check):
@@ -1291,21 +1291,21 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             self.preview_address_count += PREVIEW_ADDRESSES_PER_PAGE
             self.refresh_adresses_preview()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot()
     def on_edtHwOptionsPassphrase_returnPressed(self):
         try:
             self.refresh_adresses_preview()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot()
     def on_edtHwOptionsBip32Path_returnPressed(self):
         try:
             self.refresh_adresses_preview()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     def load_hw_devices(self, return_hw_clients=False):
         """
@@ -1360,7 +1360,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 self.read_device_type_from_ui()
                 self.update_current_tab()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     def read_device_type_from_ui(self):
         if self.rbDeviceTrezor.isChecked():
@@ -1379,7 +1379,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 self.read_action_type_from_ui()
                 self.update_current_tab()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot(str)
     def on_lblStepDeviceTypeMessage_linkActivated(self, link_text):
@@ -1425,7 +1425,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             style_sheet = 'font-size:12px'
             show_doc_dlg(self, text, style_sheet, 'Help')
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot(bool)
     def on_rbFirmwareSourceInternet_toggled(self, checked):
@@ -1434,7 +1434,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 self.hw_firmware_source_type = 1
                 self.update_current_tab()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot(bool)
     def on_rbFirmwareSourceLocalFile_toggled(self, checked):
@@ -1443,7 +1443,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 self.hw_firmware_source_type = 0
                 self.update_current_tab()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot(bool)
     def on_rbTrezorModelOne_toggled(self, checked):
@@ -1452,7 +1452,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 self.hw_model = '1'
                 self.update_current_tab()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot(bool)
     def on_rbTrezorModelT_toggled(self, checked):
@@ -1461,7 +1461,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 self.hw_model = 'T'
                 self.update_current_tab()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot(bool)
     def on_btnChooseFirmwareFile_clicked(self, checked):
@@ -1481,14 +1481,14 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 if self.hw_type == HWType.trezor and self.hw_model == '1':
                     fp = self.get_file_fingerprint(file_name, 256)
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot(str)
     def on_edtFirmwareFilePath_textChanged(self, text):
         try:
             self.hw_firmware_source_file = text
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     def load_remote_firmware_list(self):
         self.run_thread_dialog(self.load_remote_firmware_list_thread, (), center_by_window=self)
@@ -1624,7 +1624,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 row_index = idx.row()
             self.select_firmware(row_index)
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     def select_firmware(self, row_index):
         if row_index >= 0:
@@ -1652,9 +1652,9 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 hw_client = self.hw_device_instances[self.hw_device_index_selected][3]
                 if self.hw_opt_pin_protection is True:
                     # disable
-                    if self.queryDlg('Do you really want to disable PIN protection?',
-                                     buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
-                                     icon=QMessageBox.Warning) == QMessageBox.Yes:
+                    if self.query_dlg('Do you really want to disable PIN protection?',
+                                      buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                      icon=QMessageBox.Warning) == QMessageBox.Yes:
                         hw_intf.change_pin(hw_client, remove=True)
                         self.read_hw_features()
                         self.update_hw_settings_page()
@@ -1665,7 +1665,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                     self.update_hw_settings_page()
         except Exception as e:
             log.exception(str(e))
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot()
     def on_btnChangePin_clicked(self):
@@ -1679,7 +1679,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
 
         except Exception as e:
             log.exception(str(e))
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot()
     def on_btnEnDisPass_clicked(self):
@@ -1689,23 +1689,23 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 if hw_client:
                     if self.hw_opt_passphrase_protection is True:
                         # disable passphrase
-                        if self.queryDlg('Do you really want to disable passphrase protection?',
-                                         buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
-                                         icon=QMessageBox.Warning) == QMessageBox.Yes:
+                        if self.query_dlg('Do you really want to disable passphrase protection?',
+                                          buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                          icon=QMessageBox.Warning) == QMessageBox.Yes:
                             hw_intf.enable_passphrase(hw_client=hw_client, passphrase_enabled=False)
                             self.read_hw_features()
                             self.update_hw_settings_page()
                     elif self.hw_opt_passphrase_protection is False:
                         # enable passphrase
-                        if self.queryDlg('Do you really want to enable passphrase protection?',
-                                         buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
-                                         icon=QMessageBox.Warning) == QMessageBox.Yes:
+                        if self.query_dlg('Do you really want to enable passphrase protection?',
+                                          buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                          icon=QMessageBox.Warning) == QMessageBox.Yes:
                             hw_intf.enable_passphrase(hw_client=hw_client, passphrase_enabled=True)
                             self.read_hw_features()
                             self.update_hw_settings_page()
         except Exception as e:
             log.exception(str(e))
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot()
     def on_btnEnDisPassAlwaysOnDevice_clicked(self):
@@ -1722,15 +1722,15 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                     else:
                         return
 
-                    if self.queryDlg(message,
-                                     buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
-                                     icon=QMessageBox.Warning) == QMessageBox.Yes:
+                    if self.query_dlg(message,
+                                      buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                      icon=QMessageBox.Warning) == QMessageBox.Yes:
                         hw_intf.set_passphrase_always_on_device(hw_client, enabled=new_enabled)
                         self.read_hw_features()
                         self.update_hw_settings_page()
         except Exception as e:
             log.exception(str(e))
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot()
     def on_btnEnDisWipeCode_clicked(self):
@@ -1747,14 +1747,14 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                     else:
                         return
 
-                    if self.queryDlg(message,
-                                     buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
-                                     icon=QMessageBox.Warning) == QMessageBox.Yes:
+                    if self.query_dlg(message,
+                                      buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                      icon=QMessageBox.Warning) == QMessageBox.Yes:
                         hw_intf.set_wipe_code(hw_client, enabled=new_enabled)
                         self.read_hw_features()
                         self.update_hw_settings_page()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
 
 class MnemonicModel(QAbstractTableModel):

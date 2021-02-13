@@ -44,11 +44,11 @@ class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.W
                         try:
                             msg_to_sign.encode('ascii')
                         except UnicodeEncodeError:
-                            self.warnMsg('Ledger wallets cannot sign non-ASCII and non-printable characters. Please '
+                            self.warn_msg('Ledger wallets cannot sign non-ASCII and non-printable characters. Please '
                                          'remove them from your message and try again.')
                             return
                         if len(msg_to_sign) > 140:
-                            self.warnMsg('Ledger wallets cannot sign messages longer than 140 characters. Please '
+                            self.warn_msg('Ledger wallets cannot sign messages longer than 140 characters. Please '
                                          'remove any extra characters and try again.')
                             return
 
@@ -57,7 +57,7 @@ class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.W
                     self.edtSignedMessage.setPlainText(signed.decode('ascii'))
                     self.edtSignedMessage.update()
                     if sig.address != self.address:
-                        self.warnMsg('Message signed but signing address (%s) for BIP32 path (%s) differs from '
+                        self.warn_msg('Message signed but signing address (%s) for BIP32 path (%s) differs from '
                                      'required one: %s\n\nDid you enter correct passphrase?' % (sig.address, self.bip32path, self.address))
                 elif self.private_key:
                     sig = ecdsa_sign(msg_to_sign, self.private_key, self.app_config.dash_network)
@@ -66,12 +66,12 @@ class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.W
                 else:
                     raise Exception('Invalid arguments')
             else:
-                self.errorMsg('Empty message cannot be signed.')
+                self.error_msg('Empty message cannot be signed.')
 
         except CancelException:
             logging.warning('CancelException')
 
         except Exception as e:
             logging.exception('Sign message exception:')
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 

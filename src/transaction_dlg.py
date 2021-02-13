@@ -318,7 +318,7 @@ td.lbl{{text-align: right;vertical-align: top;}} p.lbl{{margin: 0 5px 0 0; font-
         except Exception as e:
             log.exception(f'Exception occurred while broadcasting transaction. '
                               f'Transaction size: {self.tx_size} bytes.')
-            self.errorMsg('An error occurred while sending transation: '+ str(e))
+            self.error_msg('An error occurred while sending transation: ' + str(e))
 
     @pyqtSlot(bool)
     def on_btn_close_clicked(self, enabled):

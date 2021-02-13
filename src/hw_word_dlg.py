@@ -34,9 +34,9 @@ class HardwareWalletWordDlg(QDialog, ui_hw_word_dlg.Ui_HardwareWalletWordDlg, Wn
     def on_btnEnter_clicked(self):
         text = self.edtWord.text()
         if not text:
-            WndUtils.errorMsg('Word cannot be empty.')
+            WndUtils.error_msg('Word cannot be empty.')
         elif text not in self.wordlist:
-            WndUtils.errorMsg('Word is not in the allowed wordlist.')
+            WndUtils.error_msg('Word is not in the allowed wordlist.')
         else:
             self.accept()
 

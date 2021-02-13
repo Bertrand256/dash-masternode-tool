@@ -238,7 +238,7 @@ class ListCollateralTxsDlg(QDialog, ui_find_coll_tx_dlg.Ui_ListCollateralTxsDlg,
             mn = self.collaterals_table_model.get_utxo_mn_assignement(utxo)
             if mn:
                 if mn != self.edited_masternode and self.edited_masternode:
-                    if wnd_utils.WndUtils.queryDlg(
+                    if wnd_utils.WndUtils.query_dlg(
                         "Do you really want to use the utxo that is already assigned to another masternode configuration?",
                         buttons=QMessageBox.Yes | QMessageBox.Cancel,
                         default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:

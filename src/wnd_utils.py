@@ -35,15 +35,11 @@ class WndUtils:
         self.app_config = app_config
         self.debounce_timers: Dict[str, QTimer] = {}
 
-    def messageDlg(self, message):
-        ui = message_dlg.MessageDlg(self, message)
-        ui.exec_()
-
     def set_app_config(self, app_config):
         self.app_config = app_config
 
     @staticmethod
-    def displayMessage(type, message):
+    def display_message(type, message):
         msg = QMessageBox()
         msg.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard | Qt.LinksAccessibleByMouse)
         msg.setIcon(type)
@@ -57,32 +53,32 @@ class WndUtils:
         return msg.exec_()
 
     @staticmethod
-    def errorMsg(message: str, log_as_exception: bool = False):
+    def error_msg(message: str, log_as_exception: bool = False):
         if log_as_exception:
             logging.exception(str(message))
 
         if threading.current_thread() != threading.main_thread():
-            return WndUtils.call_in_main_thread(WndUtils.displayMessage, QMessageBox.Critical, message)
+            return WndUtils.call_in_main_thread(WndUtils.display_message, QMessageBox.Critical, message)
         else:
-            return WndUtils.displayMessage(QMessageBox.Critical, message)
+            return WndUtils.display_message(QMessageBox.Critical, message)
 
     @staticmethod
-    def warnMsg(message):
+    def warn_msg(message):
         if threading.current_thread() != threading.main_thread():
-            return WndUtils.call_in_main_thread(WndUtils.displayMessage, QMessageBox.Warning, message)
+            return WndUtils.call_in_main_thread(WndUtils.display_message, QMessageBox.Warning, message)
         else:
-            return WndUtils.displayMessage(QMessageBox.Warning, message)
+            return WndUtils.display_message(QMessageBox.Warning, message)
 
     @staticmethod
-    def infoMsg(message):
+    def info_msg(message):
         if threading.current_thread() != threading.main_thread():
-            return WndUtils.call_in_main_thread(WndUtils.displayMessage, QMessageBox.Information, message)
+            return WndUtils.call_in_main_thread(WndUtils.display_message, QMessageBox.Information, message)
         else:
-            return WndUtils.displayMessage(QMessageBox.Information, message)
+            return WndUtils.display_message(QMessageBox.Information, message)
 
     @staticmethod
-    def queryDlg(message, buttons=QMessageBox.Ok | QMessageBox.Cancel, default_button=QMessageBox.Ok,
-            icon=QMessageBox.Information):
+    def query_dlg(message, buttons=QMessageBox.Ok | QMessageBox.Cancel, default_button=QMessageBox.Ok,
+                  icon=QMessageBox.Information):
 
         def dlg(message, buttons, default_button, icon):
             msg = QMessageBox()
@@ -105,7 +101,7 @@ class WndUtils:
         else:
             return dlg(message, buttons, default_button, icon)
 
-    def centerByWindow(self, parent):
+    def center_by_widget(self, parent):
         """
         Centers this window by window given by attribute 'center_by_window'
         :param center_by_window: Reference to (parent) window by wich this window will be centered.
@@ -134,7 +130,7 @@ class WndUtils:
                               force_close_dlg_callback=force_close_dlg_callback,
                               show_window_delay_ms=show_window_delay_ms)
             ui.wait_for_worker_completion()
-            ret = ui.getResult()
+            ret = ui.get_result()
             ret_exception = ui.worker_exception
             del ui
             QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)  # wait until dialog hides
@@ -211,7 +207,7 @@ class WndUtils:
         return thread_wnd_utils.call_in_main_thread_ext(fun_to_call, skip_if_main_thread_locked,
                                                         callback_if_main_thread_locked, *args, **kwargs)
 
-    def getIcon(self, ico, rotate=0, force_color_change: str=None):
+    def get_icon(self, ico, rotate=0, force_color_change: str=None):
         if isinstance(ico, str):
             icon = QIcon()
             if app_defs.APP_IMAGE_DIR:
@@ -244,8 +240,8 @@ class WndUtils:
 
         return icon
 
-    def setIcon(self, widget, ico, rotate=0, force_color_change: str=None):
-        widget.setIcon(self.getIcon(ico, rotate, force_color_change))
+    def set_icon(self, widget, ico, rotate=0, force_color_change: str=None):
+        widget.setIcon(self.get_icon(ico, rotate, force_color_change))
 
     @staticmethod
     def open_file_query(parent_wnd, app_config, message, directory='', filter='', initial_filter=''):

@@ -134,4 +134,4 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
     #                 self.btnEnDisWipeCode.setText('Enable')
     #                 self.btnEnDisWipeCode.setDisabled(True)
     #     except Exception as e:
-    #         WndUtils.errorMsg(str(e), True)
+    #         WndUtils.error_msg(str(e), True)

@@ -75,8 +75,8 @@ class HardwareWalletPinDlg(QDialog, ui_hw_pin_dlg.Ui_HardwareWalletPinDlg, WndUt
     def btnEnterClick(self):
         if self.pin:
             if len(self.pin) > 9:
-                self.errorMsg('The PIN exceeds 9-character limit.')
+                self.error_msg('The PIN exceeds 9-character limit.')
             else:
                 self.accept()
         else:
-            self.errorMsg('Empty PIN!')
+            self.error_msg('Empty PIN!')

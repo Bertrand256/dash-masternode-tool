@@ -634,9 +634,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def special_action_reload_external_attributes(self):
         """ Action invoked by the shortcut: CTRL/CMD-ALT-E: reload proposal external attributes. """
         if self.btnProposalsRefresh.isEnabled():
-            if self.queryDlg('Do you really want to reload proposal external attributes?',
-                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                             default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+            if self.query_dlg('Do you really want to reload proposal external attributes?',
+                              buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                              default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
 
                 def display_data():
                     self.display_proposals_data()
@@ -655,7 +655,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         pass
                     except Exception as e:
                         log.exception('Exception while reloading proposal external attributes')
-                        self.errorMsg('Error while retrieving proposals data: ' + str(e))
+                        self.error_msg('Error while retrieving proposals data: ' + str(e))
                     finally:
                         self.db_intf.release_cursor()
 
@@ -1056,7 +1056,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         self.display_message('')
 
                     if errors > 0:
-                        self.warnMsg('Problems encountered while processing some of the proposals data. '
+                        self.warn_msg('Problems encountered while processing some of the proposals data. '
                                      'Look into the log file for details.')
                 else:
                     # error count > 10% of the proposals count
@@ -1073,7 +1073,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         except Exception as e:
             log.exception('Exception wile reading proposals from Dash network.')
             self.display_message('')
-            self.errorMsg('Error while reading proposals data from the Dash network: ' + str(e))
+            self.error_msg('Error while reading proposals data from the Dash network: ' + str(e))
             raise
 
     def get_governance_info(self):
@@ -1114,7 +1114,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
         except Exception as e:
             log.exception('Exception while reading governance info.')
-            self.errorMsg("Couldn't read governance info from the Dash network. "
+            self.error_msg("Couldn't read governance info from the Dash network. "
                       "Some features may not work correctly because of this. Details: " + str(e))
 
     def get_block_timestamp(self, superblock: int):
@@ -1179,7 +1179,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         try:
             self.display_message('Connecting to Dash daemon, please wait...')
             if not self.dashd_intf.open():
-                self.errorMsg('Dash daemon not connected')
+                self.error_msg('Dash daemon not connected')
             else:
                 try:
                     self.read_governance_data()
@@ -1339,7 +1339,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             raise
                         except Exception as e:
                             log.exception('Exception while saving proposals to db.')
-                            self.errorMsg('Error while saving proposals data to db. Details: ' + str(e))
+                            self.error_msg('Error while saving proposals data to db. Details: ' + str(e))
                         finally:
                             self.db_intf.release_cursor()
                             self.db_intf.release_cursor()
@@ -1354,11 +1354,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     raise
 
                 except DashdIndexException as e:
-                    self.errorMsg(str(e))
+                    self.error_msg(str(e))
 
                 except Exception as e:
                     log.exception('Exception while retrieving proposals data.')
-                    self.errorMsg('Error while retrieving proposals data: ' + str(e))
+                    self.error_msg('Error while retrieving proposals data: ' + str(e))
 
             if not self.finishing:
                 if int(time.time()) - self.proposals_last_read_time > PROPOSALS_CACHE_VALID_SECONDS or \
@@ -1393,7 +1393,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         except Exception as e:
             log.exception('Exception while reading data.')
             if not self.finishing:
-                self.errorMsg(str(e))
+                self.error_msg(str(e))
 
         finally:
             if not self.finishing:
@@ -1507,7 +1507,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         self.db_intf.release_cursor()
 
                     if exceptions_occurred:
-                        self.errorMsg('Error(s) occurred while retrieving proposals external data from '
+                        self.error_msg('Error(s) occurred while retrieving proposals external data from '
                                       'DashCentral.org.')
 
         except CloseDialogException:
@@ -1599,7 +1599,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 # that has been added (will be saved to the database cache)
 
                 if not self.dashd_intf.open():
-                    self.errorMsg('Dash daemon not connected')
+                    self.error_msg('Dash daemon not connected')
                 else:
                     try:
                         proposals_updated = []  # list of proposals for which votes were loaded
@@ -1783,7 +1783,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                                 (CFG_PROPOSALS_VOTES_MAX_DATE, cur_vote_max_date))
 
                         if errors:
-                            self.errorMsg('Errors occurred while reading vote data. Look into the log file for '
+                            self.error_msg('Errors occurred while reading vote data. Look into the log file for '
                                           'details.')
 
                     except CloseDialogException:
@@ -1791,11 +1791,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                     except DashdIndexException as e:
                         log.exception('Exception while retrieving voting data.')
-                        self.errorMsg(str(e))
+                        self.error_msg(str(e))
 
                     except Exception as e:
                         log.exception('Exception while retrieving voting data.')
-                        self.errorMsg('Error while retrieving voting data: ' + str(e))
+                        self.error_msg('Error while retrieving voting data: ' + str(e))
 
             except CloseDialogException:
                 log.info('Closing the dialog.')
@@ -2235,7 +2235,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             try:
                 self.vote_on_selected_proposals(vote, mns)
             except Exception as e:
-                self.errorMsg(str(e), True)
+                self.error_msg(str(e), True)
 
     def draw_chart(self):
         """Draws a voting chart if proposal has changed.
@@ -2768,16 +2768,16 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 msg = ''
                 for prop, mn, err in vote_errors:
                     msg += err + f" (proposal: '{prop.get_value('name')}', masternode: '{mn.name}')\n\n"
-                self.errorMsg(msg)
+                self.error_msg(msg)
             self.sending_votes = False
             self.display_proposals_data()
             self.refresh_details_tabs()
 
         if self.sending_votes:
-            self.errorMsg('Wait for the previus votes processing finishes.')
+            self.error_msg('Wait for the previus votes processing finishes.')
 
         if not self.dashd_intf.open():
-            self.errorMsg('Dash daemon not connected')
+            self.error_msg('Dash daemon not connected')
         else:
             props = self.get_selected_proposals(active_voting_only=True)
             vote_str = {VOTE_CODE_YES: 'YES', VOTE_CODE_NO: 'NO', VOTE_CODE_ABSTAIN: 'ABSTAIN'}[vote_code]
@@ -2789,7 +2789,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             if masternodes:
                 if not self.app_config.confirm_when_voting or \
-                        self.queryDlg(
+                        self.query_dlg(
                             f'Vote {vote_str} for {len(props)} proposal(s) on behalf of {len(masternodes)} masternode(s)?',
                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
                             default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
@@ -2851,10 +2851,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     for prop in sorted(self.proposals, key = lambda p: p.initial_order_no):
                         elems = [prop.get_value(col.name) for col in self.propsModel.columns()]
                         self.write_csv_row(f_ptr, elems)
-                self.infoMsg('Proposals data successfully saved.')
+                self.info_msg('Proposals data successfully saved.')
             except Exception as e:
                 log.exception("Exception saving proposals' data to a file.")
-                self.errorMsg('Couldn\'t save a CSV file due to the following error: ' + str(e))
+                self.error_msg('Couldn\'t save a CSV file due to the following error: ' + str(e))
 
     @pyqtSlot()
     def on_btnVotesSaveToCSV_clicked(self):
@@ -2872,11 +2872,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         for v in self.votesModel.votes:
                             self.write_csv_row(f_ptr, v)
 
-                    self.infoMsg('Votes of the proposal "%s" successfully saved.' %
-                                 self.current_proposal.get_value('name'))
+                    self.info_msg('Votes of the proposal "%s" successfully saved.' %
+                                  self.current_proposal.get_value('name'))
                 except Exception as e:
                     log.exception("Exception saving proposals votes to a file.")
-                    self.errorMsg('Couldn\'t save a CSV file due to the following error: ' + str(e))
+                    self.error_msg('Couldn\'t save a CSV file due to the following error: ' + str(e))
 
     @pyqtSlot()
     def on_btnProposalsColumns_clicked(self):

@@ -25,10 +25,10 @@ class ColumnsConfigDlg(QDialog, ui_columns_cfg_dlg.Ui_ColumnsConfigDlg, WndUtils
     def setupUi(self):
         ui_columns_cfg_dlg.Ui_ColumnsConfigDlg.setupUi(self, self)
         self.setWindowTitle("Columns")
-        self.setIcon(self.btnMoveBegin, "first-page@16px.png", rotate=90)
-        self.setIcon(self.btnMoveEnd, "first-page@16px.png", rotate=-90)
-        self.setIcon(self.btnMoveUp, "arrow-downward@16px.png", rotate=-180)
-        self.setIcon(self.btnMoveDown, "arrow-downward@16px.png")
+        self.set_icon(self.btnMoveBegin, "first-page@16px.png", rotate=90)
+        self.set_icon(self.btnMoveEnd, "first-page@16px.png", rotate=-90)
+        self.set_icon(self.btnMoveUp, "arrow-downward@16px.png", rotate=-180)
+        self.set_icon(self.btnMoveDown, "arrow-downward@16px.png")
         self.tableWidget.verticalHeader().setSectionsMovable(True)
 
         self.tableWidget.verticalHeader().setDefaultSectionSize(

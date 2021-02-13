@@ -82,7 +82,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
                     return
             self.close()
         except Exception as e:
-            self.errorMsg(str(e), True)
+            self.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnBack_clicked(self):
@@ -90,7 +90,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
             if self.action_widget:
                 self.action_widget.on_btn_back_clicked()
         except Exception as e:
-            self.errorMsg(str(e), True)
+            self.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnContinue_clicked(self):
@@ -98,21 +98,21 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
             if self.action_widget:
                 self.action_widget.on_btn_continue_clicked()
         except Exception as e:
-            self.errorMsg(str(e), True)
+            self.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_actHwSettings_clicked(self):
         try:
             self.setup_action_widget(ACTION_HW_SETTINGS)
         except Exception as e:
-            self.errorMsg(str(e), True)
+            self.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_actRecoverHw_clicked(self):
         try:
             self.setup_action_widget(ACTION_RECOVER_HW)
         except Exception as e:
-            self.errorMsg(str(e), True)
+            self.error_msg(str(e), True)
 
     def on_selected_hw_device_changed(self, cur_hw_device: HWDevice):
         self.wdg_select_hw_device.update()
@@ -222,7 +222,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
             self.action_widget.initialize()
 
         except Exception as e:
-            self.errorMsg(str(e), True)
+            self.error_msg(str(e), True)
 
 
 

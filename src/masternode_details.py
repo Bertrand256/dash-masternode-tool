@@ -40,14 +40,14 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
     def setupUi(self):
         ui_masternode_details.Ui_WdgMasternodeDetails.setupUi(self, self)
-        self.main_dlg.setIcon(self.btnShowOwnerPrivateKey, 'eye@16px.png')
-        self.main_dlg.setIcon(self.btnShowOperatorPrivateKey, 'eye@16px.png')
-        self.main_dlg.setIcon(self.btnShowVotingPrivateKey, 'eye@16px.png')
-        self.main_dlg.setIcon(self.btnCopyOwnerKey, 'content-copy@16px.png')
-        self.main_dlg.setIcon(self.btnCopyOperatorKey, 'content-copy@16px.png')
-        self.main_dlg.setIcon(self.btnCopyVotingKey, 'content-copy@16px.png')
-        self.main_dlg.setIcon(self.btnCopyProtxHash, 'content-copy@16px.png')
-        self.main_dlg.setIcon(self.btnShowCollateralPathAddress, 'eye@16px.png')
+        self.main_dlg.set_icon(self.btnShowOwnerPrivateKey, 'eye@16px.png')
+        self.main_dlg.set_icon(self.btnShowOperatorPrivateKey, 'eye@16px.png')
+        self.main_dlg.set_icon(self.btnShowVotingPrivateKey, 'eye@16px.png')
+        self.main_dlg.set_icon(self.btnCopyOwnerKey, 'content-copy@16px.png')
+        self.main_dlg.set_icon(self.btnCopyOperatorKey, 'content-copy@16px.png')
+        self.main_dlg.set_icon(self.btnCopyVotingKey, 'content-copy@16px.png')
+        self.main_dlg.set_icon(self.btnCopyProtxHash, 'content-copy@16px.png')
+        self.main_dlg.set_icon(self.btnShowCollateralPathAddress, 'eye@16px.png')
 
         self.act_view_as_owner_private_key = QAction('View as private key', self)
         self.act_view_as_owner_private_key.setData('privkey')
@@ -425,7 +425,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                     msg = str(e)
                     if not msg:
                         msg = 'Key conversion error.'
-                    WndUtils.errorMsg(msg)
+                    WndUtils.error_msg(msg)
 
         return ret
 
@@ -468,7 +468,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                     msg = str(e)
                     if not msg:
                         msg = 'Key conversion error.'
-                    WndUtils.errorMsg(msg)
+                    WndUtils.error_msg(msg)
         return ret
 
     def get_operator_key_to_display(self) -> str:
@@ -497,7 +497,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                     msg = str(e)
                     if not msg:
                         msg = 'Key conversion error.'
-                    WndUtils.errorMsg(msg)
+                    WndUtils.error_msg(msg)
         return ret
 
     @pyqtSlot(str)
@@ -718,7 +718,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             found_protx = None
             if not ((self.masternode.ip and self.masternode.port) or
                     (self.masternode.collateral_tx and self.masternode.collateral_tx_index)):
-                WndUtils.errorMsg('To be able to locate the deterministic masternode transaction you need to '
+                WndUtils.error_msg('To be able to locate the deterministic masternode transaction you need to '
                                   'provide the masternode ip + port or collateral tx + tx index.')
                 return
 
@@ -737,13 +737,13 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
             if found_protx:
                 if self.masternode.dmn_tx_hash == protx.get('proTxHash'):
-                    WndUtils.infoMsg('You have te correct DMN TX hash in the masternode configuration.')
+                    WndUtils.info_msg('You have te correct DMN TX hash in the masternode configuration.')
                 else:
                     self.edtDMNTxHash.setText(protx.get('proTxHash'))
                     self.masternode.dmn_tx_hash = protx.get('proTxHash')
                     self.set_modified()
             else:
-                WndUtils.warnMsg('Couldn\'t find this masternode in the list of registered deterministic masternodes.')
+                WndUtils.warn_msg('Couldn\'t find this masternode in the list of registered deterministic masternodes.')
             self.set_modified()
 
     @pyqtSlot(bool)
@@ -803,7 +803,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
     def generate_priv_key(self, pk_type:str, edit_control: QLineEdit, compressed: bool):
         if edit_control.text():
-            if WndUtils.queryDlg(
+            if WndUtils.query_dlg(
                     f'This will overwrite the current {pk_type} private key value. Do you really want to proceed?',
                      buttons=QMessageBox.Yes | QMessageBox.Cancel,
                      default_button=QMessageBox.Yes, icon=QMessageBox.Warning) != QMessageBox.Yes:
@@ -910,7 +910,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                     apply_utxo(utxo)
         else:
             if utxos is not None:
-                WndUtils.warnMsg('Couldn\'t find any 1000 Dash UTXO in your wallet.')
+                WndUtils.warn_msg('Couldn\'t find any 1000 Dash UTXO in your wallet.')
 
     def get_collateral_tx_address_thread(self, ctrl: CtrlObject,
                                          bip44_wallet: Bip44Wallet,

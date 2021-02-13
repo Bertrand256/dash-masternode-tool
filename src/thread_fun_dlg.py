@@ -28,7 +28,7 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
     ui = ThreadFunDlg(long_running_function, (arg1,), close_after_finish=True, 
         buttons=[{'caption': 'Break', 'role': QtWidgets.QDialogButtonBox.RejectRole}])
     ui.exec_()
-    res = ui.getResult()
+    res = ui.get_result()
 
     Example of a worker function:
         def long_running_function(ctrl, arg1):
@@ -108,10 +108,10 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         self.setWindowFlags(self.windowFlags() | Qt.CustomizeWindowHint)
         # self.setWindowFlags(self.windowFlags() & ~Qt.WindowCloseButtonHint)
         self.setWindowTitle(self.title)
-        self.display_msg_signal.connect(self.setText)
-        self.dlg_config_signal.connect(self.onConfigureDialog)
-        self.show_window_signal.connect(self.onShowWindow)
-        self.set_progress_value_signal.connect(self.setProgressValue)
+        self.display_msg_signal.connect(self.set_text)
+        self.dlg_config_signal.connect(self.on_configure_dialog)
+        self.show_window_signal.connect(self.on_show_window)
+        self.set_progress_value_signal.connect(self.set_progress_value)
         self.closeEvent = self.closeEvent
         # self.btnBox.accepted.connect(self.accept)
         # self.btnBox.rejected.connect(self.reject)
@@ -138,7 +138,7 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
                                                  set_progress_value_signal=self.set_progress_value_signal,
                                                  dlg_config_signal=self.dlg_config_signal,
                                                  show_dialog_signal=self.show_window_signal)
-            self.worker_thread.finished.connect(self.threadFinished)
+            self.worker_thread.finished.connect(self.thread_finished)
 
             # the user method controlled by the worker thread may need to access the widget
             # displaying a feedback for its non-standard purposes, so we expose it through
@@ -148,19 +148,19 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         self.worker_result = None
         self.worker_exception = None
         if self.text:
-            self.setText(self.text)
+            self.set_text(self.text)
         if self.center_by_window:
-            self.centerByWindow(self.center_by_window)
+            self.center_by_widget(self.center_by_window)
         if self.worker_fun:
             self.thread_running = True
             self.worker_thread.start()
         else:
             self.thread_running = False
 
-    def getResult(self):
+    def get_result(self):
         return self.worker_result
 
-    def setText(self, text):
+    def set_text(self, text):
         """
         Displays text on dialog.
         :param text: Text to be displayed.
@@ -176,18 +176,18 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         # self.lblText.setFixedWidth(width)
 
         # QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)
-        self.centerByWindow(self.center_by_window)
+        self.center_by_widget(self.center_by_window)
 
-    def setProgressValue(self, value):
+    def set_progress_value(self, value):
         self.progressBar.setValue(value)
 
-    def onShowWindow(self, show: bool):
+    def on_show_window(self, show: bool):
         if show:
             self.show()
         else:
             self.hide()
 
-    def centerByWindow(self, center_by_window: QDialog):
+    def center_by_widget(self, center_by_window: QDialog):
         """
         Centers this window by window given by attribute 'center_by_window'
         :param center_by_window: Reference to (parent) window by wich this window will be centered.
@@ -200,7 +200,7 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
             pg.setY( pg.y() + int((size_diff.y())))
             self.move(pg)
 
-    def onConfigureDialog(self, show_message=None, show_progress_bar=None, dlg_title=None, max_width=None):
+    def on_configure_dialog(self, show_message=None, show_progress_bar=None, dlg_title=None, max_width=None):
         """
         Configure visibility of this dialog's elements. This method can be called from inside a thread by calling
         signal dlg_config_signal passed inside control dicttionary.
@@ -219,11 +219,11 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         else:
             self.lblText.setWordWrap(False)
 
-    def setWorkerResults(self, result, exception):
+    def set_worker_results(self, result, exception):
         self.worker_result = result
         self.worker_exception = exception
 
-    def threadFinished(self):
+    def thread_finished(self):
         self.thread_running = False
         work = self.worker_thread
         self.worker_thread = None
@@ -231,7 +231,7 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         if self.close_after_finish:
             self.accept()
 
-    def waitForTerminate(self):
+    def wait_for_terminate(self):
         if self.thread_running:
             self.worker_thread.stop()
             if self.force_close_dlg_callback is not None:
@@ -253,14 +253,14 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
     def closeEvent(self, event):
         if self.thread_running:
             self.worker_thread.currentThreadId()
-            self.waitForTerminate()
+            self.wait_for_terminate()
 
     def accept(self):
-        self.waitForTerminate()
+        self.wait_for_terminate()
         self.close()
 
     def reject(self):
-        self.waitForTerminate()
+        self.wait_for_terminate()
         self.close()
 
     def wait_for_worker_completion(self):
@@ -364,9 +364,9 @@ class WorkerDlgThread(QThread):
     def run(self):
         try:
             worker_result = self.worker_fun(self.ctrl_obj, *self.worker_fun_args)
-            self.dialog.setWorkerResults(worker_result, None)
+            self.dialog.set_worker_results(worker_result, None)
         except Exception as e:
-            self.dialog.setWorkerResults(None, e)
+            self.dialog.set_worker_results(None, e)
 
 
 class WorkerThread(QThread):

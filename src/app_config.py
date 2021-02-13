@@ -250,7 +250,7 @@ class AppConfig(QObject):
         self.sig_time_offset_min = args.sig_time_offset_min
         self.sig_time_offset_max = args.sig_time_offset_max
         if not self.sig_time_offset_min < self.sig_time_offset_max:
-            WndUtils.errorMsg('--sig-time-offset-min must be less than --sig-time-offset-max. Using the default '
+            WndUtils.error_msg('--sig-time-offset-min must be less than --sig-time-offset-max. Using the default '
                               'values (-1800/1800).')
             self.sig_time_offset_min = -1800
             self.sig_time_offset_max = 1800
@@ -262,11 +262,11 @@ class AppConfig(QObject):
                     app_user_dir = args.data_dir
                 else:
                     app_user_dir = ''
-                    WndUtils.errorMsg('--data-dir parameter doesn\'t point to a directory. Using the default '
+                    WndUtils.error_msg('--data-dir parameter doesn\'t point to a directory. Using the default '
                                       'data directory.')
             else:
                 app_user_dir = ''
-                WndUtils.errorMsg('--data-dir parameter doesn\'t point to an existing directory. Using the default '
+                WndUtils.error_msg('--data-dir parameter doesn\'t point to an existing directory. Using the default '
                                   'data directory.')
 
         migrate_config = False
@@ -611,7 +611,7 @@ class AppConfig(QObject):
                             mem_file += data_chunk.decode('utf-8')
                         break
                     except NotConnectedToHardwareWallet as e:
-                        ret = WndUtils.queryDlg(
+                        ret = WndUtils.query_dlg(
                             'Configuration file read error: ' + str(e) + '\n\n' +
                             'Click \'Retry\' to try again, \'Restore Defaults\' to continue with default '
                             'configuration or \'Cancel\' to exit.',
@@ -841,7 +841,7 @@ class AppConfig(QObject):
                 self.config_file_encrypted = config_file_encrypted
 
                 if was_error:
-                    WndUtils.warnMsg('There was an error reading configuration file. '
+                    WndUtils.warn_msg('There was an error reading configuration file. '
                                      'Look into the log file for more details.')
 
             except CancelException:
@@ -852,11 +852,11 @@ class AppConfig(QObject):
                 logging.exception('Read configuration error:')
                 errors_while_reading = True
                 self.hw_type = hw_type_sav
-                ret =  WndUtils.queryDlg('Configuration file read error: ' + str(e) + '\n\n' +
+                ret =  WndUtils.query_dlg('Configuration file read error: ' + str(e) + '\n\n' +
                                          'Click \'Restore Defaults\' to continue with default configuration,'
                                          '\'Open\' to choose another configuration file or \'\Cancel\' to exit.',
-                                 buttons=QMessageBox.RestoreDefaults | QMessageBox.Cancel | QMessageBox.Open,
-                                 default_button=QMessageBox.Yes, icon=QMessageBox.Critical)
+                                          buttons=QMessageBox.RestoreDefaults | QMessageBox.Cancel | QMessageBox.Open,
+                                          default_button=QMessageBox.Yes, icon=QMessageBox.Critical)
                 if ret == QMessageBox.Cancel:
                     raise CancelException('Couldn\'t read configuration file.')
                 elif ret == QMessageBox.Open:
@@ -931,7 +931,7 @@ class AppConfig(QObject):
 
             file_name = WndUtils.save_config_file_query(dir, None, None)
             if not file_name:
-                WndUtils.warnMsg('File not saved.')
+                WndUtils.warn_msg('File not saved.')
                 return
 
         # backup old ini file

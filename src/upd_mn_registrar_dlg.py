@@ -382,7 +382,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
         if self.dmn_prev_payout_address == self.dmn_new_payout_address and \
             self.dmn_prev_operator_pubkey == self.dmn_new_operator_pubkey and \
             self.dmn_prev_voting_address == self.dmn_new_voting_address:
-            WndUtils.warnMsg('Nothing is changed compared to the data stored in the Dash network.')
+            WndUtils.warn_msg('Nothing is changed compared to the data stored in the Dash network.')
         else:
             self.send_upd_tx()
 
@@ -499,11 +499,11 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                 if changed:
                     msg += '<br><br>The app configuration has been updated accordingly.'
 
-                WndUtils.infoMsg(msg)
+                WndUtils.info_msg(msg)
         except Exception as e:
             if str(e).find('protx-dup') >= 0:
-                WndUtils.errorMsg('The previous protx transaction has not been confirmed yet. Wait until it is '
+                WndUtils.error_msg('The previous protx transaction has not been confirmed yet. Wait until it is '
                          'confirmed before sending a new transaction.')
             else:
                 logging.error('Exception occurred while sending protx update_registrar.')
-                WndUtils.errorMsg(str(e))
+                WndUtils.error_msg(str(e))

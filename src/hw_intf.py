@@ -949,7 +949,7 @@ class HWDevices(QObject):
                 opened_session_here = True
             ping_device(hw_device, 'Hello from DMT')
         except Exception as e:
-            log.warning('Could not open hw session: ' + str(e))
+            raise
         finally:
             if opened_session_here:
                 self.close_hw_session(hw_device)
@@ -1180,11 +1180,11 @@ class HwSessionInfo(HWSessionBase):
             except CancelException:
                 raise
             except HWPinException as e:
-                self.errorMsg(e.msg)
+                self.error_msg(e.msg)
                 if self.hw_client:
                     self.hw_client.clear_session()
             except OSError:
-                self.errorMsg('Cannot open %s device.' % self.getHwName(), True)
+                self.error_msg('Cannot open %s device.' % self.getHwName(), True)
             except Exception:
                 if self.hw_client:
                     self.hw_client.init_device()
@@ -1270,7 +1270,10 @@ class HWDevicesListWdg(QWidget):
         self.sig_device_toggled.emit(hw_device, checked)
 
     def on_hw_show_link_activated(self, hw_device, link ):
-        self.hw_devices.ping_device(hw_device)
+        try:
+            self.hw_devices.ping_device(hw_device)
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     def update(self):
         try:

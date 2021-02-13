@@ -254,12 +254,12 @@ class DashdSSH(object):
                 #  for a private key.
 
                 if self.auth_method == 'key_pair':
-                    WndUtils.errorMsg(message=f'Authentication failed for private key: {self.private_key_path} '
+                    WndUtils.error_msg(message=f'Authentication failed for private key: {self.private_key_path} '
                     f'(username {self.username}).')
                     break
                 else:
                     if password is not None:
-                        WndUtils.errorMsg(message='Incorrect password, try again...')
+                        WndUtils.error_msg(message='Incorrect password, try again...')
 
                 while True:
                     password = SshPassCache.get_password(self.username, self.host, message=pass_message)

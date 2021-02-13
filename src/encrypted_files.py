@@ -199,7 +199,7 @@ def read_file_encrypted(file_name: str, ret_attrs: dict, hw_session: HwSessionIn
                                 break
 
                             url = get_note_url('DMT0003')
-                            if WndUtils.queryDlg(
+                            if WndUtils.query_dlg(
                                     message='Inconsistency between encryption and decryption keys.\n\n' 
                                             'The reason may be using a different passphrase than it was used '
                                             'for encryption or running another application communicating with the '

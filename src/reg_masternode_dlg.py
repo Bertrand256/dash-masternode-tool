@@ -126,12 +126,12 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.lblCollateralTxMsg.sizePolicy().setHeightForWidth(True)
         self.prepare_keys()
         self.btnClose.hide()
-        self.setIcon(self.btnManualFundingAddressPaste, 'content-paste@16px.png')
-        self.setIcon(self.btnManualProtxPrepareCopy, 'content-copy@16px.png')
-        self.setIcon(self.btnManualProtxPrepareResultPaste, 'content-paste@16px.png')
-        self.setIcon(self.btnManualProtxSubmitCopy, 'content-copy@16px.png')
-        self.setIcon(self.btnManualTxHashPaste, 'content-paste@16px.png')
-        self.setIcon(self.btnSummaryDMNOperatorKeyCopy, 'content-copy@16px.png')
+        self.set_icon(self.btnManualFundingAddressPaste, 'content-paste@16px.png')
+        self.set_icon(self.btnManualProtxPrepareCopy, 'content-copy@16px.png')
+        self.set_icon(self.btnManualProtxPrepareResultPaste, 'content-paste@16px.png')
+        self.set_icon(self.btnManualProtxSubmitCopy, 'content-copy@16px.png')
+        self.set_icon(self.btnManualTxHashPaste, 'content-paste@16px.png')
+        self.set_icon(self.btnSummaryDMNOperatorKeyCopy, 'content-copy@16px.png')
         self.edtSummaryDMNOperatorKey.setStyleSheet("QLineEdit{background-color: white} "
                                                     "QLineEdit:read-only{background-color: white}")
         doc_url = app_defs.get_doc_url('deterministic-mn-migration.md')
@@ -342,7 +342,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 self.operator_pkey_generated = generate_bls_privkey()
                 self.edtOperatorKey.setText(self.operator_pkey_generated)
             except Exception as e:
-                self.errorMsg(str(e), True)
+                self.error_msg(str(e), True)
         else:
             if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
                 self.edtOperatorKey.setText(self.masternode.dmn_operator_private_key)
@@ -1025,7 +1025,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                                                              fetch_txes_feeback)
             if not addr:
                 if not break_scanning:
-                    WndUtils.errorMsg(f'Couldn\'t find a BIP32 path of the collateral address ({self.dmn_collateral_tx_address}).')
+                    WndUtils.error_msg(f'Couldn\'t find a BIP32 path of the collateral address ({self.dmn_collateral_tx_address}).')
                 return False
             else:
                 self.dmn_collateral_tx_address_path = addr.bip32_path
@@ -1047,7 +1047,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             elif self.get_dash_node_type() == NODE_TYPE_OWN:
                 cs = STEP_MANUAL_OWN_NODE
             else:
-                self.errorMsg('You have to choose one of the two options.')
+                self.error_msg('You have to choose one of the two options.')
                 return
             self.step_stack.append(self.current_step)
 
@@ -1058,24 +1058,24 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         elif self.current_step == STEP_MANUAL_OWN_NODE:
             # check if the user passed tge protx transaction hash
             if not self.manual_signed_message:
-                self.errorMsg('It looks like you have not signed a "protx register_prepare" result.')
+                self.error_msg('It looks like you have not signed a "protx register_prepare" result.')
                 return
 
             self.dmn_reg_tx_hash = self.edtManualTxHash.text().strip()
             if not self.dmn_reg_tx_hash:
                 self.edtManualTxHash.setFocus()
-                self.errorMsg('Invalid transaction hash.')
+                self.error_msg('Invalid transaction hash.')
                 return
             try:
                 bytes.fromhex(self.dmn_reg_tx_hash)
             except Exception:
                 log.warning('Invalid transaction hash.')
                 self.edtManualTxHash.setFocus()
-                self.errorMsg('Invalid transaction hash.')
+                self.error_msg('Invalid transaction hash.')
                 return
             cs = STEP_SUMMARY
         else:
-            self.errorMsg('Invalid step')
+            self.error_msg('Invalid step')
             return
 
         prev_step = self.current_step
@@ -1291,7 +1291,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
     def on_btnManualSignProtx_clicked(self):
         prepare_result = self.edtManualProtxPrepareResult.toPlainText().strip()
         if not prepare_result:
-            self.errorMsg('You need to enter a result of the "protx register_prepare" command.')
+            self.error_msg('You need to enter a result of the "protx register_prepare" command.')
             self.edtManualProtxPrepareResult.setFocus()
             return
 
@@ -1311,11 +1311,11 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 return
             except Exception as e:
                 log.exception('Signature failed.')
-                self.errorMsg(str(e))
+                self.error_msg(str(e))
                 return
 
         except Exception as e:
-            self.errorMsg('Invalid "protx register_prepare" result. Note that the text must be copied along '
+            self.error_msg('Invalid "protx register_prepare" result. Note that the text must be copied along '
                           'with curly braces.')
             return
 

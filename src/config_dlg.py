@@ -36,7 +36,7 @@ class SshConnectionWidget(QWidget, Ui_SshConnection):
 
     def setupUi(self):
         Ui_SshConnection.setupUi(self, self)
-        icon = self.parent().getIcon('folder-open@16px.png')
+        icon = self.parent().get_icon('folder-open@16px.png')
         self.action_choose_private_key_file = self.edtPrivateKeyPath.addAction(icon, QLineEdit.TrailingPosition)
         self.action_choose_private_key_file.triggered.connect(self.on_actionChoosePrivateKeyFile_triggered)
 
@@ -154,24 +154,24 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
 
         self.action_new_connection = self.popMenu.addAction("Add new connection")
         self.action_new_connection.triggered.connect(self.on_action_new_connection_triggered)
-        self.setIcon(self.action_new_connection, 'add@16px.png')
+        self.set_icon(self.action_new_connection, 'add@16px.png')
         self.btnNewConn.setDefaultAction(self.action_new_connection)
 
         self.action_delete_connections = self.popMenu.addAction("Delete selected connection(s)")
         self.action_delete_connections.triggered.connect(self.on_action_delete_connections_triggered)
-        self.setIcon(self.action_delete_connections, 'remove@16px.png')
+        self.set_icon(self.action_delete_connections, 'remove@16px.png')
         self.btnDeleteConn.setDefaultAction(self.action_delete_connections)
 
         self.action_copy_connections = self.popMenu.addAction("Copy connection(s) to clipboard",
                                                               self.on_action_copy_connections_triggered,
                                                               QKeySequence("Ctrl+C"))
-        self.setIcon(self.action_copy_connections, 'content-copy@16px.png')
+        self.set_icon(self.action_copy_connections, 'content-copy@16px.png')
         self.addAction(self.action_copy_connections)
 
         self.action_paste_connections = self.popMenu.addAction("Paste connection(s) from clipboard",
                                                                self.on_action_paste_connections_triggered,
                                                                QKeySequence("Ctrl+V"))
-        self.setIcon(self.action_paste_connections, 'content-paste@16px.png')
+        self.set_icon(self.action_paste_connections, 'content-paste@16px.png')
         self.addAction(self.action_paste_connections)
 
         self.btnNewConn.setText("")
@@ -179,10 +179,10 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.btnMoveDownConn.setText("")
         self.btnMoveUpConn.setText("")
         self.btnRestoreDefault.setText("")
-        self.setIcon(self.btnMoveDownConn, "arrow-downward@16px.png")
-        self.setIcon(self.btnMoveUpConn, "arrow-downward@16px.png", rotate=180)
-        self.setIcon(self.btnRestoreDefault, "star@16px.png")
-        self.setIcon(self.rpc_cfg_widget.btnShowPassword, "eye@16px.png")
+        self.set_icon(self.btnMoveDownConn, "arrow-downward@16px.png")
+        self.set_icon(self.btnMoveUpConn, "arrow-downward@16px.png", rotate=180)
+        self.set_icon(self.btnRestoreDefault, "star@16px.png")
+        self.set_icon(self.rpc_cfg_widget.btnShowPassword, "eye@16px.png")
 
         self.rpc_cfg_widget.btnShowPassword.setText("")
         self.rpc_cfg_widget.btnShowPassword.pressed.connect(
@@ -331,9 +331,9 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             conns = self.local_config.decode_connections_json(clipboard.text())
             if isinstance(conns, list) and len(conns):
                 self.action_paste_connections.setEnabled(True)
-                if self.queryDlg('Do you really want to import connection(s) from clipboard?',
-                                 buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                                 default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+                if self.query_dlg('Do you really want to import connection(s) from clipboard?',
+                                  buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                  default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
                     testnet = self.local_config.is_testnet()
                     for cfg in conns:
                         cfg.testnet = testnet
@@ -356,13 +356,13 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                     self.lstConns.setCurrentRow(row_selected)
                     
         except Exception as e:
-            self.errorMsg(str(e), True)
+            self.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnRestoreDefault_clicked(self, enabled):
-        if self.queryDlg('Do you really want to restore default connection(s)?',
-                         buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                         default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+        if self.query_dlg('Do you really want to restore default connection(s)?',
+                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                          default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
             cfgs = self.local_config.decode_connections(default_config.dashd_default_connections)
             if cfgs:
                 # update the main list containing connections configuration from separate  lists dedicated
@@ -381,11 +381,11 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                     self.set_modified()
                     if row_selected < self.lstConns.count():
                         self.lstConns.setCurrentRow(row_selected)
-                    self.infoMsg('Defualt connections successfully restored.')
+                    self.info_msg('Defualt connections successfully restored.')
                 else:
-                    self.infoMsg('All default connections are already in the connection list.')
+                    self.info_msg('All default connections are already in the connection list.')
             else:
-                self.warnMsg('Unknown error occurred while restoring default connections.')
+                self.warn_msg('Unknown error occurred while restoring default connections.')
 
     def update_conn_tool_buttons_state(self):
         selected = (self.current_network_cfg is not None)
@@ -443,9 +443,9 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             cfgs.append(self.connections_current[index.row()])
 
         if len(ids) >= 0:
-            if self.queryDlg('Do you really want to delete selected %d connection(s)?' % len(ids),
-                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                             default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
+            if self.query_dlg('Do you really want to delete selected %d connection(s)?' % len(ids),
+                              buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                              default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
 
                 last_row_selected = self.lstConns.currentRow()
                 rows_to_del = []
@@ -778,12 +778,12 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             private_key_path = self.current_network_cfg.ssh_conn_cfg.private_key_path
 
             if not host:
-                self.errorMsg('Host address is required')
+                self.error_msg('Host address is required')
                 self.ssh_tunnel_widget.edtSshHost.setFocus()
                 return
 
             if not port:
-                self.errorMsg('Host TCP port number is required')
+                self.error_msg('Host TCP port number is required')
                 self.ssh_tunnel_widget.edtSshHost.setFocus()
                 return
 
@@ -800,9 +800,9 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                     self.disable_cfg_update = True
                     if isinstance(dashd_conf, tuple) and len(dashd_conf) >= 3:
                         if not dashd_conf[0]:
-                            self.infoMsg('Remore Dash daemon seems to be shut down')
+                            self.info_msg('Remore Dash daemon seems to be shut down')
                         elif not dashd_conf[1]:
-                            self.infoMsg('Could not find remote dashd.conf file')
+                            self.info_msg('Could not find remote dashd.conf file')
                         else:
                             file = dashd_conf[2]
                             rpcuser = file.get('rpcuser', '')
@@ -827,21 +827,21 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                                 self.is_modified = modified
 
                             if file.get('server', '1') == '0':
-                                self.warnMsg("Remote dash.conf parameter 'server' is set to '0', so RPC interface will "
+                                self.warn_msg("Remote dash.conf parameter 'server' is set to '0', so RPC interface will "
                                              "not work.")
                             if not rpcuser:
-                                self.warnMsg("Remote dash.conf parameter 'rpcuser' is not set, so RPC interface will  "
+                                self.warn_msg("Remote dash.conf parameter 'rpcuser' is not set, so RPC interface will  "
                                              "not work.")
                             if not rpcpassword:
-                                self.warnMsg("Remote dash.conf parameter 'rpcpassword' is not set, so RPC interface will  "
+                                self.warn_msg("Remote dash.conf parameter 'rpcpassword' is not set, so RPC interface will  "
                                              "not work.")
                         self.update_connection_details_ui()
                     elif isinstance(dashd_conf, str):
-                        self.warnMsg("Couldn't read remote dashd configuration file due the following error: " +
-                                     dashd_conf)
+                        self.warn_msg("Couldn't read remote dashd configuration file due the following error: " +
+                                      dashd_conf)
                     ssh.disconnect()
             except Exception as e:
-                self.errorMsg(str(e), True)
+                self.error_msg(str(e), True)
                 return
             finally:
                 self.disable_cfg_update = False
@@ -861,14 +861,14 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                         ret = None
 
                     if ret and type(ret) is dict:
-                        self.infoMsg('Connection successful.\n\n'
+                        self.info_msg('Connection successful.\n\n'
                                      'Additional info: this node supports message encryption.')
                     else:
-                        self.infoMsg('Connection successful.')
+                        self.info_msg('Connection successful.')
                 else:
-                    self.errorMsg('Connection error. Details: empty return message.')
+                    self.error_msg('Connection error. Details: empty return message.')
             except Exception as e:
-                self.errorMsg('Connection error. Details: ' + str(e))
+                self.error_msg('Connection error. Details: ' + str(e))
             finally:
                 del dashd_intf
 
@@ -907,7 +907,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                     updated = True
                     break
                 except Exception as e:
-                    self.errorMsg(str(e))
+                    self.error_msg(str(e))
             else:
                 break
 

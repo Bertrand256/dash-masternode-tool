@@ -123,9 +123,9 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
             if self.hw_session and self.hw_session.hw_client:
                 if self.pin_protection is True:
                     # disable
-                    if self.queryDlg('Do you really want to disable PIN protection for your %s?' % self.main_ui.getHwName(),
-                                     buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
-                                     icon=QMessageBox.Warning) == QMessageBox.Yes:
+                    if self.query_dlg('Do you really want to disable PIN protection for your %s?' % self.main_ui.getHwName(),
+                                      buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                      icon=QMessageBox.Warning) == QMessageBox.Yes:
                         hw_intf.change_pin(self.main_ui.hw_session.hw_client, remove=True)
                         self.read_hw_features()
                         self.updateControlsState()
@@ -135,7 +135,7 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
                     self.read_hw_features()
                     self.updateControlsState()
         except Exception as e:
-            self.errorMsg(str(e), True)
+            self.error_msg(str(e), True)
 
     @pyqtSlot()
     def on_btnChangePin_clicked(self):
@@ -146,7 +146,7 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
                 self.updateControlsState()
 
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot()
     def on_btnEnDisPass_clicked(self):
@@ -154,22 +154,22 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
             if self.hw_session and self.hw_session.hw_client:
                 if self.passphrase_protection is True:
                     # disable passphrase
-                    if self.queryDlg('Do you really want to disable passphrase protection for your %s?' % self.main_ui.getHwName(),
-                                     buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
-                                     icon=QMessageBox.Warning) == QMessageBox.Yes:
+                    if self.query_dlg('Do you really want to disable passphrase protection for your %s?' % self.main_ui.getHwName(),
+                                      buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                      icon=QMessageBox.Warning) == QMessageBox.Yes:
                         hw_intf.enable_passphrase(self.hw_session.hw_client, passphrase_enabled=False)
                         self.read_hw_features()
                         self.updateControlsState()
                 elif self.passphrase_protection is False:
                     # enable passphrase
-                    if self.queryDlg('Do you really want to enable passphrase protection for your %s?' % self.main_ui.getHwName(),
-                                     buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
-                                     icon=QMessageBox.Warning) == QMessageBox.Yes:
+                    if self.query_dlg('Do you really want to enable passphrase protection for your %s?' % self.main_ui.getHwName(),
+                                      buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                      icon=QMessageBox.Warning) == QMessageBox.Yes:
                         hw_intf.enable_passphrase(self.hw_session.hw_client, passphrase_enabled=True)
                         self.read_hw_features()
                         self.updateControlsState()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot()
     def on_btnEnDisPassAlwaysOnDevice_clicked(self):
@@ -184,14 +184,14 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
                 else:
                     return
 
-                if self.queryDlg(message % self.main_ui.getHwName(),
-                                 buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
-                                 icon=QMessageBox.Warning) == QMessageBox.Yes:
+                if self.query_dlg(message % self.main_ui.getHwName(),
+                                  buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                  icon=QMessageBox.Warning) == QMessageBox.Yes:
                     hw_intf.set_passphrase_always_on_device(self.main_ui.hw_session, enabled=new_enabled)
                     self.read_hw_features()
                     self.updateControlsState()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot()
     def on_btnEnDisWipeCode_clicked(self):
@@ -206,14 +206,14 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
                 else:
                     return
 
-                if self.queryDlg(message % self.main_ui.getHwName(),
-                                 buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
-                                 icon=QMessageBox.Warning) == QMessageBox.Yes:
+                if self.query_dlg(message % self.main_ui.getHwName(),
+                                  buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
+                                  icon=QMessageBox.Warning) == QMessageBox.Yes:
                     hw_intf.set_wipe_code(self.main_ui.hw_session, enabled=new_enabled)
                     self.read_hw_features()
                     self.updateControlsState()
         except Exception as e:
-            self.errorMsg(str(e))
+            self.error_msg(str(e))
 
     @pyqtSlot()
     def on_buttonBox_accepted(self):
