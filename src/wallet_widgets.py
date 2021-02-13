@@ -487,31 +487,12 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.show_hide_remove_buttons()
         self.update_change_and_fee()
 
-    def remove_item_from_layout(self, item):
-        if item:
-            if isinstance(item, QWidgetItem):
-                w = item.widget()
-                self.lay_addresses.removeWidget(w)
-                w.setParent(None)
-                del w
-            elif isinstance(item, QLayout):
-                for subitem_idx in reversed(range(item.count())):
-                    subitem = item.itemAt(subitem_idx)
-                    self.remove_item_from_layout(subitem)
-                self.lay_addresses.removeItem(item)
-                item.setParent(None)
-                del item
-            elif isinstance(item, QSpacerItem):
-                del item
-            else:
-                raise Exception('Invalid item type')
-
     def remove_dest_address(self, address_item):
         row_idx = self.recipients.index(address_item)
         # remove all widgets related to the 'send to' address that is being removed
         for col_idx in range(self.lay_addresses.columnCount()):
             item = self.lay_addresses.itemAtPosition(row_idx, col_idx)
-            self.remove_item_from_layout(item)
+            WndUtils.remove_item_from_layout(self.lay_addresses, item)
 
         # move up all rows greater than the row being removed
         for row in range(row_idx + 1, len(self.recipients)):

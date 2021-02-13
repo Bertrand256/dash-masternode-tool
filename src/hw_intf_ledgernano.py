@@ -239,18 +239,17 @@ class MessageSignature:
         self.signature = signature
 
 
-def _ledger_exctract_address(addr: str, hw_session: HWSessionBase) -> str:
+def _ledger_exctract_address(addr: str) -> str:
     match = re.search('bytearray\(b?["\']([a-zA-Z0-9]+)["\']\)', addr)
     if match and len(match.groups()) == 1:
         addr = match.group(1)
-    elif not dash_utils.validate_address(addr, hw_session.dash_network):
+    elif not dash_utils.validate_address(addr):
         raise Exception("Invalid Dash address format returned from getWalletPublicKey: " + addr)
     return addr
 
 
 @process_ledger_exceptions
-def sign_message(hw_session: HWSessionBase, bip32_path, message):
-    client = hw_session.hw_client
+def sign_message(hw_client, bip32_path, message: str, hw_session: Optional[HWSessionBase]):
     # Ledger doesn't accept characters other that ascii printable:
     # https://ledgerhq.github.io/btchip-doc/bitcoin-technical.html#_sign_message
     message = message.encode('ascii', 'ignore')
@@ -258,7 +257,7 @@ def sign_message(hw_session: HWSessionBase, bip32_path, message):
 
     ok = False
     for i in range(1, 4):
-        info = client.signMessagePrepare(bip32_path, message)
+        info = hw_client.signMessagePrepare(bip32_path, message)
         if info['confirmationNeeded'] and info['confirmationType'] == 34:
             if i == 1 or \
                     WndUtils.query_dlg('Another application (such as Ledger Wallet Bitcoin app) has probably taken over '
@@ -268,13 +267,16 @@ def sign_message(hw_session: HWSessionBase, bip32_path, message):
                                        buttons=QMessageBox.Retry | QMessageBox.Abort,
                                        default_button=QMessageBox.Retry, icon=QMessageBox.Warning) == QMessageBox.Retry:
 
-                # we need to reconnect the device; first, we'll try to reconnect to HW without closing the intefering
+                # we need to reconnect the device; first, we'll try to reconnect to HW without closing the interfering
                 # application; it it doesn't help we'll display a message requesting the user to close the app
-                hw_session.disconnect_hardware_wallet()
-                if hw_session.connect_hardware_wallet():
-                    client = hw_session.hw_client
+                if hw_session:
+                    hw_session.disconnect_hardware_wallet()
+                    if hw_session.connect_hardware_wallet():
+                        hw_client = hw_session.hw_client
+                    else:
+                        raise Exception('Hardware wallet reconnect error.')
                 else:
-                    raise Exception('Hardware wallet reconnect error.')
+                    raise Exception('Cannot reconnect Ledger device')
             else:
                 break
         else:
@@ -285,13 +287,18 @@ def sign_message(hw_session: HWSessionBase, bip32_path, message):
         raise CancelException('Cancelled')
 
     try:
-        signature = client.signMessageSign()
+        signature = hw_client.signMessageSign()
+    except BTChipException as e:
+        if e.args and len(e.args) >= 2 and e.args[0] == 'Invalid status 6985':
+            raise CancelException('Cancelled')
+        else:
+            raise
     except Exception as e:
         logging.exception('Exception while signing message with Ledger Nano S')
         raise Exception('Exception while signing message with Ledger Nano S. Details: ' + str(e))
 
     try:
-        pubkey = client.getWalletPublicKey(bip32_path)
+        pubkey = hw_client.getWalletPublicKey(bip32_path)
     except Exception as e:
         logging.exception('Could not get public key for BIP32 path from Ledger Nano S')
         raise Exception('Could not get public key for BIP32 path from Ledger Nano S. Details: ' + str(e))
@@ -317,7 +324,7 @@ def sign_message(hw_session: HWSessionBase, bip32_path, message):
         logging.error('client.signMessageSign() returned invalid response (code 1): ' + signature.hex())
         raise Exception('Invalid signature returned (code 1).')
 
-    addr = _ledger_exctract_address(pubkey.get('address'), hw_session)
+    addr = _ledger_exctract_address(pubkey.get('address'))
     return MessageSignature(
         addr,
         bytes(chr(27 + 4 + (signature[0] & 0x01)), "utf-8") + r + s
@@ -332,7 +339,7 @@ def get_address_and_pubkey(hw_session: HWSessionBase, bip32_path, show_display=F
         bip32_path = bip32_path[2:]
 
     nodedata = hw_session.hw_client.getWalletPublicKey(bip32_path, showOnScreen=show_display)
-    addr = _ledger_exctract_address(nodedata.get('address'), hw_session)
+    addr = _ledger_exctract_address(nodedata.get('address'))
 
     return {
         'address': addr,

@@ -117,7 +117,7 @@ def enumerate_devices(
         try:
             log.debug("About to enumerate {} devices".format(name))
             found = list(transport.enumerate())
-            log.info("Enumerating {}: found {} devices".format(name, len(found)))
+            log.debug("Enumerating {}: found {} devices".format(name, len(found)))
             devices.extend(found)
         except NotImplementedError:
             log.error("{} does not implement device enumeration".format(name))

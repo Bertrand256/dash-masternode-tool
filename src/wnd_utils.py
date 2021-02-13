@@ -22,7 +22,7 @@ from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap
     QAbstractTextDocumentLayout, QFontMetrics, QTransform, QKeySequence
 from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit, \
     QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView, QAction, QMenu, QApplication, \
-    QProxyStyle
+    QProxyStyle, QWidgetItem, QLayout, QSpacerItem
 import math
 import message_dlg
 from common import CancelException
@@ -341,6 +341,25 @@ class WndUtils:
             tm = self.debounce_timers[name]
         tm.start(delay_ms)
 
+    @staticmethod
+    def remove_item_from_layout(layout: QLayout, item):
+        if item:
+            if isinstance(item, QWidgetItem):
+                w = item.widget()
+                layout.removeWidget(w)
+                w.setParent(None)
+                del w
+            elif isinstance(item, QLayout):
+                for subitem_idx in reversed(range(item.count())):
+                    subitem = item.itemAt(subitem_idx)
+                    WndUtils.remove_item_from_layout(item, subitem)
+                layout.removeItem(item)
+                item.setParent(None)
+                del item
+            elif isinstance(item, QSpacerItem):
+                del item
+            else:
+                raise Exception('Invalid item type')
 
 class DeadlockException(Exception):
     pass
@@ -505,7 +524,6 @@ class ThreadWndUtils(QObject):
         except CancelException:
             raise
         except Exception as e:
-            logging.exception('ThreadWndUtils.call_in_main_thread error: %s' % str(e))
             raise
 
         if exception_to_rethrow:

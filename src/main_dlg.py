@@ -42,7 +42,7 @@ from proposals_dlg import ProposalsDlg
 from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
 from app_defs import PROJECT_URL
 from dashd_intf import DashdInterface, DashdIndexException
-from hw_common import HWPinException, HWType, HWDevice
+from hw_common import HWPinException, HWType, HWDevice, HWNotConnectedException
 import hw_intf
 from hw_intf import HwSessionInfo
 from psw_cache import SshPassCache
@@ -938,7 +938,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def connect_hardware_wallet(self) -> Optional[object]:
-        return self.hw_session.connect_hardware_wallet()
+        try:
+            return self.hw_session.connect_hardware_wallet()
+        except HWNotConnectedException as e:
+            self.error_msg(str(e))
+        except CancelException:
+            pass
+        except Exception as e:
+            self.error_msg(str(e), True)
+        return self.hw_session.hw_client
 
     @pyqtSlot(bool)
     def disconnect_hardware_wallet(self) -> None:

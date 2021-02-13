@@ -31,7 +31,7 @@ import hw_intf_keepkey as keepkey
 import hw_intf_trezor as trezor
 from app_defs import get_note_url
 from app_utils import SHA256
-from common import CancelException
+from common import CancelException, InternalError
 from thread_utils import EnhRLock
 
 # Dict[str <hd tree ident>, Dict[str <bip32 path>, Tuple[str <address>, int <db id>]]]
@@ -265,7 +265,7 @@ def hw_sign_message(hw_session: 'HwSessionInfo', bip32path, message, display_lab
 
         elif hw_session.hw_type == HWType.ledger_nano:
 
-            return ledger.sign_message(hw_session, bip32path, message)
+            return ledger.sign_message(hw_session.hw_client, bip32path, message, hw_session)
         else:
             logging.error('Invalid HW type: ' + str(hw_session.hw_type))
 
@@ -331,12 +331,28 @@ def action_on_device_message(message=DEFAULT_HW_BUSY_MESSAGE, title=DEFAULT_HW_B
 
 @action_on_device_message()
 def ping_device(hw_device: HWDevice, message: str):
+    def ledger_ping(ctrl):
+        """The only way to make Ledger Nano to display a message is to use the message signing feature."""
+        message = "Ping from DMT"
+        message_hash = hashlib.sha256(message.encode('ascii')).hexdigest().upper()
+        ctrl.dlg_config_fun(dlg_title=message, show_progress_bar=False)
+        display_label = '<b>This is a "ping" message from DMT</b> (we had to use the message signing feature).<br>' \
+                        '<b>Message: </b>' + message + '<br>' \
+                        '<b>SHA256 hash:</b> ' + message_hash + '<br>' \
+                        '<br>Click "Sign" on the device to close this dialog.</b>'
+        ctrl.display_msg_fun(display_label)
+        try:
+            ledger.sign_message(hw_device.client, dash_utils.get_default_bip32_path('MAINNET'), message, None)
+        except CancelException:
+            pass
+
     if hw_device.hw_type == HWType.trezor:
         trezor.ping(hw_device.client, message)
     elif hw_device.hw_type == HWType.keepkey:
         keepkey.ping(hw_device.client, message)
     elif hw_device.hw_type == HWType.ledger_nano:
-        raise Exception('Ledger Nano S is not supported.')
+        WndUtils.run_thread_dialog(ledger_ping, (), True, force_close_dlg_callback=partial(cancel_hw_thread_dialog,
+                                                                                    hw_device.client))
     else:
         logging.error('Invalid HW type: ' + str(hw_device.hw_type))
 
@@ -811,6 +827,11 @@ class HWDevices(QObject):
 
     __instance = None
 
+    class HWDevicesState:
+        def __init__(self, connected_dev_ids: List[str], selected_device_id: Optional[str]):
+            self.connected_device_ids: List[str] = connected_dev_ids
+            self.device_id_selected: Optional[str] = selected_device_id
+
     @staticmethod
     def get_instance() -> 'HWDevices':
         return HWDevices.__instance
@@ -829,12 +850,35 @@ class HWDevices(QObject):
         self.__use_hid = use_hid
         self.__hw_types_allowed: Tuple[HWType, ...] = (HWType.trezor, HWType.keepkey, HWType.ledger_nano)
         self.__passphrase_encoding: Optional[str] = passphrase_encoding
+        self.__saved_states: List[HWDevices.HWDevicesState] = []
 
     def save_state(self):
-        pass  # todo: to be implemented
+        connected_devices = []
+        for dev in self.__hw_devices:
+            if dev.client:
+                connected_devices.append(dev.device_id)
+        self.__saved_states.append(HWDevices.HWDevicesState(connected_devices, self.__hw_device_id_selected))
 
     def restore_state(self):
-        pass  # todo: to be implemented
+        if self.__saved_states:
+            state = self.__saved_states.pop()
+
+            # reconnect all devices being previously connected
+            for dev_id in state.connected_device_ids:
+                dev = self.get_device_by_id(dev_id)
+                if dev and not dev.client:
+                    try:
+                        self.open_hw_session(dev)
+                    except Exception as e:
+                        log.error(f'Cannot reconnect device {dev.device_id} due to the following error: ' + str(e))
+
+            # restore the currently selected device
+            if state.device_id_selected and self.__hw_device_id_selected != state.device_id_selected:
+                dev = self.get_device_by_id(state.device_id_selected)
+                if dev:
+                    self.set_current_device(dev)
+        else:
+            raise InternalError('There are no saved states')
 
     def load_hw_devices(self, force_fetch: bool = False):
         """
@@ -886,6 +930,12 @@ class HWDevices(QObject):
             return self.__hw_devices[idx]
         else:
             return None
+
+    def get_device_by_id(self, device_id: str) -> Optional[HWDevice]:
+        for dev in self.__hw_devices:
+            if dev.device_id == device_id:
+                return dev
+        return None
 
     def set_current_device(self, device: HWDevice):
         if not device:
@@ -954,6 +1004,23 @@ class HWDevices(QObject):
             if opened_session_here:
                 self.close_hw_session(hw_device)
 
+    def reload_devices(self) -> bool:
+        device_list_changed = False
+        try:
+            prev_dev_list = [d.device_id for d in self.__hw_devices]
+            prev_dev_list.sort()
+
+            self.save_state()
+            self.load_hw_devices(True)
+
+            cur_dev_list = [d.device_id for d in self.__hw_devices]
+            cur_dev_list.sort()
+
+            device_list_changed = (','.join(prev_dev_list) != ','.join(cur_dev_list))
+        finally:
+            self.restore_state()
+
+        return device_list_changed
 
 
 class HwSessionInfo(HWSessionBase):
@@ -1127,7 +1194,7 @@ class HwSessionInfo(HWSessionBase):
                 if not device:
                     raise CancelException('Cancelled')
             else:
-                raise Exception("No hardware wallet device detected.")
+                raise HWNotConnectedException("No hardware wallet device detected.")
 
             try:
                 try:
@@ -1214,13 +1281,15 @@ class HWDevicesListWdg(QWidget):
         self.hw_devices: HWDevices = hw_devices
         self.layout_main: Optional[QtWidgets.QVBoxLayout] = None
         self.spacer: Optional[QtWidgets.QSpacerItem] = None
+        self.selected_hw_device: Optional[HWDevice] = self.hw_devices.get_selected_device()
         self.setupUi(self)
 
     def setupUi(self, dlg):
         dlg.setObjectName("HWDevicesListWdg")
         self.layout_main = QtWidgets.QVBoxLayout(dlg)
+        self.layout_main.setObjectName('layout_main')
         self.layout_main.setContentsMargins(0, 0, 0, 0)
-        self.layout_main.setSpacing(6)
+        self.layout_main.setSpacing(3)
         self.layout_main.setObjectName("verticalLayout")
         self.spacer = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.layout_main.addItem(self.spacer)
@@ -1232,54 +1301,59 @@ class HWDevicesListWdg(QWidget):
         _translate = QtCore.QCoreApplication.translate
         widget.setWindowTitle(_translate("HWDevicesListWdg", "Form"))
 
+    def set_selected_hw_device(self, hw_device: Optional[HWDevice]):
+        self.selected_hw_device = hw_device
+
     def devices_to_ui(self):
-        selected_device = self.hw_devices.get_selected_device()
-        for ctrl in self.layout_main.children():
-            if ctrl is QtWidgets.QHBoxLayout:
-                del ctrl
+        selected_device = self.selected_hw_device
+        for hl_index in reversed(range(self.layout_main.count())):
+            ctrl = self.layout_main.itemAt(hl_index)
+            if ctrl and isinstance(ctrl, QtWidgets.QHBoxLayout) and ctrl.objectName() and \
+                    ctrl.objectName().startswith('hl-hw-device-'):
+                WndUtils.remove_item_from_layout(self.layout_main, ctrl)
 
         # create a list of radio buttons associated with each hw device connected to the computer;
         # each radio button is enclosed inside a horizontal layout along with a hyperlink control
         # allowing the identification of the appropriate hw device by highlighting its screen
         insert_idx = self.layout_main.indexOf(self.spacer)
         dev_cnt = len(self.hw_devices.get_devices())
-        for dev in self.hw_devices.get_devices():
+        for idx, dev in enumerate(self.hw_devices.get_devices()):
+            hl = QtWidgets.QHBoxLayout()
+            hl.setSpacing(4)
+            hl.setObjectName('hl-hw-device-' + str(idx))
+            self.layout_main.insertLayout(insert_idx, hl)
+
             rb = QtWidgets.QRadioButton(self)
             rb.setText(dev.get_description())
             rb.toggled.connect(partial(self.on_device_rb_toggled, dev))
             if selected_device == dev:
                 rb.setChecked(True)
 
-            hl = QtWidgets.QHBoxLayout(self)
-            hl.setSpacing(4)
-            self.layout_main.insertLayout(insert_idx, hl)
             hl.addWidget(rb)
 
             if dev_cnt > 1:
                 # link to identify hw devices show only if there are more then one connected to the computer
                 lnk = QtWidgets.QLabel(self)
-                lnk.setText('<a href="identify-hw-device">show</a>')
+                lnk.setText('[<a href="identify-hw-device">ping device</a>]')
                 lnk.linkActivated.connect(partial(self.on_hw_show_link_activated, dev))
                 hl.addWidget(lnk)
 
-            hl.addSpacerItem(QtWidgets.QSpacerItem(10, 10, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum))
+            hl.addSpacerItem(
+                QtWidgets.QSpacerItem(10, 10, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum))
 
             insert_idx += 1
 
     def on_device_rb_toggled(self, hw_device: HWDevice, checked: bool):
         self.sig_device_toggled.emit(hw_device, checked)
 
-    def on_hw_show_link_activated(self, hw_device, link ):
+    def on_hw_show_link_activated(self, hw_device, link):
         try:
             self.hw_devices.ping_device(hw_device)
         except Exception as e:
             WndUtils.error_msg(str(e), True)
 
     def update(self):
-        try:
-            pass
-        except Exception as e:
-            logging.exception(str(e))
+        self.devices_to_ui()
 
 
 class SelectHWDeviceDlg(QDialog):
@@ -1292,6 +1366,7 @@ class SelectHWDeviceDlg(QDialog):
         self.device_list_wdg: Optional[HWDevicesListWdg] = None
         self.lbl_title: Optional[QtWidgets.QLabel] = None
         self.btnbox_main: Optional[QtWidgets.QDialogButtonBox] = None
+        self.tm_update_dlg_size: Optional[int] = None
         self.setupUi(self)
 
     def setupUi(self, dialog):
@@ -1303,21 +1378,24 @@ class SelectHWDeviceDlg(QDialog):
         self.device_list_wdg = HWDevicesListWdg(self.parent(), self.hw_devices)
         self.device_list_wdg.sig_device_toggled.connect(self.on_device_toggled)
         self.lbl_title = QtWidgets.QLabel(dialog)
-        self.lbl_title.setText('<b>Select your hardware wallet device</b>')
+        self.lbl_title.setText(
+            '<span><b>Select your hardware wallet device</b> [<a href="reload-devices">reload devices</a>]</span>')
+        self.lbl_title.linkActivated.connect(self.on_reload_hw_devices)
         self.lay_main.addWidget(self.lbl_title)
         self.lay_main.addWidget(self.device_list_wdg)
         self.btnbox_main = QtWidgets.QDialogButtonBox(dialog)
         self.btnbox_main.setStandardButtons(QtWidgets.QDialogButtonBox.Cancel | QtWidgets.QDialogButtonBox.Ok)
         self.btnbox_main.setObjectName("btn_main")
+        self.btnbox_main.accepted.connect(self.on_btn_main_accepted)
+        self.btnbox_main.rejected.connect(self.on_btn_main_rejected)
         self.lay_main.addWidget(self.btnbox_main)
         self.retranslateUi(dialog)
-        QtCore.QMetaObject.connectSlotsByName(dialog)
         self.setFixedSize(self.sizeHint())
         self.update_buttons_state()
 
     def retranslateUi(self, dialog):
         _translate = QtCore.QCoreApplication.translate
-        dialog.setWindowTitle('Select hardware wallet device')
+        dialog.setWindowTitle('Hardware wallet selection')
 
     @pyqtSlot(HWDevice, bool)
     def on_device_toggled(self, device: HWDevice, selected: bool):
@@ -1327,6 +1405,29 @@ class SelectHWDeviceDlg(QDialog):
         else:
             self.selected_hw_device = device
         self.update_buttons_state()
+
+    def on_reload_hw_devices(self, link):
+        try:
+            selected_id = self.selected_hw_device.device_id if self.selected_hw_device else None
+            anything_changed = self.hw_devices.reload_devices()
+
+            if selected_id:
+                # restore the device selected in the device list if was selected before and is still connected
+                self.selected_hw_device = self.hw_devices.get_device_by_id(selected_id)
+                self.device_list_wdg.set_selected_hw_device(self.selected_hw_device)
+
+            if anything_changed:
+                self.device_list_wdg.update()
+                # launch timer resizing the window size - resizing it directly here has no effect
+                self.tm_update_dlg_size = self.startTimer(10)
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
+
+    def timerEvent(self, event):
+        if self.tm_update_dlg_size:
+            self.killTimer(self.tm_update_dlg_size)
+            self.tm_update_dlg_size = None
+        self.setFixedSize(self.sizeHint())
 
     def update_buttons_state(self):
         b = self.btnbox_main.button(QtWidgets.QDialogButtonBox.Ok)
