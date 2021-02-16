@@ -28,6 +28,7 @@ import reg_masternode_dlg
 import revoke_mn_dlg
 import upd_mn_registrar_dlg
 import upd_mn_service_dlg
+from app_runtime_data import AppRuntimeData
 from bip44_wallet import find_wallet_addresses, Bip44Wallet
 from cmd_console_dlg import CmdConsoleDlg
 from common import CancelException
@@ -89,7 +90,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                          on_connection_failed_callback=self.show_connection_failed,
                                          on_connection_successful_callback=self.show_connection_successful,
                                          on_connection_disconnected_callback=self.show_connection_disconnected)
-        self.hw_session = HwSessionInfo(self, self.app_config, dashd_intf=self.dashd_intf)
+
+        self.app_rt_data = AppRuntimeData(self.app_config, self.dashd_intf)
+        self.hw_session = HwSessionInfo(self, self.app_config, self.app_rt_data)
         self.hw_session.sig_hw_connected.connect(self.on_hardware_wallet_connected)
         self.hw_session.sig_hw_disconnected.connect(self.on_hardware_wallet_disconnected)
         self.hw_session.sig_hw_connection_error.connect(self.on_hardware_wallet_connection_error)
@@ -1288,7 +1291,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if copy_values_from_current and cur_masternode_sav:
             mn_template = cur_masternode_sav.name
         else:
-            if self.app_config.is_testnet():
+            if self.app_config.is_testnet:
                 new_mn.port = '19999'
             mn_template = 'MN'
         name_found = None
@@ -1871,7 +1874,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     if not self.cur_masternode.collateral_bip32_path:
                         self.error_msg("No masternode collateral BIP32 path")
                     else:
-                        ui = SignMessageDlg(self, self.hw_session, self.cur_masternode.collateral_bip32_path,
+                        ui = SignMessageDlg(self, self.hw_session, self.app_rt_data,
+                                            self.cur_masternode.collateral_bip32_path,
                                             self.cur_masternode.collateral_address)
                         ui.exec_()
             except CancelException:
@@ -1889,7 +1893,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if not pk:
                     self.error_msg("The masternode owner private key has not been configured.")
                 else:
-                    ui = SignMessageDlg(self, None, None, None, pk)
+                    ui = SignMessageDlg(self, None, None, None, None, pk)
                     ui.exec_()
             except Exception as e:
                 self.error_msg(str(e), True)
@@ -1904,7 +1908,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if not pk:
                     self.error_msg("The masternode voting private key has not been configured.")
                 else:
-                    ui = SignMessageDlg(self, None, None, None, pk)
+                    ui = SignMessageDlg(self, None, None, None, None, pk)
                     ui.exec_()
             except Exception as e:
                 self.error_msg(str(e), True)

@@ -537,7 +537,7 @@ def json_cache_wrapper(func, intf, cache_file_ident, skip_cache=False,
         nonlocal skip_cache, cache_file_ident, intf, func
 
         fname = '/insight_dash_'
-        if intf.app_config.is_testnet():
+        if intf.app_config.is_testnet:
             fname += 'testnet_'
 
         cache_file = intf.app_config.tx_cache_dir + fname + cache_file_ident + '.json'
@@ -918,10 +918,10 @@ class DashdInterface(WndUtils):
             info = self.proxy.getblockchaininfo()
             if verify_node:
                 node_under_testnet = (info.get('chain') == 'test')
-                if self.app_config.is_testnet() and not node_under_testnet:
+                if self.app_config.is_testnet and not node_under_testnet:
                     raise Exception('This RPC node works under Dash MAINNET, but your current configuration is '
                                     'for TESTNET.')
-                elif self.app_config.is_mainnet() and node_under_testnet:
+                elif self.app_config.is_mainnet and node_under_testnet:
                     raise Exception('This RPC node works under Dash TESTNET, but your current configuration is '
                                     'for MAINNET.')
             return info

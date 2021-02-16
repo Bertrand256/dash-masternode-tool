@@ -52,6 +52,16 @@ class HWType(Enum):
         else:
             return '???'
 
+    @staticmethod
+    def from_string(hw_type_str: str) -> Optional['HWType']:
+        if hw_type_str == HWType.trezor.value:
+            return HWType.trezor
+        elif hw_type_str == HWType.keepkey.value:
+            return HWType.keepkey
+        elif hw_type_str == HWType.ledger_nano.value:
+            return HWType.ledger_nano
+        return None
+
 
 def get_hw_type_from_client(hw_client) -> HWType:
     """
@@ -77,13 +87,13 @@ class HWDevice(object):
     Represents a hardware wallet device connected to the computer.
     """
     def __init__(self, hw_type: HWType, device_id: Optional[str], device_label: Optional[str],
-                 device_model: Optional[str], device_version: Optional[str],
+                 device_model: Optional[str], firmware_version: Optional[str],
                  client: Any, bootloader_mode: bool, transport: Optional[object]):
         self.transport = transport
         self.hw_type: HWType = hw_type
         self.device_id = device_id
         self.device_label = device_label
-        self.device_version = device_version
+        self.firmware_version = firmware_version
         self.device_model = device_model
         self.client = client
         self.bootloader_mode = bootloader_mode
@@ -151,21 +161,9 @@ def ask_for_word_callback(msg: str, wordlist: List[str]) -> str:
         return dlg()
 
 
-def select_hw_device(parent, label: str, devices: List[str]) -> Optional[int]:
-    """
-    Invokes dialog for selecting the particular instance of hardware wallet device.
-    """
-    # todo: adapt to refactorings
-    # dlg = SelectHWDevice(parent, label, devices)
-    # if dlg.exec_():
-    #     return dlg.device_selected_index
-    return None
-
-
 class HWSessionBase(QObject):
-    def __init__(self, app_config: Optional['AppConfig']):
+    def __init__(self):
         super().__init__()
-        self._app_config = app_config
 
     def get_hw_client(self):
         return None
@@ -173,37 +171,6 @@ class HWSessionBase(QObject):
     @property
     def hw_client(self):
         return self.get_hw_client()
-
-    @property
-    def hw_coin_name(self):
-        return self._app_config.hw_coin_name
-
-    @property
-    def is_testnet(self):
-        return self._app_config.is_testnet()
-
-    @property
-    def dash_network(self):
-        return self._app_config.dash_network
-
-    @property
-    def tx_cache_dir(self):
-        return self._app_config.tx_cache_dir
-
-    @property
-    def app_config(self):
-        return self._app_config
-
-    @app_config.setter
-    def app_config(self, app_config):
-        self._app_config = app_config
-
-    @property
-    def dashd_intf(self):
-        return self.__dashd_intf
-
-    def set_dashd_intf(self, dashd_intf):
-        self.__dashd_intf = dashd_intf
 
     def connect_hardware_wallet(self) -> Optional[object]:
         raise Exception('Not connected')

@@ -17,6 +17,7 @@ import trezorlib.firmware as firmware
 
 import dash_utils
 import hw_common
+from app_runtime_data import AppRuntimeData
 from common import CancelException
 from hw_common import ask_for_pass_callback, ask_for_pin_callback, \
     ask_for_word_callback, HWSessionBase, HWType
@@ -172,7 +173,7 @@ def get_device_list(
                         hw_type=HWType.trezor,
                         device_id=device_id,
                         device_label=client.features.label if client.features.label else None,
-                        device_version=version,
+                        firmware_version=version,
                         device_model=device_model,
                         client=client if return_clients else None,
                         bootloader_mode=client.features.bootloader_mode,
@@ -271,7 +272,7 @@ class MyTxApiInsight(object):
             raise
 
 
-def sign_tx(hw_session: HWSessionBase, utxos_to_spend: List[wallet_common.UtxoType],
+def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: List[wallet_common.UtxoType],
             tx_outputs: List[wallet_common.TxOutputType], tx_fee):
     """
     Creates a signed transaction.
@@ -293,11 +294,11 @@ def sign_tx(hw_session: HWSessionBase, utxos_to_spend: List[wallet_common.UtxoTy
         return txes_
 
     insight_network = 'insight_dash'
-    if hw_session.is_testnet():
+    if rt_data.is_testnet:
         insight_network += '_testnet'
-    dash_network = hw_session.dash_network
+    dash_network = rt_data.dash_network
 
-    tx_api = MyTxApiInsight(hw_session.dashd_intf, hw_session.tx_cache_dir)
+    tx_api = MyTxApiInsight(rt_data.dashd_intf, rt_data.tx_cache_dir)
     client = hw_session.hw_client
     inputs = []
     outputs = []
@@ -346,7 +347,7 @@ def sign_tx(hw_session: HWSessionBase, utxos_to_spend: List[wallet_common.UtxoTy
         for skip_cache in (False, True):
             txes = load_prev_txes(tx_api, skip_cache)
             try:
-                signed = btc.sign_tx(client, hw_session.hw_coin_name, inputs, outputs, prev_txes=txes)
+                signed = btc.sign_tx(client, rt_data.hw_coin_name, inputs, outputs, prev_txes=txes)
                 return signed[1], inputs_amount
             except exceptions.Cancelled:
                 raise
@@ -360,11 +361,10 @@ def sign_tx(hw_session: HWSessionBase, utxos_to_spend: List[wallet_common.UtxoTy
         raise CancelException('Cancelled')
 
 
-def sign_message(hw_session: HWSessionBase, bip32path, message):
-    client = hw_session.hw_client
+def sign_message(hw_client, hw_coin_name: str, bip32path: str, message: str):
     address_n = dash_utils.bip32_path_string_to_n(bip32path)
     try:
-        return btc.sign_message(client, hw_session.hw_coin_name, address_n, message)
+        return btc.sign_message(hw_client, hw_coin_name, address_n, message)
     except exceptions.Cancelled:
         raise CancelException('Cancelled')
 

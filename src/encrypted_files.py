@@ -64,8 +64,8 @@ def prepare_hw_encryption_attrs(hw_session: HwSessionInfo, label: str) -> \
 
         display_label = f'<b>Click the sign message confirmation button on the <br>hardware wallet to encrypt \'{label}\'.</b>'
         bip32_path_str = bip32_path_n_to_string(bip32_path_n)
-        sig = hw_sign_message(hw_session, bip32_path_str, key_bin.hex(), display_label=display_label)
-        adr_pk = get_address_and_pubkey(hw_session, bip32_path_str)
+        sig = hw_sign_message(hw_session, 'Dash', bip32_path_str, key_bin.hex(), display_label=display_label)
+        adr_pk = get_address_and_pubkey(hw_session, 'Dash', bip32_path_str)
 
         pub_key_hash = SHA256.new(adr_pk.get('publicKey')).digest()
         enc_key_hash = SHA256.new(sig.signature).digest()
@@ -183,9 +183,9 @@ def read_file_encrypted(file_name: str, ret_attrs: dict, hw_session: HwSessionIn
                                 display_label = f'<b>Click the sign message confirmation button on the <br>' \
                                                 f'hardware wallet to decrypt \'{label}\'.</b>'
                                 bip32_path_str = bip32_path_n_to_string(bip32_path_n)
-                                sig = hw_sign_message(hw_session, bip32_path_str, encrypted_key_bin.hex(),
+                                sig = hw_sign_message(hw_session, 'Dash', bip32_path_str, encrypted_key_bin.hex(),
                                                       display_label=display_label)
-                                adr_pk = get_address_and_pubkey(hw_session, bip32_path_str)
+                                adr_pk = get_address_and_pubkey(hw_session, 'Dash', bip32_path_str)
 
                                 pub_key = adr_pk.get('publicKey')
                                 key_bin = SHA256.new(sig.signature).digest()

@@ -9,6 +9,7 @@ from typing import Optional
 from PyQt5.QtWidgets import QDialog
 import wnd_utils as wnd_utils
 import hw_intf
+from app_runtime_data import AppRuntimeData
 from hw_common import HWType
 from common import CancelException
 from dash_utils import ecdsa_sign
@@ -17,10 +18,11 @@ import logging
 
 
 class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.WndUtils):
-    def __init__(self, main_ui, hw_session: Optional, bip32path: Optional[str], address: Optional[str],
-                 private_key: Optional[str] = ""):
+    def __init__(self, main_ui, hw_session: Optional[hw_intf.HwSessionInfo], rt_data: Optional[AppRuntimeData],
+                 bip32path: Optional[str], address: Optional[str], private_key: Optional[str] = ""):
         QDialog.__init__(self, parent=main_ui)
         self.hw_session = hw_session
+        self.rt_data = rt_data
         self.bip32path = bip32path
         self.address = address
         self.private_key = private_key
@@ -52,7 +54,8 @@ class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.W
                                          'remove any extra characters and try again.')
                             return
 
-                    sig = hw_intf.hw_sign_message(self.hw_session, self.bip32path, msg_to_sign)
+                    sig = hw_intf.hw_sign_message(self.hw_session, self.rt_data.hw_coin_name, self.bip32path,
+                                                  msg_to_sign)
                     signed = base64.b64encode(sig.signature)
                     self.edtSignedMessage.setPlainText(signed.decode('ascii'))
                     self.edtSignedMessage.update()

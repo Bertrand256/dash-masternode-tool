@@ -20,6 +20,7 @@ from PyQt5.QtWidgets import QDialog, QWidget
 from trezorlib.tools import Address
 
 import dash_utils
+from app_runtime_data import AppRuntimeData
 from dash_utils import bip32_path_n_to_string
 from hw_common import HWType, HWDevice, HWPinException, get_hw_type_from_client, HWNotConnectedException, \
     DEFAULT_HW_BUSY_TITLE, DEFAULT_HW_BUSY_MESSAGE, HWSessionBase
@@ -177,20 +178,6 @@ def get_hw_label(hw_client):
         return 'Ledger Nano S'
 
 
-@control_hw_call
-def get_hw_firmware_version(hw_session: 'HwSessionInfo'):
-    hw_type = get_hw_type_from_client(hw_session.hw_client)
-    if hw_type in (HWType.trezor, HWType.keepkey):
-
-        return str(hw_session.hw_client.features.major_version) + '.' + \
-               str(hw_session.hw_client.features.minor_version) + '.' + \
-               str(hw_session.hw_client.features.patch_version)
-
-    elif hw_type == HWType.ledger_nano:
-
-        return hw_session.hw_client.getFirmwareVersion().get('version')
-
-
 def firmware_update(hw_client, raw_data: bytes):
     hw_type = get_hw_type_from_client(hw_client)
     if hw_type == HWType.trezor:
@@ -199,81 +186,6 @@ def firmware_update(hw_client, raw_data: bytes):
         hw_client.firmware_update(fp=BytesIO(raw_data))
     elif hw_type == HWType.ledger_nano:
         raise Exception('Ledger Nano S is not supported.')
-
-
-@control_hw_call
-def sign_tx(hw_session: 'HwSessionInfo', utxos_to_spend: List[UtxoType],
-            tx_outputs: List[TxOutputType], tx_fee):
-    """
-    Creates a signed transaction.
-    :param hw_session:
-    :param utxos_to_spend: list of utxos to send
-    :param tx_outputs: destination addresses. Fields: 0: dest Dash address. 1: the output value in satoshis,
-        2: the bip32 path of the address if the output is the change address or None otherwise
-    :param tx_fee: transaction fee
-    :return: tuple (serialized tx, total transaction amount in satoshis)
-    """
-
-    def sign(ctrl):
-        ctrl.dlg_config_fun(dlg_title="Confirm transaction signing.", show_progress_bar=False)
-        ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet<br>'
-                             'and wait for the transaction to be signed...</b>')
-
-        if hw_session.hw_type == HWType.trezor:
-
-            return trezor.sign_tx(hw_session, utxos_to_spend, tx_outputs, tx_fee)
-
-        elif hw_session.hw_type == HWType.keepkey:
-
-            return keepkey.sign_tx(hw_session, utxos_to_spend, tx_outputs, tx_fee)
-
-        elif hw_session.hw_type == HWType.ledger_nano:
-
-            return ledger.sign_tx(hw_session, utxos_to_spend, tx_outputs, tx_fee)
-
-        else:
-            logging.error('Invalid HW type: ' + str(hw_session.hw_type))
-
-    # execute the 'prepare' function, but due to the fact that the call blocks the UI until the user clicks the HW
-    # button, it's done inside a thread within a dialog that shows an appropriate message to the user
-    sig = WndUtils.run_thread_dialog(sign, (), True,
-                                     force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
-    return sig
-
-
-@control_hw_call
-def hw_sign_message(hw_session: 'HwSessionInfo', bip32path, message, display_label: str = None):
-    def sign(ctrl, display_label_):
-        ctrl.dlg_config_fun(dlg_title="Confirm message signing.", show_progress_bar=False)
-        if not display_label_:
-            if hw_session.hw_type == HWType.ledger_nano:
-                message_hash = hashlib.sha256(message.encode('ascii')).hexdigest().upper()
-                display_label_ = '<b>Click the confirmation button on your hardware wallet to sign the message...</b>' \
-                                 '<br><br><b>Message:</b><br><span>' + message + '</span><br><br><b>SHA256 hash</b>:' \
-                                                                                 '<br>' + message_hash
-            else:
-                display_label_ = '<b>Click the confirmation button on your hardware wallet to sign the message...</b>'
-        ctrl.display_msg_fun(display_label_)
-
-        if hw_session.hw_type == HWType.trezor:
-
-            return trezor.sign_message(hw_session, bip32path, message)
-
-        elif hw_session.hw_type == HWType.keepkey:
-
-            return keepkey.sign_message(hw_session, bip32path, message)
-
-        elif hw_session.hw_type == HWType.ledger_nano:
-
-            return ledger.sign_message(hw_session.hw_client, bip32path, message, hw_session)
-        else:
-            logging.error('Invalid HW type: ' + str(hw_session.hw_type))
-
-    # execute the 'sign' function, but due to the fact that the call blocks the UI until the user clicks the HW
-    # button, it's done inside a thread within a dialog that shows an appropriate message to the user
-    sig = WndUtils.run_thread_dialog(sign, (display_label,), True,
-                                     force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
-    return sig
 
 
 def change_pin(hw_client, remove=False):
@@ -394,143 +306,6 @@ def set_wipe_code(hw_client, enabled):
         raise Exception('Ledger Nano S is not supported.')
     else:
         logging.error('Invalid HW type: ' + str(hw_type))
-
-
-@control_hw_call
-def get_address(hw_session: 'HwSessionInfo', bip32_path: str, show_display: bool = False,
-                message_to_display: str = None):
-    def _get_address(ctrl, hw_session_: HwSessionInfo, bip32_path_: str, show_display_: bool = False,
-                     message_to_display_: str = None):
-        if ctrl:
-            ctrl.dlg_config_fun(dlg_title=DEFAULT_HW_BUSY_TITLE, show_progress_bar=False)
-            if message_to_display_:
-                ctrl.display_msg_fun(message_to_display_)
-            else:
-                ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet to exit...</b>')
-
-        client = hw_session_.hw_client
-        if client:
-            if isinstance(bip32_path_, str):
-                bip32_path_.strip()
-                if bip32_path_.lower().find('m/') >= 0:
-                    # removing m/ prefix because of keepkey library
-                    bip32_path_ = bip32_path_[2:]
-
-            if hw_session_.hw_type == HWType.trezor:
-
-                try:
-                    if isinstance(bip32_path_, str):
-                        bip32_path_ = dash_utils.bip32_path_string_to_n(bip32_path_)
-                    ret = trezorlib.btc.get_address(client, hw_session_.hw_coin_name, bip32_path_, show_display_)
-                    return ret
-                except (CancelException, trezorlib.exceptions.Cancelled):
-                    raise CancelException()
-
-            elif hw_session_.hw_type == HWType.keepkey:
-
-                try:
-                    if isinstance(bip32_path_, str):
-                        bip32_path_ = dash_utils.bip32_path_string_to_n(bip32_path_)
-                    return client.get_address(hw_session_.hw_coin_name, bip32_path_, show_display_)
-                except keepkeylib.client.CallException as e:
-                    if isinstance(e.args, tuple) and len(e.args) >= 2 and isinstance(e.args[1], str) and \
-                            e.args[1].find('cancel') >= 0:
-                        raise CancelException('Cancelled')
-
-            elif hw_session_.hw_type == HWType.ledger_nano:
-
-                if isinstance(bip32_path_, list):
-                    # ledger requires bip32 path argument as a string
-                    bip32_path_ = bip32_path_n_to_string(bip32_path_)
-
-                adr_pubkey = ledger.get_address_and_pubkey(hw_session_, bip32_path_, show_display_)
-                return adr_pubkey.get('address')
-            else:
-                raise Exception('Unknown hardware wallet type: ' + str(hw_session_.hw_type))
-        else:
-            raise Exception('HW client not open.')
-
-    if message_to_display or show_display:
-        msg_delay = 0
-    else:
-        msg_delay = 1000
-        message_to_display = DEFAULT_HW_BUSY_MESSAGE
-
-    return WndUtils.run_thread_dialog(_get_address, (hw_session, bip32_path, show_display, message_to_display),
-                                      True, show_window_delay_ms=msg_delay,
-                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
-
-
-@control_hw_call
-def get_address_and_pubkey(hw_session: 'HwSessionInfo', bip32_path):
-    client = hw_session.hw_client
-    if client:
-        if isinstance(bip32_path, str):
-            bip32_path.strip()
-            if bip32_path.lower().find('m/') >= 0:
-                # removing m/ prefix because of keepkey library
-                bip32_path = bip32_path[2:]
-
-        if hw_session.hw_type == HWType.trezor:
-
-            if isinstance(bip32_path, str):
-                bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
-            return {
-                'address': trezorlib.btc.get_address(client, hw_session.hw_coin_name, bip32_path, False),
-                'publicKey': trezorlib.btc.get_public_node(client, bip32_path).node.public_key
-            }
-
-        elif hw_session.hw_type == HWType.keepkey:
-            if isinstance(bip32_path, str):
-                bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
-            return {
-                'address': client.get_address(hw_session.hw_coin_name, bip32_path, False),
-                'publicKey': client.get_public_node(bip32_path).node.public_key
-            }
-
-        elif hw_session.hw_type == HWType.ledger_nano:
-
-            if isinstance(bip32_path, list):
-                # ledger requires bip32 path argument as a string
-                bip32_path = bip32_path_n_to_string(bip32_path)
-
-            return ledger.get_address_and_pubkey(hw_session, bip32_path)
-        else:
-            raise Exception('Unknown hardware wallet type: ' + str(hw_session.hw_type))
-
-
-@control_hw_call
-def get_xpub(hw_session: 'HwSessionInfo', bip32_path):
-    client = hw_session.hw_client
-    if client:
-        if isinstance(bip32_path, str):
-            bip32_path.strip()
-            if bip32_path.lower().find('m/') >= 0:
-                bip32_path = bip32_path[2:]
-
-        if hw_session.hw_type == HWType.trezor:
-            if isinstance(bip32_path, str):
-                bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
-
-            return trezorlib.btc.get_public_node(client, bip32_path).xpub
-
-        elif hw_session.hw_type == HWType.keepkey:
-            if isinstance(bip32_path, str):
-                bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
-
-            return client.get_public_node(bip32_path).xpub
-
-        elif hw_session.hw_type == HWType.ledger_nano:
-
-            if isinstance(bip32_path, list):
-                # ledger requires bip32 path argument as a string
-                bip32_path = bip32_path_n_to_string(bip32_path)
-
-            return ledger.get_xpub(client, bip32_path)
-        else:
-            raise Exception('Unknown hardware wallet type: ' + str(hw_session.hw_type))
-    else:
-        raise Exception('HW client not open.')
 
 
 def wipe_device(hw_type: HWType, hw_device_id: Optional[str], parent_window=None) -> Tuple[Optional[str], bool]:
@@ -716,107 +491,6 @@ def reset_device(hw_type: HWType, hw_device_id: str, word_count: int, passphrase
 
         return WndUtils.run_thread_dialog(load, (hw_type, hw_device_id, strength, passphrase_enabled, pin_enabled,
                                                  hw_label), True, center_by_window=parent_window)
-
-
-@control_hw_call
-def hw_encrypt_value(hw_session: 'HwSessionInfo', bip32_path_n: List[int], label: str,
-                     value: ByteString, ask_on_encrypt=True, ask_on_decrypt=True) -> Tuple[bytearray, bytearray]:
-    """Encrypts a value with a hardware wallet.
-    :param hw_session:
-    :param bip32_path_n: bip32 path of the private key used for encryption
-    :param label: key (in the meaning of key-value) used for encryption
-    :param value: value being encrypted
-    :param ask_on_encrypt: see Trezor doc
-    :param ask_on_decrypt: see Trezor doc
-    """
-
-    def encrypt(ctrl, hw_session_: HwSessionInfo, bip32_path_n_: List[int], label_: str,
-                value_: bytearray):
-        ctrl.dlg_config_fun(dlg_title="Data encryption", show_progress_bar=False)
-        ctrl.display_msg_fun(f'<b>Encrypting \'{label_}\'...</b>'
-                             f'<br><br>Enter the hardware wallet PIN/passphrase (if needed) to encrypt data.<br><br>'
-                             f'<b>Note:</b> encryption passphrase is independent from the wallet passphrase  <br>'
-                             f'and can vary for each encrypted file.')
-
-        if hw_session_.hw_type == HWType.trezor:
-            try:
-                client = hw_session_.hw_client
-                data = trezorlib.misc.encrypt_keyvalue(client, cast(Address, bip32_path_n_), label_, value_,
-                                                       ask_on_encrypt, ask_on_decrypt)
-                pub_key = trezorlib.btc.get_public_node(client, bip32_path_n_).node.public_key
-                return data, pub_key
-            except (CancelException, trezorlib.exceptions.Cancelled):
-                raise CancelException()
-
-        elif hw_session_.hw_type == HWType.keepkey:
-
-            client = hw_session_.hw_client
-            data = client.encrypt_keyvalue(bip32_path_n_, label_, value_, ask_on_encrypt, ask_on_decrypt)
-            pub_key = client.get_public_node(bip32_path_n_).node.public_key
-            return data, pub_key
-
-        elif hw_session_.hw_type == HWType.ledger_nano:
-
-            raise Exception('Feature not available for Ledger Nano S.')
-
-        else:
-            raise Exception('Invalid HW type: ' + str(hw_session_))
-
-    if len(value) != 32:
-        raise ValueError("Invalid password length (<> 32).")
-
-    return WndUtils.run_thread_dialog(encrypt, (hw_session, bip32_path_n, label, value), True,
-                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client),
-                                      show_window_delay_ms=200)
-
-
-@control_hw_call
-def hw_decrypt_value(hw_session: 'HwSessionInfo', bip32_path_n: List[int], label: str,
-                     value: ByteString, ask_on_encrypt=True, ask_on_decrypt=True) -> Tuple[bytearray, bytearray]:
-    """
-    :param hw_session:
-    :param bip32_path_n: bip32 path of the private key used for encryption
-    :param label: key (in the meaning of key-value) used for encryption
-    :param value: encrypted value to be decrypted,
-    :param ask_on_encrypt: see Trezor doc
-    :param ask_on_decrypt: see Trezor doc
-    """
-
-    def decrypt(ctrl, hw_session_: HwSessionInfo, bip32_path_n_: List[int], label_: str, value_: bytearray):
-        ctrl.dlg_config_fun(dlg_title="Data decryption", show_progress_bar=False)
-        ctrl.display_msg_fun(f'<b>Decrypting \'{label_}\'...</b><br><br>Enter the hardware wallet PIN/passphrase '
-                             f'(if needed)<br> and click the confirmation button to decrypt data.')
-
-        if hw_session_.hw_type == HWType.trezor:
-
-            try:
-                client = hw_session_.hw_client
-                data = trezorlib.misc.decrypt_keyvalue(client, cast(Address, bip32_path_n_), label_, value_,
-                                                       ask_on_encrypt, ask_on_decrypt)
-                pub_key = trezorlib.btc.get_public_node(client, bip32_path_n_).node.public_key
-                return data, pub_key
-            except (CancelException, trezorlib.exceptions.Cancelled):
-                raise CancelException()
-
-        elif hw_session_.hw_type == HWType.keepkey:
-
-            client = hw_session_.hw_client
-            data = client.decrypt_keyvalue(bip32_path_n_, label_, value_, ask_on_encrypt, ask_on_decrypt)
-            pub_key = client.get_public_node(bip32_path_n_).node.public_key
-            return data, pub_key
-
-        elif hw_session_.hw_type == HWType.ledger_nano:
-
-            raise Exception('Feature not available for Ledger Nano S.')
-
-        else:
-            raise Exception('Invalid HW type: ' + str(hw_session_))
-
-    if len(value) != 32:
-        raise ValueError("Invalid password length (<> 32).")
-
-    return WndUtils.run_thread_dialog(decrypt, (hw_session, bip32_path_n, label, value), True,
-                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
 
 
 class HWDevices(QObject):
@@ -1028,20 +702,20 @@ class HwSessionInfo(HWSessionBase):
     sig_hw_disconnected = QtCore.pyqtSignal()
     sig_hw_connection_error = QtCore.pyqtSignal(str)
 
-    def __init__(self, main_dlg, app_config: object, dashd_intf: object):
-        super().__init__(app_config)
+    def __init__(self, main_dlg, app_config: 'AppConfig', rt_data: AppRuntimeData):
+        super().__init__()
 
         self.__locks = {}  # key: hw_client, value: EnhRLock
         self.__main_dlg = main_dlg
-        self.__dashd_intf = dashd_intf
+        self.__rt_data = rt_data
         self.__base_bip32_path: str = ''
         self.__base_public_key: bytes = b''
         self.__hd_tree_ident: str = ''
-        self.__use_webusb = self._app_config.trezor_webusb
-        self.__use_bridge = self._app_config.trezor_bridge
-        self.__use_udp = self._app_config.trezor_udp
-        self.__use_hid = self._app_config.trezor_hid
-        self.__passphrase_encoding: Optional[str] = self._app_config.hw_keepkey_psw_encoding
+        self.__use_webusb = app_config.trezor_webusb
+        self.__use_bridge = app_config.trezor_bridge
+        self.__use_udp = app_config.trezor_udp
+        self.__use_hid = app_config.trezor_hid
+        self.__passphrase_encoding: Optional[str] = app_config.hw_keepkey_psw_encoding
 
         self.__hw_devices = HWDevices(use_webusb=self.__use_webusb, use_bridge=self.__use_bridge,
                                       use_udp=self.__use_udp, use_hid=self.__use_hid,
@@ -1122,7 +796,7 @@ class HwSessionInfo(HWSessionBase):
                 pk = get_public_node_fun_(path_n_).node.public_key
                 return pk
 
-            path_ = dash_utils.get_default_bip32_base_path(self.dash_network)
+            path_ = dash_utils.get_default_bip32_base_path(self.__rt_data.dash_network)
             path_n = dash_utils.bip32_path_string_to_n(path_)
 
             # show message for Trezor device while waiting for the user to choose the passphrase input method
@@ -1159,7 +833,7 @@ class HwSessionInfo(HWSessionBase):
                     raise HWPinException(e.args[1])
 
             elif hw_device.hw_type == HWType.ledger_nano:
-                path = dash_utils.get_default_bip32_base_path(self.dash_network)
+                path = dash_utils.get_default_bip32_base_path(self.__rt_data.dash_network)
                 ap = ledger.get_address_and_pubkey(self, path)
                 self.set_base_info(path, ap['publicKey'])
 
@@ -1200,25 +874,24 @@ class HwSessionInfo(HWSessionBase):
                 try:
                     self.initiate_hw_session()
 
-                    if self.dash_network == 'TESTNET':
+                    if self.__rt_data.dash_network == 'TESTNET':
                         # check if Dash testnet is supported by this hardware wallet
                         found_testnet_support = False
                         if self.hw_type in (HWType.trezor, HWType.keepkey):
                             try:
-                                path = dash_utils.get_default_bip32_base_path(self.dash_network)
+                                path = dash_utils.get_default_bip32_base_path(self.__rt_data.dash_network)
                                 path += "/0'/0/0"
                                 path_n = dash_utils.bip32_path_string_to_n(path)
-                                addr = self.hw_intf.get_address(self.hw_session, path_n, False)
-                                if addr and dash_utils.validate_address(addr, self.dash_network):
+                                addr = get_address(self, self.__rt_data, path_n, False)
+                                if addr and dash_utils.validate_address(addr, self.__rt_data.dash_network):
                                     found_testnet_support = True
                             except Exception as e:
                                 if str(e).find('Invalid coin name') < 0:
-                                    logging.exception('Failed when looking for Dash testnet support')
+                                    raise
 
                         elif self.hw_type == HWType.ledger_nano:
-                            addr = self.hw_intf.get_address(self.hw_session,
-                                                            dash_utils.get_default_bip32_path(self.dash_network))
-                            if dash_utils.validate_address(addr, self.dash_network):
+                            addr = get_address(self, self.__rt_data, dash_utils.get_default_bip32_path(self.__rt_data.dash_network))
+                            if dash_utils.validate_address(addr, self.__rt_data.dash_network):
                                 found_testnet_support = False
 
                         if not found_testnet_support:
@@ -1440,3 +1113,318 @@ class SelectHWDeviceDlg(QDialog):
 
     def on_btn_main_rejected(self):
         self.reject()
+
+
+@control_hw_call
+def sign_tx(hw_session: HwSessionInfo, rt_data: AppRuntimeData, utxos_to_spend: List[UtxoType],
+            tx_outputs: List[TxOutputType], tx_fee):
+    """
+    Creates a signed transaction.
+    :param hw_session:
+    :param utxos_to_spend: list of utxos to send
+    :param tx_outputs: destination addresses. Fields: 0: dest Dash address. 1: the output value in satoshis,
+        2: the bip32 path of the address if the output is the change address or None otherwise
+    :param tx_fee: transaction fee
+    :return: tuple (serialized tx, total transaction amount in satoshis)
+    """
+
+    def sign(ctrl):
+        ctrl.dlg_config_fun(dlg_title="Confirm transaction signing.", show_progress_bar=False)
+        ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet<br>'
+                             'and wait for the transaction to be signed...</b>')
+
+        if hw_session.hw_type == HWType.trezor:
+
+            return trezor.sign_tx(hw_session, rt_data, utxos_to_spend, tx_outputs, tx_fee)
+
+        elif hw_session.hw_type == HWType.keepkey:
+
+            return keepkey.sign_tx(hw_session, rt_data, utxos_to_spend, tx_outputs, tx_fee)
+
+        elif hw_session.hw_type == HWType.ledger_nano:
+
+            return ledger.sign_tx(hw_session, rt_data, utxos_to_spend, tx_outputs, tx_fee)
+
+        else:
+            logging.error('Invalid HW type: ' + str(hw_session.hw_type))
+
+    # execute the 'prepare' function, but due to the fact that the call blocks the UI until the user clicks the HW
+    # button, it's done inside a thread within a dialog that shows an appropriate message to the user
+    sig = WndUtils.run_thread_dialog(sign, (), True,
+                                     force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
+    return sig
+
+
+@control_hw_call
+def hw_sign_message(hw_session: HwSessionInfo, hw_coin_name: str, bip32path, message, display_label: str = None):
+    def sign(ctrl, display_label_):
+        ctrl.dlg_config_fun(dlg_title="Confirm message signing.", show_progress_bar=False)
+        if not display_label_:
+            if hw_session.hw_type == HWType.ledger_nano:
+                message_hash = hashlib.sha256(message.encode('ascii')).hexdigest().upper()
+                display_label_ = '<b>Click the confirmation button on your hardware wallet to sign the message...</b>' \
+                                 '<br><br><b>Message:</b><br><span>' + message + '</span><br><br><b>SHA256 hash</b>:' \
+                                                                                 '<br>' + message_hash
+            else:
+                display_label_ = '<b>Click the confirmation button on your hardware wallet to sign the message...</b>'
+        ctrl.display_msg_fun(display_label_)
+
+        if hw_session.hw_type == HWType.trezor:
+
+            return trezor.sign_message(hw_session.hw_client, hw_coin_name, bip32path, message)
+
+        elif hw_session.hw_type == HWType.keepkey:
+
+            return keepkey.sign_message(hw_session.hw_client, hw_coin_name, bip32path, message)
+
+        elif hw_session.hw_type == HWType.ledger_nano:
+
+            return ledger.sign_message(hw_session.hw_client, bip32path, message, hw_session)
+        else:
+            logging.error('Invalid HW type: ' + str(hw_session.hw_type))
+
+    # execute the 'sign' function, but due to the fact that the call blocks the UI until the user clicks the HW
+    # button, it's done inside a thread within a dialog that shows an appropriate message to the user
+    sig = WndUtils.run_thread_dialog(sign, (display_label,), True,
+                                     force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
+    return sig
+
+
+@control_hw_call
+def get_address(hw_session: HwSessionInfo, rt_data: AppRuntimeData, bip32_path: str, show_display: bool = False,
+                message_to_display: str = None):
+
+    def _get_address(ctrl):
+        nonlocal hw_session, rt_data, bip32_path, show_display, message_to_display
+        if ctrl:
+            ctrl.dlg_config_fun(dlg_title=DEFAULT_HW_BUSY_TITLE, show_progress_bar=False)
+            if message_to_display:
+                ctrl.display_msg_fun(message_to_display)
+            else:
+                ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet to exit...</b>')
+
+        client = hw_session.hw_client
+        if client:
+            if isinstance(bip32_path, str):
+                bip32_path.strip()
+                if bip32_path.lower().find('m/') >= 0:
+                    # removing m/ prefix because of keepkey library
+                    bip32_path = bip32_path[2:]
+
+            if hw_session.hw_type == HWType.trezor:
+
+                try:
+                    if isinstance(bip32_path, str):
+                        bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
+                    ret = trezorlib.btc.get_address(client, rt_data.hw_coin_name, bip32_path, show_display)
+                    return ret
+                except (CancelException, trezorlib.exceptions.Cancelled):
+                    raise CancelException()
+
+            elif hw_session.hw_type == HWType.keepkey:
+
+                try:
+                    if isinstance(bip32_path, str):
+                        bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
+                    return client.get_address(rt_data.hw_coin_name, bip32_path, show_display)
+                except keepkeylib.client.CallException as e:
+                    if isinstance(e.args, tuple) and len(e.args) >= 2 and isinstance(e.args[1], str) and \
+                            e.args[1].find('cancel') >= 0:
+                        raise CancelException('Cancelled')
+
+            elif hw_session.hw_type == HWType.ledger_nano:
+
+                if isinstance(bip32_path, list):
+                    # ledger requires bip32 path argument as a string
+                    bip32_path = bip32_path_n_to_string(bip32_path)
+
+                adr_pubkey = ledger.get_address_and_pubkey(hw_session, bip32_path, show_display)
+                return adr_pubkey.get('address')
+            else:
+                raise Exception('Unknown hardware wallet type: ' + str(hw_session.hw_type))
+        else:
+            raise Exception('HW client not open.')
+
+    if message_to_display or show_display:
+        msg_delay = 0
+    else:
+        msg_delay = 1000
+        message_to_display = DEFAULT_HW_BUSY_MESSAGE
+
+    return WndUtils.run_thread_dialog(_get_address, (), True, show_window_delay_ms=msg_delay,
+                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
+
+
+@control_hw_call
+def get_address_and_pubkey(hw_session: HwSessionInfo, hw_coin_name: str, bip32_path: str):
+    client = hw_session.hw_client
+    if client:
+        if isinstance(bip32_path, str):
+            bip32_path.strip()
+            if bip32_path.lower().find('m/') >= 0:
+                # removing m/ prefix because of keepkey library
+                bip32_path = bip32_path[2:]
+
+        if hw_session.hw_type == HWType.trezor:
+
+            if isinstance(bip32_path, str):
+                bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
+            return {
+                'address': trezorlib.btc.get_address(client, hw_coin_name, bip32_path, False),
+                'publicKey': trezorlib.btc.get_public_node(client, bip32_path).node.public_key
+            }
+
+        elif hw_session.hw_type == HWType.keepkey:
+            if isinstance(bip32_path, str):
+                bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
+            return {
+                'address': client.get_address(hw_coin_name, bip32_path, False),
+                'publicKey': client.get_public_node(bip32_path).node.public_key
+            }
+
+        elif hw_session.hw_type == HWType.ledger_nano:
+
+            if isinstance(bip32_path, list):
+                # ledger requires bip32 path argument as a string
+                bip32_path = bip32_path_n_to_string(bip32_path)
+
+            return ledger.get_address_and_pubkey(hw_session, bip32_path)
+        else:
+            raise Exception('Unknown hardware wallet type: ' + str(hw_session.hw_type.value))
+
+
+@control_hw_call
+def get_xpub(hw_session: HwSessionInfo, bip32_path: str):
+    client = hw_session.hw_client
+    if client:
+        if isinstance(bip32_path, str):
+            bip32_path.strip()
+            if bip32_path.lower().find('m/') >= 0:
+                bip32_path = bip32_path[2:]
+
+        if hw_session.hw_type == HWType.trezor:
+            if isinstance(bip32_path, str):
+                bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
+
+            return trezorlib.btc.get_public_node(client, bip32_path).xpub
+
+        elif hw_session.hw_type == HWType.keepkey:
+            if isinstance(bip32_path, str):
+                bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
+
+            return client.get_public_node(bip32_path).xpub
+
+        elif hw_session.hw_type == HWType.ledger_nano:
+
+            if isinstance(bip32_path, list):
+                # ledger requires bip32 path argument as a string
+                bip32_path = bip32_path_n_to_string(bip32_path)
+
+            return ledger.get_xpub(client, bip32_path)
+        else:
+            raise Exception('Unknown hardware wallet type: ' + str(hw_session.hw_type))
+    else:
+        raise Exception('HW client not open.')
+
+
+@control_hw_call
+def hw_encrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: str,
+                     value: ByteString, ask_on_encrypt=True, ask_on_decrypt=True) -> Tuple[bytearray, bytearray]:
+    """Encrypts a value with a hardware wallet.
+    :param hw_session:
+    :param bip32_path_n: bip32 path of the private key used for encryption
+    :param label: key (in the meaning of key-value) used for encryption
+    :param value: value being encrypted
+    :param ask_on_encrypt: see Trezor doc
+    :param ask_on_decrypt: see Trezor doc
+    """
+
+    def encrypt(ctrl, hw_session_: HwSessionInfo, bip32_path_n_: List[int], label_: str,
+                value_: bytearray):
+        ctrl.dlg_config_fun(dlg_title="Data encryption", show_progress_bar=False)
+        ctrl.display_msg_fun(f'<b>Encrypting \'{label_}\'...</b>'
+                             f'<br><br>Enter the hardware wallet PIN/passphrase (if needed) to encrypt data.<br><br>'
+                             f'<b>Note:</b> encryption passphrase is independent from the wallet passphrase  <br>'
+                             f'and can vary for each encrypted file.')
+
+        if hw_session_.hw_type == HWType.trezor:
+            try:
+                client = hw_session_.hw_client
+                data = trezorlib.misc.encrypt_keyvalue(client, cast(Address, bip32_path_n_), label_, value_,
+                                                       ask_on_encrypt, ask_on_decrypt)
+                pub_key = trezorlib.btc.get_public_node(client, bip32_path_n_).node.public_key
+                return data, pub_key
+            except (CancelException, trezorlib.exceptions.Cancelled):
+                raise CancelException()
+
+        elif hw_session_.hw_type == HWType.keepkey:
+
+            client = hw_session_.hw_client
+            data = client.encrypt_keyvalue(bip32_path_n_, label_, value_, ask_on_encrypt, ask_on_decrypt)
+            pub_key = client.get_public_node(bip32_path_n_).node.public_key
+            return data, pub_key
+
+        elif hw_session_.hw_type == HWType.ledger_nano:
+
+            raise Exception('Feature not available for Ledger Nano S.')
+
+        else:
+            raise Exception('Invalid HW type: ' + str(hw_session_))
+
+    if len(value) != 32:
+        raise ValueError("Invalid password length (<> 32).")
+
+    return WndUtils.run_thread_dialog(encrypt, (hw_session, bip32_path_n, label, value), True,
+                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client),
+                                      show_window_delay_ms=200)
+
+
+@control_hw_call
+def hw_decrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: str,
+                     value: ByteString, ask_on_encrypt=True, ask_on_decrypt=True) -> Tuple[bytearray, bytearray]:
+    """
+    :param hw_session:
+    :param bip32_path_n: bip32 path of the private key used for encryption
+    :param label: key (in the meaning of key-value) used for encryption
+    :param value: encrypted value to be decrypted,
+    :param ask_on_encrypt: see Trezor doc
+    :param ask_on_decrypt: see Trezor doc
+    """
+
+    def decrypt(ctrl, hw_session_: HwSessionInfo, bip32_path_n_: List[int], label_: str, value_: bytearray):
+        ctrl.dlg_config_fun(dlg_title="Data decryption", show_progress_bar=False)
+        ctrl.display_msg_fun(f'<b>Decrypting \'{label_}\'...</b><br><br>Enter the hardware wallet PIN/passphrase '
+                             f'(if needed)<br> and click the confirmation button to decrypt data.')
+
+        if hw_session_.hw_type == HWType.trezor:
+
+            try:
+                client = hw_session_.hw_client
+                data = trezorlib.misc.decrypt_keyvalue(client, cast(Address, bip32_path_n_), label_, value_,
+                                                       ask_on_encrypt, ask_on_decrypt)
+                pub_key = trezorlib.btc.get_public_node(client, bip32_path_n_).node.public_key
+                return data, pub_key
+            except (CancelException, trezorlib.exceptions.Cancelled):
+                raise CancelException()
+
+        elif hw_session_.hw_type == HWType.keepkey:
+
+            client = hw_session_.hw_client
+            data = client.decrypt_keyvalue(bip32_path_n_, label_, value_, ask_on_encrypt, ask_on_decrypt)
+            pub_key = client.get_public_node(bip32_path_n_).node.public_key
+            return data, pub_key
+
+        elif hw_session_.hw_type == HWType.ledger_nano:
+
+            raise Exception('Feature not available for Ledger Nano S.')
+
+        else:
+            raise Exception('Invalid HW type: ' + str(hw_session_))
+
+    if len(value) != 32:
+        raise ValueError("Invalid password length (<> 32).")
+
+    return WndUtils.run_thread_dialog(decrypt, (hw_session, bip32_path_n, label, value), True,
+                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
+
+

@@ -139,7 +139,7 @@ class AppConfig(QObject):
         self.feature_update_service_automatic = AppFeatueStatus(True, 0, '')
         self.feature_revoke_operator_automatic = AppFeatueStatus(True, 0, '')
 
-        self.hw_type = None  # TREZOR, KEEPKEY, LEDGERNANOS
+        self.hw_type: Optional[HWType] = None  # TREZOR, KEEPKEY, LEDGERNANOS
         self.hw_keepkey_psw_encoding = 'NFC'  # Keepkey passphrase UTF8 chars encoding:
                                               #  NFC: compatible with official Keepkey client app
                                               #  NFKD: compatible with Trezor
@@ -485,14 +485,14 @@ class AppConfig(QObject):
         self.encrypt_config_file = src_config.encrypt_config_file
 
     def configure_cache(self):
-        if self.is_testnet():
+        if self.is_testnet:
             db_cache_file_name = 'dmt_cache_testnet_v2.db'
         else:
             db_cache_file_name = 'dmt_cache_v2.db'
         self.tx_cache_dir = os.path.join(self.cache_dir, 'tx-' + self.hw_coin_name)
         if not os.path.exists(self.tx_cache_dir):
             os.makedirs(self.tx_cache_dir)
-            if self.is_testnet():
+            if self.is_testnet:
                 # move testnet json files to a subdir (don't do this for mainnet files
                 # util there most of users move to dmt v0.9.22
                 try:
@@ -665,7 +665,7 @@ class AppConfig(QObject):
                     dash_network = 'MAINNET'
                 self.dash_network = dash_network
 
-                if self.is_mainnet():
+                if self.is_mainnet:
                     def_bip32_path = "44'/5'/0'/0/0"
                 else:
                     def_bip32_path = "44'/1'/0'/0/0"
@@ -673,10 +673,9 @@ class AppConfig(QObject):
                 if not self.last_bip32_base_path:
                     self.last_bip32_base_path = def_bip32_path
                 self.bip32_recursive_search = config.getboolean(section, 'bip32_recursive', fallback=True)
-                self.hw_type = config.get(section, 'hw_type', fallback=HWType.trezor)
-                if self.hw_type not in (HWType.trezor, HWType.keepkey, HWType.ledger_nano):
-                    logging.warning('Invalid hardware wallet type: ' + self.hw_type)
-                    self.hw_type = HWType.trezor
+
+                type = config.get(section, 'hw_type', fallback=HWType.trezor.value)
+                self.hw_type = HWType.from_string(type)
 
                 self.hw_keepkey_psw_encoding = config.get(section, 'hw_keepkey_psw_encoding', fallback='NFC')
                 if self.hw_keepkey_psw_encoding not in ('NFC', 'NFKD'):
@@ -950,9 +949,7 @@ class AppConfig(QObject):
         config.set(section, 'CFG_VERSION', str(CURRENT_CFG_FILE_VERSION))
         config.set(section, 'log_level', self.log_level_str)
         config.set(section, 'dash_network', self.dash_network)
-        if not self.hw_type:
-            self.hw_type = HWType.trezor
-        config.set(section, 'hw_type', self.hw_type)
+        config.set(section, 'hw_type', self.hw_type.value)
         config.set(section, 'hw_keepkey_psw_encoding', self.hw_keepkey_psw_encoding)
         config.set(section, 'bip32_base_path', self.last_bip32_base_path)
         config.set(section, 'random_dash_net_config', '1' if self.random_dash_net_config else '0')
@@ -1184,7 +1181,7 @@ class AppConfig(QObject):
         """
         tmp_list = []
         for cfg in self.dash_net_configs:
-            if cfg.enabled and self.is_testnet() == cfg.testnet:
+            if cfg.enabled and self.is_testnet == cfg.testnet:
                 tmp_list.append(cfg)
         if self.random_dash_net_config:
             ordered_list = []
@@ -1384,15 +1381,17 @@ class AppConfig(QObject):
                     break
         return modified
 
+    @property
     def is_testnet(self) -> bool:
         return self.dash_network == 'TESTNET'
 
+    @property
     def is_mainnet(self) -> bool:
         return self.dash_network == 'MAINNET'
 
     @property
     def hw_coin_name(self):
-        if self.is_testnet():
+        if self.is_testnet:
             return 'Dash Testnet'
         else:
             return 'Dash'

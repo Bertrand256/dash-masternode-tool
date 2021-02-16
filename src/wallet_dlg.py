@@ -28,6 +28,7 @@ import app_cache
 import app_utils
 import dash_utils
 import hw_intf
+from app_runtime_data import AppRuntimeData
 from bip44_wallet import Bip44Wallet, Bip44Entry, BreakFetchTransactionsException, SwitchedHDIdentityException
 from common import CancelException
 from sign_message_dlg import SignMessageDlg
@@ -87,6 +88,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         self.main_ui = main_ui
         self.hw_session: HwSessionInfo = self.main_ui.hw_session
+        self.rt_data: AppRuntimeData = AppRuntimeData.get_instance()
         self.hw_connection_established = False
         self.masternodes = main_ui.app_config.masternodes
         self.masternode_addresses: List[Tuple[str, str]] = []  #  Tuple: address, bip32 path
@@ -215,7 +217,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         self.set_message("")
         self.wdg_dest_adresses = SendFundsDestination(self.dest_widget, self, self.main_ui.app_config,
-                                                      self.main_ui.hw_session)
+                                                      self.hw_session)
         self.wdg_dest_adresses.resized_signal.connect(self.on_dest_addresses_resized)
 
         if isinstance(self.recipient_list_from_cache, list) and self.recipient_list_from_cache:
@@ -596,7 +598,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                     addr_hw = bip32_to_address.get(bip32_path, None)
                     if not addr_hw:
-                        addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.main_ui.hw_session, bip32_path)
+                        addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, self.rt_data, bip32_path)
                         bip32_to_address[bip32_path] = addr_hw
 
                     if addr_hw != utxo.address:
@@ -653,7 +655,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                         try:
                             serialized_tx, amount_to_send = self.hw_call_wrapper(hw_intf.sign_tx)\
-                                (self.main_ui.hw_session, tx_inputs, tx_outputs, fee)
+                                (self.hw_session, self.rt_data, tx_inputs, tx_outputs, fee)
                         except HWNotConnectedException:
                             raise
                         except CancelException:
@@ -786,7 +788,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def show_address_on_hw(self, addr: Bip44AddressType):
         try:
             _a = self.hw_call_wrapper(hw_intf.get_address)\
-                (self.hw_session, addr.bip32_path, True,
+                (self.hw_session, self.rt_data, addr.bip32_path, True,
                  f'Displaying address <b>{addr.address}</b>.<br>Click the confirmation button on your device.')
             if _a != addr.address:
                 raise Exception('Address inconsistency between db cache and device')
@@ -812,7 +814,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 if addr:
                     # for security purposes get the address from hardware wallet and compare it to the one
                     # read from db cache
-                    addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, addr.bip32_path, False)
+                    addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, self.rt_data, addr.bip32_path, False)
                     if addr_hw != addr.address:
                         self.error_msg('Inconsistency between the wallet cache and the hardware wallet data occurred. '
                                       'Please clear the wallet cache.')
@@ -829,7 +831,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             if acc:
                 addr = acc.address_by_id(self.hw_selected_address_id)
                 if addr and addr.bip32_path and addr.address:
-                    ui = SignMessageDlg(self.main_ui, self.hw_session, addr.bip32_path, addr.address)
+                    ui = SignMessageDlg(self.main_ui, self.hw_session, self.rt_data, addr.bip32_path, addr.address)
                     ui.exec_()
         if not addr:
             WndUtils.warn_msg('Couldn\'t copy the selected address.')
@@ -993,8 +995,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.fetch_transactions()
         elif link == 'hw-alter-identity':
             if self.hw_connected():
-                self.main_ui.disconnect_hardware_wallet()
-                self.main_ui.connect_hardware_wallet()
+                self.hw_session.disconnect_hardware_wallet()
+                self.hw_session.connect_hardware_wallet()
         self.update_hw_info()
 
     @pyqtSlot(bool)
@@ -1112,7 +1114,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def connect_hw(self):
         def connect():
-            if self.main_ui.connect_hardware_wallet():
+            if self.hw_session.connect_hardware_wallet():
                 aft_saved = self.allow_fetch_transactions
                 esmt_saved = self.enable_synch_with_main_thread
                 self.allow_fetch_transactions = False
@@ -1148,7 +1150,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         try:
             self.on_disconnect_hw()
-            self.main_ui.disconnect_hardware_wallet()
+            self.hw_session.disconnect_hardware_wallet()
         finally:
             self.allow_fetch_transactions = aft_saved
             self.enable_synch_with_main_thread = esmt_saved
@@ -1603,7 +1605,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                         # for security reasons get the address from hardware wallet and compare it to the one
                         # read from db cache
-                        addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, addr.bip32_path, False)
+                        addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, self.rt_data,
+                                                                            addr.bip32_path, False)
                         if addr_hw != addr.address:
                             addr_str = 'Address inconsistency. Please clear the wallet cache.'
 

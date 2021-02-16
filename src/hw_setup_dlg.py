@@ -16,7 +16,7 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
         wnd_utils.WndUtils.__init__(self, main_ui.app_config)
         self.main_ui = main_ui
         self.main_ui.connect_hardware_wallet()
-        self.hw_session = self.main_ui.hw_session
+        self.hw_session: hw_intf.HwSessionInfo = self.main_ui.hw_session
         self.version = '?'
         self.pin_protection = None
         self.passphrase_protection = None
@@ -24,8 +24,8 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
         self.wipe_code_protection = None  # https://wiki.trezor.io/User_manual:Wipe_code
         self.sd_protection = None  # https://wiki.trezor.io/User_manual:SD_card_protection
         self.auto_lock_delay_ms = None
-        if self.hw_session and  self.hw_session.hw_client:
-            self.version = hw_intf.get_hw_firmware_version(self.main_ui.hw_session)
+        if self.hw_session and self.hw_session.hw_device:
+            self.version = self.hw_session.hw_device.firmware_version
             self.read_hw_features()
         self.setupUi()
 

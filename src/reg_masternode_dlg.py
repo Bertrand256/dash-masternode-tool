@@ -988,7 +988,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
         if self.dmn_collateral_tx_address_path:
             try:
-                addr = hw_intf.get_address(self.main_dlg.hw_session, self.dmn_collateral_tx_address_path)
+                addr = hw_intf.get_address(self.main_dlg.hw_session, self.main_dlg.rt_data,
+                                           self.dmn_collateral_tx_address_path)
             except CancelException:
                 return False
 
@@ -1127,8 +1128,9 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
     def sign_protx_message_with_hw(self, msg_to_sign) -> str:
         sig = WndUtils.call_in_main_thread(
-            hw_intf.hw_sign_message, self.main_dlg.hw_session, self.dmn_collateral_tx_address_path,
-            msg_to_sign, 'Click the confirmation button on your hardware wallet to sign the ProTx payload message.')
+            hw_intf.hw_sign_message, self.main_dlg.hw_session, self.main_dlg.app_rt_data.hw_coin_name,
+            self.dmn_collateral_tx_address_path, msg_to_sign,
+            'Click the confirmation button on your hardware wallet to sign the ProTx payload message.')
 
         if sig.address != self.dmn_collateral_tx_address:
             log.error(f'Protx payload signature address mismatch. Is: {sig.address}, should be: '

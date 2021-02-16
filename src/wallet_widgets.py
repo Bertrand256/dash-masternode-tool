@@ -573,7 +573,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         if change_amount > 0.0:
             recipients_count += 1
 
-        if self.app_config.is_testnet():
+        if self.app_config.is_testnet:
             fee_multiplier = 10  # in testnet large transactions tend to get stuck if the fee is "normal"
         else:
             fee_multiplier = 1

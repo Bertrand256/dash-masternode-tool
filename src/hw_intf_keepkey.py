@@ -18,9 +18,10 @@ from keepkeylib.tx_api import TxApiInsight
 from mnemonic import Mnemonic
 
 import dash_utils
+from app_runtime_data import AppRuntimeData
 from common import CancelException
 from hw_common import ask_for_pin_callback, ask_for_pass_callback, ask_for_word_callback, \
-    HWSessionBase, select_hw_device, HWDevice, HWType
+    HWSessionBase, HWDevice, HWType
 import keepkeylib.types_pb2 as proto_types
 import wallet_common
 from wnd_utils import WndUtils
@@ -129,7 +130,7 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
                         hw_type=HWType.keepkey,
                         device_id=device_id,
                         device_label=client.features.label if client.features.label else None,
-                        device_version=version,
+                        firmware_version=version,
                         device_model=device_model,
                         client=client if return_clients else None,
                         bootloader_mode=client.features.bootloader_mode,
@@ -240,7 +241,7 @@ class MyTxApiInsight(TxApiInsight):
         return t
 
 
-def sign_tx(hw_session: HWSessionBase, utxos_to_spend: List[wallet_common.UtxoType],
+def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: List[wallet_common.UtxoType],
             tx_outputs: List[wallet_common.TxOutputType], tx_fee):
     """
     Creates a signed transaction.
@@ -252,11 +253,11 @@ def sign_tx(hw_session: HWSessionBase, utxos_to_spend: List[wallet_common.UtxoTy
     """
 
     insight_network = 'insight_dash'
-    if hw_session.is_testnet:
+    if rt_data.is_testnet:
         insight_network += '_testnet'
-    dash_network = hw_session.dash_network
+    dash_network = rt_data.dash_network
 
-    tx_api = MyTxApiInsight(insight_network, '', hw_session.dashd_intf, hw_session.app_config.tx_cache_dir)
+    tx_api = MyTxApiInsight(insight_network, '', rt_data.dashd_intf, rt_data.tx_cache_dir)
     client = hw_session.hw_client
     client.set_tx_api(tx_api)
     inputs = []
@@ -298,16 +299,15 @@ def sign_tx(hw_session: HWSessionBase, utxos_to_spend: List[wallet_common.UtxoTy
     if outputs_amount + tx_fee != inputs_amount:
         raise Exception('Transaction validation failure: inputs + fee != outputs')
 
-    signed = client.sign_tx(hw_session.hw_coin_name, inputs, outputs)
+    signed = client.sign_tx(rt_data.hw_coin_name, inputs, outputs)
     logging.info('Signed transaction')
     return signed[1], inputs_amount
 
 
-def sign_message(hw_session: HWSessionBase, bip32path, message):
-    client = hw_session.hw_client
-    address_n = client.expand_path(clean_bip32_path(bip32path))
+def sign_message(hw_client, hw_coin_name: str, bip32path: str, message: str):
+    address_n = hw_client.expand_path(clean_bip32_path(bip32path))
     try:
-        return client.sign_message(hw_session.hw_coin_name, address_n, message)
+        return hw_client.sign_message(hw_coin_name, address_n, message)
     except CallException as e:
         if e.args and len(e.args) >= 2 and e.args[1].lower().find('cancelled') >= 0:
             raise CancelException('Cancelled')

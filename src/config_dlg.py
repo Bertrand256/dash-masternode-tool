@@ -190,7 +190,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.rpc_cfg_widget.btnShowPassword.released.connect(
             lambda: self.rpc_cfg_widget.edtRpcPassword.setEchoMode(QLineEdit.Password))
 
-        if self.local_config.is_mainnet():
+        if self.local_config.is_mainnet:
             self.cboDashNetwork.setCurrentIndex(0)
             self.connections_current = self.connections_mainnet
         else:
@@ -334,7 +334,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                 if self.query_dlg('Do you really want to import connection(s) from clipboard?',
                                   buttons=QMessageBox.Yes | QMessageBox.Cancel,
                                   default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
-                    testnet = self.local_config.is_testnet()
+                    testnet = self.local_config.is_testnet
                     for cfg in conns:
                         cfg.testnet = testnet
 

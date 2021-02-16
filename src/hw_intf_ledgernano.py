@@ -6,6 +6,7 @@ from typing import List, Optional
 
 import dash_utils
 import hw_common
+from app_runtime_data import AppRuntimeData
 from common import CancelException
 from hw_common import clean_bip32_path, HWSessionBase, HWType
 import wallet_common
@@ -193,7 +194,7 @@ def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = F
                             device_id=d.__getattribute__('hidDevicePath'),
                             device_model=device_model,
                             device_label=None,
-                            device_version=ver,
+                            firmware_version=ver,
                             client=client if return_clients else None,
                             bootloader_mode=in_bootloader_mode,
                             transport=d))
@@ -249,7 +250,7 @@ def _ledger_exctract_address(addr: str) -> str:
 
 
 @process_ledger_exceptions
-def sign_message(hw_client, bip32_path, message: str, hw_session: Optional[HWSessionBase]):
+def sign_message(hw_client, bip32_path: str, message: str, hw_session: Optional[HWSessionBase]):
     # Ledger doesn't accept characters other that ascii printable:
     # https://ledgerhq.github.io/btchip-doc/bitcoin-technical.html#_sign_message
     message = message.encode('ascii', 'ignore')
@@ -451,7 +452,7 @@ def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, seco
 
 
 @process_ledger_exceptions
-def sign_tx(hw_session: HWSessionBase, utxos_to_spend: List[wallet_common.UtxoType],
+def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: List[wallet_common.UtxoType],
             tx_outputs: List[wallet_common.TxOutputType], tx_fee):
     client = hw_session.hw_client
     rawtransactions = {}
@@ -485,11 +486,11 @@ def sign_tx(hw_session: HWSessionBase, utxos_to_spend: List[wallet_common.UtxoTy
     # read previous transactins
     for utxo in utxos_to_spend:
         if utxo.txid not in rawtransactions:
-            tx = hw_session.dashd_intf.getrawtransaction(utxo.txid, 1, skip_cache=False)
+            tx = rt_data.dashd_intf.getrawtransaction(utxo.txid, 1, skip_cache=False)
             if tx and tx.get('hex'):
                 tx_raw = tx.get('hex')
             else:
-                tx_raw = hw_session.dashd_intf.getrawtransaction(utxo.txid, 0, skip_cache=False)
+                tx_raw = rt_data.dashd_intf.getrawtransaction(utxo.txid, 0, skip_cache=False)
 
             if tx_raw:
                 rawtransactions[utxo.txid] = tx_raw
@@ -566,7 +567,7 @@ def sign_tx(hw_session: HWSessionBase, utxos_to_spend: List[wallet_common.UtxoTy
     new_transaction.version = bytearray([0x01, 0x00, 0x00, 0x00])
     for out in tx_outputs:
         output = bitcoinOutput()
-        output.script = compose_tx_locking_script(out.address, hw_session.dash_network)
+        output.script = compose_tx_locking_script(out.address, rt_data.dash_network)
         output.amount = int.to_bytes(out.satoshis, 8, byteorder='little')
         new_transaction.outputs.append(output)
 
