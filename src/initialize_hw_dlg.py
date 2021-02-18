@@ -474,48 +474,51 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
     def apply_action_on_hardware_wallet(self) -> bool:
         """Executes command on hardware wallet device related to the selected actions."""
-        if self.action_type in (ACTION_RECOVER_FROM_WORDS_CONV, ACTION_RECOVER_FROM_ENTROPY):
+        try:
+            if self.action_type in (ACTION_RECOVER_FROM_WORDS_CONV, ACTION_RECOVER_FROM_ENTROPY):
 
-            device_id, cancelled = load_device_by_mnemonic(
-                self.hw_type, self.hw_device_id_selected, self.hw_action_mnemonic_words, self.hw_action_pin,
-                self.hw_action_use_passphrase, self.hw_action_label,
-                self.hw_action_passphrase, self.hw_action_secondary_pin, parent_window=self.main_ui)
+                device_id, cancelled = load_device_by_mnemonic(
+                    self.hw_type, self.hw_device_id_selected, self.hw_action_mnemonic_words, self.hw_action_pin,
+                    self.hw_action_use_passphrase, self.hw_action_label,
+                    self.hw_action_passphrase, self.hw_action_secondary_pin, parent_window=self.main_ui)
 
-        elif self.action_type == ACTION_RECOVER_FROM_WORDS_SAFE:
+            elif self.action_type == ACTION_RECOVER_FROM_WORDS_SAFE:
 
-            device_id, cancelled = recovery_device(self.hw_type, self.hw_device_id_selected, self.word_count,
-                                                   self.hw_action_use_passphrase, self.hw_action_use_pin, self.hw_action_label, parent_window=self.main_ui)
+                device_id, cancelled = recovery_device(self.hw_type, self.hw_device_id_selected, self.word_count,
+                                                       self.hw_action_use_passphrase, self.hw_action_use_pin, self.hw_action_label, parent_window=self.main_ui)
 
-        elif self.action_type == ACTION_INITIALIZE_NEW_SAFE:
+            elif self.action_type == ACTION_INITIALIZE_NEW_SAFE:
 
-            device_id, cancelled = reset_device(self.hw_type, self.hw_device_id_selected, self.word_count,
-                                                self.hw_action_use_passphrase, self.hw_action_use_pin, self.hw_action_label, parent_window=self.main_ui)
+                device_id, cancelled = reset_device(self.hw_type, self.hw_device_id_selected, self.word_count,
+                                                    self.hw_action_use_passphrase, self.hw_action_use_pin, self.hw_action_label, parent_window=self.main_ui)
 
-        elif self.action_type == ACTION_WIPE_DEVICE:
+            elif self.action_type == ACTION_WIPE_DEVICE:
 
-            device_id, cancelled = wipe_device(self.hw_type, self.hw_device_id_selected, parent_window=self.main_ui)
+                device_id, cancelled = wipe_device(self.hw_type, self.hw_device_id_selected, parent_window=self.main_ui)
 
-        else:
-            raise Exception('Invalid action.')
+            else:
+                raise Exception('Invalid action.')
 
-        if device_id and self.hw_device_id_selected and self.hw_device_id_selected != device_id:
-            # if Trezor or Keepkey is wiped during the initialization then it gets a new device_id
-            # update the deice id in the device combobox and a list associated with it
-            self.hw_device_id_selected = device_id
-            idx = self.cboDeviceInstance.currentIndex()
-            if idx >= 0 and idx < len(self.hw_device_instances):
-                self.hw_device_instances[idx][0] = device_id
-                if self.hw_action_label is None:
-                    self.hw_action_label = ''
-                lbl = self.hw_action_label + ' (' + device_id + ')'
-                self.cboDeviceInstance.setItemText(idx, lbl)
+            if device_id and self.hw_device_id_selected and self.hw_device_id_selected != device_id:
+                # if Trezor or Keepkey is wiped during the initialization then it gets a new device_id
+                # update the deice id in the device combobox and a list associated with it
+                self.hw_device_id_selected = device_id
+                idx = self.cboDeviceInstance.currentIndex()
+                if 0 <= idx < len(self.hw_device_instances):
+                    self.hw_device_instances[idx][0] = device_id
+                    if self.hw_action_label is None:
+                        self.hw_action_label = ''
+                    lbl = self.hw_action_label + ' (' + device_id + ')'
+                    self.cboDeviceInstance.setItemText(idx, lbl)
 
-        if cancelled:
-            self.warnMsg('Operation cancelled.')
-            return False
-        else:
-            self.set_next_step(STEP_FINISHED)
-            return True
+            if cancelled:
+                self.warnMsg('Operation cancelled.')
+                return False
+            else:
+                self.set_next_step(STEP_FINISHED)
+                return True
+        except Exception as e:
+            WndUtils.errorMsg(str(e))
 
     def apply_input_firmware_source(self) -> bool:
         ret = False
@@ -608,12 +611,15 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                             wiped = True
                             continue
 
-                    ret = self.run_thread_dialog(self.apply_upload_firmware_thread, (hw_client, wipe))
-                    if not ret:
-                        raise Exception('Unknown error while uploading firmware')
-                    else:
-                        self.set_next_step(STEP_FINISHED)
-                        break
+                    try:
+                        ret = self.run_thread_dialog(self.apply_upload_firmware_thread, (hw_client, wipe))
+                        if not ret:
+                            raise Exception('Unknown error while uploading firmware')
+                        else:
+                            self.set_next_step(STEP_FINISHED)
+                            break
+                    except CancelException:
+                        pass
 
                 finally:
                     for c in boot_clients:
@@ -662,6 +668,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
         if data:
             ctrl.display_msg_fun('<b>Uploading firmware...</b>'
                                  '<br>Click the confirmation button on your device if necessary.')
+
             with open(local_file_path, 'rb') as fptr:
                 data = fptr.read()
 
@@ -676,6 +683,8 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
 
                     if data[:4] != b'TRZR' and data[:4] != b'TRZV':
                         raise Exception('TREZOR firmware header expected')
+
+                    ret = hw_client.firmware_update(firmware_fingerprint, data)
 
                 elif self.hw_type == HWType.keepkey:
 
@@ -696,7 +705,7 @@ class HwInitializeDlg(QDialog, ui_initialize_hw_dlg.Ui_HwInitializeDlg, WndUtils
                         raise Exception(f'Firmware fingerpring mismatch, expected: '
                                         f'{firmware_fingerprint}, current: {cur_fp}')
 
-                ret = hw_client.firmware_update(fp=BytesIO(data))
+                    ret = hw_client.firmware_update(fp=BytesIO(data))
 
         return ret
 

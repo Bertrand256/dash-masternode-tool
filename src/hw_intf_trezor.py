@@ -14,6 +14,7 @@ import binascii
 from decimal import Decimal
 
 import trezorlib
+from PyQt5.QtWidgets import QMessageBox
 from bitcoinrpc.authproxy import EncodeDecimal
 from mnemonic import Mnemonic
 from trezorlib.client import TrezorClient
@@ -25,6 +26,7 @@ from trezorlib.ui import PIN_CURRENT, PIN_NEW, PIN_CONFIRM
 #from trezorlib.transport import enumerate_devices, get_transport
 from trezorlib import device
 from trezorlib import coins
+import trezorlib.firmware
 
 import dash_utils
 from common import CancelException
@@ -71,6 +73,11 @@ class TrezorUi(object):
         self.prompt_shown = True
 
 
+ALLOWED_FIRMWARE_FORMATS = {
+    1: (trezorlib.firmware.FirmwareFormat.TREZOR_ONE, trezorlib.firmware.FirmwareFormat.TREZOR_ONE_V2),
+    2: (trezorlib.firmware.FirmwareFormat.TREZOR_T,),
+}
+
 class MyTrezorClient(TrezorClient):
 
     def __init__(self, transport, ui=None, state=None):
@@ -87,6 +94,95 @@ class MyTrezorClient(TrezorClient):
             return TrezorClient._callback_pin(self, msg)
         except exceptions.Cancelled:
             raise CancelException('Cancelled')
+
+    def validate_firmware(self, version, fw, expected_fingerprint=None):
+        """Adapted version of the 'validate_firmware' function from trezorlib"""
+        if version == trezorlib.firmware.FirmwareFormat.TREZOR_ONE:
+            if fw.embedded_onev2:
+                log.debug("Trezor One firmware with embedded v2 image (1.8.0 or later)")
+            else:
+                log.debug("Trezor One firmware image.")
+        elif version == trezorlib.firmware.FirmwareFormat.TREZOR_ONE_V2:
+            log.debug("Trezor One v2 firmware (1.8.0 or later)")
+        elif version == trezorlib.firmware.FirmwareFormat.TREZOR_T:
+            log.debug("Trezor T firmware image.")
+            vendor = fw.vendor_header.text
+            vendor_version = "{major}.{minor}".format(**fw.vendor_header.version)
+            log.debug("Vendor header from {}, version {}".format(vendor, vendor_version))
+
+        try:
+            trezorlib.firmware.validate(version, fw, allow_unsigned=False)
+            log.debug("Signatures are valid.")
+        except trezorlib.firmware.Unsigned:
+            if WndUtils.queryDlg('No signatures found. Continue?',
+                                 buttons=QMessageBox.Yes | QMessageBox.No,
+                                 default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.No:
+                raise CancelException()
+
+            try:
+                trezorlib.firmware.validate(version, fw, allow_unsigned=True)
+                log.debug("Unsigned firmware looking OK.")
+            except trezorlib.firmware.FirmwareIntegrityError as e:
+                log.exception(e)
+                raise Exception("Firmware validation failed, aborting.")
+        except trezorlib.firmware.FirmwareIntegrityError as e:
+            log.exception(e)
+            raise Exception("Firmware validation failed, aborting.")
+
+        fingerprint = trezorlib.firmware.digest(version, fw).hex()
+        log.debug("Firmware fingerprint: {}".format(fingerprint))
+        if version == trezorlib.firmware.FirmwareFormat.TREZOR_ONE and fw.embedded_onev2:
+            fingerprint_onev2 = trezorlib.firmware.digest(
+                trezorlib.firmware.FirmwareFormat.TREZOR_ONE_V2, fw.embedded_onev2
+            ).hex()
+            log.debug("Embedded v2 image fingerprint: {}".format(fingerprint_onev2))
+        if expected_fingerprint and fingerprint != expected_fingerprint:
+            log.error("Expected fingerprint: {}".format(expected_fingerprint))
+            raise Exception("Fingerprints do not match, aborting.")
+
+    def firmware_update(self, fingerprint, data):
+        """Adapted version of the 'firmware_update' function from trezorlib"""
+        f = self.features
+        bootloader_version = (f.major_version, f.minor_version, f.patch_version)
+        bootloader_onev2 = f.major_version == 1 and bootloader_version >= (1, 8, 0)
+        model = f.model or "1"
+
+        try:
+            version, fw = trezorlib.firmware.parse(data)
+        except Exception as e:
+            raise
+
+        self.validate_firmware(version, fw, fingerprint)
+
+        if (
+            bootloader_onev2
+            and version == trezorlib.firmware.FirmwareFormat.TREZOR_ONE
+            and not fw.embedded_onev2
+        ):
+            raise Exception("Firmware is too old for your device. Aborting.")
+        elif not bootloader_onev2 and version == trezorlib.firmware.FirmwareFormat.TREZOR_ONE_V2:
+            raise Exception("You need to upgrade to bootloader 1.8.0 first.")
+
+        if f.major_version not in ALLOWED_FIRMWARE_FORMATS:
+            raise Exception("DMT doesn't know your device version. Aborting.")
+        elif version not in ALLOWED_FIRMWARE_FORMATS[f.major_version]:
+            raise Exception("Firmware does not match your device, aborting.")
+
+        if bootloader_onev2 and data[:4] == b"TRZR" and data[256 : 256 + 4] == b"TRZF":
+            log.debug("Extracting embedded firmware image.")
+            data = data[256:]
+
+        try:
+            # if f.major_version == 1 and f.firmware_present is not False:
+            #     # Trezor One does not send ButtonRequest
+            #     "Please confirm the action on your Trezor device"
+            trezorlib.firmware.update(self, data)
+            return True
+
+        except exceptions.Cancelled:
+            raise CancelException("Update aborted on device.")
+        except exceptions.TrezorException as e:
+            raise Exception("Update failed: {}".format(e))
 
 
 def all_transports() -> Iterable[Type[Transport]]:

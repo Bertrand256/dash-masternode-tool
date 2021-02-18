@@ -1,3 +1,8 @@
+## [0.9.26-hotfix4] - 2021-02-18
+**Fixed**
+- Fixed an error occurring when signing transactions with Trezor using the latest firmware.
+- Fixed an error in the firmware update wizard for Trezor devices.
+
 ## [0.9.26-hotfix2] - 2019-09-09
 
 **Fixed**
