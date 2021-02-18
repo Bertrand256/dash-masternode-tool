@@ -1067,7 +1067,7 @@ For an official firmware, you can uncheck this option.</string>
             <string>Clear device data</string>
            </property>
            <property name="checked">
-            <bool>true</bool>
+            <bool>false</bool>
            </property>
           </widget>
          </item>

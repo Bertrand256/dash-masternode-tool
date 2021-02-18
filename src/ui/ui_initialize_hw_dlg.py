@@ -433,7 +433,7 @@ class Ui_HwInitializeDlg(object):
         self.horizontalLayout_9.addWidget(self.rbFirmwareSourceInternet)
         self.horizontalLayout_10.addWidget(self.gbFirmwareSourceType)
         self.chbWipeDevice = QtWidgets.QCheckBox(self.pgStepHwFirmwareList)
-        self.chbWipeDevice.setChecked(True)
+        self.chbWipeDevice.setChecked(False)
         self.chbWipeDevice.setObjectName("chbWipeDevice")
         self.horizontalLayout_10.addWidget(self.chbWipeDevice)
         self.verticalLayout_16.addLayout(self.horizontalLayout_10)
