@@ -310,6 +310,7 @@ def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: 
         address_n = dash_utils.bip32_path_string_to_n(utxo.bip32_path)
         it = trezor_proto.TxInputType(
             address_n=address_n,
+            amount=utxo.satoshis,
             prev_hash=binascii.unhexlify(utxo.txid),
             prev_index=int(utxo.output_index))
 
