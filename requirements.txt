@@ -1,8 +1,8 @@
 python-bitcoinrpc>=1.0
 bitcoin>=1.1.42
 trezor==0.12.2
-keepkey==6.1.0
-libusb1==1.8
+keepkey
+libusb1
 PyQt5
 PyQtChart
 pyinstaller
@@ -13,5 +13,5 @@ simplejson
 cryptography
 bip32utils
 more-itertools
-btchip-python==0.1.31
+btchip-python
 python-bls
