@@ -195,7 +195,7 @@ def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = F
                             device_model=device_model,
                             device_label=None,
                             firmware_version=ver,
-                            client=client if return_clients else None,
+                            hw_client=client if return_clients else None,
                             bootloader_mode=in_bootloader_mode,
                             transport=d))
                 if not return_clients:

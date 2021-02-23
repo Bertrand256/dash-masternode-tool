@@ -132,7 +132,7 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
                         device_label=client.features.label if client.features.label else None,
                         firmware_version=version,
                         device_model=device_model,
-                        client=client if return_clients else None,
+                        hw_client=client if return_clients else None,
                         bootloader_mode=client.features.bootloader_mode,
                         transport=None
                     ))

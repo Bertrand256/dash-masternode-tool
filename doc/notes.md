@@ -30,3 +30,15 @@ communicates with, for example web browsers with open online wallet apps, Chrome
 Communication with the device by these applications may distort data exchanged by DMT, which 
 may result in unexpected bahavior like returning different Dash address than the one for which 
 the query was sent.
+
+## Note DMT0004
+For topics related to the "Wipe code" setting on Trezor devices see the page: 
+https://wiki.trezor.io/User_manual:Wipe_code
+
+## Note DMT0005
+For topics related to securing Trezor T devices with an SD card see the page: 
+https://wiki.trezor.io/User_manual:SD_card_protection
+
+
+
+

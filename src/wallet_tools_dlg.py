@@ -17,6 +17,7 @@ from app_config import AppConfig
 from common import InternalError
 from hw_common import HWDevice
 from hw_settings_wdg import WdgHwSettings
+from hw_update_firmware_wdg import WdgHwUpdateFirmware
 from recover_hw_wdg import WdgRecoverHw
 from ui import ui_wallet_tools_dlg
 from wallet_tools_common import ActionPageBase
@@ -59,12 +60,13 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
 
         lay = self.layout()
         lay.insertWidget(1, self.wdg_select_hw_device)  # hardware wallet selection panel is inserted just below the
-                                                     # main title
+                                                        # main title
 
         self.action_layout = QtWidgets.QVBoxLayout(self.tabActionContainer)
         self.action_layout.setContentsMargins(0, 0, 0, 0)
         self.action_layout.setSpacing(3)
         self.action_layout.setObjectName("action_layout")
+        WndUtils.change_widget_font_attrs(self.lblTitle, point_size_diff=3, bold=True)
 
     def on_close(self):
         self.hw_devices.sig_selected_hw_device_changed.disconnect(self.on_selected_hw_device_changed)
@@ -111,6 +113,13 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
     def on_actRecoverHw_clicked(self):
         try:
             self.setup_action_widget(ACTION_RECOVER_HW)
+        except Exception as e:
+            self.error_msg(str(e), True)
+
+    @pyqtSlot(bool)
+    def on_actUpdateHwFirmware_clicked(self):
+        try:
+            self.setup_action_widget(ACTION_UPDATE_HW_FIRMWARE)
         except Exception as e:
             self.error_msg(str(e), True)
 
@@ -180,6 +189,8 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
                 return ACTION_HW_SETTINGS
             elif isinstance(self.action_widget, WdgRecoverHw):
                 return ACTION_RECOVER_HW
+            elif isinstance(self.action_widget, WdgHwUpdateFirmware):
+                return ACTION_UPDATE_HW_FIRMWARE
             else:
                 raise Exception('Internal error: not supported type of the action widget')
         else:
@@ -198,6 +209,9 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
                     self.action_layout.addWidget(self.action_widget)
                 elif action == ACTION_RECOVER_HW:
                     self.action_widget = WdgRecoverHw(self.tabActionContainer)
+                    self.action_layout.addWidget(self.action_widget)
+                elif action == ACTION_UPDATE_HW_FIRMWARE:
+                    self.action_widget = WdgHwUpdateFirmware(self.tabActionContainer, self.hw_devices)
                     self.action_layout.addWidget(self.action_widget)
                 else:
                     raise Exception('Internal error: not supported action type')
@@ -265,7 +279,4 @@ class CurrentHwDeviceWdg(QWidget):
             logging.exception(str(e))
 
     def on_hw_device_selected(self, anchor: str):
-        prev_dev = self.hw_devices.get_selected_device()
-        cur_dev = self.hw_devices.select_device(self.parent())
-        if cur_dev and cur_dev != prev_dev:
-            pass
+        self.hw_devices.select_device(self.parent())

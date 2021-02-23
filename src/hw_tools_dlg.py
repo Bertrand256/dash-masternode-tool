@@ -524,10 +524,6 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                     self.hw_type, self.hw_device_id_selected, self.hw_action_mnemonic_words, self.hw_action_pin,
                     self.hw_action_use_passphrase, self.hw_action_label,
                     self.hw_action_passphrase, self.hw_action_secondary_pin)
-                    device_id, cancelled = load_device_by_mnemonic(
-                        self.hw_type, self.hw_device_id_selected, self.hw_action_mnemonic_words, self.hw_action_pin,
-                        self.hw_action_use_passphrase, self.hw_action_label,
-                        self.hw_action_passphrase, self.hw_action_secondary_pin, parent_window=self.main_ui)
 
             elif self.action_type == ACTION_RECOVER_FROM_WORDS_SAFE:
 
@@ -616,9 +612,9 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 for c in hw_clients:
                     try:
                         if c.bootloader_mode:
-                            boot_clients.append(c.client)
+                            boot_clients.append(c.hw_client)
                         else:
-                            c.client.close()
+                            c.hw_client.close()
                     except Exception:
                         pass
 
@@ -789,11 +785,6 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                         ret = True
 
                     elif self.hw_type == HWType.keepkey:
-                    ret = hw_client.firmware_update(firmware_fingerprint, data)
-
-                elif self.hw_type == HWType.keepkey:
-
-                    try:
                         if data[:8] == b'4b504b59':
                             data = binascii.unhexlify(data)
                         self.verify_keepkey_firmware(firmware_fingerprint, data)
@@ -806,21 +797,6 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             log.exception(str(e))
             self.error_msg(str(e))
             ret = False
-                    except Exception as e:
-                        logging.exception('Error while decoding hex data.')
-                        raise Exception(f'Error while decoding hex data: ' + str(e))
-
-                    if data[:4] != b'KPKY':
-                        raise Exception('KeepKey firmware header expected')
-
-                if firmware_fingerprint and firmware_hw_model:
-                    valid, cur_fp = self.verify_hw_firmware_fingerprint(firmware_hw_model, data, firmware_fingerprint)
-
-                    if not valid:
-                        raise Exception(f'Firmware fingerpring mismatch, expected: '
-                                        f'{firmware_fingerprint}, current: {cur_fp}')
-
-                    ret = hw_client.firmware_update(fp=BytesIO(data))
 
         return ret
 
@@ -1359,7 +1335,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 device_id = dev.device_id
                 label = dev.get_description()
                 model = dev.device_model
-                client = dev.client
+                client = dev.hw_client
                 self.hw_device_instances.append([device_id, label, model, client])
                 self.cboDeviceInstance.addItem(label)
 

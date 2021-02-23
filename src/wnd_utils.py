@@ -15,7 +15,7 @@ import app_defs
 import app_utils
 import thread_utils
 import time
-from PyQt5 import QtWidgets, QtCore
+from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEvent, QPointF, QSize, QModelIndex, QRect, \
     QRectF
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap, QTextDocument, QCursor, \
@@ -360,6 +360,19 @@ class WndUtils:
                 del item
             else:
                 raise Exception('Invalid item type')
+
+    @staticmethod
+    def change_widget_font_attrs(control: QWidget, point_size_diff: Optional[int] = None, bold: Optional[bool] = None,
+                                 weight: Optional[int] = None):
+        font = QtGui.QFont()
+        if point_size_diff is not None:
+            font.setPointSize(control.font().pointSize() + point_size_diff)
+        if bold is not None:
+            font.setBold(bold)
+        if weight is not None:
+            font.setWeight(weight)
+        control.setFont(font)
+
 
 class DeadlockException(Exception):
     pass

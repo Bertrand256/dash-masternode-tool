@@ -188,24 +188,6 @@ def firmware_update(hw_client, raw_data: bytes):
         raise Exception('Ledger Nano S is not supported.')
 
 
-def change_pin(hw_client, remove=False):
-    hw_type = get_hw_type_from_client(hw_client)
-    if hw_type == HWType.trezor:
-
-        return trezor.change_pin(hw_client, remove)
-
-    elif hw_type == HWType.keepkey:
-
-        return keepkey.change_pin(hw_client, remove)
-
-    elif hw_type == HWType.ledger_nano:
-
-        raise Exception('Ledger Nano S is not supported.')
-
-    else:
-        logging.error('Invalid HW type: ' + str(hw_type))
-
-
 def action_on_device_message(message=DEFAULT_HW_BUSY_MESSAGE, title=DEFAULT_HW_BUSY_TITLE):
     def decorator_f(func):
         def wrapped_f(*args, **kwargs):
@@ -254,19 +236,32 @@ def ping_device(hw_device: HWDevice, message: str):
                         '<br>Click "Sign" on the device to close this dialog.</b>'
         ctrl.display_msg_fun(display_label)
         try:
-            ledger.sign_message(hw_device.client, dash_utils.get_default_bip32_path('MAINNET'), message, None)
+            ledger.sign_message(hw_device.hw_client, dash_utils.get_default_bip32_path('MAINNET'), message, None)
         except CancelException:
             pass
 
     if hw_device.hw_type == HWType.trezor:
-        trezor.ping(hw_device.client, message)
+        trezor.ping(hw_device.hw_client, message)
     elif hw_device.hw_type == HWType.keepkey:
-        keepkey.ping(hw_device.client, message)
+        keepkey.ping(hw_device.hw_client, message)
     elif hw_device.hw_type == HWType.ledger_nano:
         WndUtils.run_thread_dialog(ledger_ping, (), True, force_close_dlg_callback=partial(cancel_hw_thread_dialog,
-                                                                                    hw_device.client))
+                                                                                           hw_device.hw_client))
     else:
         logging.error('Invalid HW type: ' + str(hw_device.hw_type))
+
+
+@action_on_device_message()
+def change_pin(hw_client, remove=False):
+    hw_type = get_hw_type_from_client(hw_client)
+    if hw_type == HWType.trezor:
+        return trezor.change_pin(hw_client, remove)
+    elif hw_type == HWType.keepkey:
+        return keepkey.change_pin(hw_client, remove)
+    elif hw_type == HWType.ledger_nano:
+        raise Exception('Ledger Nano S is not supported.')
+    else:
+        logging.error('Invalid HW type: ' + str(hw_type))
 
 
 @action_on_device_message()
@@ -529,7 +524,7 @@ class HWDevices(QObject):
     def save_state(self):
         connected_devices = []
         for dev in self.__hw_devices:
-            if dev.client:
+            if dev.hw_client:
                 connected_devices.append(dev.device_id)
         self.__saved_states.append(HWDevices.HWDevicesState(connected_devices, self.__hw_device_id_selected))
 
@@ -537,14 +532,23 @@ class HWDevices(QObject):
         if self.__saved_states:
             state = self.__saved_states.pop()
 
-            # reconnect all devices being previously connected
+            # reconnect all the devices that were connected during the call of 'save_state'
             for dev_id in state.connected_device_ids:
                 dev = self.get_device_by_id(dev_id)
-                if dev and not dev.client:
+                if dev and not dev.hw_client:
                     try:
                         self.open_hw_session(dev)
                     except Exception as e:
                         log.error(f'Cannot reconnect device {dev.device_id} due to the following error: ' + str(e))
+
+            # disconnect all the currently connected devices where weren't connected
+            # during save_state
+            for dev in self.__hw_devices:
+                if dev.hw_client and dev.device_id not in state.connected_device_ids:
+                    try:
+                        self.close_hw_session(dev)
+                    except Exception as e:
+                        log.error(f'Cannot disconnect device {dev.device_id} due to the following error: ' + str(e))
 
             # restore the currently selected device
             if state.device_id_selected and self.__hw_device_id_selected != state.device_id_selected:
@@ -574,9 +578,9 @@ class HWDevices(QObject):
     def close_all_hw_clients(self):
         try:
             for idx, hw_inst in enumerate(self.__hw_devices):
-                if hw_inst.client:
-                    hw_inst.client.close()
-                    hw_inst.client = None
+                if hw_inst.hw_client:
+                    hw_inst.hw_client.close()
+                    hw_inst.hw_client = None
         except Exception as e:
             logging.exception(str(e))
 
@@ -591,7 +595,7 @@ class HWDevices(QObject):
     def set_hw_types_allowed(self, allowed: Tuple[HWType]):
         self.__hw_types_allowed = allowed[:]
 
-    def get_selected_device_index(self):
+    def get_selected_device_index(self) -> int:
         return next((i for i, device in enumerate(self.__hw_devices)
                      if device.device_id == self.__hw_device_id_selected), -1)
 
@@ -629,29 +633,29 @@ class HWDevices(QObject):
             raise Exception('Device index out of bounds.')
 
     def open_hw_session(self, hw_device: HWDevice):
-        if not hw_device.client:
+        if not hw_device.hw_client:
             if hw_device.hw_type == HWType.trezor:
-                hw_device.client = trezor.open_session(hw_device.transport)
+                hw_device.hw_client = trezor.open_session(hw_device.transport)
             elif hw_device.hw_type == HWType.keepkey:
-                hw_device.client = keepkey.open_session(hw_device.device_id, self.__passphrase_encoding)
+                hw_device.hw_client = keepkey.open_session(hw_device.device_id, self.__passphrase_encoding)
             elif hw_device.hw_type == HWType.ledger_nano:
-                hw_device.client = ledger.open_session(cast(ledger.HIDDongleHIDAPI, hw_device.transport))
+                hw_device.hw_client = ledger.open_session(cast(ledger.HIDDongleHIDAPI, hw_device.transport))
             else:
                 raise Exception('Invalid HW type: ' + str(hw_device.hw_type))
 
     @staticmethod
     def close_hw_session(hw_device: HWDevice):
-        if hw_device.client:
+        if hw_device.hw_client:
             try:
                 if hw_device.hw_type == HWType.trezor:
-                    trezor.close_session(hw_device.client)
+                    trezor.close_session(hw_device.hw_client)
                 elif hw_device.hw_type == HWType.keepkey:
-                    keepkey.close_session(hw_device.client)
+                    keepkey.close_session(hw_device.hw_client)
                 elif hw_device.hw_type == HWType.ledger_nano:
                     ledger.close_session(cast(ledger.HIDDongleHIDAPI, hw_device.transport))
 
-                del hw_device.client
-                hw_device.client = None
+                del hw_device.hw_client
+                hw_device.hw_client = None
             except Exception:
                 # probably already disconnected
                 logging.exception('Disconnect HW error')
@@ -668,7 +672,7 @@ class HWDevices(QObject):
     def ping_device(self, hw_device: HWDevice):
         opened_session_here = False
         try:
-            if not hw_device.client:
+            if not hw_device.hw_client:
                 self.open_hw_session(hw_device)
                 opened_session_here = True
             ping_device(hw_device, 'Hello from DMT')
@@ -679,7 +683,6 @@ class HWDevices(QObject):
                 self.close_hw_session(hw_device)
 
     def reload_devices(self) -> bool:
-        device_list_changed = False
         try:
             prev_dev_list = [d.device_id for d in self.__hw_devices]
             prev_dev_list.sort()
@@ -737,7 +740,7 @@ class HwSessionInfo(HWSessionBase):
     def get_hw_client(self) -> Optional[object]:
         hw_device = self.hw_device
         if hw_device:
-            return hw_device.client
+            return hw_device.hw_client
         return None
 
     @property
@@ -803,7 +806,7 @@ class HwSessionInfo(HWSessionBase):
             pub = WndUtils.run_thread_dialog(
                 call_get_public_node, (get_public_node_fun, path_n),
                 title=DEFAULT_HW_BUSY_TITLE, text=DEFAULT_HW_BUSY_MESSAGE,
-                force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_device_.client),
+                force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_device_.hw_client),
                 show_window_delay_ms=1000)
 
             if pub:
@@ -819,7 +822,7 @@ class HwSessionInfo(HWSessionBase):
         try:
             if hw_device.hw_type == HWType.trezor:
                 try:
-                    fun = partial(trezorlib.btc.get_public_node, hw_device.client)
+                    fun = partial(trezorlib.btc.get_public_node, hw_device.hw_client)
                     get_session_info_trezor(fun, hw_device)
                 except trezorlib.exceptions.Cancelled:
                     raise CancelException()
@@ -828,7 +831,7 @@ class HwSessionInfo(HWSessionBase):
 
             elif hw_device.hw_type == HWType.keepkey:
                 try:
-                    get_session_info_trezor(hw_device.client.get_public_node, hw_device)
+                    get_session_info_trezor(hw_device.hw_client.get_public_node, hw_device)
                 except keepkeylib.client.PinException as e:
                     raise HWPinException(e.args[1])
 
@@ -838,7 +841,7 @@ class HwSessionInfo(HWSessionBase):
                 self.set_base_info(path, ap['publicKey'])
 
         except CancelException:
-            cancel_hw_operation(hw_device.client)
+            cancel_hw_operation(hw_device.hw_client)
             self.__hw_devices.close_hw_session(hw_device)
             raise
         except Exception:

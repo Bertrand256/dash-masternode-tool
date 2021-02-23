@@ -4,11 +4,14 @@ from typing import Callable, Optional, Any, Tuple, List
 import hw_intf
 from hw_common import HWDevice, HWType
 
+
 log = logging.getLogger('dmt.wallet_tools_dlg')
 
 
 class ActionPageBase:
-    def __init__(self):
+    def __init__(self, hw_devices: hw_intf.HWDevices):
+        self.hw_devices = hw_devices
+        self.hw_devices.sig_selected_hw_device_changed.connect(self.on_current_hw_device_changed)
         self.fn_exit_page: Optional[Callable[[], None]] = None
         self.fn_set_action_title: Optional[Callable[[str], None]] = None
         self.fn_set_btn_cancel_visible: Optional[Callable[[bool], None]] = None
@@ -51,6 +54,9 @@ class ActionPageBase:
         self.fn_set_hw_panel_visible = fn_set_hw_panel_visible
 
     def initialize(self):
+        pass
+
+    def on_current_hw_device_changed(self, cur_hw_device: HWDevice):
         pass
 
     def exit_page(self):

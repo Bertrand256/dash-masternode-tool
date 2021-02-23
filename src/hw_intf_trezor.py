@@ -274,7 +274,7 @@ def get_device_list(
                         device_label=client.features.label if client.features.label else None,
                         firmware_version=version,
                         device_model=device_model,
-                        client=client if return_clients else None,
+                        hw_client=client if return_clients else None,
                         bootloader_mode=client.features.bootloader_mode,
                         transport=d
                     ))
@@ -475,7 +475,10 @@ def ping(hw_client, message: str):
 
 def change_pin(hw_client, remove=False):
     if hw_client:
-        device.change_pin(hw_client, remove)
+        try:
+            device.change_pin(hw_client, remove)
+        except exceptions.Cancelled:
+            raise CancelException('Cancelled')
     else:
         raise Exception('HW client not set.')
 

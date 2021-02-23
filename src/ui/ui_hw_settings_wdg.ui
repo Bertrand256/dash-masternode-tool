@@ -6,14 +6,17 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>569</width>
-    <height>399</height>
+    <width>551</width>
+    <height>369</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>Form</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing">
+    <number>6</number>
+   </property>
    <property name="leftMargin">
     <number>0</number>
    </property>
@@ -26,6 +29,28 @@
    <property name="bottomMargin">
     <number>0</number>
    </property>
+   <item>
+    <widget class="QLabel" name="lblMessage">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>0</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>16777215</height>
+      </size>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
    <item>
     <widget class="QFrame" name="fraHwSettings">
      <property name="frameShape">
@@ -52,15 +77,18 @@
         <property name="spacing">
          <number>8</number>
         </property>
-        <item row="3" column="2">
-         <widget class="QPushButton" name="btnEnDisPassAlwaysOnDevice">
+        <item row="2" column="2">
+         <widget class="QPushButton" name="btnEnDisPass">
           <property name="text">
            <string>Disable</string>
           </property>
+          <property name="autoDefault">
+           <bool>false</bool>
+          </property>
          </widget>
         </item>
-        <item row="1" column="1">
-         <widget class="QLabel" name="lblPinStatus">
+        <item row="3" column="1">
+         <widget class="QLabel" name="lblPassAlwaysOnDeviceStatus">
           <property name="text">
            <string>enabled</string>
           </property>
@@ -77,15 +105,31 @@
           <property name="text">
            <string>Passphrase always on device:</string>
           </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
          </widget>
         </item>
-        <item row="1" column="2">
-         <widget class="QPushButton" name="btnEnDisPin">
+        <item row="0" column="0">
+         <widget class="QLabel" name="lblFirmwareVersionLabel">
+          <property name="font">
+           <font>
+            <weight>50</weight>
+            <bold>false</bold>
+           </font>
+          </property>
+          <property name="text">
+           <string>Firmware version:</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="2">
+         <widget class="QPushButton" name="btnEnDisPassAlwaysOnDevice">
           <property name="text">
            <string>Disable</string>
-          </property>
-          <property name="autoDefault">
-           <bool>false</bool>
           </property>
          </widget>
         </item>
@@ -100,6 +144,58 @@
           <property name="text">
            <string>Passphrase:</string>
           </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="lblPinStatusLabel">
+          <property name="font">
+           <font>
+            <weight>50</weight>
+            <bold>false</bold>
+           </font>
+          </property>
+          <property name="text">
+           <string>PIN:</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="0">
+         <widget class="QLabel" name="lblWipeCodeLabel">
+          <property name="font">
+           <font>
+            <weight>50</weight>
+            <bold>false</bold>
+           </font>
+          </property>
+          <property name="text">
+           <string>Wipe code:</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="1">
+         <widget class="QLabel" name="lblWipeCodeStatus">
+          <property name="text">
+           <string>enabled</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="3">
+         <widget class="QPushButton" name="btnChangePin">
+          <property name="text">
+           <string>Change</string>
+          </property>
+          <property name="autoDefault">
+           <bool>false</bool>
+          </property>
          </widget>
         </item>
         <item row="2" column="1">
@@ -109,16 +205,10 @@
           </property>
          </widget>
         </item>
-        <item row="0" column="0">
-         <widget class="QLabel" name="lblFirmwareVersionLabel">
-          <property name="font">
-           <font>
-            <weight>50</weight>
-            <bold>false</bold>
-           </font>
-          </property>
+        <item row="1" column="1">
+         <widget class="QLabel" name="lblPinStatus">
           <property name="text">
-           <string>Firmware version:</string>
+           <string>enabled</string>
           </property>
          </widget>
         </item>
@@ -135,46 +225,6 @@
           </property>
          </widget>
         </item>
-        <item row="1" column="3">
-         <widget class="QPushButton" name="btnChangePin">
-          <property name="text">
-           <string>Change</string>
-          </property>
-          <property name="autoDefault">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="0">
-         <widget class="QLabel" name="lblPinStatusLabel">
-          <property name="font">
-           <font>
-            <weight>50</weight>
-            <bold>false</bold>
-           </font>
-          </property>
-          <property name="text">
-           <string>PIN:</string>
-          </property>
-         </widget>
-        </item>
-        <item row="3" column="1">
-         <widget class="QLabel" name="lblPassAlwaysOnDeviceStatus">
-          <property name="text">
-           <string>enabled</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="2">
-         <widget class="QPushButton" name="btnEnDisPass">
-          <property name="text">
-           <string>Disable</string>
-          </property>
-          <property name="autoDefault">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
         <item row="4" column="2">
          <widget class="QPushButton" name="btnEnDisWipeCode">
           <property name="text">
@@ -182,23 +232,44 @@
           </property>
          </widget>
         </item>
-        <item row="4" column="0">
-         <widget class="QLabel" name="lblWipeCodeLabel">
-          <property name="font">
-           <font>
-            <weight>50</weight>
-            <bold>false</bold>
-           </font>
-          </property>
+        <item row="1" column="2">
+         <widget class="QPushButton" name="btnEnDisPin">
           <property name="text">
-           <string>Wipe code:</string>
+           <string>Disable</string>
+          </property>
+          <property name="autoDefault">
+           <bool>false</bool>
           </property>
          </widget>
         </item>
-        <item row="4" column="1">
-         <widget class="QLabel" name="lblWipeCodeStatus">
+        <item row="5" column="0">
+         <widget class="QLabel" name="lblSDCardProtectionLabel">
+          <property name="text">
+           <string>SD card protection:</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="1">
+         <widget class="QLabel" name="lblSDCardProtectionStatus">
           <property name="text">
            <string>enabled</string>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="2">
+         <widget class="QPushButton" name="btnEnDisSDCardProtection">
+          <property name="text">
+           <string>Disable</string>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="3">
+         <widget class="QPushButton" name="btnRefreshSDCardProtection">
+          <property name="text">
+           <string>Refresh</string>
           </property>
          </widget>
         </item>

@@ -22,6 +22,13 @@
     </widget>
    </item>
    <item>
+    <widget class="Line" name="line">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QStackedWidget" name="tabsMain">
      <property name="currentIndex">
       <number>0</number>
@@ -78,13 +85,6 @@
            <widget class="QCommandLinkButton" name="actUpdateHwFirmware">
             <property name="text">
              <string>Update hardware wallet firmware</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QCommandLinkButton" name="actSplitMergeSeed">
-            <property name="text">
-             <string>Split/merge seed words</string>
             </property>
            </widget>
           </item>

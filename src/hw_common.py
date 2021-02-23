@@ -88,14 +88,14 @@ class HWDevice(object):
     """
     def __init__(self, hw_type: HWType, device_id: Optional[str], device_label: Optional[str],
                  device_model: Optional[str], firmware_version: Optional[str],
-                 client: Any, bootloader_mode: bool, transport: Optional[object]):
+                 hw_client: Any, bootloader_mode: bool, transport: Optional[object]):
         self.transport = transport
         self.hw_type: HWType = hw_type
         self.device_id = device_id
         self.device_label = device_label
         self.firmware_version = firmware_version
         self.device_model = device_model
-        self.client = client
+        self.hw_client = hw_client
         self.bootloader_mode = bootloader_mode
 
     def get_description(self):
