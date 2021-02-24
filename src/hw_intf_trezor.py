@@ -265,7 +265,7 @@ def get_device_list(
 
                 version = f'{client.features.major_version}.{client.features.minor_version}.' \
                           f'{client.features.patch_version}'
-                device_model = 'Trezor ' + {'1': 'One'}.get(client.features.model, client.features.model)
+                device_model = client.features.model
 
                 ret_list.append(
                     hw_common.HWDevice(

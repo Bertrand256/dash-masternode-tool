@@ -8,13 +8,15 @@
     "url": "data/firmware/1/releases.json",
     "official": true,
     "device": "trezor",
-    "model": "1"
+    "model": "1",
+    "testnetSupport": true
   },
   {
     "url_base": "https://wallet.trezor.io",
     "url": "data/firmware/2/releases.json",
     "official": true,
     "device": "trezor",
-    "model": "T"
+    "model": "T",
+    "testnetSupport": true
   }
 ]

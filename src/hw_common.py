@@ -99,9 +99,12 @@ class HWDevice(object):
         self.bootloader_mode = bootloader_mode
 
     def get_description(self):
-        desc = self.device_model
+        if self.hw_type == HWType.trezor:
+            desc = 'Trezor ' + {'1': 'One'}.get(self.device_model, self.device_model)
+        else:
+            desc = self.device_model
         if self.device_label:
-            desc += ' (' + self.device_label +')'
+            desc += ' (' + self.device_label + ')'
         if not desc:
             desc = HWType.get_desc(self.hw_type)
         return desc
