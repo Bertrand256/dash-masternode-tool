@@ -3,12 +3,14 @@
 # Author: Bertrand256
 # Created on: 2017-03
 import binascii
+import hashlib
 import logging
 import unicodedata
+import hid
 from decimal import Decimal
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Generator, Iterator
 
-from keepkeylib.transport_hid import HidTransport
+from keepkeylib.transport_hid import HidTransport, DEVICE_IDS, is_normal_link, is_debug_link
 from keepkeylib.transport_webusb import WebUsbTransport
 from keepkeylib.client import TextUIMixin as keepkey_TextUIMixin
 from keepkeylib.client import ProtocolMixin as keepkey_ProtocolMixin
@@ -76,18 +78,80 @@ class MyKeepkeyClient(keepkey_ProtocolMixin, MyKeepkeyTextUIMixin, keepkey_BaseC
         MyKeepkeyTextUIMixin.__init__(self, transport, ask_for_pin_fun, ask_for_pass_fun, passphrase_encoding)
         keepkey_BaseClient.__init__(self, transport)
 
+    def validate_firmware(self, fingerprint: str, firmware_data: bytes):
+        try:
+            if firmware_data[:8] == b'4b504b59':
+                firmware_data = binascii.unhexlify(firmware_data)
+        except Exception as e:
+            logging.exception('Error while decoding hex data.')
+            raise Exception(f'Error while decoding hex data: ' + str(e))
+
+        if firmware_data[:4] != b'KPKY':
+            raise Exception('KeepKey firmware header expected')
+
+        cur_fp = hashlib.sha256(firmware_data).hexdigest()
+        if fingerprint and cur_fp != fingerprint:
+            raise Exception("Fingerprints do not match.")
 
 
-def enumerate_devices(limit_to_serial_number: Optional[str]):
-    transports = [HidTransport, WebUsbTransport]
+class MyHidTransport(HidTransport):
+    """
+    Class based on Keepkey's HidTransport, the purpose of which is to modify the enumerate method to return
+    the serial number of the hw device, needed when switching between normal and bootloader mode.
+    """
+    def __init__(self, device_paths, *args, **kwargs):
+        super(MyHidTransport, self).__init__(device_paths, *args, **kwargs)
+
+    @classmethod
+    def enumerate(cls):
+        """
+        Slightly modified function
+        """
+        devices = {}
+        for d in hid.enumerate(0, 0):
+            vendor_id = d['vendor_id']
+            product_id = d['product_id']
+            serial_number = d['serial_number']
+            interface_number = d['interface_number']
+            path = d['path']
+
+            # HIDAPI on Mac cannot detect correct HID interfaces, so device with
+            # DebugLink doesn't work on Mac...
+            if devices.get(serial_number) != None and devices[serial_number][0] == path:
+                raise Exception("Two devices with the same path and S/N found. This is Mac, right? :-/")
+
+            if (vendor_id, product_id) in DEVICE_IDS:
+                devices.setdefault(serial_number, [None, None, None])
+                if is_normal_link(d):
+                    devices[serial_number][0] = path
+                elif is_debug_link(d):
+                    devices[serial_number][1] = path
+                else:
+                    raise Exception("Unknown USB interface number: %d" % interface_number)
+                devices[serial_number][2] = serial_number  # to pass serial number we're using the last element
+
+        # List of two-tuples (path_normal, path_debuglink)
+        return list(devices.values())
+
+
+def enumerate_devices(device_id: Optional[str]) -> Iterator[Tuple[type, any, str]]:
+    transports = [MyHidTransport, WebUsbTransport]
     for t in transports:
         for d in t.enumerate():
-            if limit_to_serial_number and hasattr(d, 'getSerialNumber'):
-                if limit_to_serial_number == d.getSerialNumber():
-                    yield t, d
-                    return
+            if d.__class__.__name__ == 'USBDevice' and hasattr(d, 'getSerialNumber'):
+                cur_device_id = d.getSerialNumber()
+            elif t == MyHidTransport and isinstance(d, list) and len(d) >= 3:
+                cur_device_id = d[2]
+                d[2] = None  # restore None in the last element of the list used by MyHidTransport.enumerate
             else:
-                yield t, d
+                cur_device_id = None
+                logging.warning('Could not get the device serial number')
+
+            if not device_id:
+                yield t, d, cur_device_id
+            elif cur_device_id == device_id:
+                yield t, d, cur_device_id
+                break
 
 
 def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[str] = 'NFC',
@@ -98,10 +162,12 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
     device_ids = []
     was_bootloader_mode = False
 
-    for t, d in enumerate_devices(None):
+    for transport_cls, d, serial_number in enumerate_devices(None):
         try:
-            transport = t(d)
+            transport = transport_cls(d)
             client = MyKeepkeyClient(transport, ask_for_pin_callback, ask_for_pass_callback, passphrase_encoding)
+            device_transport_id = hashlib.sha256(str(d).encode('ascii')).hexdigest()
+            device_id = serial_number
 
             if client.features.bootloader_mode:
                 if was_bootloader_mode:
@@ -114,13 +180,7 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
                     continue
                 was_bootloader_mode = True
 
-            device_id = client.get_device_id()
-            if not device_id and d.__class__.__name__ == 'USBDevice' and hasattr(d, 'getSerialNumber'):
-                device_id = d.getSerialNumber()
-
-            if (not client.features.bootloader_mode or allow_bootloader_mode) and \
-                    (device_id not in device_ids or client.features.bootloader_mode):
-
+            if (not client.features.bootloader_mode or allow_bootloader_mode) and device_id not in device_ids:
                 version = f'{client.features.major_version}.{client.features.minor_version}.' \
                           f'{client.features.patch_version}'
                 device_model = 'Keepkey'
@@ -134,7 +194,8 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
                         device_model=device_model,
                         hw_client=client if return_clients else None,
                         bootloader_mode=client.features.bootloader_mode,
-                        transport=None
+                        transport_id=device_transport_id,
+                        initialized=client.features.initialized
                     ))
                 device_ids.append(device_id)  # beware: it's empty in bootloader mode
                 if not return_clients:
@@ -153,8 +214,8 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
 
 
 def open_session(device_id: str, passphrase_encoding: Optional[str] = 'NFC') -> Optional[MyKeepkeyClient]:
-    for t, d in enumerate_devices(device_id):
-        transport = t(d)
+    for transport_cls, d, serial_number in enumerate_devices(device_id):
+        transport = transport_cls(d)
         client = MyKeepkeyClient(transport, ask_for_pin_callback, ask_for_pass_callback, passphrase_encoding)
         if client:
             logging.info('Keepkey connected. Firmware version: %s.%s.%s, vendor: %s, initialized: %s, '

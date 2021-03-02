@@ -18,6 +18,8 @@ DEFAULT_LOG_FORMAT = '%(asctime)s %(levelname)s|%(name)s|%(threadName)s|%(filena
 KnownLoggerType = collections.namedtuple('KnownLoggerType', 'name external')
 APP_PATH = ''
 APP_IMAGE_DIR = ''
+BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) ' \
+                     'Chrome/88.0.4324.152 Safari/537.36'
 
 
 def get_note_url(note_symbol):

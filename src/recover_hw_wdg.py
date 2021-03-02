@@ -2,15 +2,16 @@ from typing import Callable
 
 from PyQt5.QtWidgets import QWidget
 
+from hw_intf import HWDevices
 from ui.ui_recover_hw_wdg import Ui_WdgRecoverHw
 from wallet_tools_common import ActionPageBase
 
 
 class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
-    def __init__(self, parent):
+    def __init__(self, parent, hw_devices: HWDevices):
         QWidget.__init__(self, parent=parent)
         Ui_WdgRecoverHw.__init__(self)
-        ActionPageBase.__init__(self)
+        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices)
         self.setupUi(self)
 
     def setupUi(self, dlg):

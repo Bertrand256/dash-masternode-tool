@@ -9,7 +9,7 @@ import time
 from collections import namedtuple
 from enum import Enum
 from functools import partial
-from typing import List, Union, Callable
+from typing import List, Union, Callable, Optional
 import ipaddress
 
 from PyQt5 import QtWidgets, QtGui
@@ -63,27 +63,27 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.on_proregtx_success_callback = on_proregtx_success_callback
         self.style = '<style>.info{color:darkblue} .warning{color:#ff6600} .error{background-color:red;color:white}</style>'
         self.operator_reward_saved = None
-        self.owner_pkey_generated: str = None
-        self.operator_pkey_generated: str = None
-        self.voting_pkey_generated: str = None
+        self.owner_pkey_generated: Optional[str] = None
+        self.operator_pkey_generated: Optional[str] = None
+        self.voting_pkey_generated: Optional[str] = None
         self.current_step = STEP_MN_DATA
         self.step_stack: List[int] = []
         self.proregtx_prepare_thread_ref = None
         self.deterministic_mns_spork_active = True
-        self.dmn_collateral_tx: str = None
-        self.dmn_collateral_tx_index: int = None
-        self.dmn_collateral_tx_address: str = None
-        self.dmn_collateral_tx_address_path: str = None
-        self.dmn_ip: str = None
-        self.dmn_tcp_port: int = None
-        self.dmn_owner_payout_addr: str = None
+        self.dmn_collateral_tx: Optional[str] = None
+        self.dmn_collateral_tx_index: Optional[int] = None
+        self.dmn_collateral_tx_address: Optional[str] = None
+        self.dmn_collateral_tx_address_path: Optional[str] = None
+        self.dmn_ip: Optional[str] = None
+        self.dmn_tcp_port: Optional[int] = None
+        self.dmn_owner_payout_addr: Optional[str] = None
         self.dmn_operator_reward: int = 0
-        self.dmn_owner_privkey: str = None
-        self.dmn_owner_address: str = None
-        self.dmn_operator_privkey: str = None
-        self.dmn_operator_pubkey: str = None
-        self.dmn_voting_privkey: str = None
-        self.dmn_voting_address: str = None
+        self.dmn_owner_privkey: Optional[str] = None
+        self.dmn_owner_address: Optional[str] = None
+        self.dmn_operator_privkey: Optional[str] = None
+        self.dmn_operator_pubkey: Optional[str] = None
+        self.dmn_voting_privkey: Optional[str] = None
+        self.dmn_voting_address: Optional[str] = None
         self.dmn_owner_key_type = InputKeyType.PRIVATE
         self.dmn_operator_key_type = InputKeyType.PRIVATE
         self.dmn_voting_key_type = InputKeyType.PRIVATE
@@ -98,7 +98,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
         self.dmn_reg_tx_hash = ''
         self.manual_signed_message = False
-        self.last_manual_prepare_string: str = None
+        self.last_manual_prepare_string: Optional[str] = None
         self.wait_for_confirmation_timer_id = None
         self.show_field_hinds = True
         self.summary_info = []

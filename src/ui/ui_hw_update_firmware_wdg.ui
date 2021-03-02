@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>836</width>
-    <height>469</height>
+    <height>447</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -37,7 +37,7 @@
      <widget class="QWidget" name="page1">
       <layout class="QVBoxLayout" name="verticalLayout_3">
        <property name="spacing">
-        <number>6</number>
+        <number>12</number>
        </property>
        <property name="leftMargin">
         <number>0</number>
@@ -52,6 +52,13 @@
         <number>0</number>
        </property>
        <item>
+        <widget class="QLabel" name="lblCurrentFirmwareVersion">
+         <property name="text">
+          <string>Your firmware version: ?</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QGroupBox" name="gbFirmwareSourceType">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Maximum" vsizetype="Maximum">
@@ -60,9 +67,9 @@
           </sizepolicy>
          </property>
          <property name="title">
-          <string>Firmware source</string>
+          <string>Source</string>
          </property>
-         <layout class="QVBoxLayout" name="verticalLayout_2">
+         <layout class="QHBoxLayout" name="horizontalLayout">
           <property name="leftMargin">
            <number>6</number>
           </property>
@@ -100,7 +107,7 @@
              </sizepolicy>
             </property>
             <property name="text">
-             <string>Local file</string>
+             <string>File</string>
             </property>
             <property name="checked">
              <bool>false</bool>
@@ -171,7 +178,7 @@
         </widget>
        </item>
        <item>
-        <widget class="QTextEdit" name="edtFirmwareNotes">
+        <widget class="QTextBrowser" name="edtFirmwareNotes">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
            <horstretch>0</horstretch>
@@ -184,7 +191,7 @@
            <height>16777215</height>
           </size>
          </property>
-         <property name="readOnly">
+         <property name="openExternalLinks">
           <bool>true</bool>
          </property>
         </widget>
@@ -210,7 +217,7 @@
      <widget class="QWidget" name="page2">
       <layout class="QVBoxLayout" name="verticalLayout">
        <property name="spacing">
-        <number>6</number>
+        <number>-1</number>
        </property>
        <property name="leftMargin">
         <number>0</number>
@@ -225,17 +232,15 @@
         <number>0</number>
        </property>
        <item>
-        <widget class="QCheckBox" name="chbWipeDevice">
-         <property name="toolTip">
-          <string>Check if you would like to wipe your device data (seed, pin) during the process.
-This is highly recommended if you are uploading an unofficial firmware.
-For an official firmware, you can uncheck this option.</string>
-         </property>
+        <widget class="QLabel" name="lblPrepareFirmwareMessage">
          <property name="text">
-          <string>Clear device data when updating firmware</string>
+          <string/>
          </property>
-         <property name="checked">
-          <bool>false</bool>
+         <property name="alignment">
+          <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+         </property>
+         <property name="openExternalLinks">
+          <bool>true</bool>
          </property>
         </widget>
        </item>
@@ -255,6 +260,42 @@ For an official firmware, you can uncheck this option.</string>
       </layout>
      </widget>
      <widget class="QWidget" name="page3">
+      <layout class="QVBoxLayout" name="verticalLayout_2">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QLabel" name="lblUploadFirmwareMessage">
+         <property name="text">
+          <string/>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_3">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>420</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="page4">
       <layout class="QVBoxLayout" name="verticalLayout_5">
        <property name="leftMargin">
         <number>0</number>

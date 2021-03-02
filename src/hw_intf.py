@@ -3,11 +3,14 @@
 # Author: Bertrand256
 # Created on: 2017-03
 import hashlib
+import re
+import urllib, urllib.request, urllib.parse
 from functools import partial
 from io import BytesIO
 from typing import Optional, Tuple, List, ByteString, Dict, cast
 import sys
 
+import simplejson
 import trezorlib
 import trezorlib.btc
 import trezorlib.exceptions
@@ -19,11 +22,12 @@ from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QDialog, QWidget
 from trezorlib.tools import Address
 
+import app_defs
 import dash_utils
 from app_runtime_data import AppRuntimeData
 from dash_utils import bip32_path_n_to_string
 from hw_common import HWType, HWDevice, HWPinException, get_hw_type_from_client, HWNotConnectedException, \
-    DEFAULT_HW_BUSY_TITLE, DEFAULT_HW_BUSY_MESSAGE, HWSessionBase
+    DEFAULT_HW_BUSY_TITLE, DEFAULT_HW_BUSY_MESSAGE, HWSessionBase, HWFirmwareWebLocation
 import logging
 from wallet_common import UtxoType, TxOutputType
 from wnd_utils import WndUtils
@@ -31,7 +35,7 @@ import hw_intf_ledgernano as ledger
 import hw_intf_keepkey as keepkey
 import hw_intf_trezor as trezor
 from app_defs import get_note_url
-from app_utils import SHA256
+from app_utils import SHA256, url_path_join
 from common import CancelException, InternalError
 from thread_utils import EnhRLock
 
@@ -497,9 +501,15 @@ class HWDevices(QObject):
     __instance = None
 
     class HWDevicesState:
-        def __init__(self, connected_dev_ids: List[str], selected_device_id: Optional[str]):
+        def __init__(self, connected_dev_ids: List[str], selected_device_id: Optional[str],
+                     selected_device_model: Optional[str],
+                     selected_device_bootloader_mode: Optional[bool],
+                     allow_bootloader_mode: bool):
             self.connected_device_ids: List[str] = connected_dev_ids
             self.device_id_selected: Optional[str] = selected_device_id
+            self.selected_device_model = selected_device_model
+            self.selected_device_bootloader_mode = selected_device_bootloader_mode
+            self.allow_bootloader_mode: bool = allow_bootloader_mode
 
     @staticmethod
     def get_instance() -> 'HWDevices':
@@ -512,6 +522,8 @@ class HWDevices(QObject):
         HWDevices.__instance = self
         self.__hw_devices: List[HWDevice] = []
         self.__hw_device_id_selected: Optional[str] = None  # device id of the hw client selected
+        self.__selected_device_bootloader_mode: Optional[bool] = None
+        self.__selected_device_model: Optional[str] = None
         self.__devices_fetched = False
         self.__use_webusb = use_webusb
         self.__use_bridge = use_bridge
@@ -520,17 +532,24 @@ class HWDevices(QObject):
         self.__hw_types_allowed: Tuple[HWType, ...] = (HWType.trezor, HWType.keepkey, HWType.ledger_nano)
         self.__passphrase_encoding: Optional[str] = passphrase_encoding
         self.__saved_states: List[HWDevices.HWDevicesState] = []
+        self.__allow_bootloader_mode: bool = False
+
+    def set_allow_bootloader_mode(self, allow: bool):
+        self.__allow_bootloader_mode = allow
 
     def save_state(self):
         connected_devices = []
         for dev in self.__hw_devices:
             if dev.hw_client:
                 connected_devices.append(dev.device_id)
-        self.__saved_states.append(HWDevices.HWDevicesState(connected_devices, self.__hw_device_id_selected))
+        self.__saved_states.append(HWDevices.HWDevicesState(
+            connected_devices, self.__hw_device_id_selected, self.__selected_device_model,
+            self.__selected_device_bootloader_mode, self.__allow_bootloader_mode))
 
     def restore_state(self):
         if self.__saved_states:
             state = self.__saved_states.pop()
+            self.__allow_bootloader_mode = state.allow_bootloader_mode
 
             # reconnect all the devices that were connected during the call of 'save_state'
             for dev_id in state.connected_device_ids:
@@ -551,7 +570,9 @@ class HWDevices(QObject):
                         log.error(f'Cannot disconnect device {dev.device_id} due to the following error: ' + str(e))
 
             # restore the currently selected device
-            if state.device_id_selected and self.__hw_device_id_selected != state.device_id_selected:
+            if state.device_id_selected and (self.__hw_device_id_selected != state.device_id_selected or
+              self.__selected_device_model != state.selected_device_model or
+              self.__selected_device_bootloader_mode != state.selected_device_bootloader_mode):
                 dev = self.get_device_by_id(state.device_id_selected)
                 if dev:
                     self.set_current_device(dev)
@@ -568,12 +589,16 @@ class HWDevices(QObject):
             self.__hw_devices = get_device_list(
                 hw_types=self.__hw_types_allowed, return_clients=False, use_webusb=self.__use_webusb,
                 use_bridge=self.__use_bridge, use_udp=self.__use_udp, use_hid=self.__use_hid,
-                passphrase_encoding=self.__passphrase_encoding)
+                passphrase_encoding=self.__passphrase_encoding,
+                allow_bootloader_mode=self.__allow_bootloader_mode
+            )
 
             self.__devices_fetched = True
             if self.__hw_device_id_selected:
                 if self.get_selected_device_index() is None:
                     self.__hw_device_id_selected = None
+                    self.__selected_device_model = None
+                    self.__selected_device_bootloader_mode = None
 
     def close_all_hw_clients(self):
         try:
@@ -591,6 +616,8 @@ class HWDevices(QObject):
     def clear(self):
         self.clear_devices()
         self.__hw_device_id_selected = None
+        self.__selected_device_model = None
+        self.__selected_device_bootloader_mode = None
 
     def set_hw_types_allowed(self, allowed: Tuple[HWType]):
         self.__hw_types_allowed = allowed[:]
@@ -620,8 +647,11 @@ class HWDevices(QObject):
             if self.__hw_device_id_selected:
                 self.sig_selected_hw_device_changed.emit(device)  # we are deselecting hw device
         elif device in self.__hw_devices:
-            if device.device_id != self.__hw_device_id_selected:
+            if device.device_id != self.__hw_device_id_selected or device.device_model != self.__selected_device_model \
+                or device.bootloader_mode != self.__selected_device_bootloader_mode:
                 self.__hw_device_id_selected = device.device_id
+                self.__selected_device_model = device.device_model
+                self.__selected_device_bootloader_mode = device.bootloader_mode
                 self.sig_selected_hw_device_changed.emit(device)
         else:
             raise Exception('Non existent hw device object.')
@@ -632,14 +662,25 @@ class HWDevices(QObject):
         else:
             raise Exception('Device index out of bounds.')
 
-    def open_hw_session(self, hw_device: HWDevice):
+    def open_hw_session(self, hw_device: HWDevice, force_reconnect: bool = False):
+        if hw_device.hw_client and force_reconnect:
+            self.close_hw_session(hw_device)
+
         if not hw_device.hw_client:
             if hw_device.hw_type == HWType.trezor:
-                hw_device.hw_client = trezor.open_session(hw_device.transport)
+                hw_device.hw_client = trezor.open_session(hw_device.device_id, hw_device.transport_id)
+                if hw_device.hw_client and hw_device.hw_client.features:
+                    hw_device.bootloader_mode = hw_device.hw_client.features.bootloader_mode
+                else:
+                    hw_device.bootloader_mode = False
             elif hw_device.hw_type == HWType.keepkey:
                 hw_device.hw_client = keepkey.open_session(hw_device.device_id, self.__passphrase_encoding)
+                if hw_device.hw_client and hw_device.hw_client.features:
+                    hw_device.bootloader_mode = hw_device.hw_client.features.bootloader_mode
+                else:
+                    hw_device.bootloader_mode = False
             elif hw_device.hw_type == HWType.ledger_nano:
-                hw_device.hw_client = ledger.open_session(cast(ledger.HIDDongleHIDAPI, hw_device.transport))
+                hw_device.hw_client = ledger.open_session(cast(ledger.HIDDongleHIDAPI, hw_device.transport_id))
             else:
                 raise Exception('Invalid HW type: ' + str(hw_device.hw_type))
 
@@ -652,7 +693,7 @@ class HWDevices(QObject):
                 elif hw_device.hw_type == HWType.keepkey:
                     keepkey.close_session(hw_device.hw_client)
                 elif hw_device.hw_type == HWType.ledger_nano:
-                    ledger.close_session(cast(ledger.HIDDongleHIDAPI, hw_device.transport))
+                    ledger.close_session(cast(ledger.HIDDongleHIDAPI, hw_device.transport_id))
 
                 del hw_device.hw_client
                 hw_device.hw_client = None
@@ -684,13 +725,13 @@ class HWDevices(QObject):
 
     def reload_devices(self) -> bool:
         try:
-            prev_dev_list = [d.device_id for d in self.__hw_devices]
+            prev_dev_list = [(d.device_id + str(d.bootloader_mode) + str(d.device_model) if d.device_id else '?') for d in self.__hw_devices]
             prev_dev_list.sort()
 
             self.save_state()
             self.load_hw_devices(True)
 
-            cur_dev_list = [d.device_id for d in self.__hw_devices]
+            cur_dev_list = [(d.device_id + str(d.bootloader_mode) + str(d.device_model) if d.device_id else '?') for d in self.__hw_devices]
             cur_dev_list.sort()
 
             device_list_changed = (','.join(prev_dev_list) != ','.join(cur_dev_list))
@@ -1001,7 +1042,7 @@ class HWDevicesListWdg(QWidget):
 
             rb = QtWidgets.QRadioButton(self)
             rb.setText(dev.get_description())
-            rb.toggled.connect(partial(self.on_device_rb_toggled, dev))
+            rb.toggled.connect(partial(self.on_device_rb_toggled, idx))
             if selected_device == dev:
                 rb.setChecked(True)
 
@@ -1019,8 +1060,10 @@ class HWDevicesListWdg(QWidget):
 
             insert_idx += 1
 
-    def on_device_rb_toggled(self, hw_device: HWDevice, checked: bool):
-        self.sig_device_toggled.emit(hw_device, checked)
+    def on_device_rb_toggled(self, hw_device_index: int, checked: bool):
+        devs = self.hw_devices.get_devices()
+        if 0 <= hw_device_index < len(devs):
+            self.sig_device_toggled.emit(devs[hw_device_index], checked)
 
     def on_hw_show_link_activated(self, hw_device, link):
         try:
@@ -1431,3 +1474,146 @@ def hw_decrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
                                       force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
 
 
+def get_hw_firmware_web_sources(hw_types: Tuple[HWType, ...], only_official=True) -> List[HWFirmwareWebLocation]:
+
+    def get_trezor_firmware_list_from_url(
+            base_url: str, list_url: str, official_source: bool = False, only_latest: bool = False,
+            model: Optional[str] = None, testnet_support: bool = False) -> List[HWFirmwareWebLocation]:
+
+        ret_fw_sources_: List[HWFirmwareWebLocation] = []
+        r = urllib.request.Request(list_url, data=None, headers={'User-Agent': app_defs.BROWSER_USER_AGENT})
+        f = urllib.request.urlopen(r)
+        c = f.read()
+        fw_list = simplejson.loads(c)
+        latest_version = ''
+        for idx, f in enumerate(fw_list):
+            url_ = url_path_join(base_url, f.get('url'))
+            version = f.get('version')
+            if isinstance(version, list):
+                version = '.'.join(str(x) for x in version)
+            else:
+                version = str(version)
+            if idx == 0:
+                latest_version = version
+
+            if not only_latest or version == latest_version:
+                ret_fw_sources_.append(
+                    HWFirmwareWebLocation(
+                        version=version,
+                        url=url_,
+                        device=HWType.trezor,
+                        official=official_source,
+                        model=f.get('model') if f.get('model') else model,
+                        testnet_support=testnet_support,
+                        notes=f.get('notes', ''),
+                        fingerprint=f.get('fingerprint', ''),
+                        changelog=f.get('changelog', '')
+                    ))
+        return ret_fw_sources_
+
+    def get_keepkey_firmware_list_from_url(
+            base_url: str, list_url: str, official_source: bool = False, only_latest: bool = False,
+            testnet_support: bool = False) -> List[HWFirmwareWebLocation]:
+        """
+        Keepkey releases json format as of March 2021:
+        {
+          "latest": {
+            "firmware": {
+              "version": "v6.7.0",
+              "url": "v6.7.0/firmware.keepkey.bin"
+            },
+            "bootloader": {
+              "version": "v1.1.0",
+              "url": "bl_v1.1.0/blupdater.bin"
+            }
+          },
+          "hashes": {
+            "bootloader": {
+              "6397c446f6b9002a8b150bf4b9b4e0bb66800ed099b881ca49700139b0559f10": "v1.0.0",
+              .....
+              "9bf1580d1b21250f922b68794cdadd6c8e166ae5b15ce160a42f8c44a2f05936": "v2.0.0"
+            },
+            "firmware": {
+              "24071db7596f0824e51ce971c1ec39ac5a07e7a5bcaf5f1b33313de844e25580": "v6.7.0",
+              ....
+              "a05b992c1cadb151117704a03af8b7020482061200ce7bc72f90e8e4aba01a4f": "v5.11.0"
+            }
+          }
+        }
+        """
+        ret_fw_sources_: List[HWFirmwareWebLocation] = []
+
+        # Shapeshift doesn't allow querying their sites with firmware releases from non-browser code (error 403),
+        # so we need to pass some browser-looking "user agent" value.
+        r = urllib.request.Request(list_url, data=None, headers={'User-Agent': app_defs.BROWSER_USER_AGENT})
+        f = urllib.request.urlopen(r)
+        c = f.read()
+        fw_list = simplejson.loads(c)
+        latest_version = ''
+        if fw_list.get('latest') and fw_list.get('latest').get('firmware'):
+            latest_version = fw_list['latest']['firmware'].get('version')
+            latest_url = fw_list['latest']['firmware'].get('url')
+
+        if fw_list.get('hashes') and fw_list.get('hashes').get('firmware'):
+            hf = fw_list.get('hashes').get('firmware')
+            if isinstance(hf, dict):
+                for hash in hf:
+                    version = hf[hash]
+                    url_ = url_path_join(base_url, version, 'firmware.keepkey.bin')
+                    if version.startswith('v'):
+                        version = version[1:]
+                    if not only_latest or version == latest_version:
+                        ret_fw_sources_.append(
+                            HWFirmwareWebLocation(
+                                version=version,
+                                url=url_,
+                                device=HWType.keepkey,
+                                official=official_source,
+                                model='',
+                                testnet_support=testnet_support,
+                                fingerprint=hash
+                            ))
+
+        return ret_fw_sources_
+
+    ret_fw_sources: List[HWFirmwareWebLocation] = []
+
+    try:
+        project_url = app_defs.PROJECT_URL.replace('//github.com', '//raw.githubusercontent.com')
+        url = url_path_join(project_url, 'master', 'hardware-wallets/firmware/firmware-sources.json')
+
+        response = urllib.request.urlopen(url)
+        contents = response.read()
+        for fw_src_def in simplejson.loads(contents):
+            try:
+                official_source = fw_src_def.get('official')
+                device = HWType.from_string(fw_src_def.get('device')) if fw_src_def.get('device') else None
+                model = fw_src_def.get('model')
+                url = fw_src_def.get('url')
+                url_base = fw_src_def.get('url_base')
+                testnet_support = fw_src_def.get('testnetSupport', True)
+                if not url_base:
+                    url_base = project_url
+
+                if not re.match('\s*http(s)?://', url, re.IGNORECASE):
+                    url = url_path_join(url_base, url)
+
+                if only_official is False or official_source is True:
+                    if device in hw_types:
+                        if device == HWType.trezor:
+                            lst = get_trezor_firmware_list_from_url(base_url=url_base, list_url=url,
+                                                                    official_source=official_source,
+                                                                    model=model, testnet_support=testnet_support)
+                            ret_fw_sources.extend(lst)
+                        elif device == HWType.keepkey:
+                            lst = get_keepkey_firmware_list_from_url(base_url=url_base, list_url=url,
+                                                                     official_source=official_source,
+                                                                     testnet_support=testnet_support)
+                            ret_fw_sources.extend(lst)
+
+            except Exception:
+                logging.exception('Exception while processing firmware source')
+    except Exception as e:
+        logging.error('Error while loading hardware-wallets/firmware/releases.json file from GitHub: ' + str(e))
+
+    return ret_fw_sources

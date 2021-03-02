@@ -382,3 +382,18 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+
+
+def url_path_join(url: str, *parts: str) -> str:
+    if url is None:
+        url = ''
+
+    for part in parts:
+        if part:
+            if url and url[-1] == '/' and part[0] == '/':
+                url += part[1:]
+            elif url and url[-1] != '/' and part[0] != '/':
+                url += '/' + part
+            else:
+                url += part
+    return url

@@ -54,11 +54,11 @@ class HWType(Enum):
 
     @staticmethod
     def from_string(hw_type_str: str) -> Optional['HWType']:
-        if hw_type_str == HWType.trezor.value:
+        if hw_type_str.lower() == HWType.trezor.value.lower():
             return HWType.trezor
-        elif hw_type_str == HWType.keepkey.value:
+        elif hw_type_str.lower() == HWType.keepkey.value.lower():
             return HWType.keepkey
-        elif hw_type_str == HWType.ledger_nano.value:
+        elif hw_type_str.lower() == HWType.ledger_nano.value.lower():
             return HWType.ledger_nano
         return None
 
@@ -88,8 +88,9 @@ class HWDevice(object):
     """
     def __init__(self, hw_type: HWType, device_id: Optional[str], device_label: Optional[str],
                  device_model: Optional[str], firmware_version: Optional[str],
-                 hw_client: Any, bootloader_mode: bool, transport: Optional[object]):
-        self.transport = transport
+                 hw_client: Any, bootloader_mode: bool, transport_id: Optional[object],
+                 initialized: bool):
+        self.transport_id = transport_id
         self.hw_type: HWType = hw_type
         self.device_id = device_id
         self.device_label = device_label
@@ -97,17 +98,45 @@ class HWDevice(object):
         self.device_model = device_model
         self.hw_client = hw_client
         self.bootloader_mode = bootloader_mode
+        self.initialized = initialized
 
     def get_description(self):
         if self.hw_type == HWType.trezor:
-            desc = 'Trezor ' + {'1': 'One'}.get(self.device_model, self.device_model)
+            desc = 'Trezor'
+            if self.device_model:
+                desc += ' ' + {'1': 'One'}.get(self.device_model, self.device_model)
         else:
             desc = self.device_model
         if self.device_label:
             desc += ' (' + self.device_label + ')'
         if not desc:
             desc = HWType.get_desc(self.hw_type)
+        if self.bootloader_mode:
+            additional = 'bootloader mode'
+        elif not self.initialized:
+            additional = 'not initiallized'
+        else:
+            additional = ''
+        if additional:
+            desc += ' [' + additional + ']'
         return desc
+
+
+class HWFirmwareWebLocation:
+    def __init__(self, version: str, url: str, device: HWType, official: bool, model: Optional[str],
+                 fingerprint: Optional[str], testnet_support: bool, notes: Optional[str] = None,
+                 changelog: Optional[str] = None, latest: bool = False):
+        self.version: str = version
+        self.url: str = url
+        self.device: HWType = device
+        self.official: bool = official
+        self.model: Optional[str] = model
+        self.testnet_support: bool = testnet_support
+        self.local_file: Optional[str] = None
+        self.notes: Optional[str] = notes
+        self.fingerprint: Optional[str] = fingerprint
+        self.changelog: Optional[str] = changelog
+        self.latest: bool = latest
 
 
 def clean_bip32_path(bip32_path):

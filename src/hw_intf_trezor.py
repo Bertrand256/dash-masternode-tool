@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+import hashlib
 import sys
 from typing import Optional, Tuple, List, Iterable, Type
 import binascii
@@ -30,6 +31,9 @@ from wnd_utils import WndUtils
 
 
 log = logging.getLogger('dmt.hw_intf_trezor')
+
+
+BOOTLOADER_MODE_DUMMY_DEVICE_ID = '0000'
 
 
 class TrezorUi(object):
@@ -92,7 +96,7 @@ class MyTrezorClient(TrezorClient):
         except exceptions.Cancelled:
             raise CancelException('Cancelled')
 
-    def validate_firmware(self, version, fw, expected_fingerprint=None):
+    def validate_firmware_internal(self, version, fw, expected_fingerprint=None):
         """Adapted version of the 'validate_firmware' function from trezorlib"""
         if version == trezorlib.firmware.FirmwareFormat.TREZOR_ONE:
             if fw.embedded_onev2:
@@ -111,7 +115,7 @@ class MyTrezorClient(TrezorClient):
             trezorlib.firmware.validate(version, fw, allow_unsigned=False)
             log.debug("Signatures are valid.")
         except trezorlib.firmware.Unsigned:
-            if WndUtils.queryDlg('No signatures found. Continue?',
+            if WndUtils.query_dlg('No signatures found. Continue?',
                                  buttons=QMessageBox.Yes | QMessageBox.No,
                                  default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.No:
                 raise CancelException()
@@ -137,7 +141,15 @@ class MyTrezorClient(TrezorClient):
             log.error("Expected fingerprint: {}".format(expected_fingerprint))
             raise Exception("Fingerprints do not match, aborting.")
 
-    def firmware_update(self, fingerprint, data):
+    def validate_firmware(self, fingerprint: str, firmware_data: bytes):
+        """
+        Parses and validates firmware without the need to deal with parsing the firmware before validating to
+        meet trezorlib requirements.
+        """
+        version, fw = trezorlib.firmware.parse(firmware_data)
+        self.validate_firmware_internal(version, fw, fingerprint)
+
+    def firmware_update(self, fingerprint: str, firmware_data: bytes):
         """Adapted version of the 'firmware_update' function from trezorlib"""
         f = self.features
         bootloader_version = (f.major_version, f.minor_version, f.patch_version)
@@ -145,11 +157,11 @@ class MyTrezorClient(TrezorClient):
         model = f.model or "1"
 
         try:
-            version, fw = trezorlib.firmware.parse(data)
+            version, fw = trezorlib.firmware.parse(firmware_data)
         except Exception as e:
             raise
 
-        self.validate_firmware(version, fw, fingerprint)
+        self.validate_firmware_internal(version, fw, fingerprint)
 
         if (
             bootloader_onev2
@@ -165,15 +177,15 @@ class MyTrezorClient(TrezorClient):
         elif version not in ALLOWED_FIRMWARE_FORMATS[f.major_version]:
             raise Exception("Firmware does not match your device, aborting.")
 
-        if bootloader_onev2 and data[:4] == b"TRZR" and data[256 : 256 + 4] == b"TRZF":
+        if bootloader_onev2 and firmware_data[:4] == b"TRZR" and firmware_data[256 : 256 + 4] == b"TRZF":
             log.debug("Extracting embedded firmware image.")
-            data = data[256:]
+            firmware_data = firmware_data[256:]
 
         try:
             # if f.major_version == 1 and f.firmware_present is not False:
             #     # Trezor One does not send ButtonRequest
             #     "Please confirm the action on your Trezor device"
-            trezorlib.firmware.update(self, data)
+            trezorlib.firmware.update(self, firmware_data)
             return True
 
         except exceptions.Cancelled:
@@ -188,7 +200,7 @@ def all_transports() -> Iterable[Type[Transport]]:
     from trezorlib.transport.udp import UdpTransport
     from trezorlib.transport.webusb import WebUsbTransport
 
-    return [cls for cls in (BridgeTransport, HidTransport, UdpTransport, WebUsbTransport) if cls.ENABLED]
+    return [cls for cls in (WebUsbTransport, BridgeTransport, HidTransport, UdpTransport) if cls.ENABLED]
 
 
 def enumerate_devices(
@@ -227,6 +239,17 @@ def enumerate_devices(
     return devices
 
 
+def get_trezor_device_id(hw_client) -> str:
+    """
+    Return trezor device_id/serial_number. If the device is in bootloader mode, return some constant value as a
+    kind of a device identifier, but there will be no way to work with more than one Trezor device in this mode.
+    """
+    device_id = hw_client.get_device_id()
+    if not device_id:
+        return BOOTLOADER_MODE_DUMMY_DEVICE_ID
+    return device_id
+
+
 def get_device_list(
         return_clients: bool = True,
         allow_bootloader_mode: bool = False,
@@ -237,35 +260,22 @@ def get_device_list(
     ret_list = []
     exception: Optional[Exception] = None
     device_ids = []
-    in_bootloader_mode = False
 
     devices = enumerate_devices(use_webusb=use_webusb, use_bridge=use_bridge, use_udp=use_udp, use_hid=use_hid)
     for d in devices:
         try:
             client = MyTrezorClient(d, ui=TrezorUi())
 
-            if client.features.bootloader_mode:
-                if in_bootloader_mode:
-                    # in bootloader mode the device_id attribute isn't available, so for a given client object
-                    # we are unable to distinguish between being the same device reached with the different
-                    # transport and being another device
-                    # for that reason, to avoid returning duplicate clients for the same device, we don't return
-                    # more than one instance of a device in bootloader mod
-                    client.close()
-                    continue
-                in_bootloader_mode = True
+            logging.info('Found device ' + str(d))
+            device_id = get_trezor_device_id(client)
+            if not device_id:
+                logging.warning(f'Skipping device {str(d)} with empty device_id.')
+            device_transport_id = hashlib.sha256(str(d).encode('ascii')).hexdigest()
 
-            device_id = client.get_device_id()
-            if not device_id and hasattr(d, 'device') and getattr(d, 'device').__class__.__name__ == 'USBDevice' and \
-                    hasattr(getattr(d, 'device'), 'getSerialNumber'):
-                device_id = getattr(d, 'device').getSerialNumber()
-
-            if (not client.features.bootloader_mode or allow_bootloader_mode) and \
-                    (device_id not in device_ids or client.features.bootloader_mode):
-
+            if (not client.features.bootloader_mode or allow_bootloader_mode) and device_id not in device_ids:
                 version = f'{client.features.major_version}.{client.features.minor_version}.' \
                           f'{client.features.patch_version}'
-                device_model = client.features.model
+                device_model = client.features.model if client.features.model is not None else '1'
 
                 ret_list.append(
                     hw_common.HWDevice(
@@ -275,10 +285,11 @@ def get_device_list(
                         firmware_version=version,
                         device_model=device_model,
                         hw_client=client if return_clients else None,
-                        bootloader_mode=client.features.bootloader_mode,
-                        transport=d
+                        bootloader_mode=client.features.bootloader_mode if client.features.bootloader_mode is not None else False,
+                        transport_id=device_transport_id,
+                        initialized=client.features.initialized
                     ))
-                device_ids.append(client.features.device_id)  #it's empty in bootloader mode
+                device_ids.append(device_id)  #it's empty in bootloader mode
                 if not return_clients:
                     client.close()
             else:
@@ -294,17 +305,31 @@ def get_device_list(
     return ret_list
 
 
-def open_session(hw_device_transport: object) -> Optional[MyTrezorClient]:
-    client = MyTrezorClient(hw_device_transport, ui=TrezorUi())
-    logging.info('Trezor connected. Firmware version: %s.%s.%s, vendor: %s, initialized: %s, '
-                 'pp_protection: %s, bootloader_mode: %s ' %
-                 (str(client.features.major_version),
-                  str(client.features.minor_version),
-                  str(client.features.patch_version), str(client.features.vendor),
-                  str(client.features.initialized),
-                  str(client.features.passphrase_protection),
-                  str(client.features.bootloader_mode)))
-    return client
+def open_session(device_id: str, device_transport_id: str) -> Optional[MyTrezorClient]:
+    for d in enumerate_devices():
+        client = MyTrezorClient(d, ui=TrezorUi())
+        cur_transport_id = hashlib.sha256(str(d).encode('ascii')).hexdigest()
+        cur_device_id = get_trezor_device_id(client)
+        if cur_device_id == device_id or (client.features.bootloader_mode and cur_transport_id == device_transport_id) \
+            or (device_id == BOOTLOADER_MODE_DUMMY_DEVICE_ID and cur_transport_id == device_transport_id):
+           # in bootloader mode device_id is not returned from Trezor so to find the device we need
+           # to compare transport id based on usb path, but it won't work for bridge transport since each
+           # time Trezor is reconnected, transport path reported by Trezor Bridge is different; that's why we
+           # scan WebUsb devices first in enumerate_devices
+
+            logging.info('Trezor connected. Firmware version: %s.%s.%s, vendor: %s, initialized: %s, '
+                         'pp_protection: %s, bootloader_mode: %s ' %
+                         (str(client.features.major_version),
+                          str(client.features.minor_version),
+                          str(client.features.patch_version), str(client.features.vendor),
+                          str(client.features.initialized),
+                          str(client.features.passphrase_protection),
+                          str(client.features.bootloader_mode)))
+            return client
+        else:
+            client.close()
+            del client
+    return None
 
 
 def close_session(client: MyTrezorClient):

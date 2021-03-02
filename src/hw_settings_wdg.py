@@ -17,7 +17,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
     def __init__(self, parent, hw_devices: HWDevices):
         QWidget.__init__(self, parent=parent)
         Ui_WdgHwSettings.__init__(self)
-        ActionPageBase.__init__(self, hw_devices)
+        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices)
 
         self.cur_hw_device: Optional[HWDevice] = self.hw_devices.get_selected_device()
         self.hw_opt_pin_protection: Optional[bool] = None

@@ -46,10 +46,11 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         self.action_widget: Optional[ActionPageBase] = None
         self.action_layout: Optional[QtWidgets.QVBoxLayout] = None
         self.hw_devices = HWDevices.get_instance()
-        self.hw_devices.save_state()  # save the hw device currently connected in the main window
         if not self.hw_devices:
             raise InternalError('HWDevices not initialized')
-        self.wdg_select_hw_device = CurrentHwDeviceWdg(self, self.hw_devices)
+        self.hw_devices.save_state()  # save the hw device currently connected in the main window
+        self.hw_devices.set_allow_bootloader_mode(True)
+        self.wdg_select_hw_device = CurrentHwDeviceWdg(self, self.hw_devices, True)
         self.hw_devices.sig_selected_hw_device_changed.connect(self.on_selected_hw_device_changed)
         self.setupUi(self)
 
@@ -71,6 +72,8 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
     def on_close(self):
         self.hw_devices.sig_selected_hw_device_changed.disconnect(self.on_selected_hw_device_changed)
         self.hw_devices.restore_state()
+        if self.action_widget:
+            self.action_widget.on_close()
 
     def closeEvent(self, event):
         self.on_close()
@@ -139,6 +142,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         self.btnContinue.setVisible(False)
         self.btnContinue.setEnabled(True)
         self.wdg_select_hw_device.setVisible(False)
+        self.wdg_select_hw_device.set_hw_change_enabled(True)
         self.current_action = ACTION_NONE
 
     def set_action_title(self, title: str):
@@ -148,7 +152,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         self.btnCancel.setVisible(visible)
 
     def set_btn_cancel_enabled(self, enabled: bool):
-        self.btnCancel.setVisible(enabled)
+        self.btnCancel.setEnabled(enabled)
 
     def set_btn_cancel_text(self, label: str, tool_tip: Optional[str]):
         self.btnCancel.setText(label)
@@ -159,7 +163,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         self.btnBack.setVisible(visible)
 
     def set_btn_back_enabled(self, enabled: bool):
-        self.btnBack.setVisible(enabled)
+        self.btnBack.setEnabled(enabled)
 
     def set_btn_back_text(self, label: str, tool_tip: Optional[str]):
         self.btnBack.setText(label)
@@ -170,7 +174,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         self.btnContinue.setVisible(visible)
 
     def set_btn_continue_enabled(self, enabled: bool):
-        self.btnContinue.setVisible(enabled)
+        self.btnContinue.setEnabled(enabled)
 
     def set_btn_continue_text(self, label: str, tool_tip: Optional[str]):
         self.btnContinue.setText(label)
@@ -181,6 +185,9 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         if visible:
             self.wdg_select_hw_device.update()
         self.wdg_select_hw_device.setVisible(visible)
+
+    def set_hw_change_enabled(self, enabled: bool):
+        self.wdg_select_hw_device.set_hw_change_enabled(enabled)
 
     def get_widget_action_type(self) -> int:
         # returns one of action type constants based on the widget class type in self.action_widget
@@ -200,18 +207,20 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         try:
             if self.get_widget_action_type() != action:
                 if self.action_widget is not None:
+                    self.action_widget.on_close()
                     self.action_layout.removeWidget(self.action_widget)
+                    self.action_widget.setParent(None)
                     del self.action_widget
                     self.action_widget = None
 
                 if action == ACTION_HW_SETTINGS:
-                    self.action_widget = WdgHwSettings(self.tabActionContainer, self.hw_devices)
+                    self.action_widget = WdgHwSettings(self, self.hw_devices)
                     self.action_layout.addWidget(self.action_widget)
                 elif action == ACTION_RECOVER_HW:
-                    self.action_widget = WdgRecoverHw(self.tabActionContainer)
+                    self.action_widget = WdgRecoverHw(self, self.hw_devices)
                     self.action_layout.addWidget(self.action_widget)
                 elif action == ACTION_UPDATE_HW_FIRMWARE:
-                    self.action_widget = WdgHwUpdateFirmware(self.tabActionContainer, self.hw_devices)
+                    self.action_widget = WdgHwUpdateFirmware(self, self.hw_devices)
                     self.action_layout.addWidget(self.action_widget)
                 else:
                     raise Exception('Internal error: not supported action type')
@@ -228,7 +237,8 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
                     fn_set_btn_continue_visible=self.set_btn_continue_visible,
                     fn_set_btn_continue_enabled=self.set_btn_continue_enabled,
                     fn_set_btn_continue_text=self.set_btn_continue_text,
-                    fn_set_hw_panel_visible=self.set_hw_panel_visible
+                    fn_set_hw_panel_visible=self.set_hw_panel_visible,
+                    fn_set_hw_change_enabled=self.set_hw_change_enabled
                 )
 
             self.current_action = action
@@ -248,9 +258,10 @@ class CurrentHwDeviceWdg(QWidget):
     using the hardware wallets.
     """
 
-    def __init__(self, parent, hw_devices: HWDevices):
-        QWidget.__init__(self, parent=parent)
+    def __init__(self, parent, hw_devices: HWDevices, hw_change_enabled: bool = True):
+        QWidget.__init__(self, parent=parent,)
         self.hw_devices: HWDevices = hw_devices
+        self.hw_change_enabled: bool = hw_change_enabled
         self.setupUi(self)
 
     def setupUi(self, dlg):
@@ -266,17 +277,26 @@ class CurrentHwDeviceWdg(QWidget):
         spacer = QtWidgets.QSpacerItem(20, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.layout_main.addItem(spacer)
 
+    def set_hw_change_enabled(self, enabled):
+        self.hw_change_enabled = enabled
+        self.update()
+
     def update(self):
         try:
             dev = self.hw_devices.get_selected_device()
             if dev:
-                lbl = 'Device selected: <b>' + dev.get_description() + '</b> [<a href="select-hw-device">change</a>]'
+                lbl = 'Device selected: <b>' + dev.get_description()
+                if self.hw_change_enabled:
+                    lbl += '</b> [<a href="select-hw-device">change</a>]'
             else:
-                lbl = 'No hardware wallet device selected [<a href="select-hw-device">select</a>]'
+                lbl = 'No hardware wallet device selected'
+                if self.hw_change_enabled:
+                    lbl += ' [<a href="select-hw-device">select</a>]'
             self.lbl_current_hw_device.setText(lbl)
 
         except Exception as e:
             logging.exception(str(e))
 
     def on_hw_device_selected(self, anchor: str):
-        self.hw_devices.select_device(self.parent())
+        if self.hw_change_enabled:
+            self.hw_devices.select_device(self.parent())

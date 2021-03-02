@@ -2,6 +2,7 @@ import logging
 from typing import Callable, Optional, Any, Tuple, List
 
 import hw_intf
+from app_config import AppConfig
 from hw_common import HWDevice, HWType
 
 
@@ -9,7 +10,9 @@ log = logging.getLogger('dmt.wallet_tools_dlg')
 
 
 class ActionPageBase:
-    def __init__(self, hw_devices: hw_intf.HWDevices):
+    def __init__(self, parent_dialog, app_config: AppConfig, hw_devices: hw_intf.HWDevices):
+        self.parent_dialog = parent_dialog
+        self.app_config = app_config
         self.hw_devices = hw_devices
         self.hw_devices.sig_selected_hw_device_changed.connect(self.on_current_hw_device_changed)
         self.fn_exit_page: Optional[Callable[[], None]] = None
@@ -23,6 +26,7 @@ class ActionPageBase:
         self.fn_set_btn_continue_visible: Optional[Callable[[bool], None]] = None
         self.fn_set_btn_continue_enabled: Optional[Callable[[bool], None]] = None
         self.fn_set_btn_continue_text: Optional[Callable[[str, str], None]] = None
+        self.fn_set_hw_change_enabled: Optional[Callable[[bool], None]] = None
 
     def set_control_functions(
             self,
@@ -37,8 +41,8 @@ class ActionPageBase:
             fn_set_btn_continue_visible: Callable[[bool], None],
             fn_set_btn_continue_enabled: Callable[[bool], None],
             fn_set_btn_continue_text: Callable[[str, str], None],
-            fn_set_hw_panel_visible: Callable[[bool], None]
-    ):
+            fn_set_hw_panel_visible: Callable[[bool], None],
+            fn_set_hw_change_enabled: Callable[[bool], None]):
 
         self.fn_exit_page = fn_exit_page
         self.fn_set_action_title = fn_set_action_title
@@ -52,8 +56,12 @@ class ActionPageBase:
         self.fn_set_btn_continue_enabled = fn_set_btn_continue_enabled
         self.fn_set_btn_continue_text = fn_set_btn_continue_text
         self.fn_set_hw_panel_visible = fn_set_hw_panel_visible
+        self.fn_set_hw_change_enabled = fn_set_hw_change_enabled
 
     def initialize(self):
+        pass
+
+    def on_close(self):
         pass
 
     def on_current_hw_device_changed(self, cur_hw_device: HWDevice):
@@ -73,7 +81,7 @@ class ActionPageBase:
 
     def set_btn_cancel_enabled(self, enabled: bool):
         if self.fn_set_btn_cancel_enabled:
-            self.fn_set_btn_cancel_enabled = enabled
+            self.fn_set_btn_cancel_enabled(enabled)
 
     def set_btn_cancel_text(self, label: str, tool_tip: Optional[str] = None):
         if self.fn_set_btn_cancel_text:
@@ -106,6 +114,10 @@ class ActionPageBase:
     def set_hw_panel_visible(self, visible: bool):
         if self.fn_set_hw_panel_visible:
             self.fn_set_hw_panel_visible(visible)
+
+    def set_hw_change_enabled(self, enabled: bool):
+        if self.fn_set_hw_change_enabled:
+            self.fn_set_hw_change_enabled(enabled)
 
     def on_btn_cancel_clicked(self):
         pass

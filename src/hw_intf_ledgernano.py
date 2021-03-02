@@ -1,3 +1,5 @@
+import hashlib
+
 from bitcoin import compress, bin_hash160
 from btchip.btchip import *
 from btchip.btchipComm import getDongle
@@ -186,6 +188,7 @@ def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = F
                         ver = None
                 else:
                     ver = None
+                # device_transport_id = hashlib.sha256(str(d.hidDevicePath).encode('ascii')).hexdigest()
 
                 if allow_bootloader_mode or in_bootloader_mode is False:
                     ret_list.append(
@@ -197,7 +200,9 @@ def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = F
                             firmware_version=ver,
                             hw_client=client if return_clients else None,
                             bootloader_mode=in_bootloader_mode,
-                            transport=d))
+                            transport_id=d,
+                            initialized=True
+                        ))
                 if not return_clients:
                     del client
                 d.close()
