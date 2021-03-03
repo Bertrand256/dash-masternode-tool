@@ -100,7 +100,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.is_dashd_syncing = False
         self.dashd_connection_ok = False
         self.connecting_to_dashd = False
-        self.cur_masternode: MasternodeConfig = None
+        self.cur_masternode: Optional[MasternodeConfig] = None
         self.editing_enabled = False
         self.recent_config_files = []
 
@@ -112,16 +112,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.recent_config_files.append(file_name)
 
         self.cmd_console_dlg = None
-        self.setupUi()
+        self.setupUi(self)
         ssl._create_default_https_context = ssl._create_unverified_context
 
-    def setupUi(self):
+    def setupUi(self, main_dlg: QMainWindow):
         ui_main_dlg.Ui_MainWindow.setupUi(self, self)
         SshPassCache.set_parent_window(self)
         app_cache.restore_window_size(self)
         self.inside_setup_ui = True
         self.dashd_intf.window = self
-        self.closeEvent = self.closeEvent
         self.lblStatus1 = QtWidgets.QLabel(self)
         self.lblStatus1.setAutoFillBackground(False)
         self.lblStatus1.setOpenExternalLinks(True)
@@ -323,8 +322,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def on_config_file_mru_action_triggered(self, file_name: str) -> None:
         """ Triggered by clicking one of the subitems of the 'Open Recent' menu item. Each subitem is
-        related to one of recently openend configuration files.
-        :param file_name: A config file name accociated with the menu action clicked.
+        related to one of recently opened configuration files.
+        :param file_name: A config file name associated with the menu action clicked.
         """
         try:
             if file_name != self.app_config.app_config_file_name:
@@ -477,7 +476,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             input.setComboBoxEditable(False)
             input.setOption(QInputDialog.UseListViewForComboBoxItems, True)
             input.setWindowTitle('Restore from backup')
-            file_dates:List[Tuple[str, int, str]] = []
+            file_dates:List[Tuple[str, float, str]] = []
 
             for fname in os.listdir(self.app_config.cfg_backup_dir):
                 try:
@@ -679,7 +678,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.set_status_text1('<b>RPC network status:</b> failed connection to %s' % self.dashd_intf.get_active_conn_description(), 'red')
 
     def show_connection_successful(self):
-        """Shows status information after successful connetion to a Dash RPC node."""
+        """Shows status information after successful connection to a Dash RPC node."""
         self.set_status_text1('<b>RPC network status:</b> OK (%s)' % self.dashd_intf.get_active_conn_description(), 'green')
 
     def show_connection_disconnected(self):
@@ -688,7 +687,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def connect_dash_network(self, wait_for_check_finish=False, call_on_check_finished=None):
         """
-        Connects do dash daemon if not connected before and returnes if it was successful.
+        Connects do dash daemon if not connected before and returns if it was successful.
         :param wait_for_check_finish: True if function is supposed to wait until connection check is finished (process
             is executed in background)
         :param call_on_check_finished: ref to function to be called after connection test (successful or unsuccessful)
@@ -889,7 +888,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
         Display message in the app message area.
         :param text: Text to be displayed. If Text is empty, message area will be hidden. 
-        :param color: Color of thext.
+        :param color: Color of text.
         """
         def set_message(msg_id: int, text, type):
             m = self.app_messages.get(msg_id)
@@ -1050,7 +1049,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     # reload the configuration from file
                     self.load_configuration_from_file(self.app_config.app_config_file_name, ask_save_changes=False)
                     self.editing_enabled = False
-                    if sel_mn_idx >= 0 and sel_mn_idx < len(self.app_config.masternodes):
+                    if 0 <= sel_mn_idx < len(self.app_config.masternodes):
                         self.cur_masternode = self.app_config.masternodes[sel_mn_idx]
                         self.display_masternode_config(sel_mn_idx)
                     self.wdg_masternode.set_edit_mode(self.editing_enabled)
@@ -1155,7 +1154,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                         self.cboMasternodes.addItem(mn.name, mn)
                                         mns_imported.append(mn)
                                 else:
-                                    # incorrenct number of elements
+                                    # incorrect number of elements
                                     skipped_cnt += 1
                             if modified:
                                 self.update_edit_controls_state()
@@ -1437,7 +1436,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def get_masternode_status_description_thread(self, ctrl, masternode: MasternodeConfig):
         """
-        Get current masternode's extended status.
+        Get current masternode extended status.
         """
         if self.dashd_connection_ok:
             if masternode.collateral_tx and str(masternode.collateral_tx_index):
@@ -1536,7 +1535,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     if missing_data:
                         msg = 'In the configuration of your masternode the following information is ' \
                             f'missing/incorrect: {", ".join(missing_data)}.<br><br>' \
-                            f'Do you want to update your configuration from the information that exsits on ' \
+                            f'Do you want to update your configuration from the information that exists on ' \
                             f'the network?'
 
                         if self.query_dlg(msg, buttons=QMessageBox.Yes | QMessageBox.No,
@@ -1852,7 +1851,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """ Shows the wallet/send payments dialog.
         :param initial_mn:
           if the value is from 0 to len(masternodes), show utxos for the masternode
-            having the 'initial_mn' index in self.app_config.mastrnodes
+            having the 'initial_mn' index in self.app_config.masternodes
           if the value is -1, show utxo for all masternodes
           if the value is None, show the default utxo source type
         """

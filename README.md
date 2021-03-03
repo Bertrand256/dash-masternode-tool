@@ -102,7 +102,7 @@ Further configuration steps depend on whether you already have a masternode cont
 ## Command line parameters
 
 The application currently supports the following command-line parameters:
-* `--data-dir`: a path to a directory in which the application will create all the needed files, such as: configuration file, cache and log files; it can be useful for users who want to avoid leaving any of the application files on the computer - which by default are created in the user's home directory - and insted to keep them on an external drive
+* `--data-dir`: a path to a directory in which the application will create all the needed files, such as: configuration file, cache and log files; it can be useful for users who want to avoid leaving any of the application files on the computer - which by default are created in the user's home directory - and instead to keep them on an external drive
 * `--config`: a non-standard path to a configuration file. Example:
   `DashMasternodeTool.exe --config=C:\dmt-configs\config1.ini`
 
@@ -132,7 +132,7 @@ The steps are as follows:
 
 3. Verification that the masternode status is not already `ENABLED` or `PRE_ENABLED`. If it is, the following warning appears:  
   ![Warning: masternode state is enabled](doc/img/startmn-state-warning.png)  
-  If your masternode is running and you decide to send a `start masternode` message anyway, your masternode's payment queue position will be reset.
+  If your masternode is running and you decide to send a `start masternode` message anyway, your masternode payment queue position will be reset.
 
 4. Opening a connection to the hardware wallet. Message in case of failure:  
   ![Cannot find Trezor device](doc/img/startmn-hw-error.png)

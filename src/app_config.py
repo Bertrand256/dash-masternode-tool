@@ -61,11 +61,11 @@ class InputKeyType():
     PUBLIC = 2
 
 
-class AppFeatueStatus(QObject):
+class AppFeatureStatus(QObject):
     # Priority of the feature value.
     #  0: default value implemented in the source code
     #  2: value read from the app cache
-    #  4: value read from the project github repository (can be lowered or rised)
+    #  4: value read from the project github repository (can be lowered or raised)
     #  6: value read from the Dash network (the highest priority by default)
     PRIORITY_DEFAULT = 0
     PRIORITY_APP_CACHE = 2
@@ -116,14 +116,14 @@ class AppConfig(QObject):
 
         # List of Dash network configurations. Multiple conn configs advantage is to give the possibility to use
         # another config if particular one is not functioning (when using "public" RPC service, it could be node's
-        # maintanance)
+        # maintenance)
         self.dash_net_configs = []
 
-        # to distribute the load evenly over "public" RPC services, we choose radom connection (from enabled ones)
-        # if it is set to False, connections will be used accoording to its order in dash_net_configs list
+        # to distribute the load evenly over "public" RPC services, we choose random connection (from enabled ones)
+        # if it is set to False, connections will be used according to its order in dash_net_configs list
         self.random_dash_net_config = True
 
-        # list of all enabled dashd configurations (DashNetworkConnectionCfg) - they will be used accourding to
+        # list of all enabled dashd configurations (DashNetworkConnectionCfg) - they will be used according to
         # the order in list
         self.active_dash_net_configs = []
 
@@ -134,10 +134,10 @@ class AppConfig(QObject):
         # the contents of the app-params.json configuration file read from the project GitHub repository
         self._remote_app_params = {}
         self._dash_blockchain_info = {}
-        self.feature_register_dmn_automatic = AppFeatueStatus(True, 0, '')
-        self.feature_update_registrar_automatic = AppFeatueStatus(True, 0, '')
-        self.feature_update_service_automatic = AppFeatueStatus(True, 0, '')
-        self.feature_revoke_operator_automatic = AppFeatueStatus(True, 0, '')
+        self.feature_register_dmn_automatic = AppFeatureStatus(True, 0, '')
+        self.feature_update_registrar_automatic = AppFeatureStatus(True, 0, '')
+        self.feature_update_service_automatic = AppFeatureStatus(True, 0, '')
+        self.feature_revoke_operator_automatic = AppFeatureStatus(True, 0, '')
 
         self.hw_type: Optional[HWType] = None  # TREZOR, KEEPKEY, LEDGERNANOS
         self.hw_keepkey_psw_encoding = 'NFC'  # Keepkey passphrase UTF8 chars encoding:
@@ -206,7 +206,7 @@ class AppConfig(QObject):
             logging.exception('Exception while parsing default RPC connections.')
 
     def init(self, app_dir):
-        """ Initialize configuration after openning the application. """
+        """ Initialize configuration after opening the application. """
         self.app_dir = app_dir
         app_defs.APP_PATH = app_dir
         app_defs.APP_IMAGE_DIR = self.get_app_img_dir()
@@ -411,7 +411,7 @@ class AppConfig(QObject):
         self.set_log_level('INFO')
         logging.info(f'===========================================================================')
         logging.info(f'Application started (v {self.app_version})')
-        logging.info('Environmnent:')
+        logging.info('Environment:')
         logging.info(str(os.environ))
 
         self.restore_loggers_config()
@@ -448,13 +448,13 @@ class AppConfig(QObject):
 
     def restore_cache_settings(self):
         ena = app_cache.get_value('FEATURE_REGISTER_AUTOMATIC_DMN_' + self.dash_network, True, bool)
-        self.feature_register_dmn_automatic.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
+        self.feature_register_dmn_automatic.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
         ena = app_cache.get_value('FEATURE_UPDATE_REGISTRAR_AUTOMATIC_' + self.dash_network, True, bool)
-        self.feature_update_registrar_automatic.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
+        self.feature_update_registrar_automatic.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
         ena = app_cache.get_value('FEATURE_UPDATE_SERVICE_AUTOMATIC_' + self.dash_network, True, bool)
-        self.feature_update_service_automatic.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
+        self.feature_update_service_automatic.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
         ena = app_cache.get_value('FEATURE_REVOKE_OPERATOR_AUTOMATIC_' + self.dash_network, True, bool)
-        self.feature_revoke_operator_automatic.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
+        self.feature_revoke_operator_automatic.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
 
     def copy_from(self, src_config):
         self.dash_network = src_config.dash_network
@@ -726,7 +726,7 @@ class AppConfig(QObject):
                                 roles = int(config.get(section, 'dmn_user_roles', fallback='0').strip())
                                 if not roles:
                                     role_old = int(config.get(section, 'dmn_user_role', fallback='0').strip())
-                                    # try reding the pre v0.9.22 role and map it to the current role-set
+                                    # try reading the pre v0.9.22 role and map it to the current role-set
                                     if role_old:
                                         if role_old == 1:
                                             mn.dmn_user_roles = DMN_ROLE_OWNER | DMN_ROLE_OPERATOR | DMN_ROLE_VOTING
@@ -883,7 +883,7 @@ class AppConfig(QObject):
 
         try:
             if self.default_rpc_connections:
-                # force import default connecticons if there is no any in the configuration
+                # force import default connections if there is no any in the configuration
                 force_import = (self.app_last_version == '0.9.15')
 
                 added, updated = self.import_connections(self.default_rpc_connections, force_import=force_import,
@@ -1308,7 +1308,7 @@ class AppConfig(QObject):
         added_conns = []
         updated_conns = []
         if in_conns:
-            # import default mainnet connections if there is so mainnet conenctions in the current configuration
+            # import default mainnet connections if there is so mainnet connections in the current configuration
             # the same for testnet
             mainnet_conn_count = 0
             testnet_conn_count = 0
@@ -1861,7 +1861,7 @@ class DashNetworkConnectionCfg(object):
 
     def get_conn_id(self):
         """
-        Returns identifier of this connection, built on attributes that uniquely characteraize the connection. 
+        Returns identifier of this connection, built on attributes that uniquely characterize the connection.
         :return: 
         """
         if self.__use_ssh_tunnel:
@@ -1895,7 +1895,7 @@ class DashNetworkConnectionCfg(object):
 
     def copy_from(self, cfg2):
         """
-        Copies alle attributes from another instance of this class.
+        Copies all the attributes from another instance of this class.
         :param cfg2: Another instance of this type from which attributes will be copied.
         """
         self.host = cfg2.host
@@ -2015,7 +2015,7 @@ class DashNetworkConnectionCfg(object):
     @use_ssl.setter
     def use_ssl(self, use_ssl):
         if not isinstance(use_ssl, bool):
-            raise Exception('Ivalid type of "use_ssl" argument')
+            raise Exception('Invalid type of "use_ssl" argument')
         self.__use_ssl = use_ssl
 
     @property
@@ -2025,7 +2025,7 @@ class DashNetworkConnectionCfg(object):
     @use_ssh_tunnel.setter
     def use_ssh_tunnel(self, use_ssh_tunnel):
         if not isinstance(use_ssh_tunnel, bool):
-            raise Exception('Ivalid type of "use_ssh_tunnel" argument')
+            raise Exception('Invalid type of "use_ssh_tunnel" argument')
         self.__use_ssh_tunnel = use_ssh_tunnel
 
     @property
@@ -2043,7 +2043,7 @@ class DashNetworkConnectionCfg(object):
     @testnet.setter
     def testnet(self, testnet):
         if not isinstance(testnet, bool):
-            raise Exception('Ivalid type of "testnet" argument')
+            raise Exception('Invalid type of "testnet" argument')
         self.__testnet = testnet
 
     def set_rpc_encryption_pubkey(self, key: str):

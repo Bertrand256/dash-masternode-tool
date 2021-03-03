@@ -15,9 +15,9 @@ class MessageDlg(QDialog, ui_message_dlg.Ui_MessageDlg):
         QDialog.__init__(self, parent)
         ui_message_dlg.Ui_MessageDlg.__init__(self)
         self.message = message
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_message_dlg.Ui_MessageDlg.setupUi(self, self)
         self.setWindowTitle("Message")
         self.lblMessage.setText(self.message)

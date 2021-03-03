@@ -27,9 +27,9 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
         if self.hw_session and self.hw_session.hw_device:
             self.version = self.hw_session.hw_device.firmware_version
             self.read_hw_features()
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_hw_setup_dlg.Ui_HwSetupDlg.setupUi(self, self)
         self.setWindowTitle('Hardware Wallet Setup')
         self.lblFirmwareVersion.setText(self.version)

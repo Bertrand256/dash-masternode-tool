@@ -2,13 +2,15 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-04
-import logging
+from __future__ import annotations
+
 import time
+from typing import Optional, Callable, Any
+
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import Qt, QEventLoop, QPoint
 from PyQt5.QtCore import QThread
-from PyQt5.QtWidgets import QDialog, QLabel
-from typing import Optional, Callable
+from PyQt5.QtCore import Qt, QPoint
+from PyQt5.QtWidgets import QDialog, QLabel, QLayout
 
 from common import CancelException
 from ui import ui_thread_fun_dlg
@@ -16,7 +18,7 @@ from ui import ui_thread_fun_dlg
 
 class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
     """
-    Some of the DMT's features require quite a long time to complete. Performing this in a main thread
+    Some of the DMT features require quite a long time to complete. Performing this in a main thread
     causes the app to behave as if it hung. In such situations it is better to display a dialog with
     some information about the progress of the task.
     This class is such a dialog window - it takes a reference to function/method performing a long-running task. 
@@ -32,11 +34,11 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
 
     Example of a worker function:
         def long_running_function(ctrl, arg1):
-            ctrl.dlg_config_fun(dlg_title="Long running task...", show_message=True, show_progress_bar=True)
-            ctrl.display_msg_fun('test %d' % i)
-            ctrl.set_progress_value_fun(50)
+            ctrl.dlg_config(dlg_title="Long running task...", show_message=True, show_progress_bar=True)
+            ctrl.display_msg('test %d' % i)
+            ctrl.set_progress_value(50)
             time.sleep(10)
-            if ctrl.finish:  # if using a loop you should periodically check if the user is willing to breake the task
+            if ctrl.finish:  # if using a loop you should periodically check if the user is willing to break the task
                 return
             return 'return value'
     """
@@ -56,7 +58,7 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
 
     def __init__(self, worker_fun, worker_args, close_after_finish=True, buttons=None, title='', text=None,
                  center_by_window=None,
-                 force_close_dlg_callback: Optional[Callable[[None], bool]]=None,
+                 force_close_dlg_callback: Optional[Callable[[], bool]] = None,
                  show_window_delay_ms: Optional[int] = 0):
         """
         Constructor.
@@ -71,20 +73,20 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
                         'role': QtWidgets.QDialogButtonBox.ButtonRole,
                          'callback': callback_function (not mandatory)}
             'callback': function executed on specific button click event; id not specified, click event 
-                results in 'accept' or 'reject' event, depending on butotn's role. 
+                results in 'accept' or 'reject' event, depending on button's role.
         :param title: title of the dialog
         :param text: initial text to display
         :param center_by_window: True, if this dialog is to be centered by window 'center_by_window'
         :param force_close_dlg_callback: non mandatory callback function called when a user tries to close window
             while the associated thread hasn't finished yet; the callback function can for example ask the user if
             he/she really wants to break the underlying process (this means leaving the thread alone and closing the
-            window) or apply a little more civilized approach like causing the termination ofthe underlying thread if
+            window) or apply a little more civilized approach like causing the termination of the underlying thread if
             possible; if the callback function returns True it means that there is consent to abandon thread and
             close the window
         :param show_window_delay_ms:
            -1: the window is initially hidden; can be shown only by emitting the 'show_window_signal' signal
            or explicitly calling the 'show' method
-           >=0 the will be shown after the 'value' miliseconds after calling the 'wait_for_worker_completion'
+           >=0 the will be shown after the 'value' milliseconds after calling the 'wait_for_worker_completion'
            method
         """
         QtWidgets.QDialog.__init__(self, parent=center_by_window)
@@ -99,22 +101,21 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         self.text = text
         self.show_window_delay_ms = show_window_delay_ms
         self.max_width = None
-        self.worker_thread: 'WorkerDlgThread' = None
+        self.worker_thread: Optional[WorkerDlgThread] = None
         self.center_by_window = center_by_window
-        self.setupUi()
+        self.worker_result: Any = None
+        self.worker_exception: Optional[Exception] = None
+        self.thread_running: bool = False
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QtWidgets.QDialog):
         ui_thread_fun_dlg.Ui_ThreadFunDlg.setupUi(self, self)
-        self.setWindowFlags(self.windowFlags() | Qt.CustomizeWindowHint)
-        # self.setWindowFlags(self.windowFlags() & ~Qt.WindowCloseButtonHint)
+        self.setWindowFlags(int(self.windowFlags()) | Qt.CustomizeWindowHint)
         self.setWindowTitle(self.title)
         self.display_msg_signal.connect(self.set_text)
         self.dlg_config_signal.connect(self.on_configure_dialog)
         self.show_window_signal.connect(self.on_show_window)
         self.set_progress_value_signal.connect(self.set_progress_value)
-        self.closeEvent = self.closeEvent
-        # self.btnBox.accepted.connect(self.accept)
-        # self.btnBox.rejected.connect(self.reject)
         self.progressBar.setVisible(False)
         self.btnBox.clear()
         self.btnBox.setCenterButtons(True)
@@ -166,7 +167,7 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         :param text: Text to be displayed.
         """
         if not self.setTextCalled:
-            self.layout().setSizeConstraint(3)  # QLayout::SetFixedSize
+            self.layout().setSizeConstraint(QLayout.SetFixedSize)
             self.setTextCalled = True
         self.lblText.setText(text)
 
@@ -190,22 +191,24 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
     def center_by_widget(self, center_by_window: QDialog):
         """
         Centers this window by window given by attribute 'center_by_window'
-        :param center_by_window: Reference to (parent) window by wich this window will be centered.
+        :param center_by_window: Reference to (parent) window by which this window will be centered.
         :return: None
         """
         if self.center_by_window:
             pg: QPoint = center_by_window.frameGeometry().topLeft()
             size_diff = center_by_window.rect().center() - self.rect().center()
-            pg.setX( pg.x() + int((size_diff.x())))
-            pg.setY( pg.y() + int((size_diff.y())))
+            pg.setX(pg.x() + int((size_diff.x())))
+            pg.setY(pg.y() + int((size_diff.y())))
             self.move(pg)
 
     def on_configure_dialog(self, show_message=None, show_progress_bar=None, dlg_title=None, max_width=None):
         """
-        Configure visibility of this dialog's elements. This method can be called from inside a thread by calling
-        signal dlg_config_signal passed inside control dicttionary.
-        :param show_message: True if text area is to be shown
-        :param show_progress_bar: True if progress bar is to be shown
+        Configures visibility of this dialog elements. This method can be called from inside a thread by calling
+        signal dlg_config_signal passed inside control dictionary.
+        :param max_width: The maximum size of the dialog window in pixels.
+        :param dlg_title: If passed, this string will become the window title.
+        :param show_message: True if the text area is to be shown
+        :param show_progress_bar: True if the progress bar is to be shown
         """
         if show_message:
             self.lblText.setVisible(show_message)
@@ -267,7 +270,7 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         start_time = time.time()
         shown = False
         while self.thread_running:
-            if not shown and self.show_window_delay_ms >= 0 and (time.time() - start_time) * 1000 >= self.show_window_delay_ms:
+            if not shown and 0 <= self.show_window_delay_ms <= (time.time() - start_time) * 1000:
                 self.show()
                 shown = True
             QtWidgets.qApp.processEvents()
@@ -279,18 +282,47 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
 
 class CtrlObject(object):
     def __init__(self):
-        self.display_msg_fun: Optional[Callable[[str], None]] = None
-        self.set_progress_value_fun: Optional[Callable[[int], None]] = None
-        self.dlg_config_fun: Optional[Callable[[bool, bool, str, int], None]] = None
-        self.show_dialog_fun: Optional[Callable[[bool], None]] = None
+        self._display_msg_fun: Optional[Callable[[str], None]] = None
+        self._set_progress_value_fun: Optional[Callable[[int], None]] = None
+        self._dlg_config_fun: Optional[Callable[[bool, bool, str, int], None]] = None
+        self._show_dialog_fun: Optional[Callable[[bool], None]] = None
         self.finish: bool = False
         self.__msg_label = None
+
+    def set_callback_functions(
+            self,
+            display_msg_fun: Optional[Callable[[str], None]] = None,
+            set_progress_value_fun: Optional[Callable[[int], None]] = None,
+            dlg_config_fun: Optional[Callable[[bool, bool, str, int], None]] = None,
+            show_dialog_fun: Optional[Callable[[bool], None]] = None
+    ):
+        self._display_msg_fun = display_msg_fun
+        self._set_progress_value_fun = set_progress_value_fun
+        self._dlg_config_fun = dlg_config_fun
+        self._show_dialog_fun = show_dialog_fun
 
     def get_msg_label_control(self) -> QLabel:
         return self.__msg_label
 
     def set_msg_label(self, label: QLabel):
         self.__msg_label = label
+
+    def display_msg(self, msg: str):
+        if self._display_msg_fun:
+            self._display_msg_fun(msg)
+
+    def set_progress_value(self, value: int):
+        if self._set_progress_value_fun:
+            self._set_progress_value_fun(value)
+
+    def dlg_config(self, show_message: bool = False, show_progress_bar: bool = False, dlg_title: Optional[str] = None,
+                   max_width: Optional[int] = None):
+        if self._dlg_config_fun:
+            self._dlg_config_fun(show_message, show_progress_bar, dlg_title, max_width)
+
+    def show_dialog(self, show: bool):
+        if self._show_dialog_fun:
+            self._show_dialog_fun(show)
 
 
 class WorkerDlgThread(QThread):
@@ -307,7 +339,7 @@ class WorkerDlgThread(QThread):
         :param worker_fun: external function which will be executed from inside a thread 
         :param worker_fun_args: dictionary passed to worker_fun as it's argument's
         :param display_msg_signal: signal from owner's dialog to display text
-        :param set_progress_value_signal: signal from owner's dialog to set a progressbar's value
+        :param set_progress_value_signal: signal from owner's dialog to set a progressbar value
         :param dlg_config_signal: signal from owner's dialog to configure dialog
         """
         super(WorkerDlgThread, self).__init__()
@@ -321,11 +353,9 @@ class WorkerDlgThread(QThread):
 
         # prepare control object passed to a thread function
         self.ctrl_obj = CtrlObject()
-        self.ctrl_obj.display_msg_fun = self.display_msg
-        self.ctrl_obj.msg_link_activated_callback = None
-        self.ctrl_obj.set_progress_value_fun = self.set_progress_value
-        self.ctrl_obj.dlg_config_fun = self.dlg_config
-        self.ctrl_obj.show_dialog_fun = self.show_dialog
+        self.ctrl_obj.set_callback_functions(
+            display_msg_fun=self.display_msg, set_progress_value_fun=self.set_progress_value,
+            dlg_config_fun=self.dlg_config, show_dialog_fun=self.show_dialog)
         self.ctrl_obj.finish = False
 
     def display_msg(self, msg):
@@ -337,17 +367,19 @@ class WorkerDlgThread(QThread):
 
     def set_progress_value(self, value):
         """
-        Called from a thread: sets progressbar's value
+        Called from a thread: sets the progressbar value
         :param value: new value
         """
         self.set_progress_value_signal.emit(value)
 
-    def dlg_config(self, show_message=None, show_progress_bar=None, dlg_title=None, max_width=None):
+    def dlg_config(self, show_message: bool = False, show_progress_bar: bool = False, dlg_title: Optional[str] = None,
+                   max_width: Optional[int] = None):
         """
-        Called from a thread function: configures dialog by sending a dediacted signal to a dialog class.
+        Called from a thread function: configures dialog by sending a dedicated signal to a dialog class.
         :param show_message: True if dialog's text area is to be shown.
         :param show_progress_bar: True if dialog's progress bar is to be shown.
         :param dlg_title: New text to show on dialogs title bar.
+        :param max_width: If not None, it's used to set then maximum width of the dialog window in pixels.
         """
         self.dlg_config_signal.emit(show_message, show_progress_bar, dlg_title, max_width)
 
@@ -399,5 +431,3 @@ class WorkerThread(QThread):
             self.worker_result = self.worker_fun(self.ctrl_obj, *self.worker_fun_args)
         except Exception as e:
             self.worker_exception = e
-
-

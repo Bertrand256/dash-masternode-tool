@@ -131,7 +131,7 @@ class DBCache(object):
     def create_structures(self):
         try:
             cur = self.db_conn.cursor()
-            # create structires for masternodes data:
+            # create structures for masternodes data:
             cur.execute("CREATE TABLE IF NOT EXISTS masternodes(id INTEGER PRIMARY KEY, ident TEXT, status TEXT,"
                         " protocol TEXT, payee TEXT, last_seen INTEGER, active_seconds INTEGER,"
                         " last_paid_time INTEGER, last_paid_block INTEGER, ip TEXT,"

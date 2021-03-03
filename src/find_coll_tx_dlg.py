@@ -51,14 +51,14 @@ class CollTxsTableModel(ExtSortFilterItemModel):
 
     def set_view(self, table_view: QTableView):
         super().set_view(table_view)
-        link_delagate = wnd_utils.HyperlinkItemDelegate(table_view)
-        link_delagate.linkActivated.connect(self.hyperlink_activated)
-        table_view.setItemDelegateForColumn(self.col_index_by_name('txid'), link_delagate)
+        link_delegate = wnd_utils.HyperlinkItemDelegate(table_view)
+        link_delegate.linkActivated.connect(self.hyperlink_activated)
+        table_view.setItemDelegateForColumn(self.col_index_by_name('txid'), link_delegate)
 
     def hyperlink_activated(self, link):
         QDesktopServices.openUrl(QUrl(link))
 
-    def get_utxo_mn_assignement(self, utxo: UtxoType) -> Optional[MasternodeConfig]:
+    def get_utxo_mn_assignment(self, utxo: UtxoType) -> Optional[MasternodeConfig]:
         ident = utxo.txid + '-' + str(utxo.output_index)
         mn = self.mn_by_collateral_tx.get(ident)
         if not mn:
@@ -87,7 +87,7 @@ class CollTxsTableModel(ExtSortFilterItemModel):
                                 else:
                                     return '???'
                             elif field_name == 'assigned_to_mn':
-                                mn = self.get_utxo_mn_assignement(utxo)
+                                mn = self.get_utxo_mn_assignment(utxo)
                                 return mn.name if mn else ''
                             elif field_name == 'txid':
                                 if self.tx_explorer_url:
@@ -142,9 +142,9 @@ class CollTxsTableModel(ExtSortFilterItemModel):
                 left_utxo = self.utxos[left_row_index]
                 right_utxo = self.utxos[right_row_index]
                 if col_name == 'assigned_to_mn':
-                    mn = self.get_utxo_mn_assignement(left_utxo)
+                    mn = self.get_utxo_mn_assignment(left_utxo)
                     left_value = mn.name if mn else ''
-                    mn = self.get_utxo_mn_assignement(right_utxo)
+                    mn = self.get_utxo_mn_assignment(right_utxo)
                     right_value = mn.name if mn else ''
                 else:
                     left_value = left_utxo.__getattribute__(col_name)
@@ -177,9 +177,9 @@ class ListCollateralTxsDlg(QDialog, ui_find_coll_tx_dlg.Ui_ListCollateralTxsDlg,
         self.read_only = read_only
         self.collaterals_table_model = CollTxsTableModel(self, utxos, self.app_config.masternodes,
                                                          self.app_config.get_block_explorer_tx())  #todo: test after implementing Qt 5.15 changes
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         try:
             ui_find_coll_tx_dlg.Ui_ListCollateralTxsDlg.setupUi(self, self)
             self.setWindowTitle('Find collateral transaction')
@@ -235,7 +235,7 @@ class ListCollateralTxsDlg(QDialog, ui_find_coll_tx_dlg.Ui_ListCollateralTxsDlg,
     def check_accept_selections(self) -> bool:
         utxo = self.get_selected_utxo()
         if utxo:
-            mn = self.collaterals_table_model.get_utxo_mn_assignement(utxo)
+            mn = self.collaterals_table_model.get_utxo_mn_assignment(utxo)
             if mn:
                 if mn != self.edited_masternode and self.edited_masternode:
                     if wnd_utils.WndUtils.query_dlg(

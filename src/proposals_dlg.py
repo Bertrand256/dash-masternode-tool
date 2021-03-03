@@ -52,7 +52,7 @@ VOTE_CODE_YES = '1'
 VOTE_CODE_NO = '2'
 VOTE_CODE_ABSTAIN = '3'
 
-# definition of symbols' for DB live configuration (tabel LIVE_CONFIG)
+# definition of symbols' for DB live configuration (table LIVE_CONFIG)
 CFG_PROPOSALS_LAST_READ_TIME = 'proposals_last_read_time'
 CFG_PROPOSALS_VOTES_MAX_DATE = 'prop_votes_max_date'  # maximum date of vote(s), read last time
 
@@ -94,7 +94,7 @@ class ProposalColumn(TableModelColumn):
         self.remove_attr_protection()
         self.column_for_vote = column_for_vote
         self.my_masternode = None  # True, if column for masternode vote relates to user's masternode
-        self.initil_order = None  # order by voting-in-progress first, then by payment_start descending
+        self.initial_order = None  # order by voting-in-progress first, then by payment_start descending
         self.set_attr_protection()
 
 
@@ -137,7 +137,7 @@ class Proposal(AttrsProtected):
         self.get_governance_info: Callable = get_governance_info_fun
         self.find_prev_superblock = find_prev_superblock
         self.find_next_superblock = find_next_superblock
-        self.budget_cycle_hours: int = None
+        self.budget_cycle_hours: Optional[int] = None
         self.data_model: ExtSortFilterItemModel = data_model
         self.values: Dict[ProposalColumn, Any] = {}  # dictionary of proposal values (key: ProposalColumn)
         self.db_id = None
@@ -178,7 +178,7 @@ class Proposal(AttrsProtected):
                     return False
         raise AttributeError('Invalid proposal value name: ' + name)
 
-    def get_value(self, column):
+    def get_value(self, column) -> Any:
         """
         Returns value of for a specified column name.
         """
@@ -194,7 +194,7 @@ class Proposal(AttrsProtected):
             raise AttributeError('Invalid proposal column name: ' + column)
         elif isinstance(column, int):
             # column is a column index
-            if column >= 0 and column < self.data_model.col_count():
+            if 0 <= column < self.data_model.col_count():
                 return self.values.get(self.data_model.col_by_index(column))
             raise AttributeError('Invalid proposal column index: ' + str(column))
         raise AttributeError("Invalid 'column' attribute type.")
@@ -218,7 +218,7 @@ class Proposal(AttrsProtected):
             modified = True
 
         if modified and mn_ident in self.vote_columns_by_mn_ident:
-            # this vote shoud be shown in the dynamic column for vote results
+            # this vote should be shown in the dynamic column for vote results
             self.set_value(mn_ident, vote_result)
 
     def remove_vote(self, mn_ident):
@@ -398,9 +398,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                       #   1: incremental by date, 2: summary, 3: vote change
         self.sending_votes = False
         self.reading_vote_data = False
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         try:
             ui_proposals.Ui_ProposalsDlg.setupUi(self, self)
 
@@ -412,7 +412,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.edtProposalFilter.setVisible(True)
             self.lblProposalFilter.setVisible(True)
 
-            self.on_chart_type_change()  # get the self.current_chart_type value from radiobuttons
+            self.on_chart_type_change()  # get the self.current_chart_type value from radio buttons
             self.setWindowTitle('Proposals')
 
             self.buttonBox.button(QDialogButtonBox.Close).setAutoDefault(False)
@@ -538,7 +538,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.propsModel.save_col_defs(CACHE_ITEM_PROPOSALS_COLUMNS)
 
             # save voting-results tab configuration
-            # columns' withds
+            # column widths
             cfg = []
             for col_idx in range(0, self.votesModel.columnCount()):
                 width = self.votesView.columnWidth(col_idx)
@@ -648,7 +648,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         cur.execute("update PROPOSALS set title=null, owner=null, ext_attributes_loaded=0, "
                                     "ext_attributes_load_time=0")
                         self.db_intf.commit()
-                        if self.read_external_attibutes(self.proposals):
+                        if self.read_external_attributes(self.proposals):
                             WndUtils.call_in_main_thread(display_data)
 
                     except CloseDialogException:
@@ -840,7 +840,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             return None
 
         def clean_float(data_in):
-            # deals with JSON field 'payment_amount' passed as different type for different propsoals  - when it's
+            # deals with JSON field 'payment_amount' passed as different type for different proposals  - when it's
             # a string, then comma (if exists) is replaced wit a dot, otherwise it's converted to a float
             if isinstance(data_in, str):
                 return float(data_in.replace(',', '.'))
@@ -861,7 +861,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             rows_added = False
 
             # reset marker value in all existing Proposal object - we'll use it to check which
-            # of prevoiusly read proposals do not exit anymore
+            # of previously read proposals do not exit anymore
             for prop in self.proposals:
                 prop.marker = False
                 prop.modified = False  # all modified proposals will be saved to DB cache
@@ -1063,7 +1063,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     raise Exception('Errors while processing proposals data. Look into the log file for details.')
             else:
                 # no proposals read from network - skip deactivating records because probably
-                # some network glitch occured
+                # some network glitch occurred
                 log.warning('No proposals returned from dashd.')
             log.info('Finished reading proposals data from network.')
 
@@ -1100,7 +1100,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             self.last_superblock_time = self.get_block_timestamp(self.last_superblock)
             self.next_superblock_time = 0
-            if self.cur_block_height > 0 and self.cur_block_height <= self.next_superblock:
+            if 0 < self.cur_block_height <= self.next_superblock:
                 self.next_superblock_time = self.get_block_timestamp(self.cur_block_height) + (self.next_superblock - self.cur_block_height) * 2.5 * 60
 
             if self.next_superblock_time == 0:
@@ -1256,7 +1256,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                     raise CloseDialogException
 
                                 # fix the problem of duplicated proposals with the same hash, which could be
-                                # deactivated due to some problems with previuos executions
+                                # deactivated due to some problems with previous executions
                                 # select all proposals with the same hash and move their votes to the current one
                                 cur_fix.execute('select id from PROPOSALS where hash=? and id<>?',
                                                 (row[12], row[24]))
@@ -1303,7 +1303,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 ext_attributes_load_time = 0 if not row[29] else row[29]
                                 if prop.ext_attributes_loaded:
                                     if not row[26] and not row[27] and time.time() - ext_attributes_load_time > 86400:
-                                        # reload external attributes is the 'owner' and 'title' are ampty
+                                        # reload external attributes is the 'owner' and 'title' are empty
                                         prop.ext_attributes_loaded = False
                                     elif (time.time() - ext_attributes_load_time > 86400 * 3) and \
                                         (prop.get_value('payment_end') > datetime.datetime.now()):
@@ -1311,10 +1311,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                         # the proposal title changed
                                         prop.ext_attributes_loaded = False
 
-                                # todo: optimize; for very old proposals exising in the cache, especially for testnet,
+                                # todo: optimize; for very old proposals existing in the cache, especially for testnet,
                                 #  apply_values may have to fetch a large number of transactions from the network (to
                                 #  calculate the number of payment cycles that apply to the proposal), which can
-                                #  significantly slowndown the display of the list of proposals
+                                #  significantly slowdown the display of the list of proposals
                                 prop.apply_values(self.masternodes, self.last_superblock_time,
                                                   self.next_superblock_time)
                                 self.proposals.append(prop)
@@ -1374,7 +1374,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         if not prop.ext_attributes_loaded:
                             proposals.append(prop)
                 if proposals and not self.finishing:
-                    if self.read_external_attibutes(proposals):
+                    if self.read_external_attributes(proposals):
                         WndUtils.call_in_main_thread(self.display_proposals_data)  # refresh display
 
             if not self.finishing:
@@ -1409,7 +1409,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             self.reading_vote_data = old_reading_state
 
-    def read_external_attibutes(self, proposals):
+    def read_external_attributes(self, proposals):
         """Method reads additional proposal attributes from an external source such as DashCentral.org/DashNexus.org
         :return True if proposals' external attributes has been updated.
         """
@@ -1569,7 +1569,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def read_voting_from_network(self, force_reload_all, proposals: List[Proposal]):
         """
         Retrieve from a Dash daemon voting results for all defined masternodes, for all visible Proposals.
-        :param force_reload_all: force reloading all votes and makre sure if a db cache contains all of them,
+        :param force_reload_all: force reloading all votes and make sure if a db cache contains all of them,
                if False, read only votes posted after last time when votes were read from the network
         :param proposals: list of proposals, which votes will be retrieved
         :return:
@@ -1629,9 +1629,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                             raise CloseDialogException
 
                                         v = votes[v_key]
-                                        match = re.search("CTxIn\(COutPoint\(([A-Fa-f0-9]+)\s*\,\s*(\d+).+\:(\d+)\:(\w+)", v)  # v12.2
+                                        match = re.search("CTxIn\(COutPoint\(([A-Fa-f0-9]+)\s*,\s*(\d+).+:(\d+):(\w+)", v)  # v12.2
                                         if not match or len(match.groups()) != 4:
-                                            match = re.search("([A-Fa-f0-9]+)\-(\d+)\:(\d+)\:(\w+)", v)  # v12.3
+                                            match = re.search("([A-Fa-f0-9]+)-(\d+):(\d+):(\w+)", v)  # v12.3
 
                                         if match and len(match.groups()) == 4:
                                             mn_ident = match.group(1) + '-' + match.group(2)
@@ -1706,7 +1706,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                                 proposals_updated.append(prop)
                             except Exception:
-                                log.exception('Exception while readoing votes for proposal ' + prop.get_value('hash'))
+                                log.exception('Exception while reading votes for proposal ' + prop.get_value('hash'))
                                 errors += 1
 
                         log.info('Network calls duration: %s for %d proposals' %
@@ -1902,7 +1902,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 if not prop.ext_attributes_loaded:
                     proposals.append(prop)
         if proposals and not self.finishing:
-            if self.read_external_attibutes(proposals):
+            if self.read_external_attributes(proposals):
                 WndUtils.call_in_main_thread(self.display_proposals_data) # refresh display
 
         proposals = []  # refresh "live" proposals only
@@ -2622,17 +2622,17 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         successful_proposal_list = []
         successful_votes = 0
         unsuccessful_votes = 0
-        ctrl.dlg_config_fun(dlg_title="Applying votes to the network...", show_progress_bar=False)
+        ctrl.dlg_config(dlg_title="Applying votes to the network...", show_progress_bar=False)
 
         for prop in proposal_list:
             if self.finishing:
                 break
-            prop_hash = prop.get_value('hash')
+            prop_hash = str(prop.get_value('hash'))
 
             for vote_idx, mn_info in enumerate(masternodes):
                 if self.finishing:
                     break
-                ctrl.display_msg_fun(f"Processing <b>{vote.upper()}</b> vote for the proposal <b>'{prop.get_value('name')}"
+                ctrl.display_msg(f"Processing <b>{vote.upper()}</b> vote for the proposal <b>'{prop.get_value('name')}"
                                      f"</b>'<br>on behalf of the masternode: {mn_info.masternode_config.name} "
                                      f"({mn_info.masternode_config.ip})")
 
@@ -2663,17 +2663,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                     if last_vote_ts is not None and sig_time < last_vote_ts:
                         # if the last vote timestamp is still grater than the current vote ts, correct the new one
-                        # The current ts can be less than the previus one when:
+                        # The current ts can be less than the previous one when:
                         #   - user turned off the vote offset in the configuration and the previous offset was > 0
                         #   - last offset drawn was higher than the current one (it's random) and a user
-                        #     is voting a short time after the previus one
+                        #     is voting a short time after the previous one
                         sig_time = last_vote_ts + 10
 
-                    serialize_for_sig = mn_info.masternode.ident + '|' + \
-                                        prop_hash + '|' + \
-                                        '1' + '|' + \
-                                        vote_code + '|' + \
-                                        str(sig_time)
+                    serialize_for_sig = mn_info.masternode.ident + '|' + prop_hash + '|' + '1' + '|' + \
+                                        vote_code + '|' + str(sig_time)
 
                     log.info('Vote message to sign: ' + serialize_for_sig)
                     step = 2
@@ -2708,7 +2705,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     if step in (1, 4):
                         msg = 'Error: ' + str(e)
                     elif step == 2:
-                        msg = "Error while signing vote message with masternode's private key: " + str(e)
+                        msg = "Error while signing vote message with masternode private key: " + str(e)
                     else:
                         msg = "Error while broadcasting vote message: " + str(e)
                         # write some info to the log file for analysis in case of problems
@@ -2774,7 +2771,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.refresh_details_tabs()
 
         if self.sending_votes:
-            self.error_msg('Wait for the previus votes processing finishes.')
+            self.error_msg('Wait for the previous votes processing finishes.')
 
         if not self.dashd_intf.open():
             self.error_msg('Dash daemon not connected')
@@ -2954,11 +2951,11 @@ class ProposalsModel(ExtSortFilterItemModel):
 
     def set_view(self, table_view: QTableView):
         super().set_view(table_view)
-        link_delagate = wnd_utils.HyperlinkItemDelegate(table_view)
-        link_delagate.linkActivated.connect(self.hyperlink_activated)
-        table_view.setItemDelegateForColumn(self.col_index_by_name('url'), link_delagate)
-        table_view.setItemDelegateForColumn(self.col_index_by_name('name'), link_delagate)
-        table_view.setItemDelegateForColumn(self.col_index_by_name('title'), link_delagate)
+        link_delegate = wnd_utils.HyperlinkItemDelegate(table_view)
+        link_delegate.linkActivated.connect(self.hyperlink_activated)
+        table_view.setItemDelegateForColumn(self.col_index_by_name('url'), link_delegate)
+        table_view.setItemDelegateForColumn(self.col_index_by_name('name'), link_delegate)
+        table_view.setItemDelegateForColumn(self.col_index_by_name('title'), link_delegate)
 
     def rowCount(self, parent=None, *args, **kwargs):
         return len(self.proposals)
@@ -3113,7 +3110,7 @@ class ProposalsModel(ExtSortFilterItemModel):
     def filterAcceptsRow(self, row_index, source_parent):
         will_show = True
         try:
-            if row_index >= 0 and row_index < len(self.proposals):
+            if 0 <= row_index < len(self.proposals):
                 prop: Proposal = self.proposals[row_index]
                 if self.filter_text:
                     filter_text_lower = self.filter_text.lower()

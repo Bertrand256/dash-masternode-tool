@@ -35,7 +35,7 @@ def prepare_hw_encryption_attrs(hw_session: HwSessionInfo, label: str) -> \
     :return: 0: protocol id
              1: hw type id
              1: hw passphrase encoding
-             2: hw bip32 path usad to encodind
+             2: hw bip32 path used to encoding
     """
     # generate a new random password which will be used to encrypt with Trezor method + Fernet
     protocol = 1
@@ -58,7 +58,7 @@ def prepare_hw_encryption_attrs(hw_session: HwSessionInfo, label: str) -> \
         return (protocol, hw_type_bin, bip32_path_n, key, encrypted_key_bin, pub_key_hash)
 
     elif hw_session.hw_type == HWType.ledger_nano:
-        # Ledger Nano S does not have encryption/decryption features, so for encryption and decryptionwe will use
+        # Ledger Nano S does not have encryption/decryption features, so for encryption and decryption will use
         # a hash of a signed message, where the message the raw key itself;
         # The raw key will be part of the encrypted header.
 
@@ -147,7 +147,7 @@ def read_file_encrypted(file_name: str, ret_attrs: dict, hw_session: HwSessionIn
                                         f'This file was encrypted with {HWType.get_desc(hw_type)} hardware wallet, '
                                         f'which has to be connected to the computer decrypt the file.')
                         else:
-                            # enctypted file uses other type of hardware wallet than the one currently connected -
+                            # encrypted file uses other type of hardware wallet than the one currently connected -
                             # create a separate (temporary) hw session for it
                             def _get_client():
                                 return hw_client_internal
@@ -241,7 +241,7 @@ def read_file_encrypted(file_name: str, ret_attrs: dict, hw_session: HwSessionIn
                             try:
                                 data_decr = fer.decrypt(data_base64)
                             except InvalidToken:
-                                raise Exception('Couldn\'t decrypt file (IvalidToken error). The file is probably '
+                                raise Exception('Couldn\'t decrypt file (InvalidToken error). The file is probably '
                                                 'corrupted or is encrypted with a different encryption method.')
                             yield data_decr
                     else:

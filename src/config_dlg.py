@@ -32,9 +32,9 @@ class SshConnectionWidget(QWidget, Ui_SshConnection):
     def __init__(self, parent_window):
         QWidget.__init__(self, parent=parent_window)
         Ui_SshConnection.__init__(self)
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, widget: QWidget):
         Ui_SshConnection.setupUi(self, self)
         icon = self.parent().get_icon('folder-open@16px.png')
         self.action_choose_private_key_file = self.edtPrivateKeyPath.addAction(icon, QLineEdit.TrailingPosition)
@@ -51,9 +51,9 @@ class RpcConnectionWidget(QWidget, Ui_RpcConnection):
     def __init__(self, parent):
         QWidget.__init__(self, parent=parent)
         Ui_RpcConnection.__init__(self)
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, widget: QWidget):
         Ui_RpcConnection.setupUi(self, self)
 
 
@@ -76,9 +76,9 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         # block ui controls -> cur config data copying while setting ui controls initial values
         self.disable_cfg_update = False
         self.is_modified = False
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         Ui_ConfigDlg.setupUi(self, self)
         self.resize(app_cache.get_value('ConfigDlg_Width', self.size().width(), int),
                     app_cache.get_value('ConfigDlg_Height', self.size().height(), int))
@@ -486,7 +486,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
     @pyqtSlot()
     def on_btnMoveDownConn_clicked(self):
         idx_from = self.lstConns.currentRow()
-        if idx_from >= 0 and idx_from < len(self.connections_current)-1:
+        if 0 <= idx_from < len(self.connections_current)-1:
             l = self.connections_current
             l[idx_from+1], l[idx_from] = l[idx_from], l[idx_from+1]  # swap two elements
             cur_item = self.lstConns.takeItem(idx_from)
@@ -500,7 +500,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         cfg = None
         if item:
             row = self.lstConns.row(item)
-            if row >= 0 and row < len(self.connections_current):
+            if 0 <= row < len(self.connections_current):
                 cfg = self.connections_current[row]
         if not self.disable_cfg_update and cfg:
             checked = item.checkState() == Qt.Checked
@@ -513,7 +513,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         """Display a connection's edit properties after moving focus to another connection.
         :param row_index: Index of a currently focused connection on the connections list.
         """
-        if row_index >= 0 and row_index < len(self.connections_current):
+        if 0 <= row_index < len(self.connections_current):
             self.current_network_cfg = self.connections_current[row_index]
         else:
             self.current_network_cfg = None

@@ -43,9 +43,9 @@ class UpdMnServiceDlg(QDialog, ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg, WndUtil
         self.dmn_new_port = ''
         self.upd_payout_active = False
         self.show_manual_commands = False
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg.setupUi(self, self)
         self.btnClose.hide()
         self.edtManualCommands.setStyle(ProxyStyleNoFocusRect())

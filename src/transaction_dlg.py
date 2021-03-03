@@ -64,9 +64,9 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
         self.dependent_transactions = dependent_transactions  # key: txid, value: transaction dict
         self.after_send_tx_callback: Callable[[Dict], None] = after_send_tx_callback
         self.fn_show_address_on_hw = fn_show_address_on_hw
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         Ui_TransactionDlg.setupUi(self, self)
         self.setWindowTitle('Transaction')
         self.chb_word_wrap.setChecked(app_cache.get_value(CACHE_ITEM_DETAILS_WORD_WRAP, False, bool))
@@ -326,4 +326,4 @@ td.lbl{{text-align: right;vertical-align: top;}} p.lbl{{margin: 0 5px 0 0; font-
             self.accept()
         else:
             self.reject()
-        self.closeEvent(None)
+        self.close()

@@ -29,6 +29,7 @@ from common import CancelException
 from thread_fun_dlg import ThreadFunDlg, WorkerThread, CtrlObject
 
 
+# noinspection PyTypeChecker
 class WndUtils:
 
     def __init__(self, app_config=None):
@@ -354,6 +355,7 @@ class WndUtils:
                     subitem = item.itemAt(subitem_idx)
                     WndUtils.remove_item_from_layout(item, subitem)
                 layout.removeItem(item)
+                # noinspection PyTypeChecker
                 item.setParent(None)
                 del item
             elif isinstance(item, QSpacerItem):

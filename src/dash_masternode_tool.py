@@ -24,9 +24,9 @@ if __name__ == '__main__':
         msg = str(value)
         if not msg:
             try:
-                msg = 'An unhandled exception accurred: ' + value.__class__.__name__ + '.'
+                msg = 'An unhandled exception occurred: ' + value.__class__.__name__ + '.'
             except:
-                msg = 'An unhandled exception accurred.'
+                msg = 'An unhandled exception occurred.'
         WndUtils.error_msg(msg)
 
     sys.excepthook = my_excepthook

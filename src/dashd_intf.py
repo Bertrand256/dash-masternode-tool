@@ -123,7 +123,7 @@ class SSHTunnelThread(QThread):
             log.exception('Exception while shutting down forward server.')
 
     def run(self):
-        class SubHander(Handler):
+        class SubHandler(Handler):
             chain_host = self.remote_ip
             chain_port = self.remote_port
             ssh_transport = self.transport
@@ -133,7 +133,7 @@ class SSHTunnelThread(QThread):
             self.ready_event.set()
             log.debug('Started SSHTunnelThread, local port forwarding 127.0.0.1:%s -> %s:%s' %
                           (str(self.local_port), self.remote_ip, str(self.remote_port)))
-            self.forward_server = ForwardServer(('127.0.0.1', self.local_port), SubHander)
+            self.forward_server = ForwardServer(('127.0.0.1', self.local_port), SubHandler)
             self.forward_server.serve_forever()
             log.debug('Stopped local port forwarding 127.0.0.1:%s -> %s:%s' %
                           (str(self.local_port), self.remote_ip, str(self.remote_port)))
@@ -247,7 +247,7 @@ class DashdSSH(object):
 
             except AuthenticationException as e:
                 # This exception will be raised in the following cases:
-                #  1. a private key with password protectection is used but the user enters incorrect password
+                #  1. a private key with password protection is used but the user enters incorrect password
                 #  2. a private key exists but user's public key is not added to the server's allowed keys
                 #  3. normal login to server is performed but the user enters bad password
                 # So, in the first case, the second query for password will ask for normal password to server, not
@@ -304,10 +304,10 @@ class DashdSSH(object):
 
     def find_dashd_config(self):
         """
-        Try to read configuration of remote dash daemon. In particular we need parameters concering rpc
+        Try to read configuration of remote dash daemon. In particular we need parameters concerning rpc
         configuration.
         :return: tuple (dashd_running, dashd_config_found, dashd config file contents as dict)
-                or error string in error occured
+                or error string in error occurred.
         """
         dashd_running = False
         dashd_config_found = False

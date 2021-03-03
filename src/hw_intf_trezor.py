@@ -214,7 +214,7 @@ def enumerate_devices(
         # details: https://github.com/spesmilo/electrum/issues/5420:
         # 1. use BridgeTransport first and then WebUsbTransport
         # 2. if any BridgeTransport devices are found, skip scanning WevUsbTransport devices, otherwise it will
-        #     breake the related "bridge" devices
+        #     break the related "bridge" devices
 
         name = transport.__name__
         if (name == 'WebUsbTransport' and not use_webusb) or (name == 'BridgeTransport' and not use_bridge) or \

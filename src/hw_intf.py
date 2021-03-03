@@ -50,7 +50,7 @@ log = logging.getLogger('dmt.hw_intf')
 # todo: verify if it's still needed
 def control_trezor_keepkey_libs(connecting_to_hw):
     """
-    Check if trying to switch between Trezor and Keepkey on Linux. It's not allowed because Trezor/Keepkey's client
+    Check if trying to switch between Trezor and Keepkey on Linux. It's not allowed because Trezor/Keepkey client
     libraries use objects with the same names (protobuf), which causes errors when switching between them.
     :param connecting_to_hw: type of the hardware wallet we are going to connect to.
     :return:
@@ -65,7 +65,7 @@ def control_hw_call(func):
     """
     Decorator for some of the hardware wallet functions. It ensures, that hw client connection is open (and if is not, 
     it makes attempt to open it). The s econt thing is to catch OSError exception as a result of disconnecting 
-    hw cable. After this, connection has to be closed and opened again, otherwise 'read error' occurrs. 
+    hw cable. After this, connection has to be closed and opened again, otherwise 'read error' occurs.
     :param func: function decorated. First argument of the function has to be the reference to the MainWindow object.
     """
 
@@ -101,7 +101,7 @@ def control_hw_call(func):
                     ret = func(*args, **kwargs)
 
                 else:
-                    raise Exception('Uknown hardware wallet type: ' + str(hw_session.hw_type))
+                    raise Exception('Unknown hardware wallet type: ' + str(hw_session.hw_type))
             finally:
                 hw_session.release_client()
 
@@ -214,8 +214,8 @@ def action_on_device_message(message=DEFAULT_HW_BUSY_MESSAGE, title=DEFAULT_HW_B
 
             def thread_dialog(ctrl):
                 if ctrl:
-                    ctrl.dlg_config_fun(dlg_title=title, show_progress_bar=False)
-                    ctrl.display_msg_fun(message)
+                    ctrl.dlg_config(dlg_title=title, show_progress_bar=False)
+                    ctrl.display_msg(message)
 
                 return func(*args, **kwargs)
 
@@ -233,12 +233,12 @@ def ping_device(hw_device: HWDevice, message: str):
         """The only way to make Ledger Nano to display a message is to use the message signing feature."""
         message = "Ping from DMT"
         message_hash = hashlib.sha256(message.encode('ascii')).hexdigest().upper()
-        ctrl.dlg_config_fun(dlg_title=message, show_progress_bar=False)
+        ctrl.dlg_config(dlg_title=message, show_progress_bar=False)
         display_label = '<b>This is a "ping" message from DMT</b> (we had to use the message signing feature).<br>' \
                         '<b>Message: </b>' + message + '<br>' \
                         '<b>SHA256 hash:</b> ' + message_hash + '<br>' \
                         '<br>Click "Sign" on the device to close this dialog.</b>'
-        ctrl.display_msg_fun(display_label)
+        ctrl.display_msg(display_label)
         try:
             ledger.sign_message(hw_device.hw_client, dash_utils.get_default_bip32_path('MAINNET'), message, None)
         except CancelException:
@@ -321,8 +321,8 @@ def wipe_device(hw_type: HWType, hw_device_id: Optional[str], parent_window=None
     """
 
     def wipe(ctrl):
-        ctrl.dlg_config_fun(dlg_title="Confirm wiping device.", show_progress_bar=False)
-        ctrl.display_msg_fun('<b>Read the messages displyed on your hardware wallet <br>'
+        ctrl.dlg_config(dlg_title="Confirm wiping device.", show_progress_bar=False)
+        ctrl.display_msg('<b>Read the messages displayed on your hardware wallet <br>'
                              'and click the confirmation button when necessary...</b>')
 
         if hw_type == HWType.trezor:
@@ -352,7 +352,7 @@ def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemon
     system, that will never be connected to the Internet.
     :param hw_type: app_config.HWType
     :param hw_device_id: id of the device selected by the user (TrezorClient, KeepkeyClient); None for Ledger Nano S
-    :param mnemonic_words: string of 12/18/24 mnemonic words (separeted by spaces)
+    :param mnemonic_words: string of 12/18/24 mnemonic words (separated by spaces)
     :param pin: string with a new pin
     :param passphrase_enabled: if True, hw will have passphrase enabled (Trezor/Keepkey)
     :param hw_label: label for device (Trezor/Keepkey)
@@ -367,18 +367,18 @@ def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemon
         Ret[0] and Ret[1] are None for Ledger devices.
     """
 
-    def load(ctrl, hw_device_id_: str, mnemonic_: str, pin_: str, passphrase_enbled_: bool, hw_label_: str) -> \
+    def load(ctrl, hw_device_id_: str, mnemonic_: str, pin_: str, passphrase_enabled_: bool, hw_label_: str) -> \
             Tuple[Optional[str], bool]:
 
-        ctrl.dlg_config_fun(dlg_title="Please confirm", show_progress_bar=False)
-        ctrl.display_msg_fun('<b>Read the messages displyed on your hardware wallet <br>'
+        ctrl.dlg_config(dlg_title="Please confirm", show_progress_bar=False)
+        ctrl.display_msg('<b>Read the messages displayed on your hardware wallet <br>'
                              'and click the confirmation button when necessary...</b>')
 
         if hw_device_id_:
             if hw_type == HWType.trezor:
                 raise Exception('Feature no longer available for Trezor')
             elif hw_type == HWType.keepkey:
-                return keepkey.load_device_by_mnemonic(hw_device_id_, mnemonic_, pin_, passphrase_enbled_, hw_label_)
+                return keepkey.load_device_by_mnemonic(hw_device_id_, mnemonic_, pin_, passphrase_enabled_, hw_label_)
             else:
                 raise Exception('Not supported by Ledger Nano S.')
         else:
@@ -416,8 +416,8 @@ def recover_device(hw_type: HWType, hw_device_id: str, word_count: int, passphra
     def load(ctrl, hw_type_: HWType, hw_device_id_: str, word_count_: int, passphrase_enabled_: bool,
              pin_enabled_: bool, hw_label_: str) -> Tuple[Optional[str], bool]:
 
-        ctrl.dlg_config_fun(dlg_title="Please confirm", show_progress_bar=False)
-        ctrl.display_msg_fun('<b>Read the messages displyed on your hardware wallet <br>'
+        ctrl.dlg_config(dlg_title="Please confirm", show_progress_bar=False)
+        ctrl.display_msg('<b>Read the messages displayed on your hardware wallet <br>'
                              'and click the confirmation button when necessary...</b>')
 
         if hw_device_id_:
@@ -464,8 +464,8 @@ def reset_device(hw_type: HWType, hw_device_id: str, word_count: int, passphrase
     def load(ctrl, hw_type_: HWType, hw_device_id_: str, strength_: int, passphrase_enabled_: bool, pin_enabled_: bool,
              hw_label_: str) -> Tuple[Optional[str], bool]:
 
-        ctrl.dlg_config_fun(dlg_title="Please confirm", show_progress_bar=False)
-        ctrl.display_msg_fun('<b>Read the messages displyed on your hardware wallet <br>'
+        ctrl.dlg_config(dlg_title="Please confirm", show_progress_bar=False)
+        ctrl.display_msg('<b>Read the messages displayed on your hardware wallet <br>'
                              'and click the confirmation button when necessary...</b>')
         if hw_device_id_:
             if hw_type_ == HWType.trezor:
@@ -1175,8 +1175,8 @@ def sign_tx(hw_session: HwSessionInfo, rt_data: AppRuntimeData, utxos_to_spend: 
     """
 
     def sign(ctrl):
-        ctrl.dlg_config_fun(dlg_title="Confirm transaction signing.", show_progress_bar=False)
-        ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet<br>'
+        ctrl.dlg_config(dlg_title="Confirm transaction signing.", show_progress_bar=False)
+        ctrl.display_msg('<b>Click the confirmation button on your hardware wallet<br>'
                              'and wait for the transaction to be signed...</b>')
 
         if hw_session.hw_type == HWType.trezor:
@@ -1204,7 +1204,7 @@ def sign_tx(hw_session: HwSessionInfo, rt_data: AppRuntimeData, utxos_to_spend: 
 @control_hw_call
 def hw_sign_message(hw_session: HwSessionInfo, hw_coin_name: str, bip32path, message, display_label: str = None):
     def sign(ctrl, display_label_):
-        ctrl.dlg_config_fun(dlg_title="Confirm message signing.", show_progress_bar=False)
+        ctrl.dlg_config(dlg_title="Confirm message signing.", show_progress_bar=False)
         if not display_label_:
             if hw_session.hw_type == HWType.ledger_nano:
                 message_hash = hashlib.sha256(message.encode('ascii')).hexdigest().upper()
@@ -1213,7 +1213,7 @@ def hw_sign_message(hw_session: HwSessionInfo, hw_coin_name: str, bip32path, mes
                                                                                  '<br>' + message_hash
             else:
                 display_label_ = '<b>Click the confirmation button on your hardware wallet to sign the message...</b>'
-        ctrl.display_msg_fun(display_label_)
+        ctrl.display_msg(display_label_)
 
         if hw_session.hw_type == HWType.trezor:
 
@@ -1243,11 +1243,11 @@ def get_address(hw_session: HwSessionInfo, rt_data: AppRuntimeData, bip32_path: 
     def _get_address(ctrl):
         nonlocal hw_session, rt_data, bip32_path, show_display, message_to_display
         if ctrl:
-            ctrl.dlg_config_fun(dlg_title=DEFAULT_HW_BUSY_TITLE, show_progress_bar=False)
+            ctrl.dlg_config(dlg_title=DEFAULT_HW_BUSY_TITLE, show_progress_bar=False)
             if message_to_display:
-                ctrl.display_msg_fun(message_to_display)
+                ctrl.display_msg(message_to_display)
             else:
-                ctrl.display_msg_fun('<b>Click the confirmation button on your hardware wallet to exit...</b>')
+                ctrl.display_msg('<b>Click the confirmation button on your hardware wallet to exit...</b>')
 
         client = hw_session.hw_client
         if client:
@@ -1387,8 +1387,8 @@ def hw_encrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
 
     def encrypt(ctrl, hw_session_: HwSessionInfo, bip32_path_n_: List[int], label_: str,
                 value_: bytearray):
-        ctrl.dlg_config_fun(dlg_title="Data encryption", show_progress_bar=False)
-        ctrl.display_msg_fun(f'<b>Encrypting \'{label_}\'...</b>'
+        ctrl.dlg_config(dlg_title="Data encryption", show_progress_bar=False)
+        ctrl.display_msg(f'<b>Encrypting \'{label_}\'...</b>'
                              f'<br><br>Enter the hardware wallet PIN/passphrase (if needed) to encrypt data.<br><br>'
                              f'<b>Note:</b> encryption passphrase is independent from the wallet passphrase  <br>'
                              f'and can vary for each encrypted file.')
@@ -1438,8 +1438,8 @@ def hw_decrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
     """
 
     def decrypt(ctrl, hw_session_: HwSessionInfo, bip32_path_n_: List[int], label_: str, value_: bytearray):
-        ctrl.dlg_config_fun(dlg_title="Data decryption", show_progress_bar=False)
-        ctrl.display_msg_fun(f'<b>Decrypting \'{label_}\'...</b><br><br>Enter the hardware wallet PIN/passphrase '
+        ctrl.dlg_config(dlg_title="Data decryption", show_progress_bar=False)
+        ctrl.display_msg(f'<b>Decrypting \'{label_}\'...</b><br><br>Enter the hardware wallet PIN/passphrase '
                              f'(if needed)<br> and click the confirmation button to decrypt data.')
 
         if hw_session_.hw_type == HWType.trezor:

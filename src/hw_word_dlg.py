@@ -16,9 +16,9 @@ class HardwareWalletWordDlg(QDialog, ui_hw_word_dlg.Ui_HardwareWalletWordDlg, Wn
         self.wordlist = wordlist
         self.message = message
         self.word = ''
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_hw_word_dlg.Ui_HardwareWalletWordDlg.setupUi(self, self)
         self.setWindowTitle('')
         self.lblWord.setText(self.message)

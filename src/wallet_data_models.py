@@ -32,8 +32,8 @@ FILTER_OPER_EQ = 3
 
 class MnAddressItem(object):
     def __init__(self):
-        self.masternode: MasternodeConfig = None
-        self.address: Bip44AddressType = None
+        self.masternode: Optional[MasternodeConfig] = None
+        self.address: Optional[Bip44AddressType] = None
 
 
 class MnAddressTableModel(ExtSortFilterItemModel):
@@ -206,7 +206,9 @@ class AccountListModel(ExtSortFilterItemModel):
 
     def removeRows(self, row, count, parent=None, *args, **kwargs):
         if parent is None or not parent.isValid():
-            if row >=0 and row < len(self.accounts):
+            if 0 <= row < len(self.accounts):
+                if parent is None:
+                    parent = QModelIndex()
                 self.beginRemoveRows(parent, row, row + count)
                 for row_offs in range(count):
                     del self.accounts[row - row_offs]
@@ -489,7 +491,7 @@ class UtxoTableModel(ExtSortFilterItemModel):
         self.utxos.clear()
         self.utxo_by_id.clear()
 
-    def update_utxos(self, utxos_to_add: List[UtxoType], utxos_to_update: List[UtxoType], utxos_to_delete: List[Tuple[int, int]]):
+    def update_utxos(self, utxos_to_add: List[UtxoType], utxos_to_update: List[UtxoType], utxos_to_delete: List[int]):
         if utxos_to_delete:
             row_indexes_to_remove = []
             for utxo_id in utxos_to_delete:

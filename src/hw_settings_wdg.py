@@ -43,7 +43,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
         self.btnEnDisPass.clicked.connect(self.on_passphrase_enable_disable)
         self.btnEnDisPassAlwaysOnDevice.clicked.connect(self.on_passphrase_alwaysondevice_enable_disable)
         self.btnEnDisWipeCode.clicked.connect(self.on_wipe_code_enable_disable)
-        self.btnEnDisSDCardProtection.clicked.connect(self.on_sd_card_protectin_enable_disable)
+        self.btnEnDisSDCardProtection.clicked.connect(self.on_sd_card_protection_enable_disable)
         self.btnRefreshSDCardProtection.clicked.connect(self.on_sd_card_protection_refresh)
 
     def initialize(self):
@@ -260,7 +260,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
     def on_wipe_code_enable_disable(self):
         pass
 
-    def on_sd_card_protectin_enable_disable(self):
+    def on_sd_card_protection_enable_disable(self):
         pass
 
     def on_sd_card_protection_refresh(self):

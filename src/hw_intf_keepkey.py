@@ -117,7 +117,7 @@ class MyHidTransport(HidTransport):
 
             # HIDAPI on Mac cannot detect correct HID interfaces, so device with
             # DebugLink doesn't work on Mac...
-            if devices.get(serial_number) != None and devices[serial_number][0] == path:
+            if devices.get(serial_number) is not None and devices[serial_number][0] == path:
                 raise Exception("Two devices with the same path and S/N found. This is Mac, right? :-/")
 
             if (vendor_id, product_id) in DEVICE_IDS:

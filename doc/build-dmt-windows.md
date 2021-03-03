@@ -25,7 +25,7 @@ Python version 3.6 or above is required to build DMT. Download and install Pytho
 
   ![Install Python - step 2](img/build-dmt/bwin-install-python-4.jpg)
 
-* In the *Advanced Options* step, check the *Install for all users* option. It is also recommended to install to a simple installation path such as *C:\Python36-64* for example:
+* In the *Advanced Options* step, check the *Install for all users* option. It is also recommended installing to a simple installation path such as *C:\Python36-64* for example:
 
   ![Install Python - step 3](img/build-dmt/bwin-install-python-5.jpg)
 

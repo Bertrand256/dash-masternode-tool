@@ -4,6 +4,8 @@
 # Created on: 2018-09
 import json
 import re
+
+from PyQt5 import QtWidgets
 from PyQt5.QtCore import pyqtSlot, QEvent, Qt
 from PyQt5.QtWidgets import QDialog, QDialogButtonBox
 from bitcoinrpc.authproxy import EncodeDecimal
@@ -30,10 +32,9 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
         self.last_commands = []
         self.last_command_index = None
         self.saved_command_text = ''
+        self.setupUi(self)
 
-        self.setupUi()
-
-    def setupUi(self):
+    def setupUi(self, dialog: QtWidgets.QDialog):
         ui_cmd_console_dlg.Ui_CmdConsoleDlg.setupUi(self, self)
         self.setWindowTitle("Command console")
         self.restore_cache_settings()

@@ -20,9 +20,9 @@ class ColumnsConfigDlg(QDialog, ui_columns_cfg_dlg.Ui_ColumnsConfigDlg, WndUtils
         WndUtils.__init__(self, None)
         self.columns: List = columns
         self.initialized = False
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QtWidgets.QDialog):
         ui_columns_cfg_dlg.Ui_ColumnsConfigDlg.setupUi(self, self)
         self.setWindowTitle("Columns")
         self.set_icon(self.btnMoveBegin, "first-page@16px.png", rotate=90)
@@ -80,7 +80,7 @@ class ColumnsConfigDlg(QDialog, ui_columns_cfg_dlg.Ui_ColumnsConfigDlg, WndUtils
         was_gap = False
         for item in items:
             row = self.tableWidget.visualRow(item.row())
-            if last_row >= 0 and last_row < row - 1:
+            if 0 <= last_row < row - 1:
                 was_gap = True
             if first_selected_row < 0:
                 first_selected_row = row

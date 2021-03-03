@@ -33,12 +33,12 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.main_dlg = main_dlg
         self.app_config = app_config
         self.dashd_intf = dashd_intf
-        self.masternode: MasternodeConfig = None
+        self.masternode: Optional[MasternodeConfig] = None
         self.updating_ui = False
         self.edit_mode = False
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, widget: QWidget):
         ui_masternode_details.Ui_WdgMasternodeDetails.setupUi(self, self)
         self.main_dlg.set_icon(self.btnShowOwnerPrivateKey, 'eye@16px.png')
         self.main_dlg.set_icon(self.btnShowOperatorPrivateKey, 'eye@16px.png')
@@ -922,8 +922,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         txes_cnt = 0
         msg = 'Scanning wallet transactions for 1000 Dash UTXOs.<br>' \
               'This may take a while (<a href="break">break</a>)....'
-        ctrl.dlg_config_fun(dlg_title="Scanning wallet", show_progress_bar=False)
-        ctrl.display_msg_fun(msg)
+        ctrl.dlg_config(dlg_title="Scanning wallet", show_progress_bar=False)
+        ctrl.display_msg(msg)
 
         def check_break_scanning():
             nonlocal break_scanning
@@ -933,10 +933,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             if check_break_scanning_ext is not None and check_break_scanning_ext():
                 raise BreakFetchTransactionsException()
 
-        def fetch_txes_feeback(tx_cnt: int):
+        def fetch_txes_feedback(tx_cnt: int):
             nonlocal msg, txes_cnt
             txes_cnt += tx_cnt
-            ctrl.display_msg_fun(msg + '<br><br>' + 'Number of transactions fetched so far: ' + str(txes_cnt))
+            ctrl.display_msg(msg + '<br><br>' + 'Number of transactions fetched so far: ' + str(txes_cnt))
 
         def on_msg_link_activated(link: str):
             nonlocal break_scanning
@@ -954,12 +954,12 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             WndUtils.call_in_main_thread(set)
 
         try:
-            bip44_wallet.on_fetch_account_txs_feedback = fetch_txes_feeback
+            bip44_wallet.on_fetch_account_txs_feedback = fetch_txes_feedback
             if src_address:
                 # limit transactions only to the specific address
                 # addr = bip44_wallet.get_address_item(src_address, False)
                 addr = bip44_wallet.scan_wallet_for_address(src_address, check_break_scanning,
-                                                            feedback_fun=fetch_txes_feeback)
+                                                            feedback_fun=fetch_txes_feedback)
 
                 if addr and addr.tree_id == bip44_wallet.get_tree_id():
                     bip44_wallet.fetch_addresses_txs([addr], check_break_scanning)

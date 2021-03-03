@@ -35,9 +35,9 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
         self.dmn_actual_operator_pubkey = ""
         self.revocation_reason = 0
         self.show_manual_commands = False
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_revoke_mn_dlg.Ui_RevokeMnDlg.setupUi(self, self)
         self.btnClose.hide()
         self.edtManualCommands.setStyle(ProxyStyleNoFocusRect())

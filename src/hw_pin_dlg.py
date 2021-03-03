@@ -15,13 +15,13 @@ class HardwareWalletPinDlg(QDialog, ui_hw_pin_dlg.Ui_HardwareWalletPinDlg, WndUt
         self.pin = ''
         self.message = message
         self.hide_numbers = hide_numbers
-        self.setupUi()
+        self.setupUi(self)
 
     def new_key(self, new_key):
         self.pin += new_key
         self.edtPin.setText('*' * len(self.pin))
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_hw_pin_dlg.Ui_HardwareWalletPinDlg.setupUi(self, self)
         styleSheet = """QPushButton {padding: 1px 1px 1 1px; border: 1px solid lightgray;
                           border-radius:5px}

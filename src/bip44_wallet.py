@@ -68,7 +68,7 @@ class Bip44Wallet(QObject):
         self.__tree_id = None
         self.__tree_ident = None
         self.__tree_label = ''
-        self.__cur_tx_fetch_prioriry = None
+        self.__cur_tx_fetch_priority = None
         self.__waiting_tx_fetch_priority = None
         self.__tx_fetch_end_event = threading.Event()
 
@@ -724,8 +724,8 @@ class Bip44Wallet(QObject):
                 _empty_addresses = 0
                 db_cursor = self.db_intf.get_cursor()
                 try:
-                    for addr_info in reversed(addresses):
-                        addr_id = addr_info.id
+                    for addr_info_rev in reversed(addresses):
+                        addr_id = addr_info_rev.id
 
                         # check if there was no transactions for the address
                         if not self.addr_bal_updated.get(addr_id):
@@ -1124,7 +1124,7 @@ class Bip44Wallet(QObject):
 
     def _check_terminate_tx_fetch(self):
         if self.__waiting_tx_fetch_priority is not None and \
-           self.__cur_tx_fetch_prioriry < self.__waiting_tx_fetch_priority:
+           self.__cur_tx_fetch_priority < self.__waiting_tx_fetch_priority:
             raise BreakFetchTransactionsException('Break fetch transactions')
 
     def _wait_for_tx_fetch_terminate(self, new_priority: int):
@@ -1140,13 +1140,13 @@ class Bip44Wallet(QObject):
 
         self.__waiting_tx_fetch_priority = new_priority
 
-        while self.__cur_tx_fetch_prioriry is not None:
+        while self.__cur_tx_fetch_priority is not None:
             self.__tx_fetch_end_event.wait(1)
             if self.__tx_fetch_end_event.is_set():
                 self.__tx_fetch_end_event.clear()
 
         self.__waiting_tx_fetch_priority = None
-        self.__cur_tx_fetch_prioriry = new_priority
+        self.__cur_tx_fetch_priority = new_priority
 
     def fetch_all_accounts_txs(self, check_break_process_fun: Callable, priority: int = DEFAULT_TX_FETCH_PRIORITY):
 
@@ -1200,7 +1200,7 @@ class Bip44Wallet(QObject):
                 self.decrease_ext_call_level()
 
         finally:
-            self.__cur_tx_fetch_prioriry = None
+            self.__cur_tx_fetch_priority = None
             self.__tx_fetch_end_event.set()
         log.debug('Finished fetching transactions for all accounts.')
 
@@ -1238,7 +1238,7 @@ class Bip44Wallet(QObject):
                 self.decrease_ext_call_level()
                 self.db_intf.release_cursor()
         finally:
-            self.__cur_tx_fetch_prioriry = None
+            self.__cur_tx_fetch_priority = None
             self.__tx_fetch_end_event.set()
 
         log.debug(f'fetch_account_xpub_txs exec time: {time.time() - tm_begin}s')
@@ -1749,7 +1749,7 @@ class Bip44Wallet(QObject):
             finally:
                 self.decrease_ext_call_level()
         finally:
-            self.__cur_tx_fetch_prioriry = None
+            self.__cur_tx_fetch_priority = None
             self.__tx_fetch_end_event.set()
         return account
 
@@ -1963,8 +1963,8 @@ def get_tx_address_thread(ctrl: CtrlObject, addresses: List[str], bip44_wallet: 
     txes_cnt = 0
     msg = 'Looking for a BIP32 path of the Dash address related to the masternode collateral.<br>' \
           'This may take a while (<a href="break">break</a>)....'
-    ctrl.dlg_config_fun(dlg_title="Looking for address", show_progress_bar=False)
-    ctrl.display_msg_fun(msg)
+    ctrl.dlg_config(dlg_title="Looking for address", show_progress_bar=False)
+    ctrl.display_msg(msg)
 
     def check_break_scanning():
         nonlocal break_scanning
@@ -1975,7 +1975,7 @@ def get_tx_address_thread(ctrl: CtrlObject, addresses: List[str], bip44_wallet: 
     def fetch_txes_feeback(tx_cnt: int):
         nonlocal msg, txes_cnt
         txes_cnt += tx_cnt
-        ctrl.display_msg_fun(msg + '<br><br>' + 'Number of transactions fetched so far: ' + str(txes_cnt))
+        ctrl.display_msg(msg + '<br><br>' + 'Number of transactions fetched so far: ' + str(txes_cnt))
 
     def on_msg_link_activated(link: str):
         nonlocal break_scanning

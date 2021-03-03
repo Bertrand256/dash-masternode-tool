@@ -65,7 +65,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         self.main_ui = parent
         self.app_config = parent.app_config
         self.current_step = STEP_SELECT_DEVICE_TYPE
-        self.action_type: Optional[int] = None  # numeric value represting the action type from the first step
+        self.action_type: Optional[int] = None  # numeric value representing the action type from the first step
         self.word_count: int = 24
         self.mnemonic_words: List[str] = [""] * 24
         self.entropy: str = '' # current entropy (entered by the user or converted from mnemonic words)
@@ -106,9 +106,9 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         self.hw_opt_auto_lock_delay_ms = None
         self.hw_opt_firmware_version = 'unknown'
 
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_hw_tools_dlg.Ui_HwInitializeDlg.setupUi(self, self)
         self.setWindowTitle("Hardware wallet tools")
 
@@ -182,7 +182,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
 
     def read_action_type_from_ui(self):
         if self.rbActRecoverWordsSafe.isChecked():
-            self.action_type = ACTION_RECOVER_FROM_WORDS_SAFE  # recover safe (onlline)
+            self.action_type = ACTION_RECOVER_FROM_WORDS_SAFE  # recover safe (online)
         elif self.rbActRecoverMnemonicWords.isChecked():
             self.action_type = ACTION_RECOVER_FROM_WORDS_CONV  # recover convenient (safe only when offline)
         elif self.rbActRecoverHexEntropy.isChecked():
@@ -481,13 +481,13 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         """Moves forward from the 'select device instance' step."""
         success = False
         idx = self.cboDeviceInstance.currentIndex()
-        if idx >= 0 and idx < len(self.hw_device_instances):
+        if 0 <= idx < len(self.hw_device_instances):
             self.hw_device_id_selected = self.hw_device_instances[idx][0]
             self.hw_device_index_selected = idx
 
             if self.action_type == ACTION_UPLOAD_FIRMWARE:
                 device_model = self.hw_device_instances[idx][2]
-                if self.hw_firmware_source_type == 1:  # firmware from Internet, check model copatibility
+                if self.hw_firmware_source_type == 1:  # firmware from Internet, check model compatibility
                     if self.hw_firmware_url_selected:
                         fw_model = self.hw_firmware_url_selected.get('model')
                         if str(fw_model) != str(device_model):
@@ -547,7 +547,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 # update the deice id in the device combobox and a list associated with it
                 self.hw_device_id_selected = device_id
                 idx = self.cboDeviceInstance.currentIndex()
-                if idx >= 0 and idx < len(self.hw_device_instances):
+                if 0 <= idx < len(self.hw_device_instances):
                     self.hw_device_instances[idx][0] = device_id
                     if self.hw_action_label is None:
                         self.hw_action_label = ''
@@ -589,14 +589,14 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 data = fptr.read()
                 return hashlib.sha256(data[begin_offset:]).hexdigest()
         except Exception:
-            logging.exception('Exeption while counting firmware fingerprint')
+            logging.exception('Exception while counting firmware fingerprint')
             return None
 
     def apply_upload_firmware(self) -> bool:
 
         def do_wipe(ctrl, hw_client):
-            ctrl.dlg_config_fun(dlg_title="Confirm wiping device.", show_progress_bar=False)
-            ctrl.display_msg_fun('<b>Wiping device...</b><br>Read the messages displyed on your hardware wallet <br>'
+            ctrl.dlg_config(dlg_title="Confirm wiping device.", show_progress_bar=False)
+            ctrl.display_msg('<b>Wiping device...</b><br>Read the messages displayed on your hardware wallet <br>'
                                  'and click the confirmation button when necessary.')
             hw_client.wipe_device()
 
@@ -606,7 +606,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             while True:
                 # in bootloader mode, there is not possibility do get the device_id; to know which of the devices has
                 # to be flashed, user has to leave only one device in bootloader mode at the time of this step
-                hw_clients = get_device_list(hw_type=self.hw_type, allow_bootloader_mode=True)
+                hw_clients = get_device_list(hw_types=(self.hw_type,), allow_bootloader_mode=True)
 
                 boot_clients = []
                 for c in hw_clients:
@@ -744,7 +744,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
 
     def apply_upload_firmware_thread(self, ctrl: CtrlObject, hw_client, wipe_data: bool) -> bool:
         ret = False
-        ctrl.dlg_config_fun(dlg_title='Firmware update')
+        ctrl.dlg_config(dlg_title='Firmware update')
         firmware_fingerprint = None
 
         try:
@@ -754,7 +754,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                     data = fptr.read()
 
             elif self.hw_firmware_source_type == 1:
-                ctrl.display_msg_fun('Downloading firmware, please wait....')
+                ctrl.display_msg('Downloading firmware, please wait....')
                 url = self.hw_firmware_url_selected.get('url')
                 firmware_fingerprint = self.hw_firmware_url_selected.get("fingerprint")
                 file_name = os.path.basename(urllib.parse.urlparse(url).path)
@@ -772,7 +772,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 raise Exception('Invalid firmware source')
 
             if data:
-                ctrl.display_msg_fun('<b>Uploading firmware...</b>'
+                ctrl.display_msg('<b>Uploading firmware...</b>'
                                      '<br>Click the confirmation button on your device if necessary.')
                 with open(local_file_path, 'rb') as fptr:
                     data = fptr.read()
@@ -878,7 +878,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             self.error_msg(str(e))
 
     def update_current_tab(self):
-        # display/hide controls on the current page (step), depending on the options set in prevous steps
+        # display/hide controls on the current page (step), depending on the options set in previous steps
         if self.current_step == STEP_SELECT_DEVICE_TYPE:
             msg_text = ''
 
@@ -979,7 +979,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                 if self.hw_options_details_visible:
                     self.btnHwOptionsDetails.setText('Hide preview')
                 else:
-                    self.btnHwOptionsDetails.setText('Show prewiew')
+                    self.btnHwOptionsDetails.setText('Show preview')
 
                 self.edtHwOptionsPIN.setVisible(self.chbHwOptionsUsePIN.isChecked())
                 self.btnShowPIN.setVisible(self.chbHwOptionsUsePIN.isChecked())
@@ -1265,7 +1265,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         ret = bitcoin.bip32_extract_key(priv)
         return ret
 
-    def refresh_adresses_preview(self):
+    def refresh_addresses_preview(self):
         if self.mnemonic:
             bip32_path = self.edtHwOptionsBip32Path.text()
             passphrase = self.edtHwOptionsPassphrase.text()
@@ -1291,7 +1291,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
     @pyqtSlot(bool)
     def on_btnRefreshAddressesPreview_clicked(self, check):
         try:
-            self.refresh_adresses_preview()
+            self.refresh_addresses_preview()
         except Exception as e:
             self.error_msg(str(e))
 
@@ -1299,21 +1299,21 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
     def on_btnPreviewShowNextAddresses_clicked(self, check):
         try:
             self.preview_address_count += PREVIEW_ADDRESSES_PER_PAGE
-            self.refresh_adresses_preview()
+            self.refresh_addresses_preview()
         except Exception as e:
             self.error_msg(str(e))
 
     @pyqtSlot()
     def on_edtHwOptionsPassphrase_returnPressed(self):
         try:
-            self.refresh_adresses_preview()
+            self.refresh_addresses_preview()
         except Exception as e:
             self.error_msg(str(e))
 
     @pyqtSlot()
     def on_edtHwOptionsBip32Path_returnPressed(self):
         try:
-            self.refresh_adresses_preview()
+            self.refresh_addresses_preview()
         except Exception as e:
             self.error_msg(str(e))
 
@@ -1504,10 +1504,10 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         self.run_thread_dialog(self.load_remote_firmware_list_thread, (), center_by_window=self)
 
     def load_remote_firmware_list_thread(self, ctrl: CtrlObject):
-        ctrl.dlg_config_fun(dlg_title='Downloading firmware sources', max_width=self.width())
+        ctrl.dlg_config(dlg_title='Downloading firmware sources', max_width=self.width())
 
         def load_from_url(base_url: str, list_url, device: str = None, official: bool = False, model: str = None):
-            ctrl.display_msg_fun(f'<b>Downloading firmware list from:</b><br>{list_url}<br><br>Please wait...')
+            ctrl.display_msg(f'<b>Downloading firmware list from:</b><br>{list_url}<br><br>Please wait...')
             response = urllib.request.urlopen(list_url, context=ssl._create_unverified_context())
             contents = response.read()
             fl = simplejson.loads(contents)
@@ -1536,7 +1536,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             project_url += 'master/'
 
             url = urllib.parse.urljoin(project_url, 'hardware-wallets/firmware/firmware-sources.json')
-            ctrl.display_msg_fun(f'<b>Downloading firmware sources from:</b><br>{url}<br><br>Please wait...')
+            ctrl.display_msg(f'<b>Downloading firmware sources from:</b><br>{url}<br><br>Please wait...')
             response = urllib.request.urlopen(url, context=ssl._create_unverified_context())
             contents = response.read()
             srcs = simplejson.loads(contents)
@@ -1812,7 +1812,7 @@ class MnemonicModel(QAbstractTableModel):
     def setData(self, index, data, role=None):
         row_idx = index.row()
         col_idx = index.column()
-        if row_idx >= 0 and row_idx < int(self.words_count/2):
+        if 0 <= row_idx < int(self.words_count / 2):
             if col_idx == 1:
                 idx = row_idx
             else:
@@ -1841,14 +1841,14 @@ class MnemonicModel(QAbstractTableModel):
                     elif col_idx == 2:
                         return str(int(self.words_count/2) + row_idx + 1) + '.'
                     elif col_idx == 1:
-                        if row_idx >= 0 and row_idx < int(self.words_count/2):
+                        if 0 <= row_idx < int(self.words_count / 2):
                             return self.mnemonic_word_list[row_idx]
                     elif col_idx == 3:
-                        if row_idx >= 0 and row_idx < int(self.words_count/2):
+                        if 0 <= row_idx < int(self.words_count / 2):
                             return self.mnemonic_word_list[int(self.words_count/2) + row_idx]
 
                 elif role == Qt.ForegroundRole:
-                    if row_idx >= 0 and row_idx < int(self.words_count/2):
+                    if 0 <= row_idx < int(self.words_count / 2):
                         if col_idx in (0, 1):
                             word_col_idx = 1
                         else:

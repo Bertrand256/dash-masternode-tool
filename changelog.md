@@ -118,7 +118,7 @@ roles - owner, operator and voter - one can choose any combination of
 them.
 - DML registration wizard: support for the 'feeSourceAddress' field 
 in the `protx prepare` call (added in Dash Core rc11).
-- Main window: suport for deterministic masternodes in the masternode 
+- Main window: support for deterministic masternodes in the masternode 
 status area.
 - Main window: the visibility of the buttons associated with starting 
 masternodes depends on the status of DIP3 and Spork 15.

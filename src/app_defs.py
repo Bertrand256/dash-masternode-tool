@@ -62,7 +62,7 @@ __KNOWN_LOGGERS = [
 
 def get_known_loggers() -> List[KnownLoggerType]:
     ll = []
-    # add existing loggers which are not known: some new libraries (or new versions) can intruduce new
+    # add existing loggers which are not known: some new libraries (or new versions) can introduce new
     # loggers
     for lname in logging.Logger.manager.loggerDict:
         l = logging.Logger.manager.loggerDict[lname]

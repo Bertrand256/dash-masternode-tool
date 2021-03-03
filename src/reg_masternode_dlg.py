@@ -107,11 +107,10 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.main_dlg.hw_session,
                                         self.app_config.db_intf, self.dashd_intf, self.app_config.dash_network)
         self.finishing = False
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_reg_masternode_dlg.Ui_RegMasternodeDlg.setupUi(self, self)
-        self.closeEvent = self.closeEvent
         self.restore_cache_settings()
         self.edtCollateralTx.setText(self.masternode.collateral_tx)
         if self.masternode.collateral_tx:
@@ -934,8 +933,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         txes_cnt = 0
         msg = ''
         break_scanning = False
-        ctrl.dlg_config_fun(dlg_title="Validating collateral transaction.", show_progress_bar=False)
-        ctrl.display_msg_fun('Verifying collateral transaction...')
+        ctrl.dlg_config(dlg_title="Validating collateral transaction.", show_progress_bar=False)
+        ctrl.display_msg('Verifying collateral transaction...')
 
         def check_break_scanning():
             nonlocal break_scanning
@@ -945,10 +944,10 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             if check_break_scanning_ext is not None and check_break_scanning_ext():
                 raise BreakFetchTransactionsException()
 
-        def fetch_txes_feeback(tx_cnt: int):
+        def fetch_txes_feedback(tx_cnt: int):
             nonlocal msg, txes_cnt
             txes_cnt += tx_cnt
-            ctrl.display_msg_fun(msg + '<br><br>' + 'Number of transactions fetched so far: ' + str(txes_cnt))
+            ctrl.display_msg(msg + '<br><br>' + 'Number of transactions fetched so far: ' + str(txes_cnt))
 
         def on_msg_link_activated(link: str):
             nonlocal break_scanning
@@ -958,7 +957,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         try:
             tx = self.dashd_intf.getrawtransaction(self.dmn_collateral_tx, 1, skip_cache=True)
         except Exception as e:
-            raise Exception('Cannot get the collateral transaction due to the following errror: ' + str(e))
+            raise Exception('Cannot get the collateral transaction due to the following error: ' + str(e))
 
         vouts = tx.get('vout')
         if vouts:
@@ -982,7 +981,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         else:
             raise Exception('Invalid collateral transaction')
 
-        ctrl.display_msg_fun('Verifying the collateral transaction address on your hardware wallet.')
+        ctrl.display_msg('Verifying the collateral transaction address on your hardware wallet.')
         if not self.main_dlg.connect_hardware_wallet():
             return False
 
@@ -1000,7 +999,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                     f'{self.dmn_collateral_tx_address_path} differs from the address stored the mn configuration '
                     f'(self.dmn_collateral_tx_address). Need to scan wallet for a correct BIP32 path.')
 
-                msg = '<span style="color:red">The BIP32 path of the collateral address from your mn config is incorret.<br></span>' \
+                msg = '<span style="color:red">The BIP32 path of the collateral address from your mn config is incorrect.<br></span>' \
                       f'Trying to find the BIP32 path of the address {self.dmn_collateral_tx_address} in your wallet.' \
                       f'<br>This may take a while (<a href="break">break</a>)...'
                 self.dmn_collateral_tx_address_path = ''
@@ -1018,12 +1017,12 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                     lbl.repaint()
                 WndUtils.call_in_main_thread(set)
 
-            ctrl.display_msg_fun(msg)
+            ctrl.display_msg(msg)
 
             # fetch the transactions that involved the addresses stored in the wallet - during this
             # all the used addresses are revealed
             addr = self.bip44_wallet.scan_wallet_for_address(self.dmn_collateral_tx_address, check_break_scanning,
-                                                             fetch_txes_feeback)
+                                                             fetch_txes_feedback)
             if not addr:
                 if not break_scanning:
                     WndUtils.error_msg(f'Couldn\'t find a BIP32 path of the collateral address ({self.dmn_collateral_tx_address}).')
@@ -1089,7 +1088,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             elif self.current_step == STEP_MANUAL_OWN_NODE:
                 self.start_manual_process()
             elif self.current_step == STEP_SUMMARY:
-                self.lblProtxSummary1.setText('<b><span style="color:green">Congratultions! The transaction for your DIP-3 '
+                self.lblProtxSummary1.setText('<b><span style="color:green">Congratulations! The transaction for your DIP-3 '
                                               'masternode has been submitted and is currently awaiting confirmations.'
                                               '</b></span>')
                 if self.on_proregtx_success_callback:
@@ -1365,7 +1364,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             if conf:
                 h = tx.get('height')
                 self.lblProtxSummary1.setText(
-                    '<b><span style="color:green">Congratultions! The transaction for your DIP-3 masternode has been '
+                    '<b><span style="color:green">Congratulations! The transaction for your DIP-3 masternode has been '
                     f'confirmed in block {h}.</b></span> ')
                 return True
         except Exception:

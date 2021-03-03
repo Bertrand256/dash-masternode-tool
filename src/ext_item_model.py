@@ -36,7 +36,7 @@ class TableModelColumn(AttrsProtected):
 class ColumnedSortFilterProxyModel(QSortFilterProxyModel):
     def __init__(self, parent):
         QSortFilterProxyModel.__init__(self, parent)
-        self.source_model: ExtSortFilterItemModel = None
+        self.source_model: Optional[ExtSortFilterItemModel] = None
 
     def setSourceModel(self, source_model):
         try:
@@ -70,11 +70,11 @@ class ExtSortFilterItemModel(QAbstractItemModel, AttrsProtected):
         self._columns = columns
         self._col_idx_by_name: Dict[str, int] = {}
         self._rebuild_column_index()
-        self.view: QAbstractItemView = None
+        self.view: Optional[QAbstractItemView] = None
         self.columns_movable = columns_movable
         self.sorting_column_name = ''
         self.sorting_order = Qt.AscendingOrder
-        self.proxy_model: ColumnedSortFilterProxyModel = None
+        self.proxy_model: Optional[ColumnedSortFilterProxyModel] = None
         self.data_lock = thread_utils.EnhRLock()
         if filtering_sorting:
             self.enable_filter_proxy_model(self)

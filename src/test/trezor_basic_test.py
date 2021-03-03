@@ -25,7 +25,7 @@ def main():
         transport = HidTransport(devices[0])
 
         # Creates object for manipulating TREZOR
-        client = TrezorClient(transport)
+        client = TrezorClient(transport, None)
 
         # Print out TREZOR's features and settings
         print(client.features)

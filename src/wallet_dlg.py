@@ -157,12 +157,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.dt_last_addr_selection_hash_for_txes = ''
         self.dt_last_hd_tree_id = None
 
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_wallet_dlg.Ui_WalletDlg.setupUi(self, self)
         self.setWindowTitle('Transfer funds')
-        self.closeEvent = self.closeEvent
         self.chbHideCollateralTx.setChecked(True)
         self.set_icon(self.btnCheckAll, 'check.png')
         self.set_icon(self.btnUncheckAll, 'uncheck.png')

@@ -27,9 +27,9 @@ class SignMessageDlg(QDialog, ui_sign_message_dlg.Ui_SignMessageDlg, wnd_utils.W
         self.address = address
         self.private_key = private_key
         self.app_config = main_ui.app_config
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_sign_message_dlg.Ui_SignMessageDlg.setupUi(self, self)
         self.setWindowTitle('Sign message')
         self.btnSignMessage.clicked.connect(self.btnSignMessageClick)

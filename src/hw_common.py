@@ -8,7 +8,7 @@ from enum import Enum
 from functools import partial
 
 from PyQt5 import QtWidgets, QtCore
-from typing import List, Optional, Callable, ByteString, Tuple, Any
+from typing import List, Optional, Callable, ByteString, Tuple, Any, Union
 from PyQt5.QtCore import QObject, pyqtSlot
 from PyQt5.QtWidgets import QDialog, QCheckBox, QRadioButton, QWidget
 
@@ -88,7 +88,7 @@ class HWDevice(object):
     """
     def __init__(self, hw_type: HWType, device_id: Optional[str], device_label: Optional[str],
                  device_model: Optional[str], firmware_version: Optional[str],
-                 hw_client: Any, bootloader_mode: bool, transport_id: Optional[object],
+                 hw_client: Any, bootloader_mode: bool, transport_id: Optional[Union[object, str]],
                  initialized: bool):
         self.transport_id = transport_id
         self.hw_type: HWType = hw_type
@@ -114,7 +114,7 @@ class HWDevice(object):
         if self.bootloader_mode:
             additional = 'bootloader mode'
         elif not self.initialized:
-            additional = 'not initiallized'
+            additional = 'not initialized'
         else:
             additional = ''
         if additional:

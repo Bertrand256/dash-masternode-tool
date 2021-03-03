@@ -245,7 +245,7 @@ class MessageSignature:
         self.signature = signature
 
 
-def _ledger_exctract_address(addr: str) -> str:
+def _ledger_extract_address(addr: str) -> str:
     match = re.search('bytearray\(b?["\']([a-zA-Z0-9]+)["\']\)', addr)
     if match and len(match.groups()) == 1:
         addr = match.group(1)
@@ -330,7 +330,7 @@ def sign_message(hw_client, bip32_path: str, message: str, hw_session: Optional[
         logging.error('client.signMessageSign() returned invalid response (code 1): ' + signature.hex())
         raise Exception('Invalid signature returned (code 1).')
 
-    addr = _ledger_exctract_address(pubkey.get('address'))
+    addr = _ledger_extract_address(pubkey.get('address'))
     return MessageSignature(
         addr,
         bytes(chr(27 + 4 + (signature[0] & 0x01)), "utf-8") + r + s
@@ -345,7 +345,7 @@ def get_address_and_pubkey(hw_session: HWSessionBase, bip32_path, show_display=F
         bip32_path = bip32_path[2:]
 
     nodedata = hw_session.hw_client.getWalletPublicKey(bip32_path, showOnScreen=show_display)
-    addr = _ledger_exctract_address(nodedata.get('address'))
+    addr = _ledger_extract_address(nodedata.get('address'))
 
     return {
         'address': addr,
@@ -389,8 +389,8 @@ def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, seco
     """
 
     def process(ctrl, mnemonic_words_, pin_, passphrase_, secondary_pin_):
-        ctrl.dlg_config_fun(dlg_title="Please confirm", show_progress_bar=False)
-        ctrl.display_msg_fun('<b>Please wait while initializing device...</b>')
+        ctrl.dlg_config(dlg_title="Please confirm", show_progress_bar=False)
+        ctrl.display_msg('<b>Please wait while initializing device...</b>')
 
         dongle = getDongle()
 
@@ -417,7 +417,7 @@ def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, seco
 
         # stage 2: setup the secondary pin and the passphrase if provided
         if passphrase_ and secondary_pin_:
-            ctrl.display_msg_fun('<b>Configuring the passphrase, enter the primary PIN on your <br>'
+            ctrl.display_msg('<b>Configuring the passphrase, enter the primary PIN on your <br>'
                                  'hardware wallet when asked...</b>')
 
             apdudata = bytearray()
@@ -471,8 +471,8 @@ def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: 
     #  {
     #    'locking_script': <Locking script of the UTXO used as an input. Used in the process of signing
     #                       transaction.>,
-    #    'outputIndex': <index of the UTXO within the previus transaction>,
-    #    'txid': <hash of the previus transaction>,
+    #    'outputIndex': <index of the UTXO within the previous transaction>,
+    #    'txid': <hash of the previous transaction>,
     #    'bip32_path': <BIP32 path of the HW key controlling UTXO's destination>,
     #    'pubkey': <Public key obtained from the HW using the bip32_path.>
     #    'signature' <Signature obtained as a result of processing the input. It will be used as a part of the
@@ -488,7 +488,7 @@ def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: 
     # reading it multiple times for the same bip32 path
     bip32_to_address = {}
 
-    # read previous transactins
+    # read previous transactions
     for utxo in utxos_to_spend:
         if utxo.txid not in rawtransactions:
             tx = rt_data.dashd_intf.getrawtransaction(utxo.txid, 1, skip_cache=False)
@@ -535,7 +535,7 @@ def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: 
 
         utxo_tx_index = utxo.output_index
         if utxo_tx_index < 0 or utxo_tx_index > len(prev_transaction.outputs):
-            raise Exception('Incorrent value of outputIndex for UTXO %s' % str(idx))
+            raise Exception('Incorrect value of outputIndex for UTXO %s' % str(idx))
 
         trusted_input = client.getTrustedInput(prev_transaction, utxo_tx_index)
         trusted_inputs.append(trusted_input)
@@ -576,7 +576,7 @@ def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: 
         output.amount = int.to_bytes(out.satoshis, 8, byteorder='little')
         new_transaction.outputs.append(output)
 
-    # join all outputs - will be used by Ledger for sigining transaction
+    # join all outputs - will be used by Ledger for signing transaction
     all_outputs_raw = new_transaction.serializeOutputs()
 
     # sign all inputs on Ledger and add inputs in the new_transaction object for serialization

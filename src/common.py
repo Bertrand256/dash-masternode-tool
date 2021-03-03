@@ -16,7 +16,7 @@ class AttrsProtected(object):
     def set_attr_protection(self):
         """
         Method to be called at the end of child class constructor. It enables attribute
-        defition protection - each attempt of creating attribute after this call will
+        definition protection - each attempt of creating attribute after this call will
         end up with an error.
         """
         self.__allow_attr_definition = False
@@ -55,13 +55,3 @@ class InternalError(Exception):
     def __str__(self):
         return self.message
 
-
-def namedtuple_defaults(typename, field_names, default_values=()):
-    T = collections.namedtuple(typename, field_names)
-    T.__new__.__defaults__ = (None,) * len(T._fields)
-    if isinstance(default_values, collections.Mapping):
-        prototype = T(**default_values)
-    else:
-        prototype = T(*default_values)
-    T.__new__.__defaults__ = tuple(prototype)
-    return T

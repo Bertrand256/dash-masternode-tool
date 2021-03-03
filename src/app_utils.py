@@ -208,9 +208,9 @@ def seconds_to_human(number_of_seconds, out_seconds=True, out_minutes=True, out_
                      out_days=True, out_unit_auto_adjust=False):
     """
     Converts number of seconds to string representation.
-    :param out_seconds: False, if seconds part in output is to be trucated
+    :param out_seconds: False, if seconds part in output is to be truncated
     :param number_of_seconds: number of seconds.
-    :param out_unit_auto_adjust: if True, funcion automatically decides what parts of the date-time diff
+    :param out_unit_auto_adjust: if True, function automatically decides what parts of the date-time diff
       passed as an argument will become part of the output string. For example, if number_of_seconds is bigger than
       days, there is no sense to show seconds part.
     :return: string representation of time delta
@@ -281,7 +281,7 @@ ctx = decimal.Context()
 ctx.prec = 20
 
 
-def to_string(data):
+def to_string(data) -> str:
     """ Converts date/datetime or number to string using the current locale.
     """
 

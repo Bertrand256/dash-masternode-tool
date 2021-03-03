@@ -51,9 +51,9 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
         self.show_upd_operator = show_upd_operator
         self.show_upd_voting = show_upd_voting
         self.show_manual_commands = False
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg.setupUi(self, self)
         self.btnClose.hide()
         self.edtManualCommands.setStyle(ProxyStyleNoFocusRect())

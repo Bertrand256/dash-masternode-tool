@@ -203,6 +203,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         else:
             return ACTION_NONE
 
+    # noinspection PyTypeChecker
     def setup_action_widget(self, action: int):
         try:
             if self.get_widget_action_type() != action:

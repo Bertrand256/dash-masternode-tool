@@ -32,7 +32,7 @@ def add_data_file(file: str, dest_dir: str):
 
 
 def add_binary_file(file: str, dest_dir: str):
-    global bianry_files
+    global binary_files
     binary_files.append((file, dest_dir))
     print(f'Adding binary file {file} to dest dir {dest_dir}')
 

@@ -519,7 +519,7 @@ class Bip44AccountType(AttrsProtected, Bip44Entry):
         return addr_index
 
     def address_by_index(self, index):
-        if index >= 0 and index < len(self.addresses):
+        if 0 <= index < len(self.addresses):
             return self.addresses[index]
         else:
             return None

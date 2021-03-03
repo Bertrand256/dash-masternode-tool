@@ -6,6 +6,7 @@
 import os
 import sys
 
+from PyQt5 import QtWidgets
 from PyQt5.QtCore import QSize, pyqtSlot
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QDialog
@@ -20,9 +21,9 @@ class AboutDlg(QDialog, ui_about_dlg.Ui_AboutDlg, WndUtils):
         ui_about_dlg.Ui_AboutDlg.__init__(self)
         WndUtils.__init__(self, parent.app_config)
         self.app_version_str = app_version_str
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QtWidgets.QDialog):
         ui_about_dlg.Ui_AboutDlg.setupUi(self, self)
         self.setWindowTitle("About")
         img = QPixmap(os.path.join(self.app_config.app_dir, "img/dmt.png"))
