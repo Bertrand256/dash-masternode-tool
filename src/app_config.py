@@ -421,7 +421,7 @@ class AppConfig(QObject):
         if not os.path.exists(self.cfg_backup_dir):
             os.makedirs(self.cfg_backup_dir)
 
-        if not self.app_last_version or app_utils.is_version_bigger(self.app_version, self.app_last_version):
+        if not self.app_last_version or app_utils.is_version_greater(self.app_version, self.app_last_version):
             app_cache.save_data()
 
         self.initialized = True

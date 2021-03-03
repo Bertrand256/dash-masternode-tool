@@ -653,7 +653,7 @@ class Ui_HwInitializeDlg(object):
         self.verticalLayout.addWidget(self.widget)
 
         self.retranslateUi(HwInitializeDlg)
-        self.tabSteps.setCurrentIndex(8)
+        self.tabSteps.setCurrentIndex(2)
         QtCore.QMetaObject.connectSlotsByName(HwInitializeDlg)
 
     def retranslateUi(self, HwInitializeDlg):

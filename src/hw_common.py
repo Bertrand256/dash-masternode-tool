@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+from __future__ import annotations
 import logging
 import threading
 from enum import Enum
@@ -63,6 +64,49 @@ class HWType(Enum):
         return None
 
 
+class HWModel(Enum):
+    trezor_one = 'TREZOR_ONE'
+    trezor_t = 'TREZOR_T'
+    keepkey = 'KEEPKEY'
+    ledger_nano_s = 'LEDGER_NANO_S'
+    ledger_nano_x = 'LEDGER_NANO_X'
+
+    @staticmethod
+    def get_hw_type(hw_model: HWModel) -> HWType:
+        if hw_model in (HWModel.trezor_one, HWModel.trezor_t):
+            return HWType.trezor
+        elif hw_model == HWModel.keepkey:
+            return HWType.keepkey
+        elif hw_model in (HWModel.ledger_nano_s, HWModel.ledger_nano_s):
+            return HWType.ledger_nano
+
+    @staticmethod
+    def get_model_str(hw_model: HWModel) -> str:
+        return {
+            HWModel.trezor_one: '1',
+            HWModel.trezor_t: 'T',
+            HWModel.keepkey: 'keepkey',
+            HWModel.ledger_nano_s: 's',
+            HWModel.ledger_nano_x: 'z'
+        }[hw_model]
+
+    @staticmethod
+    def from_string(hw_type: HWType, hw_model_str: str) -> Optional['HWModel']:
+        if hw_type == HWType.trezor:
+            if hw_model_str.lower() == HWModel.get_model_str(HWModel.trezor_one).lower():
+                return HWModel.trezor_one
+            elif hw_model_str.lower() == HWModel.get_model_str(HWModel.trezor_t).lower():
+                return HWModel.trezor_t
+        elif hw_type == HWType.keepkey:
+            return HWModel.keepkey
+        elif hw_type == HWType.ledger_nano:
+            if hw_model_str.lower() == HWModel.get_model_str(HWModel.ledger_nano_s).lower():
+                return HWModel.ledger_nano_s
+            elif hw_model_str.lower() == HWModel.get_model_str(HWModel.ledger_nano_x).lower():
+                return HWModel.ledger_nano_x
+        return None
+
+
 def get_hw_type_from_client(hw_client) -> HWType:
     """
     Return hardware wallet type (HWType) based on reference to a hw client.
@@ -87,7 +131,7 @@ class HWDevice(object):
     Represents a hardware wallet device connected to the computer.
     """
     def __init__(self, hw_type: HWType, device_id: Optional[str], device_label: Optional[str],
-                 device_model: Optional[str], firmware_version: Optional[str],
+                 model_symbol: Optional[str], firmware_version: Optional[str],
                  hw_client: Any, bootloader_mode: bool, transport_id: Optional[Union[object, str]],
                  initialized: bool):
         self.transport_id = transport_id
@@ -95,7 +139,7 @@ class HWDevice(object):
         self.device_id = device_id
         self.device_label = device_label
         self.firmware_version = firmware_version
-        self.device_model = device_model
+        self.model_symbol = model_symbol
         self.hw_client = hw_client
         self.bootloader_mode = bootloader_mode
         self.initialized = initialized
@@ -103,10 +147,10 @@ class HWDevice(object):
     def get_description(self):
         if self.hw_type == HWType.trezor:
             desc = 'Trezor'
-            if self.device_model:
-                desc += ' ' + {'1': 'One'}.get(self.device_model, self.device_model)
+            if self.model_symbol:
+                desc += ' ' + {'1': 'One'}.get(self.model_symbol, self.model_symbol)
         else:
-            desc = self.device_model
+            desc = self.model_symbol
         if self.device_label:
             desc += ' (' + self.device_label + ')'
         if not desc:
@@ -120,6 +164,9 @@ class HWDevice(object):
         if additional:
             desc += ' [' + additional + ']'
         return desc
+
+    def get_hw_model(self) -> Optional[HWModel]:
+        return HWModel.from_string(self.hw_type, self.model_symbol)
 
 
 class HWFirmwareWebLocation:

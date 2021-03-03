@@ -20,7 +20,7 @@ import hw_intf
 from app_config import AppConfig
 from app_defs import get_note_url
 from common import CancelException
-from hw_common import HWDevice, HWType, HWFirmwareWebLocation
+from hw_common import HWDevice, HWType, HWFirmwareWebLocation, HWModel
 from thread_fun_dlg import CtrlObject
 from ui.ui_hw_update_firmware_wdg import Ui_WdgHwUpdateFirmware
 from wallet_tools_common import ActionPageBase
@@ -304,7 +304,8 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
     def load_remote_firmware_list_thread(self, ctrl: CtrlObject):
         try:
             self.hw_firmware_web_sources_all.clear()
-            self.hw_firmware_web_sources_all = hw_intf.get_hw_firmware_web_sources((HWType.trezor, HWType.keepkey))
+            self.hw_firmware_web_sources_all = hw_intf.get_hw_firmware_web_sources(
+                hw_models_allowed=(HWModel.trezor_one, HWModel.trezor_t, HWModel.keepkey))
         except Exception as e:
             logging.error(str(e))
         finally:
@@ -325,7 +326,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
             for f in self.hw_firmware_web_sources_all:
                 if f.device == self.cur_hw_device.hw_type and \
                         (self.cur_hw_device.hw_type != HWType.trezor or
-                         self.cur_hw_device.device_model == f.model):
+                         self.cur_hw_device.model_symbol == f.model):
                     self.hw_firmware_web_sources_cur_hw.append(f)
 
         self.tabFirmwareWebSources.setRowCount(len(self.hw_firmware_web_sources_cur_hw))

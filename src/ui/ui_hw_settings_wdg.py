@@ -101,6 +101,7 @@ class Ui_WdgHwSettings(object):
         self.gridLayout_3.addWidget(self.lblPinStatus, 1, 1, 1, 1)
         self.lblFirmwareVersion = QtWidgets.QLabel(self.fraHwSettings)
         self.lblFirmwareVersion.setMinimumSize(QtCore.QSize(128, 0))
+        self.lblFirmwareVersion.setOpenExternalLinks(True)
         self.lblFirmwareVersion.setObjectName("lblFirmwareVersion")
         self.gridLayout_3.addWidget(self.lblFirmwareVersion, 0, 1, 1, 3)
         self.btnEnDisWipeCode = QtWidgets.QPushButton(self.fraHwSettings)

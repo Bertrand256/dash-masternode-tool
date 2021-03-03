@@ -178,8 +178,8 @@ def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = F
         if dongles:
             for d in dongles:
                 client = btchipDMT(d)
-                device_model = d.device.get_manufacturer_string() + ' ' + d.device.get_product_string()
-                in_bootloader_mode = True if re.match(".*[Bb]ootloader", device_model) else False
+                model_symbol = d.device.get_manufacturer_string() + ' ' + d.device.get_product_string()
+                in_bootloader_mode = True if re.match(".*[Bb]ootloader", model_symbol) else False
                 if not in_bootloader_mode:
                     try:
                         ver = client.getFirmwareVersion()
@@ -195,7 +195,7 @@ def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = F
                         hw_common.HWDevice(
                             hw_type=HWType.ledger_nano,
                             device_id=d.__getattribute__('hidDevicePath'),
-                            device_model=device_model,
+                            model_symbol=model_symbol,
                             device_label=None,
                             firmware_version=ver,
                             hw_client=client if return_clients else None,

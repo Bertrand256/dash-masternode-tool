@@ -85,7 +85,7 @@ def version_str_to_number(version_str):
     return version_nr
 
 
-def is_version_bigger(checked_version: str, ref_version: str) -> bool:
+def is_version_greater(checked_version: str, ref_version: str) -> bool:
     cmp = False
     try:
         version_nrs, ref_suffix = parse_version_str(ref_version)

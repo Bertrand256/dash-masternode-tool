@@ -29,9 +29,7 @@ import logging
 import wallet_common
 from wnd_utils import WndUtils
 
-
 log = logging.getLogger('dmt.hw_intf_trezor')
-
 
 BOOTLOADER_MODE_DUMMY_DEVICE_ID = '0000'
 
@@ -79,6 +77,7 @@ ALLOWED_FIRMWARE_FORMATS = {
     2: (trezorlib.firmware.FirmwareFormat.TREZOR_T,),
 }
 
+
 class MyTrezorClient(TrezorClient):
 
     def __init__(self, transport, ui=None, state=None):
@@ -116,8 +115,8 @@ class MyTrezorClient(TrezorClient):
             log.debug("Signatures are valid.")
         except trezorlib.firmware.Unsigned:
             if WndUtils.query_dlg('No signatures found. Continue?',
-                                 buttons=QMessageBox.Yes | QMessageBox.No,
-                                 default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.No:
+                                  buttons=QMessageBox.Yes | QMessageBox.No,
+                                  default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.No:
                 raise CancelException()
 
             try:
@@ -164,9 +163,9 @@ class MyTrezorClient(TrezorClient):
         self.validate_firmware_internal(version, fw, fingerprint)
 
         if (
-            bootloader_onev2
-            and version == trezorlib.firmware.FirmwareFormat.TREZOR_ONE
-            and not fw.embedded_onev2
+                bootloader_onev2
+                and version == trezorlib.firmware.FirmwareFormat.TREZOR_ONE
+                and not fw.embedded_onev2
         ):
             raise Exception("Firmware is too old for your device. Aborting.")
         elif not bootloader_onev2 and version == trezorlib.firmware.FirmwareFormat.TREZOR_ONE_V2:
@@ -177,7 +176,7 @@ class MyTrezorClient(TrezorClient):
         elif version not in ALLOWED_FIRMWARE_FORMATS[f.major_version]:
             raise Exception("Firmware does not match your device, aborting.")
 
-        if bootloader_onev2 and firmware_data[:4] == b"TRZR" and firmware_data[256 : 256 + 4] == b"TRZF":
+        if bootloader_onev2 and firmware_data[:4] == b"TRZR" and firmware_data[256: 256 + 4] == b"TRZF":
             log.debug("Extracting embedded firmware image.")
             firmware_data = firmware_data[256:]
 
@@ -275,7 +274,7 @@ def get_device_list(
             if (not client.features.bootloader_mode or allow_bootloader_mode) and device_id not in device_ids:
                 version = f'{client.features.major_version}.{client.features.minor_version}.' \
                           f'{client.features.patch_version}'
-                device_model = client.features.model if client.features.model is not None else '1'
+                model_symbol = client.features.model if client.features.model is not None else '1'
 
                 ret_list.append(
                     hw_common.HWDevice(
@@ -283,13 +282,13 @@ def get_device_list(
                         device_id=device_id,
                         device_label=client.features.label if client.features.label else None,
                         firmware_version=version,
-                        device_model=device_model,
+                        model_symbol=model_symbol,
                         hw_client=client if return_clients else None,
                         bootloader_mode=client.features.bootloader_mode if client.features.bootloader_mode is not None else False,
                         transport_id=device_transport_id,
                         initialized=client.features.initialized
                     ))
-                device_ids.append(device_id)  #it's empty in bootloader mode
+                device_ids.append(device_id)  # it's empty in bootloader mode
                 if not return_clients:
                     client.close()
             else:
@@ -311,11 +310,11 @@ def open_session(device_id: str, device_transport_id: str) -> Optional[MyTrezorC
         cur_transport_id = hashlib.sha256(str(d).encode('ascii')).hexdigest()
         cur_device_id = get_trezor_device_id(client)
         if cur_device_id == device_id or (client.features.bootloader_mode and cur_transport_id == device_transport_id) \
-            or (device_id == BOOTLOADER_MODE_DUMMY_DEVICE_ID and cur_transport_id == device_transport_id):
-           # in bootloader mode device_id is not returned from Trezor so to find the device we need
-           # to compare transport id based on usb path, but it won't work for bridge transport since each
-           # time Trezor is reconnected, transport path reported by Trezor Bridge is different; that's why we
-           # scan WebUsb devices first in enumerate_devices
+                or (device_id == BOOTLOADER_MODE_DUMMY_DEVICE_ID and cur_transport_id == device_transport_id):
+            # in bootloader mode device_id is not returned from Trezor so to find the device we need
+            # to compare transport id based on usb path, but it won't work for bridge transport since each
+            # time Trezor is reconnected, transport path reported by Trezor Bridge is different; that's why we
+            # scan WebUsb devices first in enumerate_devices
 
             logging.info('Trezor connected. Firmware version: %s.%s.%s, vendor: %s, initialized: %s, '
                          'pp_protection: %s, bootloader_mode: %s ' %

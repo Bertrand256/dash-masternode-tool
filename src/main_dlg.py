@@ -595,7 +595,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 if self.app_config.check_for_updates or force_check:
                     remote_version_str = remote_app_params.get("appCurrentVersion")
                     if remote_version_str:
-                        if app_utils.is_version_bigger(remote_version_str, self.app_config.app_version):
+                        if app_utils.is_version_greater(remote_version_str, self.app_config.app_version):
                             if sys.platform == 'win32':
                                 item_name = 'win'
                                 no_bits = platform.architecture()[0].replace('bit', '')

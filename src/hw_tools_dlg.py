@@ -486,13 +486,13 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             self.hw_device_index_selected = idx
 
             if self.action_type == ACTION_UPLOAD_FIRMWARE:
-                device_model = self.hw_device_instances[idx][2]
+                model_symbol = self.hw_device_instances[idx][2]
                 if self.hw_firmware_source_type == 1:  # firmware from Internet, check model compatibility
                     if self.hw_firmware_url_selected:
                         fw_model = self.hw_firmware_url_selected.get('model')
-                        if str(fw_model) != str(device_model):
+                        if str(fw_model) != str(model_symbol):
                             self.error_msg(f'The firmware selected is dedicated the device model "{fw_model}", '
-                                          f'but the selected device is model "{device_model}".')
+                                          f'but the selected device is model "{model_symbol}".')
                         else:
                             self.set_next_step(STEP_UPLOAD_FIRMWARE)
                             success = True
@@ -1334,7 +1334,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
             for dev in devs:
                 device_id = dev.device_id
                 label = dev.get_description()
-                model = dev.device_model
+                model = dev.model_symbol
                 client = dev.hw_client
                 self.hw_device_instances.append([device_id, label, model, client])
                 self.cboDeviceInstance.addItem(label)

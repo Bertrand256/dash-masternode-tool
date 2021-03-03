@@ -27,7 +27,7 @@ import dash_utils
 from app_runtime_data import AppRuntimeData
 from dash_utils import bip32_path_n_to_string
 from hw_common import HWType, HWDevice, HWPinException, get_hw_type_from_client, HWNotConnectedException, \
-    DEFAULT_HW_BUSY_TITLE, DEFAULT_HW_BUSY_MESSAGE, HWSessionBase, HWFirmwareWebLocation
+    DEFAULT_HW_BUSY_TITLE, DEFAULT_HW_BUSY_MESSAGE, HWSessionBase, HWFirmwareWebLocation, HWModel
 import logging
 from wallet_common import UtxoType, TxOutputType
 from wnd_utils import WndUtils
@@ -647,10 +647,10 @@ class HWDevices(QObject):
             if self.__hw_device_id_selected:
                 self.sig_selected_hw_device_changed.emit(device)  # we are deselecting hw device
         elif device in self.__hw_devices:
-            if device.device_id != self.__hw_device_id_selected or device.device_model != self.__selected_device_model \
+            if device.device_id != self.__hw_device_id_selected or device.model_symbol != self.__selected_device_model \
                 or device.bootloader_mode != self.__selected_device_bootloader_mode:
                 self.__hw_device_id_selected = device.device_id
-                self.__selected_device_model = device.device_model
+                self.__selected_device_model = device.model_symbol
                 self.__selected_device_bootloader_mode = device.bootloader_mode
                 self.sig_selected_hw_device_changed.emit(device)
         else:
@@ -725,13 +725,13 @@ class HWDevices(QObject):
 
     def reload_devices(self) -> bool:
         try:
-            prev_dev_list = [(d.device_id + str(d.bootloader_mode) + str(d.device_model) if d.device_id else '?') for d in self.__hw_devices]
+            prev_dev_list = [(d.device_id + str(d.bootloader_mode) + str(d.model_symbol) if d.device_id else '?') for d in self.__hw_devices]
             prev_dev_list.sort()
 
             self.save_state()
             self.load_hw_devices(True)
 
-            cur_dev_list = [(d.device_id + str(d.bootloader_mode) + str(d.device_model) if d.device_id else '?') for d in self.__hw_devices]
+            cur_dev_list = [(d.device_id + str(d.bootloader_mode) + str(d.model_symbol) if d.device_id else '?') for d in self.__hw_devices]
             cur_dev_list.sort()
 
             device_list_changed = (','.join(prev_dev_list) != ','.join(cur_dev_list))
@@ -775,7 +775,7 @@ class HwSessionInfo(HWSessionBase):
         self.sig_hw_connection_error.emit(message)
 
     @property
-    def hw_device(self):
+    def hw_device(self) -> Optional[HWDevice]:
         return self.__hw_devices.get_selected_device()
 
     def get_hw_client(self) -> Optional[object]:
@@ -785,12 +785,17 @@ class HwSessionInfo(HWSessionBase):
         return None
 
     @property
-    def hw_type(self):
-        hw_device = self.hw_device
-        if hw_device:
-            return hw_device.hw_type
+    def hw_type(self) -> Optional[HWType]:
+        if self.hw_device:
+            return self.hw_device.hw_type
         else:
             return None
+
+    @property
+    def hw_model(self) -> Optional[HWModel]:
+        if self.hw_device:
+            return self.hw_device.get_hw_model()
+        return None
 
     def acquire_client(self):
         cli = self.hw_client
@@ -1474,11 +1479,12 @@ def hw_decrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
                                       force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
 
 
-def get_hw_firmware_web_sources(hw_types: Tuple[HWType, ...], only_official=True) -> List[HWFirmwareWebLocation]:
+def get_hw_firmware_web_sources(hw_models_allowed: Tuple[HWModel, ...],
+                                only_official=True, only_latest=False) -> List[HWFirmwareWebLocation]:
 
     def get_trezor_firmware_list_from_url(
             base_url: str, list_url: str, official_source: bool = False, only_latest: bool = False,
-            model: Optional[str] = None, testnet_support: bool = False) -> List[HWFirmwareWebLocation]:
+            model_for_this_source: Optional[str] = None, testnet_support: bool = False) -> List[HWFirmwareWebLocation]:
 
         ret_fw_sources_: List[HWFirmwareWebLocation] = []
         r = urllib.request.Request(list_url, data=None, headers={'User-Agent': app_defs.BROWSER_USER_AGENT})
@@ -1495,20 +1501,24 @@ def get_hw_firmware_web_sources(hw_types: Tuple[HWType, ...], only_official=True
                 version = str(version)
             if idx == 0:
                 latest_version = version
+            cur_model_str = f.get('model') if f.get('model') else model_for_this_source
 
             if not only_latest or version == latest_version:
-                ret_fw_sources_.append(
-                    HWFirmwareWebLocation(
-                        version=version,
-                        url=url_,
-                        device=HWType.trezor,
-                        official=official_source,
-                        model=f.get('model') if f.get('model') else model,
-                        testnet_support=testnet_support,
-                        notes=f.get('notes', ''),
-                        fingerprint=f.get('fingerprint', ''),
-                        changelog=f.get('changelog', '')
-                    ))
+                allowed = next((x for x in hw_models_allowed if HWModel.get_hw_type(x) == HWType.trezor and
+                                HWModel.get_model_str(x) == cur_model_str), None)
+                if allowed:
+                    ret_fw_sources_.append(
+                        HWFirmwareWebLocation(
+                            version=version,
+                            url=url_,
+                            device=HWType.trezor,
+                            official=official_source,
+                            model=cur_model_str,
+                            testnet_support=testnet_support,
+                            notes=f.get('notes', ''),
+                            fingerprint=f.get('fingerprint', ''),
+                            changelog=f.get('changelog', '')
+                        ))
         return ret_fw_sources_
 
     def get_keepkey_firmware_list_from_url(
@@ -1587,8 +1597,8 @@ def get_hw_firmware_web_sources(hw_types: Tuple[HWType, ...], only_official=True
         for fw_src_def in simplejson.loads(contents):
             try:
                 official_source = fw_src_def.get('official')
-                device = HWType.from_string(fw_src_def.get('device')) if fw_src_def.get('device') else None
-                model = fw_src_def.get('model')
+                hw_type = HWType.from_string(fw_src_def.get('device')) if fw_src_def.get('device') else None
+                hw_model_symbol = fw_src_def.get('model')
                 url = fw_src_def.get('url')
                 url_base = fw_src_def.get('url_base')
                 testnet_support = fw_src_def.get('testnetSupport', True)
@@ -1599,16 +1609,20 @@ def get_hw_firmware_web_sources(hw_types: Tuple[HWType, ...], only_official=True
                     url = url_path_join(url_base, url)
 
                 if only_official is False or official_source is True:
-                    if device in hw_types:
-                        if device == HWType.trezor:
-                            lst = get_trezor_firmware_list_from_url(base_url=url_base, list_url=url,
-                                                                    official_source=official_source,
-                                                                    model=model, testnet_support=testnet_support)
+                    allowed_model = next((x for x in hw_models_allowed if HWModel.get_hw_type(x) == hw_type and
+                                          (not hw_model_symbol or HWModel.get_model_str(x) == hw_model_symbol)), None)
+
+                    if allowed_model:
+                        if hw_type == HWType.trezor:
+                            lst = get_trezor_firmware_list_from_url(
+                                base_url=url_base, list_url=url, only_latest=only_latest,
+                                official_source=official_source, model_for_this_source=hw_model_symbol, testnet_support=testnet_support)
+
                             ret_fw_sources.extend(lst)
-                        elif device == HWType.keepkey:
-                            lst = get_keepkey_firmware_list_from_url(base_url=url_base, list_url=url,
-                                                                     official_source=official_source,
-                                                                     testnet_support=testnet_support)
+                        elif hw_type == HWType.keepkey:
+                            lst = get_keepkey_firmware_list_from_url(
+                                base_url=url_base, list_url=url, official_source=official_source,
+                                only_latest=only_latest, testnet_support=testnet_support)
                             ret_fw_sources.extend(lst)
 
             except Exception:

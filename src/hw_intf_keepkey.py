@@ -183,7 +183,7 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
             if (not client.features.bootloader_mode or allow_bootloader_mode) and device_id not in device_ids:
                 version = f'{client.features.major_version}.{client.features.minor_version}.' \
                           f'{client.features.patch_version}'
-                device_model = 'Keepkey'
+                model_symbol = 'keepkey'
 
                 ret_list.append(
                     HWDevice(
@@ -191,7 +191,7 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
                         device_id=device_id,
                         device_label=client.features.label if client.features.label else None,
                         firmware_version=version,
-                        device_model=device_model,
+                        model_symbol=model_symbol,
                         hw_client=client if return_clients else None,
                         bootloader_mode=client.features.bootloader_mode,
                         transport_id=device_transport_id,
