@@ -51,7 +51,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
     def __init__(self, parent, hw_devices: HWDevices):
         QWidget.__init__(self, parent=parent)
         Ui_WdgHwUpdateFirmware.__init__(self)
-        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices)
+        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices, 'Update hardware wallet firmware')
 
         self.cur_hw_device: Optional[HWDevice] = self.hw_devices.get_selected_device()
         self.current_step: Step = Step.STEP_SELECT_FIRMWARE_SOURCE
@@ -62,7 +62,6 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
         self.selected_firmware_source_file: str = ''
         self.selected_firmware_source_web: Optional[HWFirmwareWebLocation] = None
         self.firmware_data: [bytearray] = None
-        self.wait_for_bootloader_mode_event: threading.Event = threading.Event()
         self.finishing = False
         self.load_remote_firmware_thread_obj = None
         self.upload_firmware_thread_obj = None
@@ -78,7 +77,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
         self.pages.setCurrentIndex(Pages.PAGE_FIRMWARE_SOURCE.value)
 
     def initialize(self):
-        self.set_title()
+        ActionPageBase.initialize(self)
         self.set_btn_cancel_visible(True)
         self.set_btn_back_visible(True)
         self.set_btn_back_text('Back')
@@ -88,23 +87,19 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
         if not self.hw_firmware_web_sources_all:
             self.load_remote_firmware_list()
         self.set_controls_initial_state_for_step(False)
-        self.update_ui()
-        hw_changed = False
         if not self.cur_hw_device:
             self.hw_devices.select_device(self.parent())
-            hw_changed = True
-        if self.cur_hw_device and not self.cur_hw_device.hw_client:
-            self.hw_devices.open_hw_session(self.cur_hw_device)
-            hw_changed = True
-        if hw_changed:
             self.update_ui()
             self.display_firmware_list()
+        else:
+            if not self.cur_hw_device.hw_client:
+                self.hw_devices.open_hw_session(self.cur_hw_device)
+            self.on_connected_hw_device_changed(self.cur_hw_device)
 
     def on_close(self):
         self.finishing = True
-        self.wait_for_bootloader_mode_event.set()
 
-    def on_current_hw_device_changed(self, cur_hw_device: HWDevice):
+    def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
         if cur_hw_device:
             if cur_hw_device.hw_type == HWType.ledger_nano:
                 # If the wallet type is not Trezor or Keepkey we can't use this page
@@ -118,19 +113,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
                 self.update_ui()
                 self.display_firmware_list()
 
-    def set_title(self, subtitle: str = None):
-        title = 'Update hardware wallet firmware'
-        if subtitle:
-            title += ' - ' + subtitle
-        self.set_action_title(f'<b>{title}</b>')
-
-    def on_btn_continue_clicked(self):
-        self.set_next_step()
-
-    def on_btn_back_clicked(self):
-        self.set_prev_step()
-
-    def set_next_step(self):
+    def go_to_next_step(self):
         if self.current_step == Step.STEP_SELECT_FIRMWARE_SOURCE:
             if self.hw_firmware_source_type == FirmwareSource.INTERNET:
                 if not self.selected_firmware_source_web:
@@ -169,7 +152,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
             self.set_controls_initial_state_for_step(False)
             self.update_ui()
 
-    def set_prev_step(self):
+    def go_to_prev_step(self):
         if self.current_step == Step.STEP_SELECT_FIRMWARE_SOURCE:
             self.exit_page()
             return
@@ -250,7 +233,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
             if self.cur_hw_device and self.cur_hw_device.hw_client:
 
                 if self.current_step == Step.STEP_SELECT_FIRMWARE_SOURCE:
-                    self.set_title('select the firmware source')
+                    self.update_action_subtitle('select the firmware source')
 
                     if not self.cur_hw_device.bootloader_mode:
                         self.lblCurrentFirmwareVersion.setText('Your current firmware version: ' +
@@ -274,19 +257,18 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
                         self.edtFirmwareNotes.setVisible(False)
 
                 elif self.current_step == Step.STEP_PREPARE_FIRMWARE_DATA:
-                    self.set_title('preparing firmware data')
+                    self.update_action_subtitle('preparing firmware data')
                     self.pages.setCurrentIndex(Pages.PAGE_PREPARE_FIRMWARE.value)
 
                 elif self.current_step == Step.STEP_UPLOADING_FIRMWARE:
-                    self.set_title('uploading firmware')
+                    self.update_action_subtitle('uploading firmware')
                     self.pages.setCurrentIndex(Pages.PAGE_UPLOAD_FIRMWARE.value)
 
                 elif self.current_step == Step.STEP_FINISHED_UPDATE:
-                    self.set_title('update finished')
+                    self.update_action_subtitle('update finished')
                     self.pages.setCurrentIndex(Pages.PAGE_MESSAGE.value)
                     self.lblMessage.setText('<b>Firmware update has been completed successfully.<br>Now you can '
                                             'restart your hardware wallet in normal mode.</b>')
-
             else:
                 self.lblMessage.setText('<b>Connect your hardware wallet device to continue</b>')
                 self.pages.setCurrentIndex(Pages.PAGE_MESSAGE.value)
@@ -524,7 +506,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
             elif self.cur_hw_device.hw_type == HWType.keepkey:
                 update_ok = self.cur_hw_device.hw_client.firmware_update(BytesIO(self.firmware_data))
             else:
-                WndUtils.call_in_main_thread(self.set_prev_step)
+                WndUtils.call_in_main_thread(self.go_to_prev_step)
                 raise Exception('Invalid hardware wallet type')
             if not update_ok:
                 WndUtils.error_msg('Operation failed. Look into the log file for details.')
@@ -535,6 +517,6 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
         finally:
             self.upload_firmware_thread_obj = None
             if update_ok:
-                WndUtils.call_in_main_thread(self.set_next_step)
+                WndUtils.call_in_main_thread(self.go_to_next_step)
             else:
-                WndUtils.call_in_main_thread(self.set_prev_step)
+                WndUtils.call_in_main_thread(self.go_to_prev_step)

@@ -10,11 +10,12 @@ log = logging.getLogger('dmt.wallet_tools_dlg')
 
 
 class ActionPageBase:
-    def __init__(self, parent_dialog, app_config: AppConfig, hw_devices: hw_intf.HWDevices):
+    def __init__(self, parent_dialog, app_config: AppConfig, hw_devices: hw_intf.HWDevices, action_title: str):
         self.parent_dialog = parent_dialog
         self.app_config = app_config
         self.hw_devices = hw_devices
-        self.hw_devices.sig_selected_hw_device_changed.connect(self.on_current_hw_device_changed)
+        self.hw_devices.sig_connected_hw_device_changed.connect(self.on_connected_hw_device_changed)
+        self.action_title = action_title
         self.fn_exit_page: Optional[Callable[[], None]] = None
         self.fn_set_action_title: Optional[Callable[[str], None]] = None
         self.fn_set_btn_cancel_visible: Optional[Callable[[bool], None]] = None
@@ -27,6 +28,8 @@ class ActionPageBase:
         self.fn_set_btn_continue_enabled: Optional[Callable[[bool], None]] = None
         self.fn_set_btn_continue_text: Optional[Callable[[str, str], None]] = None
         self.fn_set_hw_change_enabled: Optional[Callable[[bool], None]] = None
+        self.fn_show_message_page: Optional[Callable[[str], None]] = None
+        self.fn_show_action_page: Optional[Callable[[None], None]] = None
 
     def set_control_functions(
             self,
@@ -42,7 +45,9 @@ class ActionPageBase:
             fn_set_btn_continue_enabled: Callable[[bool], None],
             fn_set_btn_continue_text: Callable[[str, str], None],
             fn_set_hw_panel_visible: Callable[[bool], None],
-            fn_set_hw_change_enabled: Callable[[bool], None]):
+            fn_set_hw_change_enabled: Callable[[bool], None],
+            fn_show_message_page: Optional[Callable[[str], None]],
+            fn_show_action_page: Optional[Callable[[None], None]]):
 
         self.fn_exit_page = fn_exit_page
         self.fn_set_action_title = fn_set_action_title
@@ -57,14 +62,16 @@ class ActionPageBase:
         self.fn_set_btn_continue_text = fn_set_btn_continue_text
         self.fn_set_hw_panel_visible = fn_set_hw_panel_visible
         self.fn_set_hw_change_enabled = fn_set_hw_change_enabled
+        self.fn_show_message_page = fn_show_message_page
+        self.fn_show_action_page = fn_show_action_page
 
     def initialize(self):
-        pass
+        self.update_action_subtitle('')
 
     def on_close(self):
         pass
 
-    def on_current_hw_device_changed(self, cur_hw_device: HWDevice):
+    def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
         pass
 
     def exit_page(self):
@@ -119,12 +126,37 @@ class ActionPageBase:
         if self.fn_set_hw_change_enabled:
             self.fn_set_hw_change_enabled(enabled)
 
-    def on_btn_cancel_clicked(self):
+    def show_message_page(self, message: str):
+        if self.fn_show_message_page:
+            self.fn_show_message_page(message)
+
+    def show_action_page(self):
+        if self.fn_show_action_page:
+            self.fn_show_action_page()
+
+    def go_to_next_step(self):
         pass
 
-    def on_btn_back_clicked(self):
-        pass
+    def go_to_prev_step(self):
+        self.exit_page()
 
     def on_btn_continue_clicked(self):
-        pass
+        self.go_to_next_step()
+
+    def on_btn_back_clicked(self):
+        self.go_to_prev_step()
+
+    def on_before_cancel(self) -> bool:
+        """
+        Called by the wallet tools dialog before closing dialog (after the <Close/Cancel> button has been clicked.
+        :return: True if the action widget allows for closure or False otherwise.
+        """
+        return True
+
+    def update_action_subtitle(self, subtitle: Optional[str] = None):
+        title = 'Update hardware wallet firmware'
+        if subtitle:
+            title += ' - ' + subtitle
+        self.set_action_title(f'<b>{title}</b>')
+
 

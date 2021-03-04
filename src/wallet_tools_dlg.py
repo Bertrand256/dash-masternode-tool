@@ -3,6 +3,7 @@
 # Author: Bertrand256
 # Created on: 2017-12
 import logging
+from enum import Enum
 from typing import Optional
 
 from PyQt5 import QtWidgets, QtCore
@@ -16,6 +17,7 @@ import hw_intf
 from app_config import AppConfig
 from common import InternalError
 from hw_common import HWDevice
+from hw_initialize_wdg import WdgInitializeHw
 from hw_settings_wdg import WdgHwSettings
 from hw_update_firmware_wdg import WdgHwUpdateFirmware
 from recover_hw_wdg import WdgRecoverHw
@@ -32,7 +34,14 @@ ACTION_WIPE_HW = 4
 ACTION_UPDATE_HW_FIRMWARE = 5
 ACTION_SPLIT_MERGE_SEED = 6
 
+
 log = logging.getLogger('dmt.wallet_tools_dlg')
+
+
+class Pages(Enum):
+    PAGE_MENU = 0
+    PAGE_ACTION = 1
+    PAGE_MESSAGE = 2
 
 
 class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
@@ -51,26 +60,27 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         self.hw_devices.save_state()  # save the hw device currently connected in the main window
         self.hw_devices.set_allow_bootloader_mode(True)
         self.wdg_select_hw_device = CurrentHwDeviceWdg(self, self.hw_devices, True)
-        self.hw_devices.sig_selected_hw_device_changed.connect(self.on_selected_hw_device_changed)
+        self.hw_devices.sig_connected_hw_device_changed.connect(self.on_connected_hw_device_changed)
         self.setupUi(self)
 
     def setupUi(self, dlg):
         ui_wallet_tools_dlg.Ui_WalletToolsDlg.setupUi(self, self)
         self.setWindowTitle("Wallet tools")
+        WndUtils.change_widget_font_attrs(self.lblMessage, point_size_diff=3, bold=True)
         self.activate_menu_page()
 
         lay = self.layout()
         lay.insertWidget(1, self.wdg_select_hw_device)  # hardware wallet selection panel is inserted just below the
                                                         # main title
 
-        self.action_layout = QtWidgets.QVBoxLayout(self.tabActionContainer)
-        self.action_layout.setContentsMargins(0, 0, 0, 0)
+        self.action_layout = QtWidgets.QVBoxLayout(self.fraActionContainer)
+        self.action_layout.setContentsMargins(6, 6, 6, 6)
         self.action_layout.setSpacing(3)
         self.action_layout.setObjectName("action_layout")
         WndUtils.change_widget_font_attrs(self.lblTitle, point_size_diff=3, bold=True)
 
     def on_close(self):
-        self.hw_devices.sig_selected_hw_device_changed.disconnect(self.on_selected_hw_device_changed)
+        self.hw_devices.sig_connected_hw_device_changed.disconnect(self.on_connected_hw_device_changed)
         self.hw_devices.restore_state()
         if self.action_widget:
             self.action_widget.on_close()
@@ -82,7 +92,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
     def on_btnCancel_clicked(self):
         try:
             if self.action_widget:
-                if self.action_widget.on_btn_cancel_clicked() is False:
+                if self.action_widget.on_before_cancel() is False:
                     # the action widget decided not to close
                     return
             self.close()
@@ -120,17 +130,24 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
             self.error_msg(str(e), True)
 
     @pyqtSlot(bool)
+    def on_actInitializeHw_clicked(self):
+        try:
+            self.setup_action_widget(ACTION_INITIALIZE_HW)
+        except Exception as e:
+            self.error_msg(str(e), True)
+
+    @pyqtSlot(bool)
     def on_actUpdateHwFirmware_clicked(self):
         try:
             self.setup_action_widget(ACTION_UPDATE_HW_FIRMWARE)
         except Exception as e:
             self.error_msg(str(e), True)
 
-    def on_selected_hw_device_changed(self, cur_hw_device: HWDevice):
+    def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
         self.wdg_select_hw_device.update()
 
     def activate_menu_page(self):
-        self.tabsMain.setCurrentIndex(0)
+        self.tabsMain.setCurrentIndex(Pages.PAGE_MENU.value)
         self.lblTitle.setText('<a>Choose action</a>')
         self.btnCancel.setText('Close')
         self.btnCancel.setVisible(True)
@@ -189,6 +206,14 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
     def set_hw_change_enabled(self, enabled: bool):
         self.wdg_select_hw_device.set_hw_change_enabled(enabled)
 
+    def show_message_page(self, message: str):
+        self.lblMessage.setText(message)
+        self.tabsMain.setCurrentIndex(Pages.PAGE_MESSAGE.value)
+
+    def show_action_page(self):
+        if self.tabsMain.currentIndex() != Pages.PAGE_ACTION.value:
+            self.tabsMain.setCurrentIndex(Pages.PAGE_ACTION.value)
+
     def get_widget_action_type(self) -> int:
         # returns one of action type constants based on the widget class type in self.action_widget
         if self.action_widget:
@@ -196,6 +221,8 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
                 return ACTION_HW_SETTINGS
             elif isinstance(self.action_widget, WdgRecoverHw):
                 return ACTION_RECOVER_HW
+            elif isinstance(self.action_widget, WdgInitializeHw):
+                return ACTION_INITIALIZE_HW
             elif isinstance(self.action_widget, WdgHwUpdateFirmware):
                 return ACTION_UPDATE_HW_FIRMWARE
             else:
@@ -220,6 +247,9 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
                 elif action == ACTION_RECOVER_HW:
                     self.action_widget = WdgRecoverHw(self, self.hw_devices)
                     self.action_layout.addWidget(self.action_widget)
+                elif action == ACTION_INITIALIZE_HW:
+                    self.action_widget = WdgInitializeHw(self, self.hw_devices)
+                    self.action_layout.addWidget(self.action_widget)
                 elif action == ACTION_UPDATE_HW_FIRMWARE:
                     self.action_widget = WdgHwUpdateFirmware(self, self.hw_devices)
                     self.action_layout.addWidget(self.action_widget)
@@ -239,16 +269,17 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
                     fn_set_btn_continue_enabled=self.set_btn_continue_enabled,
                     fn_set_btn_continue_text=self.set_btn_continue_text,
                     fn_set_hw_panel_visible=self.set_hw_panel_visible,
-                    fn_set_hw_change_enabled=self.set_hw_change_enabled
+                    fn_set_hw_change_enabled=self.set_hw_change_enabled,
+                    fn_show_message_page=self.show_message_page,
+                    fn_show_action_page=self.show_action_page
                 )
 
             self.current_action = action
-            self.tabsMain.setCurrentIndex(1)
+            self.tabsMain.setCurrentIndex(Pages.PAGE_ACTION.value)
             self.action_widget.initialize()
 
         except Exception as e:
             self.error_msg(str(e), True)
-
 
 
 class CurrentHwDeviceWdg(QWidget):
@@ -300,4 +331,4 @@ class CurrentHwDeviceWdg(QWidget):
 
     def on_hw_device_selected(self, anchor: str):
         if self.hw_change_enabled:
-            self.hw_devices.select_device(self.parent())
+            self.hw_devices.select_device(self.parent(), open_client_session=True)

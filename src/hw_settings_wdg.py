@@ -10,6 +10,7 @@ import hw_intf
 from app_defs import get_note_url
 from common import CancelException
 from hw_common import HWDevice, HWType, HWModel, HWFirmwareWebLocation
+from method_call_tracker import method_call_tracker, MethodCallTracker, MethodCallLimit
 from thread_fun_dlg import CtrlObject
 from ui.ui_hw_settings_wdg import Ui_WdgHwSettings
 from wallet_tools_common import ActionPageBase
@@ -21,7 +22,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
     def __init__(self, parent, hw_devices: HWDevices):
         QWidget.__init__(self, parent=parent)
         Ui_WdgHwSettings.__init__(self)
-        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices)
+        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices, 'Hardware wallet settings')
 
         self.cur_hw_device: Optional[HWDevice] = self.hw_devices.get_selected_device()
         self.hw_opt_pin_protection: Optional[bool] = None
@@ -54,7 +55,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
         self.btnRefreshSDCardProtection.clicked.connect(self.on_sd_card_protection_refresh)
 
     def initialize(self):
-        self.set_action_title('<b>Hardware wallet settings</b>')
+        ActionPageBase.initialize(self)
         self.set_btn_cancel_visible(True)
         self.set_btn_back_visible(True)
         self.set_btn_back_text('Back')
@@ -62,15 +63,17 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
         self.set_btn_cancel_text('Close')
         self.set_hw_panel_visible(True)
         self.update_ui()
-        if not self.cur_hw_device:
-            self.hw_devices.select_device(self.parent())
-            self.update_ui()
-        else:
-            if not self.cur_hw_device.hw_client:
-                self.hw_devices.open_hw_session(self.cur_hw_device)
-            self.on_current_hw_device_changed(self.cur_hw_device)
 
-    def on_current_hw_device_changed(self, cur_hw_device: HWDevice):
+        with MethodCallLimit(self, self.on_connected_hw_device_changed, call_count_limit=1):
+            if not self.cur_hw_device:
+                self.hw_devices.select_device(self.parent(), open_client_session=True)
+            else:
+                if not self.cur_hw_device.hw_client:
+                    self.hw_devices.open_hw_session(self.cur_hw_device)
+            self.on_connected_hw_device_changed(self.cur_hw_device)
+
+    @method_call_tracker
+    def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
         if cur_hw_device:
             if cur_hw_device.hw_type == HWType.ledger_nano:
                 # If the wallet type is not Trezor or Keepkey we can't use the settings page
@@ -79,15 +82,10 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
                 WndUtils.warn_msg('This feature is not available for Ledger devices.')
             else:
                 self.cur_hw_device = self.hw_devices.get_selected_device()
-                if not self.cur_hw_device.hw_client:
-                    self.hw_devices.open_hw_session(self.cur_hw_device)
                 hw_model = self.cur_hw_device.get_hw_model()
                 if hw_model and not self.latest_firmwares.get(hw_model):
                     WndUtils.run_thread(self, self.get_latest_firmware_thread, (hw_model,))
                 self.update_ui()
-
-    def on_btn_back_clicked(self):
-        self.exit_page()
 
     def read_hw_features(self):
         def get_hw_feature(features, feature_name: str):
@@ -112,116 +110,118 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
     def update_ui(self):
         try:
             if self.cur_hw_device and self.cur_hw_device.hw_client:
-                self.fraHwSettings.setVisible(True)
-                self.lblMessage.setVisible(False)
-
-                self.read_hw_features()
-                version_info_msg = self.hw_opt_firmware_version
-                if self.cur_hw_device.bootloader_mode:
-                    self.lblFirmwareVersionLabel.setText('Bootloader version:')
+                if self.cur_hw_device.hw_type == HWType.ledger_nano:
+                    self.show_message_page('Not available for Ledger Nano')
                 else:
-                    self.lblFirmwareVersionLabel.setText('Firmware version:')
-                    cur_fw_version = self.cur_hw_device.firmware_version
-                    latest_fw_version_src = self.latest_firmwares.get(self.cur_hw_device.get_hw_model())
-                    latest_fw_version = latest_fw_version_src.version if latest_fw_version_src else None
-                    if cur_fw_version and latest_fw_version and \
-                            app_utils.is_version_greater(latest_fw_version, cur_fw_version):
-                        if re.match('\s*http(s)?://', latest_fw_version_src.notes, re.IGNORECASE):
-                            ver_str = f'<a href={latest_fw_version_src.notes}>{latest_fw_version}</a>'
-                        else:
-                            ver_str = latest_fw_version
-                        version_info_msg += ' <span style="color:green">(new version available: ' + ver_str + ')</span>'
-                self.lblFirmwareVersion.setText(version_info_msg)
+                    self.show_action_page()
+                    self.wdgHwSettings.setVisible(True)
+                    self.lblMessage.setVisible(False)
 
-                if self.hw_opt_pin_protection is True:
-                    self.lblPinStatus.setText('enabled')
-                    self.btnEnDisPin.setText('Disable')
-                    self.btnEnDisPin.setEnabled(True)
-                    self.btnChangePin.setEnabled(True)
-                    self.lblPinStatus.setStyleSheet('QLabel{color: green}')
-                elif self.hw_opt_pin_protection is False:
-                    self.lblPinStatus.setText('disabled')
-                    self.btnEnDisPin.setText('Enable')
-                    self.btnEnDisPin.setEnabled(True)
-                    self.btnChangePin.setEnabled(True)
-                    self.lblPinStatus.setStyleSheet('QLabel{color: red}')
-                else:
-                    self.lblPinStatus.setText('not available')
-                    self.lblPinStatus.setStyleSheet('QLabel{color: orange}')
-                    self.btnEnDisPin.setText('Enable')
-                    self.btnEnDisPin.setDisabled(True)
-                    self.btnChangePin.setDisabled(True)
+                    self.read_hw_features()
+                    version_info_msg = self.hw_opt_firmware_version
+                    if self.cur_hw_device.bootloader_mode:
+                        self.lblFirmwareVersionLabel.setText('Bootloader version:')
+                    else:
+                        self.lblFirmwareVersionLabel.setText('Firmware version:')
+                        cur_fw_version = self.cur_hw_device.firmware_version
+                        latest_fw_version_src = self.latest_firmwares.get(self.cur_hw_device.get_hw_model())
+                        latest_fw_version = latest_fw_version_src.version if latest_fw_version_src else None
+                        if cur_fw_version and latest_fw_version and \
+                                app_utils.is_version_greater(latest_fw_version, cur_fw_version):
+                            if re.match('\s*http(s)?://', latest_fw_version_src.notes, re.IGNORECASE):
+                                ver_str = f'<a href={latest_fw_version_src.notes}>{latest_fw_version}</a>'
+                            else:
+                                ver_str = latest_fw_version
+                            version_info_msg += ' <span style="color:green">(new version available: ' + ver_str + ')</span>'
+                    self.lblFirmwareVersion.setText(version_info_msg)
 
-                if self.hw_opt_passphrase_protection is True:
-                    self.lblPassStatus.setText('enabled')
-                    self.lblPassStatus.setStyleSheet('QLabel{color: green}')
-                    self.btnEnDisPass.setText('Disable')
-                    self.btnEnDisPass.setEnabled(True)
-                elif self.hw_opt_passphrase_protection is False:
-                    self.lblPassStatus.setText('disabled')
-                    self.lblPassStatus.setStyleSheet('QLabel{color: red}')
-                    self.btnEnDisPass.setText('Enable')
-                    self.btnEnDisPass.setEnabled(True)
-                else:
-                    self.lblPassStatus.setText('not available')
-                    self.lblPassStatus.setStyleSheet('QLabel{color: orange}')
-                    self.btnEnDisPass.setText('Enable')
-                    self.btnEnDisPass.setDisabled(True)
+                    if self.hw_opt_pin_protection is True:
+                        self.lblPinStatus.setText('enabled')
+                        self.btnEnDisPin.setText('Disable')
+                        self.btnEnDisPin.setEnabled(True)
+                        self.btnChangePin.setEnabled(True)
+                        self.lblPinStatus.setStyleSheet('QLabel{color: green}')
+                    elif self.hw_opt_pin_protection is False:
+                        self.lblPinStatus.setText('disabled')
+                        self.btnEnDisPin.setText('Enable')
+                        self.btnEnDisPin.setEnabled(True)
+                        self.btnChangePin.setEnabled(True)
+                        self.lblPinStatus.setStyleSheet('QLabel{color: red}')
+                    else:
+                        self.lblPinStatus.setText('not available')
+                        self.lblPinStatus.setStyleSheet('QLabel{color: orange}')
+                        self.btnEnDisPin.setText('Enable')
+                        self.btnEnDisPin.setDisabled(True)
+                        self.btnChangePin.setDisabled(True)
 
-                if self.hw_opt_passphrase_always_on_device is True:
-                    self.lblPassAlwaysOnDeviceStatus.setText('enabled')
-                    self.lblPassAlwaysOnDeviceStatus.setStyleSheet('QLabel{color: green}')
-                    self.btnEnDisPassAlwaysOnDevice.setText('Disable')
-                    self.btnEnDisPassAlwaysOnDevice.setEnabled(True)
-                elif self.hw_opt_passphrase_always_on_device is False:
-                    self.lblPassAlwaysOnDeviceStatus.setText('disabled')
-                    self.lblPassAlwaysOnDeviceStatus.setStyleSheet('QLabel{color: red}')
-                    self.btnEnDisPassAlwaysOnDevice.setText('Enable')
-                    self.btnEnDisPassAlwaysOnDevice.setEnabled(True)
-                else:
-                    self.lblPassAlwaysOnDeviceStatus.setText('not available')
-                    self.lblPassAlwaysOnDeviceStatus.setStyleSheet('QLabel{color: orange}')
-                    self.btnEnDisPassAlwaysOnDevice.setText('Enable')
-                    self.btnEnDisPassAlwaysOnDevice.setDisabled(True)
+                    if self.hw_opt_passphrase_protection is True:
+                        self.lblPassStatus.setText('enabled')
+                        self.lblPassStatus.setStyleSheet('QLabel{color: green}')
+                        self.btnEnDisPass.setText('Disable')
+                        self.btnEnDisPass.setEnabled(True)
+                    elif self.hw_opt_passphrase_protection is False:
+                        self.lblPassStatus.setText('disabled')
+                        self.lblPassStatus.setStyleSheet('QLabel{color: red}')
+                        self.btnEnDisPass.setText('Enable')
+                        self.btnEnDisPass.setEnabled(True)
+                    else:
+                        self.lblPassStatus.setText('not available')
+                        self.lblPassStatus.setStyleSheet('QLabel{color: orange}')
+                        self.btnEnDisPass.setText('Enable')
+                        self.btnEnDisPass.setDisabled(True)
 
-                if self.hw_opt_wipe_code_protection is True:
-                    self.lblWipeCodeStatus.setText('enabled')
-                    self.lblWipeCodeStatus.setStyleSheet('QLabel{color: green}')
-                    self.btnEnDisWipeCode.setText('Disable')
-                    self.btnEnDisWipeCode.setEnabled(True)
-                elif self.hw_opt_wipe_code_protection is False:
-                    self.lblWipeCodeStatus.setText('disabled')
-                    self.lblWipeCodeStatus.setStyleSheet('QLabel{color: red}')
-                    self.btnEnDisWipeCode.setText('Enable')
-                    self.btnEnDisWipeCode.setEnabled(True)
-                else:
-                    self.lblWipeCodeStatus.setText('not available')
-                    self.lblWipeCodeStatus.setStyleSheet('QLabel{color: orange}')
-                    self.btnEnDisWipeCode.setText('Enable')
-                    self.btnEnDisWipeCode.setDisabled(True)
+                    if self.hw_opt_passphrase_always_on_device is True:
+                        self.lblPassAlwaysOnDeviceStatus.setText('enabled')
+                        self.lblPassAlwaysOnDeviceStatus.setStyleSheet('QLabel{color: green}')
+                        self.btnEnDisPassAlwaysOnDevice.setText('Disable')
+                        self.btnEnDisPassAlwaysOnDevice.setEnabled(True)
+                    elif self.hw_opt_passphrase_always_on_device is False:
+                        self.lblPassAlwaysOnDeviceStatus.setText('disabled')
+                        self.lblPassAlwaysOnDeviceStatus.setStyleSheet('QLabel{color: red}')
+                        self.btnEnDisPassAlwaysOnDevice.setText('Enable')
+                        self.btnEnDisPassAlwaysOnDevice.setEnabled(True)
+                    else:
+                        self.lblPassAlwaysOnDeviceStatus.setText('not available')
+                        self.lblPassAlwaysOnDeviceStatus.setStyleSheet('QLabel{color: orange}')
+                        self.btnEnDisPassAlwaysOnDevice.setText('Enable')
+                        self.btnEnDisPassAlwaysOnDevice.setDisabled(True)
 
-                if self.hw_opt_sd_protection is True:
-                    self.lblSDCardProtectionStatus.setText('enabled')
-                    self.lblSDCardProtectionStatus.setStyleSheet('QLabel{color: green}')
-                    self.btnEnDisSDCardProtection.setText('Disable')
-                    self.btnEnDisSDCardProtection.setEnabled(True)
-                    self.btnRefreshSDCardProtection.setEnabled(True)
-                elif self.hw_opt_sd_protection is False:
-                    self.lblSDCardProtectionStatus.setText('disabled')
-                    self.lblSDCardProtectionStatus.setStyleSheet('QLabel{color: red}')
-                    self.btnEnDisSDCardProtection.setText('Enable')
-                    self.btnEnDisSDCardProtection.setEnabled(True)
-                    self.btnRefreshSDCardProtection.setEnabled(True)
-                else:
-                    self.lblSDCardProtectionStatus.setText('not available')
-                    self.lblSDCardProtectionStatus.setStyleSheet('QLabel{color: orange}')
-                    self.btnEnDisSDCardProtection.setText('Enable')
-                    self.btnEnDisSDCardProtection.setDisabled(True)
-                    self.btnRefreshSDCardProtection.setDisabled(True)
+                    if self.hw_opt_wipe_code_protection is True:
+                        self.lblWipeCodeStatus.setText('enabled')
+                        self.lblWipeCodeStatus.setStyleSheet('QLabel{color: green}')
+                        self.btnEnDisWipeCode.setText('Disable')
+                        self.btnEnDisWipeCode.setEnabled(True)
+                    elif self.hw_opt_wipe_code_protection is False:
+                        self.lblWipeCodeStatus.setText('disabled')
+                        self.lblWipeCodeStatus.setStyleSheet('QLabel{color: red}')
+                        self.btnEnDisWipeCode.setText('Enable')
+                        self.btnEnDisWipeCode.setEnabled(True)
+                    else:
+                        self.lblWipeCodeStatus.setText('not available')
+                        self.lblWipeCodeStatus.setStyleSheet('QLabel{color: orange}')
+                        self.btnEnDisWipeCode.setText('Enable')
+                        self.btnEnDisWipeCode.setDisabled(True)
 
+                    if self.hw_opt_sd_protection is True:
+                        self.lblSDCardProtectionStatus.setText('enabled')
+                        self.lblSDCardProtectionStatus.setStyleSheet('QLabel{color: green}')
+                        self.btnEnDisSDCardProtection.setText('Disable')
+                        self.btnEnDisSDCardProtection.setEnabled(True)
+                        self.btnRefreshSDCardProtection.setEnabled(True)
+                    elif self.hw_opt_sd_protection is False:
+                        self.lblSDCardProtectionStatus.setText('disabled')
+                        self.lblSDCardProtectionStatus.setStyleSheet('QLabel{color: red}')
+                        self.btnEnDisSDCardProtection.setText('Enable')
+                        self.btnEnDisSDCardProtection.setEnabled(True)
+                        self.btnRefreshSDCardProtection.setEnabled(True)
+                    else:
+                        self.lblSDCardProtectionStatus.setText('not available')
+                        self.lblSDCardProtectionStatus.setStyleSheet('QLabel{color: orange}')
+                        self.btnEnDisSDCardProtection.setText('Enable')
+                        self.btnEnDisSDCardProtection.setDisabled(True)
+                        self.btnRefreshSDCardProtection.setDisabled(True)
             else:
-                self.fraHwSettings.setVisible(False)
-                self.lblMessage.setVisible(True)
+                self.show_message_page('<b>Connect your hardware wallet</b>')
         except Exception as e:
             WndUtils.error_msg(str(e), True)
 

@@ -11,14 +11,14 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
     def __init__(self, parent, hw_devices: HWDevices):
         QWidget.__init__(self, parent=parent)
         Ui_WdgRecoverHw.__init__(self)
-        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices)
+        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices, 'Recover hardware wallet')
         self.setupUi(self)
 
     def setupUi(self, widget: QWidget):
         Ui_WdgRecoverHw.setupUi(self, self)
 
     def initialize(self):
-        self.set_action_title('<b>Recover hardware wallet</b>')
+        ActionPageBase.initialize(self)
         self.set_btn_cancel_visible(True)
         self.set_btn_back_visible(True)
         self.set_btn_continue_visible(True)

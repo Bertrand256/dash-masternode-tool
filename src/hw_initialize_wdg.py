@@ -21,6 +21,7 @@ from app_config import AppConfig
 from app_defs import get_note_url
 from common import CancelException
 from hw_common import HWDevice, HWType, HWFirmwareWebLocation
+from method_call_tracker import MethodCallLimit, method_call_tracker
 from thread_fun_dlg import CtrlObject
 from ui.ui_hw_initialize_wdg import Ui_WdgInitializeHw
 from wallet_tools_common import ActionPageBase
@@ -29,101 +30,115 @@ from wnd_utils import WndUtils, ReadOnlyTableCellDelegate
 
 
 class Step(Enum):
-    STEP_SELECT_NUMBER_OF_SEED_WORDS = 1
-    STEP_INPUT_HEX_ENTROPY = 2
-    STEP_INPUT_SEED_WORDS = 3
-    STEP_INPUT_OPTIONS = 4
-    STEP_FINISHED = 5
+    STEP_INPUT_OPTIONS = 1
+    STEP_INITIALIZING_HW = 2
+    STEP_FINISHED = 3
+    STEP_NO_HW_ERROR = 4
 
 
 class Pages(Enum):
-    PAGE_FIRMWARE_SOURCE = 0
-    PAGE_PREPARE_FIRMWARE = 1
-    PAGE_UPLOAD_FIRMWARE = 2
-    PAGE_MESSAGE = 3
+    PAGE_OPTIONS = 0
 
 
 class WdgInitializeHw(QWidget, Ui_WdgInitializeHw, ActionPageBase):
     def __init__(self, parent, hw_devices: HWDevices):
         QWidget.__init__(self, parent=parent)
         Ui_WdgInitializeHw.__init__(self)
-        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices)
+        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices, 'Initialize hardware wallet')
 
         self.cur_hw_device: Optional[HWDevice] = self.hw_devices.get_selected_device()
-        self.current_step: Step = Step.STEP_SELECT_FIRMWARE_SOURCE
+        self.current_step: Step = Step.STEP_INPUT_OPTIONS
+        self.hw_device_conn_change_active = True
         self.setupUi(self)
 
     def setupUi(self, dlg):
         Ui_WdgInitializeHw.setupUi(self, self)
         WndUtils.change_widget_font_attrs(self.lblMessage, point_size_diff=3, bold=True)
-        self.pages.setCurrentIndex(Pages.PAGE_FIRMWARE_SOURCE.value)
+        self.pages.setCurrentIndex(Pages.PAGE_OPTIONS.value)
 
     def initialize(self):
-        self.set_title()
-        self.set_btn_cancel_visible(True)
-        self.set_btn_back_visible(True)
-        self.set_btn_back_text('Back')
-        self.set_btn_continue_visible(True)
+        ActionPageBase.initialize(self)
         self.set_btn_cancel_text('Close')
+        self.set_btn_back_text('Back')
         self.set_hw_panel_visible(True)
-        self.set_controls_initial_state_for_step(False)
+        self.set_controls_initial_state_for_step()
         self.update_ui()
-        hw_changed = False
-        if not self.cur_hw_device:
-            self.hw_devices.select_device(self.parent())
-            hw_changed = True
-        if self.cur_hw_device and not self.cur_hw_device.hw_client:
-            self.hw_devices.open_hw_session(self.cur_hw_device)
-            hw_changed = True
-        if hw_changed:
-            self.update_ui()
-            self.display_firmware_list()
 
-    def on_close(self):
-        self.finishing = True
-
-    def on_current_hw_device_changed(self, cur_hw_device: HWDevice):
-        if cur_hw_device:
-            if cur_hw_device.hw_type == HWType.ledger_nano:
-                # If the wallet type is not Trezor or Keepkey we can't use this page
-                self.cur_hw_device = None
-                self.update_ui()
-                WndUtils.warn_msg('This feature is not available for Ledger devices.')
+        with MethodCallLimit(self, self.on_connected_hw_device_changed, call_count_limit=1):
+            if not self.cur_hw_device:
+                self.hw_devices.select_device(self.parent(), open_client_session=True)
             else:
-                self.cur_hw_device = self.hw_devices.get_selected_device()
                 if not self.cur_hw_device.hw_client:
                     self.hw_devices.open_hw_session(self.cur_hw_device)
-                self.update_ui()
-                self.display_firmware_list()
+            self.on_connected_hw_device_changed(self.cur_hw_device)
 
-    def set_title(self, subtitle: str = None):
-        title = 'Initialize hardware wallet'
-        if subtitle:
-            title += ' - ' + subtitle
-        self.set_action_title(f'<b>{title}</b>')
+    @method_call_tracker
+    def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
+        if self.hw_device_conn_change_active:
+            if cur_hw_device:
+                self.cur_hw_device = self.hw_devices.get_selected_device()
+                if self.current_step == Step.STEP_NO_HW_ERROR:
+                    self.set_current_step(Step.STEP_INPUT_OPTIONS)
+            else:
+                self.set_current_step(Step.STEP_NO_HW_ERROR)
+            self.update_ui()
 
-    def on_btn_continue_clicked(self):
-        self.set_next_step()
+    def set_current_step(self, step: Step):
+        if self.current_step != step:
+            self.current_step = step
+            self.set_controls_initial_state_for_step()
+            self.update_ui()
 
-    def on_btn_back_clicked(self):
-        self.set_prev_step()
+    def go_to_next_step(self):
+        if self.current_step == Step.STEP_INPUT_OPTIONS:
+            self.set_current_step(Step.STEP_INITIALIZING_HW)
+            self.init_hw()
 
-    def set_next_step(self):
-        pass
+    def go_to_prev_step(self):
+        if self.current_step in (Step.STEP_INPUT_OPTIONS, Step.STEP_NO_HW_ERROR):
+            self.exit_page()
+        elif self.current_step in (Step.STEP_FINISHED, Step.STEP_INITIALIZING_HW):
+            self.set_current_step(Step.STEP_INPUT_OPTIONS)
 
-    def set_prev_step(self):
-        pass
-
-    def set_controls_initial_state_for_step(self, moving_back: bool):
-        pass
+    def set_controls_initial_state_for_step(self):
+        self.set_btn_cancel_enabled(True)
+        self.set_btn_cancel_visible(True)
+        self.set_hw_change_enabled(True)
+        if self.current_step == Step.STEP_INPUT_OPTIONS:
+            self.set_btn_back_enabled(True)
+            self.set_btn_back_visible(True)
+            self.set_btn_continue_enabled(True)
+            self.set_btn_continue_visible(True)
+        elif self.current_step == Step.STEP_INITIALIZING_HW:
+            self.set_btn_back_enabled(False)
+            self.set_btn_back_visible(True)
+            self.set_btn_continue_enabled(False)
+            self.set_btn_continue_visible(True)
+            self.set_hw_change_enabled(False)
+        elif self.current_step == Step.STEP_FINISHED:
+            self.set_btn_back_enabled(True)
+            self.set_btn_back_visible(True)
+            self.set_btn_continue_visible(False)
+            self.set_hw_change_enabled(False)
+        elif self.current_step == Step.STEP_NO_HW_ERROR:
+            self.set_btn_back_visible(True)
+            self.set_btn_continue_visible(False)
 
     def update_ui(self):
         try:
             if self.cur_hw_device and self.cur_hw_device.hw_client:
-                pass
+                if self.current_step == Step.STEP_INPUT_OPTIONS:
+                    self.pages.setCurrentIndex(Pages.PAGE_OPTIONS.value)
+                elif self.current_step == Step.STEP_INITIALIZING_HW:
+                    self.pages.setCurrentIndex(Pages.PAGE_OPTIONS.value)
+                elif self.current_step == Step.STEP_FINISHED:
+                    self.show_message_page('<b>Hardware wallet successfully initialized.</b>')
+                    return
+                self.show_action_page()
             else:
-                self.lblMessage.setText('<b>Connect your hardware wallet device to continue</b>')
-                self.pages.setCurrentIndex(Pages.PAGE_MESSAGE.value)
+                self.show_message_page('<b>Connect your hardware wallet</b>')
         except Exception as e:
             WndUtils.error_msg(str(e), True)
 
+    def init_hw(self):
+        pass

@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+from __future__ import annotations
+import functools
 import hashlib
 import re
 import urllib, urllib.request, urllib.parse
@@ -29,6 +31,8 @@ from dash_utils import bip32_path_n_to_string
 from hw_common import HWType, HWDevice, HWPinException, get_hw_type_from_client, HWNotConnectedException, \
     DEFAULT_HW_BUSY_TITLE, DEFAULT_HW_BUSY_MESSAGE, HWSessionBase, HWFirmwareWebLocation, HWModel
 import logging
+
+from method_call_tracker import MethodCallTracker
 from wallet_common import UtxoType, TxOutputType
 from wnd_utils import WndUtils
 import hw_intf_ledgernano as ledger
@@ -236,8 +240,8 @@ def ping_device(hw_device: HWDevice, message: str):
         ctrl.dlg_config(dlg_title=message, show_progress_bar=False)
         display_label = '<b>This is a "ping" message from DMT</b> (we had to use the message signing feature).<br>' \
                         '<b>Message: </b>' + message + '<br>' \
-                        '<b>SHA256 hash:</b> ' + message_hash + '<br>' \
-                        '<br>Click "Sign" on the device to close this dialog.</b>'
+                                                       '<b>SHA256 hash:</b> ' + message_hash + '<br>' \
+                                                                                               '<br>Click "Sign" on the device to close this dialog.</b>'
         ctrl.display_msg(display_label)
         try:
             ledger.sign_message(hw_device.hw_client, dash_utils.get_default_bip32_path('MAINNET'), message, None)
@@ -323,7 +327,7 @@ def wipe_device(hw_type: HWType, hw_device_id: Optional[str], parent_window=None
     def wipe(ctrl):
         ctrl.dlg_config(dlg_title="Confirm wiping device.", show_progress_bar=False)
         ctrl.display_msg('<b>Read the messages displayed on your hardware wallet <br>'
-                             'and click the confirmation button when necessary...</b>')
+                         'and click the confirmation button when necessary...</b>')
 
         if hw_type == HWType.trezor:
 
@@ -372,7 +376,7 @@ def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemon
 
         ctrl.dlg_config(dlg_title="Please confirm", show_progress_bar=False)
         ctrl.display_msg('<b>Read the messages displayed on your hardware wallet <br>'
-                             'and click the confirmation button when necessary...</b>')
+                         'and click the confirmation button when necessary...</b>')
 
         if hw_device_id_:
             if hw_type == HWType.trezor:
@@ -418,7 +422,7 @@ def recover_device(hw_type: HWType, hw_device_id: str, word_count: int, passphra
 
         ctrl.dlg_config(dlg_title="Please confirm", show_progress_bar=False)
         ctrl.display_msg('<b>Read the messages displayed on your hardware wallet <br>'
-                             'and click the confirmation button when necessary...</b>')
+                         'and click the confirmation button when necessary...</b>')
 
         if hw_device_id_:
             if hw_type_ == HWType.trezor:
@@ -466,7 +470,7 @@ def reset_device(hw_type: HWType, hw_device_id: str, word_count: int, passphrase
 
         ctrl.dlg_config(dlg_title="Please confirm", show_progress_bar=False)
         ctrl.display_msg('<b>Read the messages displayed on your hardware wallet <br>'
-                             'and click the confirmation button when necessary...</b>')
+                         'and click the confirmation button when necessary...</b>')
         if hw_device_id_:
             if hw_type_ == HWType.trezor:
 
@@ -492,11 +496,64 @@ def reset_device(hw_type: HWType, hw_device_id: str, word_count: int, passphrase
                                                  hw_label), True, center_by_window=parent_window)
 
 
+def hw_connection_tracker(func):
+    """
+    The purpose of this decorator function is to track:
+      a) whether the connection state to the hardware wallet has changed
+      b) whether selected hw device has changed
+    within the HWDevices object, and if so, to emit appropriate Qt signals. We are using MethodCallTracker here
+    to emit signals only once, even if the connection/selection status changes several times within the call chain.
+    Note, that the connected hardware wallet device is not the same as the selected one, as the HWDevices class has
+    the ability of selecting devices without the need of connecting to it.
+    """
+    @functools.wraps(func)
+    def wrapper(self: HWDevices, *args):
+        def get_hw_str():
+            _dev_str = ''
+            hw_device = self.get_selected_device()
+            if hw_device:
+                _dev_str = hw_device.device_id + '|' + ('1' if hw_device.bootloader_mode else '0') + '|' + \
+                           ('1' if hw_device.initialized else '0')
+            return _dev_str
+
+        def get_hw_client_str():
+            hw_device = self.get_selected_device()
+            if hw_device and hw_device.hw_client:
+                return get_hw_str()
+            else:
+                return ''
+
+        call_count = MethodCallTracker.get_call_depth_by_class(self)
+        hw_client_hash_old = ''
+        hw_dev_hash_old = ''
+        if call_count == 0:
+            hw_client_hash_old = get_hw_client_str()
+            hw_dev_hash_old = get_hw_str()
+
+        with MethodCallTracker(self, func):
+            ret = func(self, *args)
+
+        if call_count == 0:
+            hw_hash_new = get_hw_client_str()
+            hw_dev_hash_new = get_hw_str()
+
+            if hw_client_hash_old != hw_hash_new:
+                self.sig_connected_hw_device_changed.emit(self.get_selected_device())
+
+            if hw_dev_hash_old != hw_dev_hash_new:
+                self.sig_selected_hw_device_changed.emit(self.get_selected_device())
+
+        return ret
+
+    return wrapper
+
+
 class HWDevices(QObject):
     """
     Manages information about all hardware wallet devices connected to the computer.
     """
     sig_selected_hw_device_changed = QtCore.pyqtSignal(HWDevice)
+    sig_connected_hw_device_changed = QtCore.pyqtSignal(HWDevice)
 
     __instance = None
 
@@ -546,6 +603,7 @@ class HWDevices(QObject):
             connected_devices, self.__hw_device_id_selected, self.__selected_device_model,
             self.__selected_device_bootloader_mode, self.__allow_bootloader_mode))
 
+    @hw_connection_tracker
     def restore_state(self):
         if self.__saved_states:
             state = self.__saved_states.pop()
@@ -571,14 +629,15 @@ class HWDevices(QObject):
 
             # restore the currently selected device
             if state.device_id_selected and (self.__hw_device_id_selected != state.device_id_selected or
-              self.__selected_device_model != state.selected_device_model or
-              self.__selected_device_bootloader_mode != state.selected_device_bootloader_mode):
+                                             self.__selected_device_model != state.selected_device_model or
+                                             self.__selected_device_bootloader_mode != state.selected_device_bootloader_mode):
                 dev = self.get_device_by_id(state.device_id_selected)
                 if dev:
                     self.set_current_device(dev)
         else:
             raise InternalError('There are no saved states')
 
+    @hw_connection_tracker
     def load_hw_devices(self, force_fetch: bool = False):
         """
         Load all instances of the selected hardware wallet type. If there is more than one, user has to select which
@@ -600,8 +659,10 @@ class HWDevices(QObject):
                     self.__selected_device_model = None
                     self.__selected_device_bootloader_mode = None
 
+    @hw_connection_tracker
     def close_all_hw_clients(self):
         try:
+            cur_hw_client = self.hw_client
             for idx, hw_inst in enumerate(self.__hw_devices):
                 if hw_inst.hw_client:
                     hw_inst.hw_client.close()
@@ -609,10 +670,12 @@ class HWDevices(QObject):
         except Exception as e:
             logging.exception(str(e))
 
+    @hw_connection_tracker
     def clear_devices(self):
         self.close_all_hw_clients()
         self.__hw_devices.clear()
 
+    @hw_connection_tracker
     def clear(self):
         self.clear_devices()
         self.__hw_device_id_selected = None
@@ -642,17 +705,14 @@ class HWDevices(QObject):
                 return dev
         return None
 
+    @hw_connection_tracker
     def set_current_device(self, device: HWDevice):
-        if not device:
-            if self.__hw_device_id_selected:
-                self.sig_selected_hw_device_changed.emit(device)  # we are deselecting hw device
-        elif device in self.__hw_devices:
+        if device in self.__hw_devices:
             if device.device_id != self.__hw_device_id_selected or device.model_symbol != self.__selected_device_model \
-                or device.bootloader_mode != self.__selected_device_bootloader_mode:
+                    or device.bootloader_mode != self.__selected_device_bootloader_mode:
                 self.__hw_device_id_selected = device.device_id
                 self.__selected_device_model = device.model_symbol
                 self.__selected_device_bootloader_mode = device.bootloader_mode
-                self.sig_selected_hw_device_changed.emit(device)
         else:
             raise Exception('Non existent hw device object.')
 
@@ -662,6 +722,7 @@ class HWDevices(QObject):
         else:
             raise Exception('Device index out of bounds.')
 
+    @hw_connection_tracker
     def open_hw_session(self, hw_device: HWDevice, force_reconnect: bool = False):
         if hw_device.hw_client and force_reconnect:
             self.close_hw_session(hw_device)
@@ -684,8 +745,8 @@ class HWDevices(QObject):
             else:
                 raise Exception('Invalid HW type: ' + str(hw_device.hw_type))
 
-    @staticmethod
-    def close_hw_session(hw_device: HWDevice):
+    @hw_connection_tracker
+    def close_hw_session(self, hw_device: HWDevice):
         if hw_device.hw_client:
             try:
                 if hw_device.hw_type == HWType.trezor:
@@ -701,12 +762,14 @@ class HWDevices(QObject):
                 # probably already disconnected
                 logging.exception('Disconnect HW error')
 
-    def select_device(self, parent_dialog) -> Optional[HWDevice]:
+    def select_device(self, parent_dialog, open_client_session: bool = False) -> Optional[HWDevice]:
         self.load_hw_devices()
 
         dlg = SelectHWDeviceDlg(parent_dialog, "Select hardware wallet device", self)
         if dlg.exec_():
             self.set_current_device(dlg.selected_hw_device)
+            if dlg.selected_hw_device and open_client_session:
+                self.open_hw_session(dlg.selected_hw_device)
             return dlg.selected_hw_device
         return None
 
@@ -723,15 +786,18 @@ class HWDevices(QObject):
             if opened_session_here:
                 self.close_hw_session(hw_device)
 
+    @hw_connection_tracker
     def reload_devices(self) -> bool:
         try:
-            prev_dev_list = [(d.device_id + str(d.bootloader_mode) + str(d.model_symbol) if d.device_id else '?') for d in self.__hw_devices]
+            prev_dev_list = [(d.device_id + str(d.bootloader_mode) + str(d.model_symbol) if d.device_id else '?') for d
+                             in self.__hw_devices]
             prev_dev_list.sort()
 
             self.save_state()
             self.load_hw_devices(True)
 
-            cur_dev_list = [(d.device_id + str(d.bootloader_mode) + str(d.model_symbol) if d.device_id else '?') for d in self.__hw_devices]
+            cur_dev_list = [(d.device_id + str(d.bootloader_mode) + str(d.model_symbol) if d.device_id else '?') for d
+                            in self.__hw_devices]
             cur_dev_list.sort()
 
             device_list_changed = (','.join(prev_dev_list) != ','.join(cur_dev_list))
@@ -939,7 +1005,8 @@ class HwSessionInfo(HWSessionBase):
                                     raise
 
                         elif self.hw_type == HWType.ledger_nano:
-                            addr = get_address(self, self.__rt_data, dash_utils.get_default_bip32_path(self.__rt_data.dash_network))
+                            addr = get_address(self, self.__rt_data,
+                                               dash_utils.get_default_bip32_path(self.__rt_data.dash_network))
                             if dash_utils.validate_address(addr, self.__rt_data.dash_network):
                                 found_testnet_support = False
 
@@ -1182,7 +1249,7 @@ def sign_tx(hw_session: HwSessionInfo, rt_data: AppRuntimeData, utxos_to_spend: 
     def sign(ctrl):
         ctrl.dlg_config(dlg_title="Confirm transaction signing.", show_progress_bar=False)
         ctrl.display_msg('<b>Click the confirmation button on your hardware wallet<br>'
-                             'and wait for the transaction to be signed...</b>')
+                         'and wait for the transaction to be signed...</b>')
 
         if hw_session.hw_type == HWType.trezor:
 
@@ -1244,7 +1311,6 @@ def hw_sign_message(hw_session: HwSessionInfo, hw_coin_name: str, bip32path, mes
 @control_hw_call
 def get_address(hw_session: HwSessionInfo, rt_data: AppRuntimeData, bip32_path: str, show_display: bool = False,
                 message_to_display: str = None):
-
     def _get_address(ctrl):
         nonlocal hw_session, rt_data, bip32_path, show_display, message_to_display
         if ctrl:
@@ -1394,9 +1460,9 @@ def hw_encrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
                 value_: bytearray):
         ctrl.dlg_config(dlg_title="Data encryption", show_progress_bar=False)
         ctrl.display_msg(f'<b>Encrypting \'{label_}\'...</b>'
-                             f'<br><br>Enter the hardware wallet PIN/passphrase (if needed) to encrypt data.<br><br>'
-                             f'<b>Note:</b> encryption passphrase is independent from the wallet passphrase  <br>'
-                             f'and can vary for each encrypted file.')
+                         f'<br><br>Enter the hardware wallet PIN/passphrase (if needed) to encrypt data.<br><br>'
+                         f'<b>Note:</b> encryption passphrase is independent from the wallet passphrase  <br>'
+                         f'and can vary for each encrypted file.')
 
         if hw_session_.hw_type == HWType.trezor:
             try:
@@ -1445,7 +1511,7 @@ def hw_decrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
     def decrypt(ctrl, hw_session_: HwSessionInfo, bip32_path_n_: List[int], label_: str, value_: bytearray):
         ctrl.dlg_config(dlg_title="Data decryption", show_progress_bar=False)
         ctrl.display_msg(f'<b>Decrypting \'{label_}\'...</b><br><br>Enter the hardware wallet PIN/passphrase '
-                             f'(if needed)<br> and click the confirmation button to decrypt data.')
+                         f'(if needed)<br> and click the confirmation button to decrypt data.')
 
         if hw_session_.hw_type == HWType.trezor:
 
@@ -1481,7 +1547,6 @@ def hw_decrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: 
 
 def get_hw_firmware_web_sources(hw_models_allowed: Tuple[HWModel, ...],
                                 only_official=True, only_latest=False) -> List[HWFirmwareWebLocation]:
-
     def get_trezor_firmware_list_from_url(
             base_url: str, list_url: str, official_source: bool = False, only_latest: bool = False,
             model_for_this_source: Optional[str] = None, testnet_support: bool = False) -> List[HWFirmwareWebLocation]:
@@ -1616,7 +1681,8 @@ def get_hw_firmware_web_sources(hw_models_allowed: Tuple[HWModel, ...],
                         if hw_type == HWType.trezor:
                             lst = get_trezor_firmware_list_from_url(
                                 base_url=url_base, list_url=url, only_latest=only_latest,
-                                official_source=official_source, model_for_this_source=hw_model_symbol, testnet_support=testnet_support)
+                                official_source=official_source, model_for_this_source=hw_model_symbol,
+                                testnet_support=testnet_support)
 
                             ret_fw_sources.extend(lst)
                         elif hw_type == HWType.keepkey:
