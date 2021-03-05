@@ -9,7 +9,7 @@ import re
 import urllib, urllib.request, urllib.parse
 from functools import partial
 from io import BytesIO
-from typing import Optional, Tuple, List, ByteString, Dict, cast
+from typing import Optional, Tuple, List, ByteString, Dict, cast, Any
 import sys
 
 import simplejson
@@ -311,46 +311,9 @@ def set_wipe_code(hw_client, enabled):
         logging.error('Invalid HW type: ' + str(hw_type))
 
 
-def wipe_device(hw_type: HWType, hw_device_id: Optional[str], parent_window=None) -> Tuple[Optional[str], bool]:
-    """
-    Wipes the hardware wallet device.
-    :param hw_type: app_config.HWType
-    :param hw_device_id: id of the device selected by the user (TrezorClient, KeepkeyClient)
-    :param parent_window: ref to a window according to which will be centered message dialogs created here
-    :return: Tuple
-        Ret[0]: Device id. After wiping a new device id is generated, which is returned to the caller.
-        Ret[1]: True, if the user cancelled the operation. In this situation we deliberately don't raise the 'cancelled'
-            exception, because in the case of changing of the device id (when wiping) we want to pass it back to
-            the caller.
-    """
-
-    def wipe(ctrl):
-        ctrl.dlg_config(dlg_title="Confirm wiping device.", show_progress_bar=False)
-        ctrl.display_msg('<b>Read the messages displayed on your hardware wallet <br>'
-                         'and click the confirmation button when necessary...</b>')
-
-        if hw_type == HWType.trezor:
-
-            return trezor.wipe_device(hw_device_id)
-
-        elif hw_type == HWType.keepkey:
-
-            return keepkey.wipe_device(hw_device_id)
-
-        elif hw_type == HWType.ledger_nano:
-
-            raise Exception('Not supported by Ledger Nano S.')
-
-        else:
-            raise Exception('Invalid HW type: ' + str(hw_type))
-
-    # execute the 'wipe' inside a thread to avoid blocking UI
-    return WndUtils.run_thread_dialog(wipe, (), True, center_by_window=parent_window)
-
-
-def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemonic_words: str,
-                            pin: str, passphrase_enabled: bool, hw_label: str, passphrase: str,
-                            secondary_pin: str) -> Tuple[Optional[str], bool]:
+def recover_device_with_seed_input(hw_type: HWType, hw_device_id: Optional[str], mnemonic_words: str,
+                                   pin: str, passphrase_enabled: bool, hw_label: str, passphrase: str,
+                                   secondary_pin: str) -> Tuple[Optional[str], bool]:
     """
     Initializes hardware wallet with a mnemonic words. For security reasons use this function only on an offline
     system, that will never be connected to the Internet.
@@ -382,15 +345,14 @@ def load_device_by_mnemonic(hw_type: HWType, hw_device_id: Optional[str], mnemon
             if hw_type == HWType.trezor:
                 raise Exception('Feature no longer available for Trezor')
             elif hw_type == HWType.keepkey:
-                return keepkey.load_device_by_mnemonic(hw_device_id_, mnemonic_, pin_, passphrase_enabled_, hw_label_)
-            else:
-                raise Exception('Not supported by Ledger Nano S.')
+                return keepkey.recover_device_with_seed_input(hw_device_id_, mnemonic_, pin_, passphrase_enabled_,
+                                                              hw_label_)
         else:
             raise HWNotConnectedException()
 
     if hw_type == HWType.ledger_nano:
 
-        ledger.load_device_by_mnemonic(mnemonic_words, pin, passphrase, secondary_pin)
+        ledger.recover_device_with_seed_input(mnemonic_words, pin, passphrase, secondary_pin)
         return hw_device_id, False
 
     else:
@@ -445,57 +407,6 @@ def recover_device(hw_type: HWType, hw_device_id: str, word_count: int, passphra
                                                  hw_label), True, center_by_window=parent_window)
 
 
-def reset_device(hw_type: HWType, hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool,
-                 hw_label: str, parent_window=None) -> Tuple[Optional[str], bool]:
-    """
-    Initialize device with a newly generated words.
-    :param hw_type: app_config.HWType
-    :param hw_device_id: id of the device selected by the user (TrezorClient, KeepkeyClient); None for Ledger Nano S
-    :param word_count: number of words (12/18/24)
-    :param passphrase_enabled: if True, hw will have passphrase enabled (Trezor/Keepkey)
-    :param pin_enabled: if True, hw will have pin enabled (Trezor/Keepkey)
-    :param hw_label: label for device (Trezor/Keepkey)
-    :param parent_window: ref to a window according to which will be centered message dialogs created here
-    :return: Tuple
-        Ret[0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
-            returned to the caller.
-        Ret[1]: True, if the user cancelled the operation. In this situation we deliberately don't raise the
-            'cancelled' exception, because in the case of changing of the device id (when wiping) we want to pass
-            it back to the caller function.
-        Ret[0] and Ret[1] are None for Ledger devices.
-    """
-
-    def load(ctrl, hw_type_: HWType, hw_device_id_: str, strength_: int, passphrase_enabled_: bool, pin_enabled_: bool,
-             hw_label_: str) -> Tuple[Optional[str], bool]:
-
-        ctrl.dlg_config(dlg_title="Please confirm", show_progress_bar=False)
-        ctrl.display_msg('<b>Read the messages displayed on your hardware wallet <br>'
-                         'and click the confirmation button when necessary...</b>')
-        if hw_device_id_:
-            if hw_type_ == HWType.trezor:
-
-                return trezor.reset_device(hw_device_id_, strength_, passphrase_enabled_, pin_enabled_, hw_label_)
-
-            elif hw_type_ == HWType.keepkey:
-
-                return keepkey.reset_device(hw_device_id_, strength_, passphrase_enabled_, pin_enabled_, hw_label_)
-
-            else:
-                raise Exception('Not supported by Ledger Nano S.')
-        else:
-            raise HWNotConnectedException()
-
-    if hw_type == HWType.ledger_nano:
-        raise Exception('Not supported by Ledger Nano S.')
-    else:
-        if word_count not in (12, 18, 24):
-            raise Exception('Invalid word count.')
-        strength = {24: 32, 18: 24, 12: 16}.get(word_count) * 8
-
-        return WndUtils.run_thread_dialog(load, (hw_type, hw_device_id, strength, passphrase_enabled, pin_enabled,
-                                                 hw_label), True, center_by_window=parent_window)
-
-
 def hw_connection_tracker(func):
     """
     The purpose of this decorator function is to track:
@@ -506,8 +417,9 @@ def hw_connection_tracker(func):
     Note, that the connected hardware wallet device is not the same as the selected one, as the HWDevices class has
     the ability of selecting devices without the need of connecting to it.
     """
+
     @functools.wraps(func)
-    def wrapper(self: HWDevices, *args):
+    def wrapper(self: HWDevices, *args, **kwargs):
         def get_hw_str():
             _dev_str = ''
             hw_device = self.get_selected_device()
@@ -530,8 +442,9 @@ def hw_connection_tracker(func):
             hw_client_hash_old = get_hw_client_str()
             hw_dev_hash_old = get_hw_str()
 
+        ret = None
         with MethodCallTracker(self, func):
-            ret = func(self, *args)
+            ret = func(self, *args, **kwargs)
 
         if call_count == 0:
             hw_hash_new = get_hw_client_str()
@@ -662,7 +575,6 @@ class HWDevices(QObject):
     @hw_connection_tracker
     def close_all_hw_clients(self):
         try:
-            cur_hw_client = self.hw_client
             for idx, hw_inst in enumerate(self.__hw_devices):
                 if hw_inst.hw_client:
                     hw_inst.hw_client.close()
@@ -716,6 +628,7 @@ class HWDevices(QObject):
         else:
             raise Exception('Non existent hw device object.')
 
+    @hw_connection_tracker
     def set_current_device_by_index(self, index: int):
         if 0 <= index < len(self.__hw_devices):
             self.set_current_device(self.__hw_devices[index])
@@ -726,6 +639,9 @@ class HWDevices(QObject):
     def open_hw_session(self, hw_device: HWDevice, force_reconnect: bool = False):
         if hw_device.hw_client and force_reconnect:
             self.close_hw_session(hw_device)
+            reconnected = True
+        else:
+            reconnected = False
 
         if not hw_device.hw_client:
             if hw_device.hw_type == HWType.trezor:
@@ -734,12 +650,16 @@ class HWDevices(QObject):
                     hw_device.bootloader_mode = hw_device.hw_client.features.bootloader_mode
                 else:
                     hw_device.bootloader_mode = False
+                if reconnected:
+                    trezor.apply_device_attributes(hw_device, hw_device.hw_client)
             elif hw_device.hw_type == HWType.keepkey:
                 hw_device.hw_client = keepkey.open_session(hw_device.device_id, self.__passphrase_encoding)
                 if hw_device.hw_client and hw_device.hw_client.features:
                     hw_device.bootloader_mode = hw_device.hw_client.features.bootloader_mode
                 else:
                     hw_device.bootloader_mode = False
+                if reconnected:
+                    keepkey.apply_device_attributes(hw_device, hw_device.hw_client)
             elif hw_device.hw_type == HWType.ledger_nano:
                 hw_device.hw_client = ledger.open_session(cast(ledger.HIDDongleHIDAPI, hw_device.transport_id))
             else:
@@ -762,6 +682,7 @@ class HWDevices(QObject):
                 # probably already disconnected
                 logging.exception('Disconnect HW error')
 
+    @hw_connection_tracker
     def select_device(self, parent_dialog, open_client_session: bool = False) -> Optional[HWDevice]:
         self.load_hw_devices()
 
@@ -805,6 +726,106 @@ class HWDevices(QObject):
             self.restore_state()
 
         return device_list_changed
+
+    @hw_connection_tracker
+    def initialize_device(self, hw_device: HWDevice, word_count: int, passphrase_enabled: bool, pin_enabled: bool,
+                          hw_label: str, parent_window=None) -> \
+            Optional[str]:
+        """
+        Initialize device with a newly generated words.
+        :param hw_device: object describing the hw device
+        :param word_count: number of words (12/18/24)
+        :param passphrase_enabled: if True, hw will have passphrase enabled (Trezor/Keepkey)
+        :param pin_enabled: if True, hw will have pin enabled (Trezor/Keepkey)
+        :param hw_label: label for device (Trezor/Keepkey)
+        :param parent_window: ref to a window according to which will be centered message dialogs created here
+        :return: Tuple
+            Ret[0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
+                returned to the caller.
+            Ret[1]: True, if the user cancelled the operation. In this case we deliberately don't raise the
+                'cancelled' exception, because in the case of changing of the device id (when wiping) we want to pass
+                it back to the caller function.
+            Ret[0] and Ret[1] are None for Ledger devices.
+        """
+
+        def load(ctrl) -> Optional[str]:
+
+            ctrl.dlg_config(dlg_title="Please confirm", show_progress_bar=False)
+            ctrl.display_msg('<b>Read the messages displayed on your hardware wallet <br>'
+                             'and click the confirmation button when necessary...</b>')
+            if hw_device.device_id or hw_device.hw_client:
+                if hw_device.hw_type == HWType.trezor:
+                    return trezor.initialize_device(hw_device.device_id, hw_device.transport_id, hw_device.hw_client,
+                                                    strength, passphrase_enabled, pin_enabled, hw_label)
+                elif hw_device.hw_type == HWType.keepkey:
+                    return keepkey.initialize_device(hw_device.device_id, hw_device.hw_client, strength,
+                                                     passphrase_enabled, pin_enabled, hw_label,
+                                                     self.__passphrase_encoding)
+                else:
+                    raise Exception('Not supported by Ledger Nano S.')
+
+        if hw_device.hw_type == HWType.ledger_nano:
+            raise Exception('Not supported by Ledger Nano S.')
+        else:
+            if word_count not in (12, 18, 24):
+                raise Exception('Invalid word count.')
+            strength = {24: 32, 18: 24, 12: 16}.get(word_count) * 8
+
+            new_hw_device_id = WndUtils.run_thread_dialog(load, (), True, center_by_window=parent_window)
+
+            # during the initialization device_id (on Trezor) and some other values might have changed
+            # so we need to reload them
+            if new_hw_device_id != hw_device.device_id:
+                if self.__hw_device_id_selected == hw_device.device_id:
+                    self.__hw_device_id_selected = new_hw_device_id
+                hw_device.device_id = new_hw_device_id
+
+            if hw_device.hw_client is not None:
+                try:
+                    # reopen the client connection as some values read from it could have been changed
+                    # during the initialization
+                    self.open_hw_session(hw_device, force_reconnect=True)
+                except Exception as e:
+                    log.warning("Couldn't reconnect hardware wallet after initialization: " + str(e))
+
+            return new_hw_device_id
+
+    @hw_connection_tracker
+    def wipe_device(self, hw_device: HWDevice, parent_window=None) -> str:
+        """
+        Wipes the hardware wallet device.
+        """
+
+        def wipe(ctrl):
+            ctrl.dlg_config(dlg_title="Confirm wiping device.", show_progress_bar=False)
+            ctrl.display_msg('<b>Read the messages displayed on your hardware wallet <br>'
+                             'and click the confirmation button when necessary...</b>')
+
+            if hw_device.device_id or hw_device.hw_client:
+                if hw_device.hw_type == HWType.trezor:
+                    return trezor.wipe_device(hw_device.device_id, hw_device.transport_id, hw_device.hw_client)
+                elif hw_device.hw_type == HWType.keepkey:
+                    return keepkey.wipe_device(hw_device.device_id, hw_device.hw_client, self.__passphrase_encoding)
+                else:
+                    raise Exception('Not supported by Ledger Nano.')
+
+        new_hw_device_id = WndUtils.run_thread_dialog(wipe, (), True, center_by_window=parent_window)
+
+        # during the wipe, device_id (on Trezor) and other values change, so here we need to reload them
+        if new_hw_device_id != hw_device.device_id:
+            if self.__hw_device_id_selected == hw_device.device_id:
+                self.__hw_device_id_selected = new_hw_device_id
+            hw_device.device_id = new_hw_device_id
+
+        if hw_device.hw_client is not None:
+            try:
+                # reopen the client connection as some values read from it could have been changed
+                # during the initialization
+                self.open_hw_session(hw_device, force_reconnect=True)
+            except Exception as e:
+                log.warning("Couldn't reconnect hardware wallet after initialization: " + str(e))
+
+        return new_hw_device_id
 
 
 class HwSessionInfo(HWSessionBase):

@@ -8,7 +8,7 @@ import logging
 import unicodedata
 import hid
 from decimal import Decimal
-from typing import Optional, Tuple, List, Generator, Iterator
+from typing import Optional, Tuple, List, Generator, Iterator, Any
 
 from keepkeylib.transport_hid import HidTransport, DEVICE_IDS, is_normal_link, is_debug_link
 from keepkeylib.transport_webusb import WebUsbTransport
@@ -20,6 +20,7 @@ from keepkeylib.tx_api import TxApiInsight
 from mnemonic import Mnemonic
 
 import dash_utils
+import hw_common
 from app_runtime_data import AppRuntimeData
 from common import CancelException
 from hw_common import ask_for_pin_callback, ask_for_pass_callback, ask_for_word_callback, \
@@ -154,6 +155,17 @@ def enumerate_devices(device_id: Optional[str]) -> Iterator[Tuple[type, any, str
                 break
 
 
+def apply_device_attributes(hw_device: hw_common.HWDevice, client: Any, serial_number: Optional[str] = None):
+    hw_device.device_id = serial_number if serial_number else client.features.device_id
+    hw_device.firmware_version = f'{client.features.major_version}.{client.features.minor_version}.' \
+                                 f'{client.features.patch_version}'
+    hw_device.model_symbol = 'keepkey'
+    hw_device.device_label = client.features.label if client.features.label else None
+    hw_device.initialized = client.features.initialized
+    hw_device.bootloader_mode = client.features.bootloader_mode if client.features.bootloader_mode \
+                                                                   is not None else False
+
+
 def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[str] = 'NFC',
                     allow_bootloader_mode: bool = False) -> List[HWDevice]:
 
@@ -181,23 +193,12 @@ def get_device_list(return_clients: bool = True, passphrase_encoding: Optional[s
                 was_bootloader_mode = True
 
             if (not client.features.bootloader_mode or allow_bootloader_mode) and device_id not in device_ids:
-                version = f'{client.features.major_version}.{client.features.minor_version}.' \
-                          f'{client.features.patch_version}'
-                model_symbol = 'keepkey'
 
-                ret_list.append(
-                    HWDevice(
-                        hw_type=HWType.keepkey,
-                        device_id=device_id,
-                        device_label=client.features.label if client.features.label else None,
-                        firmware_version=version,
-                        model_symbol=model_symbol,
-                        hw_client=client if return_clients else None,
-                        bootloader_mode=client.features.bootloader_mode,
-                        transport_id=device_transport_id,
-                        initialized=client.features.initialized
-                    ))
-                device_ids.append(device_id)  # beware: it's empty in bootloader mode
+                hw_dev = hw_common.HWDevice(hw_type=HWType.keepkey, hw_client=client if return_clients else None,
+                                            transport_id=device_transport_id)
+                apply_device_attributes(hw_dev, client, device_id)
+                ret_list.append(hw_dev)
+                device_ids.append(device_id)
                 if not return_clients:
                     client.close()
             else:
@@ -394,44 +395,36 @@ def apply_settings(hw_client, label=None, language=None, use_passphrase=None, ho
         raise Exception('HW client not set.')
 
 
-def wipe_device(hw_device_id) -> Tuple[str, bool]:
+def wipe_device(hw_device_id: str, hw_client: Any, passphrase_encoding: Optional[str] = 'NFC') -> str:
     """
-    :param hw_device_id:
-    :return: Tuple
-        [0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
-            returned to the caller.
-        [1]: True, if the user cancelled the operation. In this case we deliberately don't raise the 'cancelled'
-            exception, because in the case of changing of the device id (when wiping) we want to pass the new device
-            id back to the caller.
+    :return: new device id
     """
     client = None
     try:
-        client = connect_keepkey(device_id=hw_device_id)
+        if not hw_client:
+            client = open_session(device_id=hw_device_id, passphrase_encoding=passphrase_encoding)
+        else:
+            client = hw_client
 
         if client:
             client.wipe_device()
             hw_device_id = client.features.device_id
-            client.close()
-            return hw_device_id, False
+            return hw_device_id
         else:
             raise Exception('Couldn\'t connect to Keepkey device.')
 
     except CallException as e:
-        if client:
-            client.close()
         if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
             raise
         else:
-            return hw_device_id, True  # cancelled by user
-
-    except CancelException:
-        if client:
+            raise CancelException
+    finally:
+        if client and hw_client != client:
             client.close()
-        return hw_device_id, True  # cancelled by user
 
 
-def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphrase_enabled: bool, hw_label: str,
-                            language: Optional[str] = None) -> Tuple[str, bool]:
+def recover_device_with_seed_input(hw_device_id: str, mnemonic: str, pin: str, passphrase_enabled: bool, hw_label: str,
+                                   language: Optional[str] = None) -> Tuple[str, bool]:
     """
     :param hw_device_id:
     :param mnemonic:
@@ -454,7 +447,7 @@ def load_device_by_mnemonic(hw_device_id: str, mnemonic: str, pin: str, passphra
             if client.features.initialized:
                 client.wipe_device()
                 hw_device_id = client.features.device_id
-            client.load_device_by_mnemonic(mnemonic, pin, passphrase_enabled, hw_label, language=language)
+            client.recover_device_with_seed_input(mnemonic, pin, passphrase_enabled, hw_label, language=language)
             client.close()
             return hw_device_id, False
         else:
@@ -520,8 +513,8 @@ def recover_device(hw_device_id: str, word_count: int, passphrase_enabled: bool,
         return hw_device_id, True  # cancelled by user
 
 
-def reset_device(hw_device_id: str, strength: int, passphrase_enabled: bool, pin_enabled: bool,
-                 hw_label: str) -> Tuple[str, bool]:
+def initialize_device(hw_device_id: str, hw_client: Any, strength: int, passphrase_enabled: bool,
+                      pin_enabled: bool, hw_label: str, passphrase_encoding: Optional[str] = 'NFC') -> Optional[str]:
     """
     Initialize device with a newly generated words.
     :param hw_device_id: id of the device selected by the user
@@ -538,7 +531,10 @@ def reset_device(hw_device_id: str, strength: int, passphrase_enabled: bool, pin
     """
     client = None
     try:
-        client = connect_keepkey(device_id=hw_device_id)
+        if not hw_client:
+            client = open_session(device_id=hw_device_id, passphrase_encoding=passphrase_encoding)
+        else:
+            client = hw_client
 
         if client:
             if client.features.initialized:
@@ -547,20 +543,16 @@ def reset_device(hw_device_id: str, strength: int, passphrase_enabled: bool, pin
 
             client.reset_device(display_random=True, strength=strength, passphrase_protection=passphrase_enabled,
                                 pin_protection=pin_enabled, label=hw_label, language='english')
-            client.close()
-            return hw_device_id, False
+            return hw_device_id
         else:
             raise Exception('Couldn\'t connect to Keepkey device.')
 
     except CallException as e:
-        if client:
-            client.close()
         if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
             raise
         else:
-            return hw_device_id, True  # cancelled by user
-
-    except CancelException:
-        if client:
+            raise CancelException
+    finally:
+        if client and hw_client != client:
             client.close()
-        return hw_device_id, True  # cancelled by user
+

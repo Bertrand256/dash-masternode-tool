@@ -20,6 +20,7 @@ from hw_common import HWDevice
 from hw_initialize_wdg import WdgInitializeHw
 from hw_settings_wdg import WdgHwSettings
 from hw_update_firmware_wdg import WdgHwUpdateFirmware
+from hw_wipe_device_wdg import WdgWipeHwDevice
 from recover_hw_wdg import WdgRecoverHw
 from ui import ui_wallet_tools_dlg
 from wallet_tools_common import ActionPageBase
@@ -49,6 +50,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         QDialog.__init__(self, parent)
         ui_wallet_tools_dlg.Ui_WalletToolsDlg.__init__(self)
         WndUtils.__init__(self, parent.app_config)
+        self.finishing = False
         self.main_ui = parent
         self.app_config: AppConfig = parent.app_config
         self.current_action = ACTION_NONE
@@ -80,6 +82,9 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         WndUtils.change_widget_font_attrs(self.lblTitle, point_size_diff=3, bold=True)
 
     def on_close(self):
+        self.finishing = True
+        if self.action_widget:
+            self.action_widget.finishing = True
         self.hw_devices.sig_connected_hw_device_changed.disconnect(self.on_connected_hw_device_changed)
         self.hw_devices.restore_state()
         if self.action_widget:
@@ -133,6 +138,13 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
     def on_actInitializeHw_clicked(self):
         try:
             self.setup_action_widget(ACTION_INITIALIZE_HW)
+        except Exception as e:
+            self.error_msg(str(e), True)
+
+    @pyqtSlot(bool)
+    def on_actWipeHw_clicked(self):
+        try:
+            self.setup_action_widget(ACTION_WIPE_HW)
         except Exception as e:
             self.error_msg(str(e), True)
 
@@ -206,8 +218,9 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
     def set_hw_change_enabled(self, enabled: bool):
         self.wdg_select_hw_device.set_hw_change_enabled(enabled)
 
-    def show_message_page(self, message: str):
-        self.lblMessage.setText(message)
+    def show_message_page(self, message: Optional[str]):
+        if message:
+            self.lblMessage.setText(message)
         self.tabsMain.setCurrentIndex(Pages.PAGE_MESSAGE.value)
 
     def show_action_page(self):
@@ -223,6 +236,8 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
                 return ACTION_RECOVER_HW
             elif isinstance(self.action_widget, WdgInitializeHw):
                 return ACTION_INITIALIZE_HW
+            elif isinstance(self.action_widget, WdgWipeHwDevice):
+                return ACTION_WIPE_HW
             elif isinstance(self.action_widget, WdgHwUpdateFirmware):
                 return ACTION_UPDATE_HW_FIRMWARE
             else:
@@ -249,6 +264,9 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
                     self.action_layout.addWidget(self.action_widget)
                 elif action == ACTION_INITIALIZE_HW:
                     self.action_widget = WdgInitializeHw(self, self.hw_devices)
+                    self.action_layout.addWidget(self.action_widget)
+                elif action == ACTION_WIPE_HW:
+                    self.action_widget = WdgWipeHwDevice(self, self.hw_devices)
                     self.action_layout.addWidget(self.action_widget)
                 elif action == ACTION_UPDATE_HW_FIRMWARE:
                     self.action_widget = WdgHwUpdateFirmware(self, self.hw_devices)

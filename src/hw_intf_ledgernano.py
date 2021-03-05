@@ -379,7 +379,7 @@ def get_xpub(client, bip32_path):
     return xpub
 
 
-def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, secondary_pin: str):
+def recover_device_with_seed_input(mnemonic_words: str, pin: str, passphrase: str, secondary_pin: str):
     """
     Initialise Ledger Nano S device with a list of mnemonic words.
     :param mnemonic_words: 12, 18 or 24 mnemonic words separated with spaces to initialise device.

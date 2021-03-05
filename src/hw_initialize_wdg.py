@@ -53,7 +53,6 @@ class WdgInitializeHw(QWidget, Ui_WdgInitializeHw, ActionPageBase):
 
     def setupUi(self, dlg):
         Ui_WdgInitializeHw.setupUi(self, self)
-        WndUtils.change_widget_font_attrs(self.lblMessage, point_size_diff=3, bold=True)
         self.pages.setCurrentIndex(Pages.PAGE_OPTIONS.value)
 
     def initialize(self):
@@ -93,6 +92,8 @@ class WdgInitializeHw(QWidget, Ui_WdgInitializeHw, ActionPageBase):
         if self.current_step == Step.STEP_INPUT_OPTIONS:
             self.set_current_step(Step.STEP_INITIALIZING_HW)
             self.init_hw()
+        elif self.current_step == Step.STEP_INITIALIZING_HW:
+            self.set_current_step(Step.STEP_FINISHED)
 
     def go_to_prev_step(self):
         if self.current_step in (Step.STEP_INPUT_OPTIONS, Step.STEP_NO_HW_ERROR):
@@ -104,17 +105,30 @@ class WdgInitializeHw(QWidget, Ui_WdgInitializeHw, ActionPageBase):
         self.set_btn_cancel_enabled(True)
         self.set_btn_cancel_visible(True)
         self.set_hw_change_enabled(True)
+
         if self.current_step == Step.STEP_INPUT_OPTIONS:
             self.set_btn_back_enabled(True)
             self.set_btn_back_visible(True)
             self.set_btn_continue_enabled(True)
             self.set_btn_continue_visible(True)
+            self.rbWordsCount12.setEnabled(True)
+            self.rbWordsCount18.setEnabled(True)
+            self.rbWordsCount24.setEnabled(True)
+            self.chbUsePIN.setEnabled(True)
+            self.chbUsePassphrase.setEnabled(True)
+            self.edtDeviceLabel.setEnabled(True)
         elif self.current_step == Step.STEP_INITIALIZING_HW:
             self.set_btn_back_enabled(False)
             self.set_btn_back_visible(True)
             self.set_btn_continue_enabled(False)
             self.set_btn_continue_visible(True)
             self.set_hw_change_enabled(False)
+            self.rbWordsCount12.setDisabled(True)
+            self.rbWordsCount18.setDisabled(True)
+            self.rbWordsCount24.setDisabled(True)
+            self.chbUsePIN.setDisabled(True)
+            self.chbUsePassphrase.setDisabled(True)
+            self.edtDeviceLabel.setDisabled(True)
         elif self.current_step == Step.STEP_FINISHED:
             self.set_btn_back_enabled(True)
             self.set_btn_back_visible(True)
@@ -129,9 +143,12 @@ class WdgInitializeHw(QWidget, Ui_WdgInitializeHw, ActionPageBase):
             if self.cur_hw_device and self.cur_hw_device.hw_client:
                 if self.current_step == Step.STEP_INPUT_OPTIONS:
                     self.pages.setCurrentIndex(Pages.PAGE_OPTIONS.value)
+                    self.update_action_subtitle('enter hardware wallet options')
                 elif self.current_step == Step.STEP_INITIALIZING_HW:
+                    self.update_action_subtitle('initializing device')
                     self.pages.setCurrentIndex(Pages.PAGE_OPTIONS.value)
                 elif self.current_step == Step.STEP_FINISHED:
+                    self.update_action_subtitle('finished')
                     self.show_message_page('<b>Hardware wallet successfully initialized.</b>')
                     return
                 self.show_action_page()
@@ -141,4 +158,27 @@ class WdgInitializeHw(QWidget, Ui_WdgInitializeHw, ActionPageBase):
             WndUtils.error_msg(str(e), True)
 
     def init_hw(self):
-        pass
+        try:
+            if self.rbWordsCount12.isChecked():
+                word_count = 12
+            elif self.rbWordsCount18.isChecked():
+                word_count = 18
+            elif self.rbWordsCount24.isChecked():
+                word_count = 24
+            else:
+                WndUtils.error_msg('Enter the valid number of seed words count.')
+                return
+
+            use_pin = True if self.chbUsePIN.isChecked() else False
+            use_passphrase = True if self.chbUsePassphrase.isChecked() else False
+            label = self.edtDeviceLabel.text()
+
+            self.hw_devices.initialize_device(self.cur_hw_device, word_count, use_passphrase,
+                                              use_pin, label, parent_window=self.parent_dialog)
+            self.go_to_next_step()
+        except CancelException:
+            self.go_to_prev_step()
+            self.hw_devices.open_hw_session(self.cur_hw_device, force_reconnect=True)
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
+            self.go_to_prev_step()

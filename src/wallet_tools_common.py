@@ -12,9 +12,10 @@ log = logging.getLogger('dmt.wallet_tools_dlg')
 class ActionPageBase:
     def __init__(self, parent_dialog, app_config: AppConfig, hw_devices: hw_intf.HWDevices, action_title: str):
         self.parent_dialog = parent_dialog
-        self.app_config = app_config
+        self.app_config: AppConfig = app_config
+        self.finishing = False
         self.hw_devices = hw_devices
-        self.hw_devices.sig_connected_hw_device_changed.connect(self.on_connected_hw_device_changed)
+        self.hw_devices.sig_connected_hw_device_changed.connect(self._on_connected_hw_device_changed)
         self.action_title = action_title
         self.fn_exit_page: Optional[Callable[[], None]] = None
         self.fn_set_action_title: Optional[Callable[[str], None]] = None
@@ -28,7 +29,7 @@ class ActionPageBase:
         self.fn_set_btn_continue_enabled: Optional[Callable[[bool], None]] = None
         self.fn_set_btn_continue_text: Optional[Callable[[str, str], None]] = None
         self.fn_set_hw_change_enabled: Optional[Callable[[bool], None]] = None
-        self.fn_show_message_page: Optional[Callable[[str], None]] = None
+        self.fn_show_message_page: Optional[Callable[[Optional[str]], None]] = None
         self.fn_show_action_page: Optional[Callable[[None], None]] = None
 
     def set_control_functions(
@@ -46,8 +47,8 @@ class ActionPageBase:
             fn_set_btn_continue_text: Callable[[str, str], None],
             fn_set_hw_panel_visible: Callable[[bool], None],
             fn_set_hw_change_enabled: Callable[[bool], None],
-            fn_show_message_page: Optional[Callable[[str], None]],
-            fn_show_action_page: Optional[Callable[[None], None]]):
+            fn_show_message_page: Optional[Callable[[Optional[str]], None]],
+            fn_show_action_page: Optional[Callable[[], None]]):
 
         self.fn_exit_page = fn_exit_page
         self.fn_set_action_title = fn_set_action_title
@@ -70,6 +71,10 @@ class ActionPageBase:
 
     def on_close(self):
         pass
+
+    def _on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
+        if not self.finishing:
+            self.on_connected_hw_device_changed(cur_hw_device)
 
     def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
         pass
@@ -126,7 +131,7 @@ class ActionPageBase:
         if self.fn_set_hw_change_enabled:
             self.fn_set_hw_change_enabled(enabled)
 
-    def show_message_page(self, message: str):
+    def show_message_page(self, message: Optional[str]):
         if self.fn_show_message_page:
             self.fn_show_message_page(message)
 

@@ -520,7 +520,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         try:
             if self.action_type in (ACTION_RECOVER_FROM_WORDS_CONV, ACTION_RECOVER_FROM_ENTROPY):
 
-                device_id, cancelled = load_device_by_mnemonic(
+                device_id, cancelled = recover_device_with_seed_input(
                     self.hw_type, self.hw_device_id_selected, self.hw_action_mnemonic_words, self.hw_action_pin,
                     self.hw_action_use_passphrase, self.hw_action_label,
                     self.hw_action_passphrase, self.hw_action_secondary_pin)
@@ -532,7 +532,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
 
             elif self.action_type == ACTION_INITIALIZE_NEW_SAFE:
 
-                device_id, cancelled = reset_device(self.hw_type, self.hw_device_id_selected, self.word_count,
+                device_id, cancelled = initialize_device(self.hw_type, self.hw_device_id_selected, self.word_count,
                                                     self.hw_action_use_passphrase, self.hw_action_use_pin, self.hw_action_label, parent_window=self.main_ui)
 
             elif self.action_type == ACTION_WIPE_DEVICE:

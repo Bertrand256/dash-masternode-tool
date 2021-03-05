@@ -61,20 +61,10 @@ class Ui_WdgInitializeHw(object):
         spacerItem1 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.verticalLayout_3.addItem(spacerItem1)
         self.pages.addWidget(self.page1)
-        self.page2 = QtWidgets.QWidget()
-        self.page2.setObjectName("page2")
-        self.verticalLayout_5 = QtWidgets.QVBoxLayout(self.page2)
-        self.verticalLayout_5.setContentsMargins(0, 0, 0, 0)
-        self.verticalLayout_5.setObjectName("verticalLayout_5")
-        self.lblMessage = QtWidgets.QLabel(self.page2)
-        self.lblMessage.setAlignment(QtCore.Qt.AlignCenter)
-        self.lblMessage.setObjectName("lblMessage")
-        self.verticalLayout_5.addWidget(self.lblMessage)
-        self.pages.addWidget(self.page2)
         self.verticalLayout_4.addWidget(self.pages)
 
         self.retranslateUi(WdgInitializeHw)
-        self.pages.setCurrentIndex(1)
+        self.pages.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(WdgInitializeHw)
 
     def retranslateUi(self, WdgInitializeHw):
@@ -87,4 +77,3 @@ class Ui_WdgInitializeHw(object):
         self.chbUsePIN.setText(_translate("WdgInitializeHw", "Use PIN"))
         self.chbUsePassphrase.setText(_translate("WdgInitializeHw", "Use Passphrase"))
         self.edtDeviceLabel.setPlaceholderText(_translate("WdgInitializeHw", "Device label"))
-        self.lblMessage.setText(_translate("WdgInitializeHw", "..."))

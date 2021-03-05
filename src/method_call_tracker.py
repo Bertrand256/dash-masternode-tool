@@ -206,9 +206,13 @@ class _MethodCallTracker:
     def __exit__(self, exc_type, exc_value, tb):
         v = self.pop_from_stack('OBJ_METHOD_STACK',)
         if not v:
-            raise Exception('No matching call to the __enter__ method.')
-        self.method_call_finished(v['obj'], v['method'])
-        return self
+            logging.error('No matching call to the __enter__ method.')
+        else:
+            self.method_call_finished(v['obj'], v['method'])
+        if exc_type is not None or exc_value is not None:
+            return False
+        else:
+            return True
 
 
 MethodCallTracker = _MethodCallTracker()
@@ -259,7 +263,10 @@ class MethodCallLimit:
         MethodCallTracker.set_object_method_call_limit(self.object, self.method, self.call_count_limit)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_value, exc_tb):
         # restore the old limit
         MethodCallTracker.set_object_method_call_limit(self.object, self.method, self.old_call_limit)
-        return self
+        if exc_type is not None or exc_value is not None:
+            return False
+        else:
+            return True

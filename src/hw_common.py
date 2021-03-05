@@ -130,10 +130,11 @@ class HWDevice(object):
     """
     Represents a hardware wallet device connected to the computer.
     """
-    def __init__(self, hw_type: HWType, device_id: Optional[str], device_label: Optional[str],
-                 model_symbol: Optional[str], firmware_version: Optional[str],
-                 hw_client: Any, bootloader_mode: bool, transport_id: Optional[Union[object, str]],
-                 initialized: bool):
+    def __init__(self, hw_type: HWType, device_id: Optional[str] = None, device_label: Optional[str] = None,
+                 model_symbol: Optional[str] = None, firmware_version: Optional[str] = None,
+                 hw_client: Any = None, bootloader_mode: Optional[bool] = None,
+                 transport_id: Optional[Union[object, str]] = None,
+                 initialized: Optional[bool] = None):
         self.transport_id = transport_id
         self.hw_type: HWType = hw_type
         self.device_id = device_id

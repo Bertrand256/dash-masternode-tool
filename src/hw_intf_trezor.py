@@ -4,7 +4,7 @@
 # Created on: 2017-03
 import hashlib
 import sys
-from typing import Optional, Tuple, List, Iterable, Type
+from typing import Optional, Tuple, List, Iterable, Type, Any
 import binascii
 
 from PyQt5.QtWidgets import QMessageBox
@@ -68,7 +68,6 @@ class TrezorUi(object):
     def button_request(self, msg_code):
         if not self.prompt_shown:
             pass
-
         self.prompt_shown = True
 
 
@@ -249,6 +248,17 @@ def get_trezor_device_id(hw_client) -> str:
     return device_id
 
 
+def apply_device_attributes(hw_device: hw_common.HWDevice, client: Any):
+    hw_device.device_id = get_trezor_device_id(client)
+    hw_device.firmware_version = f'{client.features.major_version}.{client.features.minor_version}.' \
+                                 f'{client.features.patch_version}'
+    hw_device.model_symbol = client.features.model if client.features.model is not None else '1'
+    hw_device.device_label = client.features.label if client.features.label else None
+    hw_device.initialized = client.features.initialized
+    hw_device.bootloader_mode = client.features.bootloader_mode if client.features.bootloader_mode \
+                                                                   is not None else False
+
+
 def get_device_list(
         return_clients: bool = True,
         allow_bootloader_mode: bool = False,
@@ -272,23 +282,12 @@ def get_device_list(
             device_transport_id = hashlib.sha256(str(d).encode('ascii')).hexdigest()
 
             if (not client.features.bootloader_mode or allow_bootloader_mode) and device_id not in device_ids:
-                version = f'{client.features.major_version}.{client.features.minor_version}.' \
-                          f'{client.features.patch_version}'
-                model_symbol = client.features.model if client.features.model is not None else '1'
 
-                ret_list.append(
-                    hw_common.HWDevice(
-                        hw_type=HWType.trezor,
-                        device_id=device_id,
-                        device_label=client.features.label if client.features.label else None,
-                        firmware_version=version,
-                        model_symbol=model_symbol,
-                        hw_client=client if return_clients else None,
-                        bootloader_mode=client.features.bootloader_mode if client.features.bootloader_mode is not None else False,
-                        transport_id=device_transport_id,
-                        initialized=client.features.initialized
-                    ))
-                device_ids.append(device_id)  # it's empty in bootloader mode
+                hw_dev = hw_common.HWDevice(hw_type=HWType.trezor, hw_client=client if return_clients else None,
+                                            transport_id=device_transport_id)
+                apply_device_attributes(hw_dev, client)
+                ret_list.append(hw_dev)
+                device_ids.append(device_id)
                 if not return_clients:
                     client.close()
             else:
@@ -528,53 +527,34 @@ def set_wipe_code(hw_client, remove=False):
         raise Exception('HW client not set.')
 
 
-def wipe_device(hw_device_id) -> Tuple[str, bool]:
-    # todo: change argument type to HWDevice
+def wipe_device(hw_device_id: str, hw_device_transport_id: Any, hw_client: Optional[Any]) -> str:
     """
-    :param hw_device_id:
-    :return: Tuple
-        [0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
-            returned to the caller.
-        [1]: True, if the user cancelled the operation. In this case we deliberately don't raise the 'cancelled'
-            exception, because in the case of changing of the device id (when wiping) we want to pass the new device
-            id back to the caller.
+    :return: new device id
     """
     client = None
     try:
-        client = open_session(hw_device_id)
+        if not hw_client:
+            client = open_session(hw_device_id, hw_device_transport_id)
+        else:
+            client = hw_client
 
         if client:
             device.wipe(client)
             hw_device_id = client.features.device_id
-            client.close()
-            return hw_device_id, False
+            return hw_device_id
         else:
             raise Exception('Couldn\'t connect to Trezor device.')
 
     except TrezorFailure as e:
-        if client:
-            client.close()
         if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
             raise
         else:
-            return hw_device_id, True  # cancelled by user
+            raise CancelException
     except exceptions.Cancelled:
-        return hw_device_id, True  # cancelled by user
-
-    except CancelException:
-        if client:
+        raise CancelException
+    finally:
+        if client and hw_client != client:
             client.close()
-        return hw_device_id, True  # cancelled by user
-
-
-def firmware_update(hw_client, raw_data: bytes):
-    try:
-        return firmware.update(hw_client, raw_data)
-    except TrezorFailure as e:
-        if e.args and e.args[0] == 99:
-            raise CancelException('Cancelled')
-        else:
-            raise
 
 
 def recover_device(hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool, hw_label: str) \
@@ -629,9 +609,8 @@ def recover_device(hw_device_id: str, word_count: int, passphrase_enabled: bool,
             client.close()
 
 
-def reset_device(hw_device_id: str, strength: int, passphrase_enabled: bool, pin_enabled: bool,
-                 hw_label: str) -> Tuple[str, bool]:
-    # todo: change argument type to HWDevice
+def initialize_device(hw_device_id: str, hw_device_transport_id: Any, hw_client: Any, strength: int,
+                      passphrase_enabled: bool, pin_enabled: bool, hw_label: str) -> Optional[str]:
     """
     Initialize device with a newly generated words.
     :param hw_device_id: id of the device selected by the user
@@ -648,7 +627,10 @@ def reset_device(hw_device_id: str, strength: int, passphrase_enabled: bool, pin
     """
     client = None
     try:
-        client = open_session(hw_device_id)
+        if not hw_client:
+            client = open_session(hw_device_id, hw_device_transport_id)
+        else:
+            client = hw_client
 
         if client:
             if client.features.initialized:
@@ -658,20 +640,17 @@ def reset_device(hw_device_id: str, strength: int, passphrase_enabled: bool, pin
             device.reset(client, display_random=True, strength=strength, passphrase_protection=passphrase_enabled,
                          pin_protection=pin_enabled, label=hw_label, language='english', u2f_counter=0,
                          skip_backup=False)
-            client.close()
-            return hw_device_id, False
+            return hw_device_id
         else:
             raise Exception('Couldn\'t connect to Trezor device.')
 
     except TrezorFailure as e:
-        if client:
-            client.close()
         if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
             raise
         else:
-            return hw_device_id, True  # cancelled by user
-
-    except CancelException:
-        if client:
+            raise CancelException
+    except exceptions.Cancelled:
+        raise CancelException
+    finally:
+        if client and hw_client != client:
             client.close()
-        return hw_device_id, True  # cancelled by user
