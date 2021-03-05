@@ -465,8 +465,8 @@ class HWDevices(QObject):
     """
     Manages information about all hardware wallet devices connected to the computer.
     """
-    sig_selected_hw_device_changed = QtCore.pyqtSignal(HWDevice)
-    sig_connected_hw_device_changed = QtCore.pyqtSignal(HWDevice)
+    sig_selected_hw_device_changed = QtCore.pyqtSignal(object)
+    sig_connected_hw_device_changed = QtCore.pyqtSignal(object)
 
     __instance = None
 
@@ -577,8 +577,7 @@ class HWDevices(QObject):
         try:
             for idx, hw_inst in enumerate(self.__hw_devices):
                 if hw_inst.hw_client:
-                    hw_inst.hw_client.close()
-                    hw_inst.hw_client = None
+                    self.close_hw_session(hw_inst)
         except Exception as e:
             logging.exception(str(e))
 
