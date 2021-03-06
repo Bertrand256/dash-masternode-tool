@@ -1323,7 +1323,6 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
         one he is going to use.
         """
 
-        control_trezor_keepkey_libs(self.hw_type)
         self.main_ui.disconnect_hardware_wallet()  # disconnect hw if it's open in the main window
         self.hw_device_instances.clear()
         self.cboDeviceInstance.clear()

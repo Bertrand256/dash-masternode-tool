@@ -72,9 +72,18 @@ class ActionPageBase:
     def on_close(self):
         pass
 
-    def _on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
+    def _on_connected_hw_device_changed(self, hw_device: HWDevice):
         if not self.finishing:
-            self.on_connected_hw_device_changed(cur_hw_device)
+            self.on_connected_hw_device_changed(hw_device)
+
+    def on_validate_hw_device(self, hw_device: HWDevice) -> bool:
+        """
+        Its purpose is to validate in derived classes whether the hardware wallet device passed in the 'hw_device'
+        argument is approved or not. This way, a derived class may not allow a certain type or model of hardware
+        wallet for the tasks associated with that class.
+        :return: True, if hw device is accepted, False otherwise
+        """
+        return False
 
     def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
         pass
@@ -131,7 +140,7 @@ class ActionPageBase:
         if self.fn_set_hw_change_enabled:
             self.fn_set_hw_change_enabled(enabled)
 
-    def show_message_page(self, message: Optional[str]):
+    def show_message_page(self, message: Optional[str] = None):
         if self.fn_show_message_page:
             self.fn_show_message_page(message)
 

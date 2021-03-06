@@ -1,7 +1,7 @@
 import logging
 import re
 from enum import Enum
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 
 from PyQt5 import QtCore
 from PyQt5.QtWidgets import QWidget, QMessageBox
@@ -59,16 +59,20 @@ class WdgWipeHwDevice(QWidget, Ui_WdgWipeHwDevice, ActionPageBase):
 
     @method_call_tracker
     def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
-        if cur_hw_device:
-            if cur_hw_device.hw_type == HWType.ledger_nano:
-                self.show_message_page('Not available for Ledger Nano')
-                self.set_current_step(Step.STEP_NO_HW_ERROR)
+        self.cur_hw_device = cur_hw_device
+        if self.on_validate_hw_device(cur_hw_device):
+            if self.current_step in (Step.STEP_NO_HW_ERROR, Step.STEP_NONE):
+                self.set_current_step(Step.STEP_INITIAL)
             else:
-                self.cur_hw_device = self.hw_devices.get_selected_device()
-                if self.current_step in (Step.STEP_NO_HW_ERROR, Step.STEP_NONE):
-                    self.set_current_step(Step.STEP_INITIAL)
+                self.update_ui()
         else:
             self.set_current_step(Step.STEP_NO_HW_ERROR)
+
+    def on_validate_hw_device(self, hw_device: HWDevice) -> bool:
+        if not hw_device or not hw_device.hw_client or hw_device.hw_type == HWType.ledger_nano:
+            return False
+        else:
+            return True
 
     def set_current_step(self, step: Step):
         if self.current_step != step:
@@ -97,7 +101,7 @@ class WdgWipeHwDevice(QWidget, Ui_WdgWipeHwDevice, ActionPageBase):
             self.set_btn_continue_enabled(True)
             self.set_btn_continue_visible(True)
             self.set_hw_change_enabled(True)
-            self.lblMessage.setText('<b>Click &lt;Continue&gt; to wipe your hardware wallet device.</b>')
+            self.lblMessage.setText(f'<b>Click &lt;Continue&gt; to wipe your {HWType.get_desc(self.cur_hw_device.hw_type)} device.</b>')
         elif self.current_step == Step.STEP_WIPING_HW:
             self.set_btn_back_enabled(False)
             self.set_btn_back_visible(True)
@@ -111,26 +115,23 @@ class WdgWipeHwDevice(QWidget, Ui_WdgWipeHwDevice, ActionPageBase):
             self.set_btn_continue_visible(False)
             self.set_hw_change_enabled(False)
             self.update_action_subtitle('finished')
-            self.show_message_page('<b>Operation completed.</b>')
+            self.show_message_page('Operation completed.')
         elif self.current_step == Step.STEP_NO_HW_ERROR:
             self.set_btn_back_visible(True)
             self.set_btn_continue_visible(False)
 
     def update_ui(self):
         try:
-            if self.cur_hw_device and self.cur_hw_device.hw_client:
-                if self.cur_hw_device.hw_type == HWType.ledger_nano:
-                    self.show_message_page('Not available for Ledger Nano')
+            if self.cur_hw_device and self.cur_hw_device.hw_client and self.cur_hw_device.hw_type != HWType.ledger_nano:
+                if self.current_step == Step.STEP_FINISHED:
+                    self.update_action_subtitle('finished')
+                    self.show_message_page('Operation completed.')
+                elif self.current_step == Step.STEP_NO_HW_ERROR:
+                    self.show_message_page()
                 else:
-                    if self.current_step == Step.STEP_FINISHED:
-                        self.update_action_subtitle('finished')
-                        self.show_message_page('<b>Operation completed.</b>')
-                    elif self.current_step == Step.STEP_NO_HW_ERROR:
-                        self.show_message_page()
-                    else:
-                        self.show_action_page()
+                    self.show_action_page()
             else:
-                self.show_message_page('<b>Connect your hardware wallet</b>')
+                self.show_message_page('Connect Trezor/Keepkey hardware wallet')
         except Exception as e:
             WndUtils.error_msg(str(e), True)
 

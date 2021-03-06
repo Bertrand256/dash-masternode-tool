@@ -8,7 +8,7 @@ import time
 import urllib, urllib.request, urllib.parse
 from enum import Enum
 from io import BytesIO
-from typing import Callable, Optional, List, Dict
+from typing import Callable, Optional, List, Dict, Tuple
 
 import simplejson
 from PyQt5 import QtGui, QtCore
@@ -21,6 +21,7 @@ from app_config import AppConfig
 from app_defs import get_note_url
 from common import CancelException
 from hw_common import HWDevice, HWType, HWFirmwareWebLocation, HWModel
+from method_call_tracker import MethodCallLimit, method_call_tracker
 from thread_fun_dlg import CtrlObject
 from ui.ui_hw_update_firmware_wdg import Ui_WdgHwUpdateFirmware
 from wallet_tools_common import ActionPageBase
@@ -29,10 +30,12 @@ from wnd_utils import WndUtils, ReadOnlyTableCellDelegate
 
 
 class Step(Enum):
+    STEP_NONE = 0
     STEP_SELECT_FIRMWARE_SOURCE = 1
     STEP_PREPARE_FIRMWARE_DATA = 2
     STEP_UPLOADING_FIRMWARE = 3
     STEP_FINISHED_UPDATE = 4
+    STEP_NO_HW_ERROR = 5
 
 
 class FirmwareSource(Enum):
@@ -54,7 +57,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
         ActionPageBase.__init__(self, parent, parent.app_config, hw_devices, 'Update hardware wallet firmware')
 
         self.cur_hw_device: Optional[HWDevice] = self.hw_devices.get_selected_device()
-        self.current_step: Step = Step.STEP_SELECT_FIRMWARE_SOURCE
+        self.current_step: Step = Step.STEP_NONE
         self.hw_firmware_source_type: FirmwareSource = FirmwareSource.INTERNET
         self.hw_firmware_web_sources_all: List[HWFirmwareWebLocation] = []
         # subset of self.hw_firmware_web_sources dedicated to current hardware wallet type:
@@ -62,7 +65,6 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
         self.selected_firmware_source_file: str = ''
         self.selected_firmware_source_web: Optional[HWFirmwareWebLocation] = None
         self.firmware_data: [bytearray] = None
-        self.finishing = False
         self.load_remote_firmware_thread_obj = None
         self.upload_firmware_thread_obj = None
         self.setupUi(self)
@@ -78,6 +80,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
 
     def initialize(self):
         ActionPageBase.initialize(self)
+        self.current_step: Step = Step.STEP_NONE
         self.set_btn_cancel_visible(True)
         self.set_btn_back_visible(True)
         self.set_btn_back_text('Back')
@@ -86,32 +89,40 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
         self.set_hw_panel_visible(True)
         if not self.hw_firmware_web_sources_all:
             self.load_remote_firmware_list()
+        self.update_ui()
         self.set_controls_initial_state_for_step(False)
-        if not self.cur_hw_device:
-            self.hw_devices.select_device(self.parent())
-            self.update_ui()
-            self.display_firmware_list()
-        else:
-            if not self.cur_hw_device.hw_client:
-                self.hw_devices.open_hw_session(self.cur_hw_device)
-            self.on_connected_hw_device_changed(self.cur_hw_device)
 
-    def on_close(self):
-        self.finishing = True
-
-    def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
-        if cur_hw_device:
-            if cur_hw_device.hw_type == HWType.ledger_nano:
-                # If the wallet type is not Trezor or Keepkey we can't use this page
-                self.cur_hw_device = None
-                self.update_ui()
-                WndUtils.warn_msg('This feature is not available for Ledger devices.')
+        with MethodCallLimit(self, self.on_connected_hw_device_changed, call_count_limit=1):
+            if not self.cur_hw_device:
+                self.hw_devices.select_device(self.parent(), open_client_session=True)
             else:
-                self.cur_hw_device = self.hw_devices.get_selected_device()
                 if not self.cur_hw_device.hw_client:
                     self.hw_devices.open_hw_session(self.cur_hw_device)
+            self.on_connected_hw_device_changed(self.cur_hw_device)
+
+    @method_call_tracker
+    def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
+        self.cur_hw_device = cur_hw_device
+        if self.on_validate_hw_device(cur_hw_device):
+            self.display_firmware_list()
+            if self.current_step in (Step.STEP_NO_HW_ERROR, Step.STEP_NONE):
+                self.set_current_step(Step.STEP_SELECT_FIRMWARE_SOURCE)
+            else:
                 self.update_ui()
-                self.display_firmware_list()
+        else:
+            self.set_current_step(Step.STEP_NO_HW_ERROR)
+
+    def on_validate_hw_device(self, hw_device: HWDevice) -> bool:
+        if not hw_device or not hw_device.hw_client or hw_device.hw_type == HWType.ledger_nano:
+            return False
+        else:
+            return True
+
+    def set_current_step(self, step: Step):
+        if self.current_step != step:
+            self.current_step = step
+            self.set_controls_initial_state_for_step(False)
+            self.update_ui()
 
     def go_to_next_step(self):
         if self.current_step == Step.STEP_SELECT_FIRMWARE_SOURCE:
@@ -153,7 +164,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
             self.update_ui()
 
     def go_to_prev_step(self):
-        if self.current_step == Step.STEP_SELECT_FIRMWARE_SOURCE:
+        if self.current_step in (Step.STEP_SELECT_FIRMWARE_SOURCE, Step.STEP_NO_HW_ERROR):
             self.exit_page()
             return
         elif self.current_step == Step.STEP_PREPARE_FIRMWARE_DATA:
@@ -230,8 +241,8 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
 
     def update_ui(self):
         try:
-            if self.cur_hw_device and self.cur_hw_device.hw_client:
-
+            if self.cur_hw_device and self.cur_hw_device.hw_client and self.cur_hw_device.hw_type != HWType.ledger_nano:
+                self.show_action_page()
                 if self.current_step == Step.STEP_SELECT_FIRMWARE_SOURCE:
                     self.update_action_subtitle('select the firmware source')
 
@@ -270,8 +281,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
                     self.lblMessage.setText('<b>Firmware update has been completed successfully.<br>Now you can '
                                             'restart your hardware wallet in normal mode.</b>')
             else:
-                self.lblMessage.setText('<b>Connect your hardware wallet device to continue</b>')
-                self.pages.setCurrentIndex(Pages.PAGE_MESSAGE.value)
+                self.show_message_page('Connect Trezor/Keepkey hardware wallet')
 
         except Exception as e:
             WndUtils.error_msg(str(e), True)
