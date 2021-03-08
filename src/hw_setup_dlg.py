@@ -157,7 +157,7 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
                     if self.query_dlg('Do you really want to disable passphrase protection for your %s?' % self.main_ui.getHwName(),
                                       buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
                                       icon=QMessageBox.Warning) == QMessageBox.Yes:
-                        hw_intf.enable_passphrase(self.hw_session.hw_client, passphrase_enabled=False)
+                        hw_intf.set_passphrase_option(self.hw_session.hw_client, enabled=False)
                         self.read_hw_features()
                         self.updateControlsState()
                 elif self.passphrase_protection is False:
@@ -165,7 +165,7 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
                     if self.query_dlg('Do you really want to enable passphrase protection for your %s?' % self.main_ui.getHwName(),
                                       buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
                                       icon=QMessageBox.Warning) == QMessageBox.Yes:
-                        hw_intf.enable_passphrase(self.hw_session.hw_client, passphrase_enabled=True)
+                        hw_intf.set_passphrase_option(self.hw_session.hw_client, enabled=True)
                         self.read_hw_features()
                         self.updateControlsState()
         except Exception as e:
@@ -209,7 +209,7 @@ class HwSetupDlg(QDialog, ui_hw_setup_dlg.Ui_HwSetupDlg, wnd_utils.WndUtils):
                 if self.query_dlg(message % self.main_ui.getHwName(),
                                   buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
                                   icon=QMessageBox.Warning) == QMessageBox.Yes:
-                    hw_intf.set_wipe_code(self.main_ui.hw_session, enabled=new_enabled)
+                    hw_intf.set_wipe_code(self.main_ui.hw_session, remove=new_enabled)
                     self.read_hw_features()
                     self.updateControlsState()
         except Exception as e:

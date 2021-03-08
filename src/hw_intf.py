@@ -9,7 +9,7 @@ import re
 import urllib, urllib.request, urllib.parse
 from functools import partial
 from io import BytesIO
-from typing import Optional, Tuple, List, ByteString, Dict, cast, Any
+from typing import Optional, Tuple, List, ByteString, Dict, cast, Any, Literal
 import sys
 
 import simplejson
@@ -51,20 +51,6 @@ hd_tree_db_map: Dict[str, int] = {}  # Dict[str <hd tree ident>, int <db id>]
 log = logging.getLogger('dmt.hw_intf')
 
 
-# todo: verify if it's still needed
-def control_trezor_keepkey_libs(connecting_to_hw):
-    """
-    Check if trying to switch between Trezor and Keepkey on Linux. It's not allowed because Trezor/Keepkey client
-    libraries use objects with the same names (protobuf), which causes errors when switching between them.
-    :param connecting_to_hw: type of the hardware wallet we are going to connect to.
-    :return:
-    """
-    if sys.platform == 'linux' and ((connecting_to_hw == HWType.trezor and 'keepkeylib' in sys.modules.keys()) or
-                                    (connecting_to_hw == HWType.keepkey and 'trezorlib' in sys.modules.keys())):
-        raise Exception('On linux OS switching between Trezor/Keepkey wallets requires restarting the '
-                        'application.\n\nPlease restart the application to continue.')
-
-
 def control_hw_call(func):
     """
     Decorator for some of the hardware wallet functions. It ensures, that hw client connection is open (and if is not, 
@@ -85,7 +71,6 @@ def control_hw_call(func):
                 # protect against simultaneous access to the same device from different threads
                 hw_session.acquire_client()
 
-                control_trezor_keepkey_libs(hw_session.hw_type)
                 if hw_session.hw_type == HWType.trezor:
 
                     try:
@@ -129,6 +114,16 @@ def control_hw_call(func):
         return ret
 
     return catch_hw_client
+
+
+def get_hw_device_state_str(hw_device: HWDevice):
+    """Returns a string that comprises of all the information that relates to a hw device state. Used mainly to
+    estimate whether the UI should refresh the information about a given device."""
+    dev_state_str = ''
+    if hw_device:
+        dev_state_str = hw_device.device_id + '|' + ('B' if hw_device.bootloader_mode else 'NB') + '|' + \
+                   ('I' if hw_device.initialized else 'NI') + '|' + 'L' if hw_device.locked else 'U'
+    return dev_state_str
 
 
 def get_device_list(hw_types: Tuple[HWType, ...], return_clients: bool = True, allow_bootloader_mode: bool = False,
@@ -196,7 +191,7 @@ def firmware_update(hw_client, raw_data: bytes):
         raise Exception('Ledger Nano S is not supported.')
 
 
-def action_on_device_message(message=DEFAULT_HW_BUSY_MESSAGE, title=DEFAULT_HW_BUSY_TITLE):
+def action_on_device_message(message=DEFAULT_HW_BUSY_MESSAGE, title=DEFAULT_HW_BUSY_TITLE, is_method_call: bool = False):
     def decorator_f(func):
         def wrapped_f(*args, **kwargs):
             hw_client = None
@@ -208,6 +203,9 @@ def action_on_device_message(message=DEFAULT_HW_BUSY_MESSAGE, title=DEFAULT_HW_B
                 if name in hw_client_names:
                     hw_client = arg
                     break
+                elif name == 'HWDevice':
+                    hw_client = arg.hw_client
+                    break
 
             if not hw_client:
                 for arg_name in kwargs:
@@ -215,13 +213,20 @@ def action_on_device_message(message=DEFAULT_HW_BUSY_MESSAGE, title=DEFAULT_HW_B
                     if name in hw_client_names:
                         hw_client = kwargs[arg_name]
                         break
+                    elif name == 'HWDevice':
+                        hw_client = kwargs[arg_name].hw_client
+                        break
 
             def thread_dialog(ctrl):
                 if ctrl:
                     ctrl.dlg_config(dlg_title=title, show_progress_bar=False)
                     ctrl.display_msg(message)
 
-                return func(*args, **kwargs)
+                if is_method_call and len(args):
+                    return func(*args[1:], **kwargs)  # if the call relates to a method call, skip passing the self
+                                                      # attribute, which is the first one
+                else:
+                    return func(*args, **kwargs)
 
             return WndUtils.run_thread_dialog(thread_dialog, (), True, show_window_delay_ms=1000,
                                               force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_client))
@@ -260,55 +265,65 @@ def ping_device(hw_device: HWDevice, message: str):
 
 
 @action_on_device_message()
-def change_pin(hw_client, remove=False):
-    hw_type = get_hw_type_from_client(hw_client)
-    if hw_type == HWType.trezor:
-        return trezor.change_pin(hw_client, remove)
-    elif hw_type == HWType.keepkey:
-        return keepkey.change_pin(hw_client, remove)
-    elif hw_type == HWType.ledger_nano:
-        raise Exception('Ledger Nano S is not supported.')
-    else:
-        logging.error('Invalid HW type: ' + str(hw_type))
+def change_pin(hw_device: HWDevice, remove=False):
+    if hw_device and hw_device.hw_client:
+        if hw_device.hw_type == HWType.trezor:
+            return trezor.change_pin(hw_device.hw_client, remove)
+        elif hw_device.hw_type == HWType.keepkey:
+            return keepkey.change_pin(hw_device.hw_client, remove)
+        elif hw_device.hw_type == HWType.ledger_nano:
+            raise Exception('Ledger Nano S is not supported.')
+        else:
+            logging.error('Invalid HW type: ' + str(hw_device.hw_type))
 
 
 @action_on_device_message()
-def enable_passphrase(hw_client, passphrase_enabled):
-    hw_type = get_hw_type_from_client(hw_client)
-    if hw_type == HWType.trezor:
-        trezor.enable_passphrase(hw_client, passphrase_enabled)
-    elif hw_type == HWType.keepkey:
-        hw_client.apply_settings(use_passphrase=passphrase_enabled)
-    elif hw_type == HWType.ledger_nano:
-        raise Exception('Ledger Nano S is not supported.')
+def set_passphrase_option(hw_device: HWDevice, enabled: bool):
+    if hw_device.hw_type == HWType.trezor:
+        trezor.enable_passphrase(hw_device.hw_client, enabled)
+    elif hw_device.hw_type == HWType.keepkey:
+        keepkey.enable_passphrase(hw_device.hw_client, enabled)
+    elif hw_device.hw_type == HWType.ledger_nano:
+        raise Exception('Ledger Nano is not supported.')
     else:
-        logging.error('Invalid HW type: ' + str(hw_type))
+        logging.error('Invalid HW type: ' + str(hw_device.hw_type))
 
 
 @action_on_device_message()
-def set_passphrase_always_on_device(hw_client, enabled):
-    hw_type = get_hw_type_from_client(hw_client)
-    if hw_type == HWType.trezor:
-        trezor.set_passphrase_always_on_device(hw_client, enabled)
-    elif hw_type == HWType.keepkey:
-        raise Exception('Keepkey not supported.')
-    elif hw_type == HWType.ledger_nano:
+def set_passphrase_always_on_device(hw_device: HWDevice, enabled: bool):
+    if hw_device.hw_type == HWType.trezor:
+        trezor.set_passphrase_always_on_device(hw_device.hw_client, enabled)
+    elif hw_device.hw_type == HWType.keepkey:
+        raise Exception('Keepkey is not not supported.')
+    elif hw_device.hw_type == HWType.ledger_nano:
         raise Exception('Ledger Nano S is not supported.')
     else:
-        logging.error('Invalid HW type: ' + str(hw_type))
+        logging.error('Invalid HW type: ' + str(hw_device.hw_type))
 
 
 @action_on_device_message()
-def set_wipe_code(hw_client, enabled):
-    hw_type = get_hw_type_from_client(hw_client)
-    if hw_type == HWType.trezor:
-        trezor.set_wipe_code(hw_client, enabled)
-    elif hw_type == HWType.keepkey:
-        raise Exception('Keepkey not supported.')
-    elif hw_type == HWType.ledger_nano:
+def set_wipe_code(hw_device: HWDevice, remove: bool):
+    if hw_device.hw_type == HWType.trezor:
+        trezor.set_wipe_code(hw_device.hw_client, remove)
+    elif hw_device.hw_type == HWType.keepkey:
+        raise Exception('Keepkey is not supported.')
+    elif hw_device.hw_type == HWType.ledger_nano:
         raise Exception('Ledger Nano S is not supported.')
     else:
-        logging.error('Invalid HW type: ' + str(hw_type))
+        logging.error('Invalid HW type: ' + str(hw_device.hw_type))
+
+
+@action_on_device_message()
+def set_sd_protect(hw_device: HWDevice, operation: Literal["enable", "disable", "refresh"]):
+    if hw_device.hw_type == HWType.trezor:
+        trezor.sd_protect(hw_device.hw_client, operation)
+    elif hw_device.hw_type == HWType.keepkey:
+        raise Exception('Keepkey is not supported.')
+    elif hw_device.hw_type == HWType.ledger_nano:
+        raise Exception('Ledger Nano S is not supported.')
+    else:
+        logging.error('Invalid HW type: ' + str(hw_device.hw_type))
+
 
 
 def recover_device_with_seed_input(hw_type: HWType, hw_device_id: Optional[str], mnemonic_words: str,
@@ -420,18 +435,10 @@ def hw_connection_tracker(func):
 
     @functools.wraps(func)
     def wrapper(self: HWDevices, *args, **kwargs):
-        def get_hw_str():
-            _dev_str = ''
-            hw_device = self.get_selected_device()
-            if hw_device:
-                _dev_str = hw_device.device_id + '|' + ('1' if hw_device.bootloader_mode else '0') + '|' + \
-                           ('1' if hw_device.initialized else '0')
-            return _dev_str
-
-        def get_hw_client_str():
+        def get_hw_client_state_str():
             hw_device = self.get_selected_device()
             if hw_device and hw_device.hw_client:
-                return get_hw_str()
+                return get_hw_device_state_str(hw_device)
             else:
                 return ''
 
@@ -439,16 +446,16 @@ def hw_connection_tracker(func):
         hw_client_hash_old = ''
         hw_dev_hash_old = ''
         if call_count == 0:
-            hw_client_hash_old = get_hw_client_str()
-            hw_dev_hash_old = get_hw_str()
+            hw_client_hash_old = get_hw_client_state_str()
+            hw_dev_hash_old = get_hw_device_state_str(self.get_selected_device())
 
         ret = None
         with MethodCallTracker(self, func):
             ret = func(self, *args, **kwargs)
 
         if call_count == 0:
-            hw_hash_new = get_hw_client_str()
-            hw_dev_hash_new = get_hw_str()
+            hw_hash_new = get_hw_client_state_str()
+            hw_dev_hash_new = get_hw_device_state_str(self.get_selected_device())
 
             if hw_client_hash_old != hw_hash_new:
                 self.sig_connected_hw_device_changed.emit(self.get_selected_device())
@@ -551,12 +558,25 @@ class HWDevices(QObject):
             raise InternalError('There are no saved states')
 
     @hw_connection_tracker
-    def load_hw_devices(self, force_fetch: bool = False):
+    def load_hw_devices(self, force_fetch: bool = False) -> bool:
         """
         Load all instances of the selected hardware wallet type. If there is more than one, user has to select which
         one he is going to use.
+        :return True is anything has changed about the state of the connected hw devices during the process.
         """
+        state_changed = False
+
         if force_fetch or not self.__devices_fetched:
+            # save the current state to see if anything has changed during the process
+            prev_dev_list = [get_hw_device_state_str(d) for d in self.__hw_devices]
+            prev_dev_list.sort()
+
+            if force_fetch:
+                self.save_state()
+                restore_state = True
+            else:
+                restore_state = False
+
             self.clear_devices()
             self.__hw_devices = get_device_list(
                 hw_types=self.__hw_types_allowed, return_clients=False, use_webusb=self.__use_webusb,
@@ -571,6 +591,18 @@ class HWDevices(QObject):
                     self.__hw_device_id_selected = None
                     self.__selected_device_model = None
                     self.__selected_device_bootloader_mode = None
+
+            if restore_state:
+                try:
+                    self.restore_state()
+                except Exception as e:
+                    log.error('Error while restoring hw devices state: ' + str(e))
+
+            cur_dev_list = [get_hw_device_state_str(d) for d in self.__hw_devices]
+            cur_dev_list.sort()
+
+            state_changed = (','.join(prev_dev_list) != ','.join(cur_dev_list))
+        return state_changed
 
     @hw_connection_tracker
     def close_all_hw_clients(self):
@@ -707,26 +739,6 @@ class HWDevices(QObject):
                 self.close_hw_session(hw_device)
 
     @hw_connection_tracker
-    def reload_devices(self) -> bool:
-        try:
-            prev_dev_list = [(d.device_id + str(d.bootloader_mode) + str(d.model_symbol) if d.device_id else '?') for d
-                             in self.__hw_devices]
-            prev_dev_list.sort()
-
-            self.save_state()
-            self.load_hw_devices(True)
-
-            cur_dev_list = [(d.device_id + str(d.bootloader_mode) + str(d.model_symbol) if d.device_id else '?') for d
-                            in self.__hw_devices]
-            cur_dev_list.sort()
-
-            device_list_changed = (','.join(prev_dev_list) != ','.join(cur_dev_list))
-        finally:
-            self.restore_state()
-
-        return device_list_changed
-
-    @hw_connection_tracker
     def initialize_device(self, hw_device: HWDevice, word_count: int, passphrase_enabled: bool, pin_enabled: bool,
                           hw_label: str, parent_window=None) -> \
             Optional[str]:
@@ -825,6 +837,31 @@ class HWDevices(QObject):
                 log.warning("Couldn't reconnect hardware wallet after initialization: " + str(e))
 
         return new_hw_device_id
+
+    @staticmethod
+    def change_pin(hw_device: HWDevice, remove=False):
+        if hw_device and hw_device.hw_client:
+            change_pin(hw_device, remove)
+
+    @staticmethod
+    def set_passphrase_option(hw_device: HWDevice, enabled: bool):
+        if hw_device and hw_device.hw_client:
+            set_passphrase_option(hw_device, enabled)
+
+    @staticmethod
+    def set_passphrase_always_on_device(hw_device: HWDevice, enabled: bool):
+        if hw_device and hw_device.hw_client:
+            set_passphrase_always_on_device(hw_device, enabled)
+
+    @staticmethod
+    def set_wipe_code(hw_device: HWDevice, remove: bool):
+        if hw_device and hw_device.hw_client:
+            set_wipe_code(hw_device, remove)
+
+    @staticmethod
+    def set_sd_protect(hw_device: HWDevice, operation: Literal["enable", "disable", "refresh"]):
+        if hw_device and hw_device.hw_client:
+            set_sd_protect(hw_device, operation)
 
 
 class HwSessionInfo(HWSessionBase):
@@ -1220,7 +1257,7 @@ class SelectHWDeviceDlg(QDialog):
     def on_reload_hw_devices(self, link):
         try:
             selected_id = self.selected_hw_device.device_id if self.selected_hw_device else None
-            anything_changed = self.hw_devices.reload_devices()
+            anything_changed = self.hw_devices.load_hw_devices(force_fetch=True)
 
             if selected_id:
                 # restore the device selected in the device list if was selected before and is still connected

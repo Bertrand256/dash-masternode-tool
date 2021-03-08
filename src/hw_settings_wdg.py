@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Callable, Optional, Dict, Tuple
 
 from PyQt5 import QtGui, QtCore
+from PyQt5.QtCore import pyqtSlot
 from PyQt5.QtWidgets import QWidget, QMessageBox
 
 import app_utils
@@ -269,11 +270,11 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
                             self.cur_hw_device.get_description(),
                             buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
                             icon=QMessageBox.Warning) == QMessageBox.Yes:
-                        hw_intf.change_pin(self.cur_hw_device.hw_client, remove=True)
+                        self.hw_devices.change_pin(self.cur_hw_device, remove=True)
                         self.update_ui()
                 elif self.hw_opt_pin_protection is False:
                     # enable PIN
-                    hw_intf.change_pin(self.cur_hw_device.hw_client, remove=False)
+                    self.hw_devices.change_pin(self.cur_hw_device, remove=False)
                     self.update_ui()
         except CancelException:
             pass
@@ -283,7 +284,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
     def on_pin_change(self):
         try:
             if self.cur_hw_device and self.cur_hw_device.hw_client:
-                hw_intf.change_pin(self.cur_hw_device.hw_client, remove=False)
+                self.hw_devices.change_pin(self.cur_hw_device, remove=False)
                 self.update_ui()
         except CancelException:
             pass
@@ -300,7 +301,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
                                           buttons=QMessageBox.Yes | QMessageBox.Cancel,
                                           default_button=QMessageBox.Cancel,
                                           icon=QMessageBox.Warning) == QMessageBox.Yes:
-                        hw_intf.enable_passphrase(self.cur_hw_device.hw_client, passphrase_enabled=False)
+                        self.hw_devices.set_passphrase_option(self.cur_hw_device, enabled=False)
                         self.update_ui()
                 elif self.hw_opt_passphrase_protection is False:
                     # enable passphrase
@@ -309,7 +310,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
                                           buttons=QMessageBox.Yes | QMessageBox.Cancel,
                                           default_button=QMessageBox.Cancel,
                                           icon=QMessageBox.Warning) == QMessageBox.Yes:
-                        hw_intf.enable_passphrase(self.cur_hw_device.hw_client, passphrase_enabled=True)
+                        self.hw_devices.set_passphrase_option(self.cur_hw_device, enabled=True)
                         self.update_ui()
         except CancelException:
             pass
@@ -317,16 +318,90 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
             WndUtils.error_msg(str(e), True)
 
     def on_passphrase_alwaysondevice_enable_disable(self):
-        pass
+        try:
+            if self.cur_hw_device and self.cur_hw_device.hw_client:
+                if self.hw_opt_passphrase_always_on_device is True:
+                    # disable passphrase
+                    if WndUtils.query_dlg('Do you really want to disable passphrase always on device option?',
+                                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                          default_button=QMessageBox.Cancel,
+                                          icon=QMessageBox.Warning) == QMessageBox.Yes:
+                        self.hw_devices.set_passphrase_always_on_device(self.cur_hw_device, enabled=False)
+                        self.update_ui()
+                elif self.hw_opt_passphrase_always_on_device is False:
+                    # enable passphrase
+                    if WndUtils.query_dlg('Do you really want to enable passphrase always on device option?',
+                                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                          default_button=QMessageBox.Cancel,
+                                          icon=QMessageBox.Warning) == QMessageBox.Yes:
+                        self.hw_devices.set_passphrase_always_on_device(self.cur_hw_device, enabled=True)
+                        self.update_ui()
+        except CancelException:
+            pass
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     def on_wipe_code_enable_disable(self):
-        pass
+        try:
+            if self.cur_hw_device and self.cur_hw_device.hw_client:
+                if self.hw_opt_wipe_code_protection is True:
+                    # disable passphrase
+                    if WndUtils.query_dlg('Do you really want to disable wipe code?',
+                                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                          default_button=QMessageBox.Cancel,
+                                          icon=QMessageBox.Warning) == QMessageBox.Yes:
+                        self.hw_devices.set_wipe_code(self.cur_hw_device, remove=True)
+                        self.update_ui()
+                elif self.hw_opt_wipe_code_protection is False:
+                    # enable passphrase
+                    if WndUtils.query_dlg('Do you really want to enable wipe code?',
+                                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                          default_button=QMessageBox.Cancel,
+                                          icon=QMessageBox.Warning) == QMessageBox.Yes:
+                        self.hw_devices.set_wipe_code(self.cur_hw_device, remove=False)
+                        self.update_ui()
+        except CancelException:
+            pass
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     def on_sd_card_protection_enable_disable(self):
-        pass
+        try:
+            if self.cur_hw_device and self.cur_hw_device.hw_client:
+                if self.hw_opt_sd_protection is True:
+                    # disable passphrase
+                    if WndUtils.query_dlg('Do you really want to disable SD card protection?',
+                                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                          default_button=QMessageBox.Cancel,
+                                          icon=QMessageBox.Warning) == QMessageBox.Yes:
+                        self.hw_devices.set_sd_protect(self.cur_hw_device, 'disable')
+                        self.update_ui()
+                elif self.hw_opt_sd_protection is False:
+                    # enable passphrase
+                    if WndUtils.query_dlg('Do you really want to enable SD card protection?',
+                                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                          default_button=QMessageBox.Cancel,
+                                          icon=QMessageBox.Warning) == QMessageBox.Yes:
+                        self.hw_devices.set_sd_protect(self.cur_hw_device, 'enable')
+                        self.update_ui()
+        except CancelException:
+            pass
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     def on_sd_card_protection_refresh(self):
-        pass
+        try:
+            if self.cur_hw_device and self.cur_hw_device.hw_client:
+                if WndUtils.query_dlg('Do you really want to refresh SD card protection?',
+                                      buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                      default_button=QMessageBox.Cancel,
+                                      icon=QMessageBox.Warning) == QMessageBox.Yes:
+                    self.hw_devices.set_sd_protect(self.cur_hw_device, 'refresh')
+                    self.update_ui()
+        except CancelException:
+            pass
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     def get_latest_firmware_thread(self, ctr: CtrlObject, hw_model: HWModel):
         try:
@@ -338,3 +413,4 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
                 self.latest_firmwares[hw_model] = None  # mark that we weren't able to read the latest firmware version
         except Exception as e:
             logging.error('Error while reading the latest version of the hw firmware: ' + str(e))
+

@@ -1701,7 +1701,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                         if self.query_dlg('Do you really want to disable passphrase protection?',
                                           buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
                                           icon=QMessageBox.Warning) == QMessageBox.Yes:
-                            hw_intf.enable_passphrase(hw_client=hw_client, passphrase_enabled=False)
+                            hw_intf.set_passphrase_option(hw_client=hw_client, enabled=False)
                             self.read_hw_features()
                             self.update_hw_settings_page()
                     elif self.hw_opt_passphrase_protection is False:
@@ -1709,7 +1709,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                         if self.query_dlg('Do you really want to enable passphrase protection?',
                                           buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
                                           icon=QMessageBox.Warning) == QMessageBox.Yes:
-                            hw_intf.enable_passphrase(hw_client=hw_client, passphrase_enabled=True)
+                            hw_intf.set_passphrase_option(hw_client=hw_client, enabled=True)
                             self.read_hw_features()
                             self.update_hw_settings_page()
         except Exception as e:
@@ -1759,7 +1759,7 @@ class HwToolsDlg(QDialog, ui_hw_tools_dlg.Ui_HwInitializeDlg, WndUtils):
                     if self.query_dlg(message,
                                       buttons=QMessageBox.Yes | QMessageBox.Cancel, default_button=QMessageBox.Cancel,
                                       icon=QMessageBox.Warning) == QMessageBox.Yes:
-                        hw_intf.set_wipe_code(hw_client, enabled=new_enabled)
+                        hw_intf.set_wipe_code(hw_client, remove=new_enabled)
                         self.read_hw_features()
                         self.update_hw_settings_page()
         except Exception as e:

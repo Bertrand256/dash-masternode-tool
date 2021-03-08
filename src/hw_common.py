@@ -134,7 +134,7 @@ class HWDevice(object):
                  model_symbol: Optional[str] = None, firmware_version: Optional[str] = None,
                  hw_client: Any = None, bootloader_mode: Optional[bool] = None,
                  transport_id: Optional[Union[object, str]] = None,
-                 initialized: Optional[bool] = None):
+                 initialized: Optional[bool] = None, locked: Optional[bool] = False):
         self.transport_id = transport_id
         self.hw_type: HWType = hw_type
         self.device_id = device_id
@@ -144,6 +144,7 @@ class HWDevice(object):
         self.hw_client = hw_client
         self.bootloader_mode = bootloader_mode
         self.initialized = initialized
+        self.locked = locked
 
     def get_description(self):
         if self.hw_type == HWType.trezor:

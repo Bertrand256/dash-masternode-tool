@@ -4,7 +4,7 @@
 # Created on: 2017-03
 import hashlib
 import sys
-from typing import Optional, Tuple, List, Iterable, Type, Any
+from typing import Optional, Tuple, List, Iterable, Type, Any, Literal
 import binascii
 
 from PyQt5.QtWidgets import QMessageBox
@@ -12,7 +12,7 @@ from mnemonic import Mnemonic
 from trezorlib.client import TrezorClient, PASSPHRASE_ON_DEVICE
 from trezorlib.exceptions import TrezorFailure
 from trezorlib.transport import Transport
-from trezorlib import messages as trezor_proto, exceptions, btc
+from trezorlib import messages as trezor_proto, exceptions, btc, messages
 from trezorlib.ui import PIN_CURRENT, PIN_NEW, PIN_CONFIRM
 from trezorlib import device
 import trezorlib.firmware as firmware
@@ -283,8 +283,9 @@ def get_device_list(
 
             if (not client.features.bootloader_mode or allow_bootloader_mode) and device_id not in device_ids:
 
+                locked = client.features.unlocked is False
                 hw_dev = hw_common.HWDevice(hw_type=HWType.trezor, hw_client=client if return_clients else None,
-                                            transport_id=device_transport_id)
+                                            transport_id=device_transport_id, locked=locked)
                 apply_device_attributes(hw_dev, client)
                 ret_list.append(hw_dev)
                 device_ids.append(device_id)
@@ -523,6 +524,21 @@ def set_passphrase_always_on_device(hw_client, enabled: bool):
 def set_wipe_code(hw_client, remove=False):
     if hw_client:
         device.change_wipe_code(hw_client, remove)
+    else:
+        raise Exception('HW client not set.')
+
+
+def sd_protect(hw_client, operation: Literal["enable", "disable", "refresh"]):
+    if hw_client:
+        op_code = {
+            "enable": messages.SdProtectOperationType.ENABLE,
+            "disable": messages.SdProtectOperationType.DISABLE,
+            "refresh": messages.SdProtectOperationType.REFRESH,
+        }.get(operation)
+        if op_code is not None:
+            device.sd_protect(hw_client, op_code)
+        else:
+            raise Exception('Invalid operation code.')
     else:
         raise Exception('HW client not set.')
 
