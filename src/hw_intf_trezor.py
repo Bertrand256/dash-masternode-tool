@@ -22,7 +22,7 @@ import trezorlib
 import dash_utils
 import hw_common
 from app_runtime_data import AppRuntimeData
-from common import CancelException
+from common import CancelException, HwNotInitialized
 from hw_common import ask_for_pass_callback, ask_for_pin_callback, \
     ask_for_word_callback, HWSessionBase, HWType
 import logging
@@ -483,6 +483,11 @@ def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: 
         raise Exception('Internal error: transaction not signed')
     except exceptions.Cancelled:
         raise CancelException('Cancelled')
+    except exceptions.TrezorFailure as e:
+        if e.failure.message == 'Device not initialized':
+            raise HwNotInitialized(e.failure.message)
+        else:
+            raise
 
 
 def sign_message(hw_client, hw_coin_name: str, bip32path: str, message: str):
@@ -491,6 +496,11 @@ def sign_message(hw_client, hw_coin_name: str, bip32path: str, message: str):
         return btc.sign_message(hw_client, hw_coin_name, address_n, message)
     except exceptions.Cancelled:
         raise CancelException('Cancelled')
+    except exceptions.TrezorFailure as e:
+        if e.failure.message == 'Device not initialized':
+            raise HwNotInitialized(e.failure.message)
+        else:
+            raise
 
 
 def ping(hw_client, message: str):
@@ -503,6 +513,11 @@ def change_pin(hw_client, remove=False):
             device.change_pin(hw_client, remove)
         except exceptions.Cancelled:
             raise CancelException('Cancelled')
+        except exceptions.TrezorFailure as e:
+            if e.failure.message == 'Device not initialized':
+                raise HwNotInitialized(e.failure.message)
+            else:
+                raise
     else:
         raise Exception('HW client not set.')
 
@@ -512,6 +527,11 @@ def enable_passphrase(hw_client, passphrase_enabled):
         device.apply_settings(hw_client, use_passphrase=passphrase_enabled)
     except exceptions.Cancelled:
         pass
+    except exceptions.TrezorFailure as e:
+        if e.failure.message == 'Device not initialized':
+            raise HwNotInitialized(e.failure.message)
+        else:
+            raise
 
 
 def set_passphrase_always_on_device(hw_client, enabled: bool):
@@ -519,11 +539,24 @@ def set_passphrase_always_on_device(hw_client, enabled: bool):
         device.apply_settings(hw_client, passphrase_always_on_device=enabled)
     except exceptions.Cancelled:
         pass
+    except exceptions.TrezorFailure as e:
+        if e.failure.message == 'Device not initialized':
+            raise HwNotInitialized(e.failure.message)
+        else:
+            raise
 
 
 def set_wipe_code(hw_client, remove=False):
     if hw_client:
-        device.change_wipe_code(hw_client, remove)
+        try:
+            device.change_wipe_code(hw_client, remove)
+        except exceptions.Cancelled:
+            pass
+        except exceptions.TrezorFailure as e:
+            if e.failure.message == 'Device not initialized':
+                raise HwNotInitialized(e.failure.message)
+            else:
+                raise
     else:
         raise Exception('HW client not set.')
 
@@ -536,7 +569,15 @@ def sd_protect(hw_client, operation: Literal["enable", "disable", "refresh"]):
             "refresh": messages.SdProtectOperationType.REFRESH,
         }.get(operation)
         if op_code is not None:
-            device.sd_protect(hw_client, op_code)
+            try:
+                device.sd_protect(hw_client, op_code)
+            except exceptions.Cancelled:
+                pass
+            except exceptions.TrezorFailure as e:
+                if e.failure.message == 'Device not initialized':
+                    raise HwNotInitialized(e.failure.message)
+                else:
+                    raise
         else:
             raise Exception('Invalid operation code.')
     else:
@@ -563,7 +604,10 @@ def wipe_device(hw_device_id: str, hw_device_transport_id: Any, hw_client: Optio
 
     except TrezorFailure as e:
         if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
-            raise
+            if e.failure.message == 'Device not initialized':
+                raise HwNotInitialized(e.failure.message)
+            else:
+                raise
         else:
             raise CancelException
     except exceptions.Cancelled:
@@ -573,74 +617,63 @@ def wipe_device(hw_device_id: str, hw_device_transport_id: Any, hw_client: Optio
             client.close()
 
 
-def recover_device(hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool, hw_label: str) \
-        -> Tuple[str, bool]:
-    # todo: change argument type to HWDevice
-    """
-    :param hw_device_id:
-    :param word_count:
-    :param passphrase_enabled:
-    :param pin_enabled:
-    :param hw_label:
-    :return: Tuple
-        [0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
-            returned to the caller.
-        [1]: True, if the user cancelled the operation. In this case we deliberately don't raise the 'cancelled'
-            exception, because in the case of changing of the device id (when wiping) we want to pass the new device
-            id back to the caller.
-    """
+def recover_device(hw_device_id: str, hw_device_transport_id: Any, hw_client: Any, word_count: int,
+                   passphrase_enabled: bool, pin_enabled: bool, hw_label: str,
+                   input_type: Literal["scrambled_words", "matrix"]) -> Optional[str]:
     mnem = Mnemonic('english')
+    type = {
+        "scrambled_words": messages.RecoveryDeviceType.ScrambledWords
+    }.get(input_type, messages.RecoveryDeviceType.Matrix)
 
     def ask_for_word(_type):
         nonlocal mnem
-        msg = "Enter one word of mnemonic: "
-        word = ask_for_word_callback(msg, mnem.wordlist)
-        if not word:
+        if _type == 0:
+            msg = "Enter one word of mnemonic: "
+            word = ask_for_word_callback(msg, mnem.wordlist)
+            if not word:
+                raise exceptions.Cancelled
+            return word
+        elif _type in (1, 2):
+            element = hw_common.ask_for_martix_element_callback("Select the matrix element")
+            if element:
+                return element
+            else:
+                raise exceptions.Cancelled
+        else:
             raise exceptions.Cancelled
-        return word
 
     client = None
     try:
-        client = open_session(hw_device_id)
+        if not hw_client:
+            client = open_session(hw_device_id, hw_device_transport_id)
+        else:
+            client = hw_client
 
         if client:
             if client.features.initialized:
                 device.wipe(client)
                 hw_device_id = client.features.device_id
 
-            device.recover(client, word_count, passphrase_enabled, pin_enabled, hw_label, language='english',
-                           input_callback=ask_for_word)
-            return hw_device_id, False
+            device.recover(client, word_count, passphrase_enabled, pin_enabled, hw_label,
+                           input_callback=ask_for_word, type=type)
+            return hw_device_id
         else:
             raise Exception('Couldn\'t connect to Trezor device.')
 
     except exceptions.Cancelled:
-        return hw_device_id, True
-
-    except CancelException:
-        return hw_device_id, True  # cancelled by user
-
+        raise CancelException
+    except exceptions.TrezorFailure as e:
+        if e.failure.message == 'Device not initialized':
+            raise HwNotInitialized(e.failure.message)
+        else:
+            raise
     finally:
-        if client:
+        if client and hw_client != client:
             client.close()
 
 
 def initialize_device(hw_device_id: str, hw_device_transport_id: Any, hw_client: Any, strength: int,
                       passphrase_enabled: bool, pin_enabled: bool, hw_label: str) -> Optional[str]:
-    """
-    Initialize device with a newly generated words.
-    :param hw_device_id: id of the device selected by the user
-    :param strength: number of bits of entropy (will have impact on number of words)
-    :param passphrase_enabled: if True, hw will have passphrase enabled
-    :param pin_enabled: if True, hw will have pin enabled
-    :param hw_label: label for device (Trezor/Keepkey)
-    :return: Tuple
-        Ret[0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
-            returned to the caller.
-        Ret[1]: False, if the user cancelled the operation. In this situation we deliberately don't raise the
-            'cancelled' exception, because in the case of changing of the device id (when wiping) we want to pass
-            it back to the caller function.
-    """
     client = None
     try:
         if not hw_client:
@@ -662,7 +695,10 @@ def initialize_device(hw_device_id: str, hw_device_transport_id: Any, hw_client:
 
     except TrezorFailure as e:
         if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
-            raise
+            if e.failure.message == 'Device not initialized':
+                raise HwNotInitialized(e.failure.message)
+            else:
+                raise
         else:
             raise CancelException
     except exceptions.Cancelled:

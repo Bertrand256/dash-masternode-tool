@@ -2,8 +2,10 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2018-01
+from PyQt5 import Qt
 from PyQt5.QtCore import pyqtSlot, QStringListModel
 from PyQt5.QtWidgets import QDialog, QLayout, QCompleter
+from PyQt5.QtCore import Qt
 from wnd_utils import WndUtils
 from ui import ui_hw_word_dlg
 
@@ -26,6 +28,7 @@ class HardwareWalletWordDlg(QDialog, ui_hw_word_dlg.Ui_HardwareWalletWordDlg, Wn
         model = QStringListModel()
         model.setStringList(self.wordlist)
         self.completer = QCompleter()
+        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
         self.completer.setModel(model)
         self.edtWord.setCompleter(self.completer)
         self.layout().setSizeConstraint(QLayout.SetFixedSize)

@@ -163,8 +163,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         ui_wallet_dlg.Ui_WalletDlg.setupUi(self, self)
         self.setWindowTitle('Transfer funds')
         self.chbHideCollateralTx.setChecked(True)
-        self.set_icon(self.btnCheckAll, 'check.png')
-        self.set_icon(self.btnUncheckAll, 'uncheck.png')
+        WndUtils.set_icon(self.main_ui, self.btnCheckAll, 'check.png')
+        WndUtils.set_icon(self.main_ui, self.btnUncheckAll, 'uncheck.png')
         self.restore_cache_settings()
         self.splitterMain.setStretchFactor(0, 0)
         self.splitterMain.setStretchFactor(1, 1)
@@ -254,32 +254,32 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         l.insertWidget(1, self.wdg_txes_filter)
         self.ui_txes_filter.btnApply.clicked.connect(self.apply_txes_filter)
 
-        self.set_icon(self.btnSetHwIdentityLabel, 'label@16px.png')
-        self.set_icon(self.btnPurgeHwIdentity, 'delete@16px.png')
-        self.set_icon(self.btnFetchTransactions, 'autorenew@16px.png')
-        self.set_icon(self.btnViewModeOptions, 'settings@16px.png')
-        self.set_icon(self.btnTxesTabFilter, 'filter@16px.png')
+        WndUtils.set_icon(self.main_ui, self.btnSetHwIdentityLabel, 'label@16px.png')
+        WndUtils.set_icon(self.main_ui, self.btnPurgeHwIdentity, 'delete@16px.png')
+        WndUtils.set_icon(self.main_ui, self.btnFetchTransactions, 'autorenew@16px.png')
+        WndUtils.set_icon(self.main_ui, self.btnViewModeOptions, 'settings@16px.png')
+        WndUtils.set_icon(self.main_ui, self.btnTxesTabFilter, 'filter@16px.png')
 
         # context menu actions:
         # show address on hardware wallet
         self.act_show_address_on_hw = QAction('Show address', self)
         self.act_show_address_on_hw.triggered.connect(self.on_show_address_on_hw_triggered)
-        self.main_ui.set_icon(self.act_show_address_on_hw, 'eye@16px.png')
+        WndUtils.set_icon(self.main_ui, self.act_show_address_on_hw, 'eye@16px.png')
         self.accountsListView.addAction(self.act_show_address_on_hw)
         # copy address to clipboard
         self.act_copy_address = QAction('Copy address', self)
         self.act_copy_address.triggered.connect(self.on_act_copy_address_triggered)
-        self.main_ui.set_icon(self.act_copy_address, 'content-copy@16px.png')
+        WndUtils.set_icon(self.main_ui, self.act_copy_address, 'content-copy@16px.png')
         self.accountsListView.addAction(self.act_copy_address)
         # sign message
         self.act_sign_message_for_address = QAction('Sign message', self)
         self.act_sign_message_for_address.triggered.connect(self.on_act_sign_message_for_address_triggered)
-        self.main_ui.set_icon(self.act_sign_message_for_address, 'sign.png')
+        WndUtils.set_icon(self.main_ui, self.act_sign_message_for_address, 'sign.png')
         self.accountsListView.addAction(self.act_sign_message_for_address)
         # set label for address/account:
         self.act_set_entry_label = QAction('Set label', self)
         self.act_set_entry_label.triggered.connect(self.on_act_set_entry_label_triggered)
-        self.main_ui.set_icon(self.act_set_entry_label, 'label@16px.png')
+        WndUtils.set_icon(self.main_ui, self.act_set_entry_label, 'label@16px.png')
         self.accountsListView.addAction(self.act_set_entry_label)
         # show next fresh(unused) address
         self.act_show_account_next_fresh_address = QAction('Reveal next fresh address', self)
@@ -288,12 +288,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         # show account
         self.act_show_account = QAction('Add account', self)
         self.act_show_account.triggered.connect(self.on_act_show_account_triggered)
-        self.main_ui.set_icon(self.act_show_account, 'eye@16px.png', force_color_change='#0066cc')
+        WndUtils.set_icon(self.main_ui, self.act_show_account, 'eye@16px.png', force_color_change='#0066cc')
         self.accountsListView.addAction(self.act_show_account)
         # show account
         self.act_hide_account = QAction('Hide account', self)
         self.act_hide_account.triggered.connect(self.on_act_hide_account_triggered)
-        self.main_ui.set_icon(self.act_hide_account, 'eye-crossed-out@16px.png', force_color_change='#0066cc')
+        WndUtils.set_icon(self.main_ui, self.act_hide_account, 'eye-crossed-out@16px.png', force_color_change='#0066cc')
         self.accountsListView.addAction(self.act_hide_account)
 
         # for testing:

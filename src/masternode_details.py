@@ -40,14 +40,14 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
     def setupUi(self, widget: QWidget):
         ui_masternode_details.Ui_WdgMasternodeDetails.setupUi(self, self)
-        self.main_dlg.set_icon(self.btnShowOwnerPrivateKey, 'eye@16px.png')
-        self.main_dlg.set_icon(self.btnShowOperatorPrivateKey, 'eye@16px.png')
-        self.main_dlg.set_icon(self.btnShowVotingPrivateKey, 'eye@16px.png')
-        self.main_dlg.set_icon(self.btnCopyOwnerKey, 'content-copy@16px.png')
-        self.main_dlg.set_icon(self.btnCopyOperatorKey, 'content-copy@16px.png')
-        self.main_dlg.set_icon(self.btnCopyVotingKey, 'content-copy@16px.png')
-        self.main_dlg.set_icon(self.btnCopyProtxHash, 'content-copy@16px.png')
-        self.main_dlg.set_icon(self.btnShowCollateralPathAddress, 'eye@16px.png')
+        WndUtils.set_icon(self.main_dlg, self.btnShowOwnerPrivateKey, 'eye@16px.png')
+        WndUtils.set_icon(self.main_dlg, self.btnShowOperatorPrivateKey, 'eye@16px.png')
+        WndUtils.set_icon(self.main_dlg, self.btnShowVotingPrivateKey, 'eye@16px.png')
+        WndUtils.set_icon(self.main_dlg, self.btnCopyOwnerKey, 'content-copy@16px.png')
+        WndUtils.set_icon(self.main_dlg, self.btnCopyOperatorKey, 'content-copy@16px.png')
+        WndUtils.set_icon(self.main_dlg, self.btnCopyVotingKey, 'content-copy@16px.png')
+        WndUtils.set_icon(self.main_dlg, self.btnCopyProtxHash, 'content-copy@16px.png')
+        WndUtils.set_icon(self.main_dlg, self.btnShowCollateralPathAddress, 'eye@16px.png')
 
         self.act_view_as_owner_private_key = QAction('View as private key', self)
         self.act_view_as_owner_private_key.setData('privkey')

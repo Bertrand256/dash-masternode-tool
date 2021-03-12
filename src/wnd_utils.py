@@ -208,7 +208,8 @@ class WndUtils:
         return thread_wnd_utils.call_in_main_thread_ext(fun_to_call, skip_if_main_thread_locked,
                                                         callback_if_main_thread_locked, *args, **kwargs)
 
-    def get_icon(self, ico, rotate=0, force_color_change: str=None):
+    @staticmethod
+    def get_icon(parent, ico, rotate=0, force_color_change: str = None):
         if isinstance(ico, str):
             icon = QIcon()
             if app_defs.APP_IMAGE_DIR:
@@ -237,12 +238,13 @@ class WndUtils:
 
             icon.addPixmap(pixmap)
         else:
-            icon = self.style().standardIcon(ico)
+            icon = parent.style().standardIcon(ico)
 
         return icon
 
-    def set_icon(self, widget, ico, rotate=0, force_color_change: str=None):
-        widget.setIcon(self.get_icon(ico, rotate, force_color_change))
+    @staticmethod
+    def set_icon(parent, widget, ico, rotate=0, force_color_change: Optional[str] = None):
+        widget.setIcon(WndUtils.get_icon(parent, ico, rotate, force_color_change))
 
     @staticmethod
     def open_file_query(parent_wnd, app_config, message, directory='', filter='', initial_filter=''):

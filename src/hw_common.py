@@ -211,6 +211,21 @@ def ask_for_pin_callback(msg, hide_numbers=True):
         return dlg()
 
 
+def ask_for_martix_element_callback(msg):
+    def dlg():
+        ui = hw_pin_dlg.HardwareWalletPinDlg(msg, hide_numbers=True, window_title='Select the matrix element',
+                                             max_length=1)
+        if ui.exec_():
+            return ui.pin
+        else:
+            return None
+
+    if threading.current_thread() != threading.main_thread():
+        return WndUtils.call_in_main_thread(dlg)
+    else:
+        return dlg()
+
+
 def ask_for_pass_callback(pass_available_on_device: bool = False):
     def dlg():
         ui = hw_pass_dlg.HardwareWalletPassDlg(pass_available_on_device)

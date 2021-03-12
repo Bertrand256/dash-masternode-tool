@@ -134,17 +134,17 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.show_connection_disconnected()
         self.set_status_text2('<b>HW status:</b> idle', 'black')
 
-        self.set_icon(self.action_save_config_file, 'save.png')
-        self.set_icon(self.action_check_network_connection, "link-check.png")
-        self.set_icon(self.action_open_settings_window, "gear.png")
-        self.set_icon(self.action_open_proposals_window, "thumbs-up-down.png")
-        self.set_icon(self.action_connect_hw, "hw-test.png")
-        self.set_icon(self.action_disconnect_hw, "hw-disconnect.png")
-        self.set_icon(self.action_hw_wallet, "wallet.png")
-        self.set_icon(self.action_hw_tools, "hw.png")
-        self.set_icon(self.btnMoveMnUp, "arrow-downward@16px.png", rotate=180)
-        self.set_icon(self.btnMoveMnDown, "arrow-downward@16px.png")
-        self.set_icon(self.action_wallet_tools, "../img/png/business-center-tools@32px.png")  # todo: move image to base dir
+        WndUtils.set_icon(self, self.action_save_config_file, 'save.png')
+        WndUtils.set_icon(self, self.action_check_network_connection, "link-check.png")
+        WndUtils.set_icon(self, self.action_open_settings_window, "gear.png")
+        WndUtils.set_icon(self, self.action_open_proposals_window, "thumbs-up-down.png")
+        WndUtils.set_icon(self, self.action_connect_hw, "hw-test.png")
+        WndUtils.set_icon(self, self.action_disconnect_hw, "hw-disconnect.png")
+        WndUtils.set_icon(self, self.action_hw_wallet, "wallet.png")
+        WndUtils.set_icon(self, self.action_hw_tools, "hw.png")
+        WndUtils.set_icon(self, self.btnMoveMnUp, "arrow-downward@16px.png", rotate=180)
+        WndUtils.set_icon(self, self.btnMoveMnDown, "arrow-downward@16px.png")
+        WndUtils.set_icon(self, self.action_wallet_tools, "../img/png/business-center-tools@32px.png")  # todo: move image to base dir
 
         self.mnuSignMessage = QMenu()
         self.mnuSignMessage.addAction(self.action_sign_message_with_collateral_addr)
@@ -154,7 +154,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.btnSignMessage = QToolButton()
         self.btnSignMessage.setMenu(self.mnuSignMessage)
         self.btnSignMessage.setPopupMode(QToolButton.InstantPopup)
-        self.set_icon(self.btnSignMessage, "sign@32px.png")
+        WndUtils.set_icon(self, self.btnSignMessage, "sign@32px.png")
         self.toolBar.addWidget(self.btnSignMessage)
 
         # icons will not be visible in menu

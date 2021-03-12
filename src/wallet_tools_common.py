@@ -1,10 +1,12 @@
+import functools
 import logging
 from typing import Callable, Optional, Any, Tuple, List
 
 import hw_intf
 from app_config import AppConfig
+from common import CancelException, HwNotInitialized
 from hw_common import HWDevice, HWType
-
+from wnd_utils import WndUtils
 
 log = logging.getLogger('dmt.wallet_tools_dlg')
 
@@ -174,3 +176,24 @@ class ActionPageBase:
         self.set_action_title(f'<b>{title}</b>')
 
 
+def handle_hw_exceptions(func):
+    """
+    The purpose of this wrapper is to intercept known exceptions related to hardware wallets, like cancelling
+    operations by the user, errors about not initialized device, etc, and to display an appropriate message.
+    """
+
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        ret = None
+        try:
+            ret = func(self, *args, **kwargs)
+        except CancelException:
+            pass
+        except HwNotInitialized:
+            WndUtils.error_msg('Your hardware wallet device is not initialized. To initialize your device, you can '
+                               'use the (a) "initialization" or (b) "recovery from seed" features available in this '
+                               'application.')
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
+        return ret
+    return wrapper

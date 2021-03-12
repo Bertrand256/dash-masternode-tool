@@ -44,6 +44,11 @@ class CancelException(Exception):
         Exception.__init__(self, *args, *kwargs)
 
 
+class HwNotInitialized(Exception):
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, *kwargs)
+
+
 class InternalError(Exception):
     def __init__(self, message: str, error_code: int = -1):
         if message:

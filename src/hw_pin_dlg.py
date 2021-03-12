@@ -8,18 +8,22 @@ from wnd_utils import WndUtils
 
 
 class HardwareWalletPinDlg(QDialog, ui_hw_pin_dlg.Ui_HardwareWalletPinDlg, WndUtils):
-    def __init__(self, message, hide_numbers=True):
+    def __init__(self, message, hide_numbers=True, window_title: str = None, max_length=12):
         QDialog.__init__(self)
         ui_hw_pin_dlg.Ui_HardwareWalletPinDlg.__init__(self)
         WndUtils.__init__(self, app_config=None)
         self.pin = ''
         self.message = message
         self.hide_numbers = hide_numbers
+        self.window_title = window_title if window_title else 'Hardware wallet PIN'
+        self.max_length = max_length
         self.setupUi(self)
 
     def new_key(self, new_key):
         self.pin += new_key
         self.edtPin.setText('*' * len(self.pin))
+        if self.max_length == 1:
+            self.accept()
 
     def setupUi(self, dialog: QDialog):
         ui_hw_pin_dlg.Ui_HardwareWalletPinDlg.setupUi(self, self)
@@ -67,6 +71,14 @@ class HardwareWalletPinDlg(QDialog, ui_hw_pin_dlg.Ui_HardwareWalletPinDlg, WndUt
         self.setWindowTitle('Hardware wallet PIN')
         # self.layout().setSizeConstraint(QLayout.SetMinimumSize)
         self.setFixedSize(self.minimumSize())
+        if self.max_length == 1:
+            self.btnEnterPin.hide()
+            self.edtPin.hide()
+            self.btnDelete.hide()
+        else:
+            self.btnEnterPin.show()
+            self.edtPin.show()
+            self.btnDelete.show()
 
     def btnDeleteClick(self):
         self.pin = self.pin[:-1]

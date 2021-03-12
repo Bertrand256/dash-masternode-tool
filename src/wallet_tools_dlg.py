@@ -21,7 +21,7 @@ from hw_initialize_wdg import WdgInitializeHw
 from hw_settings_wdg import WdgHwSettings
 from hw_update_firmware_wdg import WdgHwUpdateFirmware
 from hw_wipe_device_wdg import WdgWipeHwDevice
-from recover_hw_wdg import WdgRecoverHw
+from hw_recovery_wdg import WdgRecoverHw
 from ui import ui_wallet_tools_dlg
 from wallet_tools_common import ActionPageBase
 from hw_intf import HWDevices

@@ -36,7 +36,7 @@ class SshConnectionWidget(QWidget, Ui_SshConnection):
 
     def setupUi(self, widget: QWidget):
         Ui_SshConnection.setupUi(self, self)
-        icon = self.parent().get_icon('folder-open@16px.png')
+        icon = WndUtils.get_icon(self, 'folder-open@16px.png')
         self.action_choose_private_key_file = self.edtPrivateKeyPath.addAction(icon, QLineEdit.TrailingPosition)
         self.action_choose_private_key_file.triggered.connect(self.on_actionChoosePrivateKeyFile_triggered)
 
@@ -154,24 +154,24 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
 
         self.action_new_connection = self.popMenu.addAction("Add new connection")
         self.action_new_connection.triggered.connect(self.on_action_new_connection_triggered)
-        self.set_icon(self.action_new_connection, 'add@16px.png')
+        WndUtils.set_icon(self, self.action_new_connection, 'add@16px.png')
         self.btnNewConn.setDefaultAction(self.action_new_connection)
 
         self.action_delete_connections = self.popMenu.addAction("Delete selected connection(s)")
         self.action_delete_connections.triggered.connect(self.on_action_delete_connections_triggered)
-        self.set_icon(self.action_delete_connections, 'remove@16px.png')
+        WndUtils.set_icon(self, self.action_delete_connections, 'remove@16px.png')
         self.btnDeleteConn.setDefaultAction(self.action_delete_connections)
 
         self.action_copy_connections = self.popMenu.addAction("Copy connection(s) to clipboard",
                                                               self.on_action_copy_connections_triggered,
                                                               QKeySequence("Ctrl+C"))
-        self.set_icon(self.action_copy_connections, 'content-copy@16px.png')
+        WndUtils.set_icon(self, self.action_copy_connections, 'content-copy@16px.png')
         self.addAction(self.action_copy_connections)
 
         self.action_paste_connections = self.popMenu.addAction("Paste connection(s) from clipboard",
                                                                self.on_action_paste_connections_triggered,
                                                                QKeySequence("Ctrl+V"))
-        self.set_icon(self.action_paste_connections, 'content-paste@16px.png')
+        WndUtils.set_icon(self, self.action_paste_connections, 'content-paste@16px.png')
         self.addAction(self.action_paste_connections)
 
         self.btnNewConn.setText("")
@@ -179,10 +179,10 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.btnMoveDownConn.setText("")
         self.btnMoveUpConn.setText("")
         self.btnRestoreDefault.setText("")
-        self.set_icon(self.btnMoveDownConn, "arrow-downward@16px.png")
-        self.set_icon(self.btnMoveUpConn, "arrow-downward@16px.png", rotate=180)
-        self.set_icon(self.btnRestoreDefault, "star@16px.png")
-        self.set_icon(self.rpc_cfg_widget.btnShowPassword, "eye@16px.png")
+        WndUtils.set_icon(self, self.btnMoveDownConn, "arrow-downward@16px.png")
+        WndUtils.set_icon(self, self.btnMoveUpConn, "arrow-downward@16px.png", rotate=180)
+        WndUtils.set_icon(self, self.btnRestoreDefault, "star@16px.png")
+        WndUtils.set_icon(self, self.rpc_cfg_widget.btnShowPassword, "eye@16px.png")
 
         self.rpc_cfg_widget.btnShowPassword.setText("")
         self.rpc_cfg_widget.btnShowPassword.pressed.connect(
