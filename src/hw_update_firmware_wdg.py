@@ -54,7 +54,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
     def __init__(self, parent, hw_devices: HWDevices):
         QWidget.__init__(self, parent=parent)
         Ui_WdgHwUpdateFirmware.__init__(self)
-        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices, 'Update hardware wallet firmware')
+        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices, 'Update firmware')
 
         self.cur_hw_device: Optional[HWDevice] = self.hw_devices.get_selected_device()
         self.current_step: Step = Step.STEP_NONE
@@ -67,6 +67,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
         self.firmware_data: [bytearray] = None
         self.load_remote_firmware_thread_obj = None
         self.upload_firmware_thread_obj = None
+        self.hw_conn_change_allowed = True
         self.setupUi(self)
 
     def setupUi(self, dlg):
@@ -103,14 +104,15 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
     @method_call_tracker
     def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
         self.cur_hw_device = cur_hw_device
-        if self.on_validate_hw_device(cur_hw_device):
-            self.display_firmware_list()
-            if self.current_step in (Step.STEP_NO_HW_ERROR, Step.STEP_NONE):
-                self.set_current_step(Step.STEP_SELECT_FIRMWARE_SOURCE)
+        if self.hw_conn_change_allowed:
+            if self.on_validate_hw_device(cur_hw_device):
+                self.display_firmware_list()
+                if self.current_step in (Step.STEP_NO_HW_ERROR, Step.STEP_NONE):
+                    self.set_current_step(Step.STEP_SELECT_FIRMWARE_SOURCE)
+                else:
+                    self.update_ui()
             else:
-                self.update_ui()
-        else:
-            self.set_current_step(Step.STEP_NO_HW_ERROR)
+                self.set_current_step(Step.STEP_NO_HW_ERROR)
 
     def on_validate_hw_device(self, hw_device: HWDevice) -> bool:
         if not hw_device or not hw_device.hw_client or hw_device.hw_type == HWType.ledger_nano:
@@ -358,12 +360,6 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
             # force deselect firmware:
             self.select_firmware(-1)
 
-        # max_col_width = 230
-        # for idx in range(self.tabFirmwareWebSources.columnCount()):
-        #     w = self.tabFirmwareWebSources.columnWidth(idx)
-        #     if w > max_col_width:
-        #         self.tabFirmwareWebSources.setColumnWidth(idx, max_col_width)
-
     def on_tabFirmwareWebSources_itemSelectionChanged(self):
         try:
             idx = self.tabFirmwareWebSources.currentIndex()
@@ -508,8 +504,9 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
 
         update_ok = False
         try:
-            add_info('Uploading new firmware.<br><br><b>Click the confirmation button on your hardware wallet device if '
-                     'necessary.</b>')
+            self.hw_conn_change_allowed = False
+            add_info('Uploading new firmware.<br><br><b>Click the confirmation button on your hardware wallet device '
+                     'if necessary.</b>')
             if self.cur_hw_device.hw_type == HWType.trezor:
                 update_ok = self.cur_hw_device.hw_client.firmware_update(self.selected_firmware_source_web.fingerprint,
                                                                          self.firmware_data)
@@ -525,6 +522,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
         except Exception as e:
             WndUtils.error_msg('Operation failed with the following error: ' + str(e))
         finally:
+            self.hw_conn_change_allowed = True
             self.upload_firmware_thread_obj = None
             if update_ok:
                 WndUtils.call_in_main_thread(self.go_to_next_step)

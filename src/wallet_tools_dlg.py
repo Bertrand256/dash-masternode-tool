@@ -8,7 +8,7 @@ from typing import Optional
 
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import pyqtSlot, QAbstractTableModel, QVariant, Qt, QPoint, QItemSelection, QItemSelectionModel, \
-    QEventLoop
+    QEventLoop, QTimer
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QDialog, QMenu, QApplication, QLineEdit, QShortcut, QMessageBox, QTableWidgetItem, QWidget
 import app_cache
@@ -69,6 +69,9 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         ui_wallet_tools_dlg.Ui_WalletToolsDlg.setupUi(self, self)
         self.setWindowTitle("Wallet tools")
         WndUtils.change_widget_font_attrs(self.lblMessage, point_size_diff=3, bold=True)
+        for action in (self.actHwSettings, self.actRecoverHw, self.actInitializeHw, self.actWipeHw,
+                  self.actUpdateHwFirmware):
+            WndUtils.change_widget_font_attrs(action, point_size_diff=1, bold=False)
         self.activate_menu_page()
 
         lay = self.layout()
@@ -324,6 +327,7 @@ class CurrentHwDeviceWdg(QWidget):
         self.lbl_current_hw_device.linkActivated.connect(self.on_hw_device_selected)
         self.layout_main.addWidget(self.lbl_current_hw_device)
 
+        WndUtils.change_widget_font_attrs(self.lbl_current_hw_device, point_size_diff=-1, bold=False)
         spacer = QtWidgets.QSpacerItem(20, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.layout_main.addItem(spacer)
 

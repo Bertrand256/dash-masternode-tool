@@ -369,6 +369,8 @@ class WndUtils:
     def change_widget_font_attrs(control: QWidget, point_size_diff: Optional[int] = None, bold: Optional[bool] = None,
                                  weight: Optional[int] = None):
         font = QtGui.QFont()
+        font = control.font()
+        font.setFamily(control.font().family())
         if point_size_diff is not None:
             font.setPointSize(control.font().pointSize() + point_size_diff)
         if bold is not None:

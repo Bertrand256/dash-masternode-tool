@@ -1,32 +1,15 @@
-import binascii
-import logging
-import os
-import re
-import ssl
-import threading
-import time
-import urllib, urllib.request, urllib.parse
 from enum import Enum
-from io import BytesIO
-from typing import Callable, Optional, List, Dict, Tuple
+from typing import Optional
 
-import simplejson
-from PyQt5 import QtGui, QtCore
-from PyQt5.QtCore import pyqtSlot, QItemSelection, QItemSelectionModel, Qt
-from PyQt5.QtWidgets import QWidget, QMessageBox, QTableWidgetItem
+from PyQt5.QtWidgets import QWidget
 
-import app_defs
-import hw_intf
-from app_config import AppConfig
-from app_defs import get_note_url
 from common import CancelException
-from hw_common import HWDevice, HWType, HWFirmwareWebLocation
+from hw_common import HWDevice, HWType
 from method_call_tracker import MethodCallLimit, method_call_tracker
-from thread_fun_dlg import CtrlObject
 from ui.ui_hw_initialize_wdg import Ui_WdgInitializeHw
 from wallet_tools_common import ActionPageBase
 from hw_intf import HWDevices
-from wnd_utils import WndUtils, ReadOnlyTableCellDelegate
+from wnd_utils import WndUtils
 
 
 class Step(Enum):
@@ -45,11 +28,11 @@ class WdgInitializeHw(QWidget, Ui_WdgInitializeHw, ActionPageBase):
     def __init__(self, parent, hw_devices: HWDevices):
         QWidget.__init__(self, parent=parent)
         Ui_WdgInitializeHw.__init__(self)
-        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices, 'Initialize hardware wallet')
+        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices, 'Initialize with new seed')
 
         self.cur_hw_device: Optional[HWDevice] = self.hw_devices.get_selected_device()
         self.current_step: Step = Step.STEP_NONE
-        self.hw_device_conn_change_active = True
+        self.hw_conn_change_allowed = True
         self.setupUi(self)
 
     def setupUi(self, dlg):
@@ -76,7 +59,7 @@ class WdgInitializeHw(QWidget, Ui_WdgInitializeHw, ActionPageBase):
     @method_call_tracker
     def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
         self.cur_hw_device = cur_hw_device
-        if self.hw_device_conn_change_active:
+        if self.hw_conn_change_allowed:
             if self.on_validate_hw_device(cur_hw_device):
                 if self.current_step in (Step.STEP_NO_HW_ERROR, Step.STEP_NONE):
                     self.set_current_step(Step.STEP_INPUT_OPTIONS)
@@ -168,6 +151,7 @@ class WdgInitializeHw(QWidget, Ui_WdgInitializeHw, ActionPageBase):
 
     def init_hw(self):
         try:
+            self.hw_conn_change_allowed = False
             if self.rbWordsCount12.isChecked():
                 word_count = 12
             elif self.rbWordsCount18.isChecked():
@@ -184,10 +168,12 @@ class WdgInitializeHw(QWidget, Ui_WdgInitializeHw, ActionPageBase):
 
             self.hw_devices.initialize_device(self.cur_hw_device, word_count, use_passphrase,
                                               use_pin, label, parent_window=self.parent_dialog)
-            self.go_to_next_step()
+            self.set_current_step(Step.STEP_FINISHED)
         except CancelException:
             self.go_to_prev_step()
             self.hw_devices.open_hw_session(self.cur_hw_device, force_reconnect=True)
         except Exception as e:
             WndUtils.error_msg(str(e), True)
             self.go_to_prev_step()
+        finally:
+            self.hw_conn_change_allowed = True

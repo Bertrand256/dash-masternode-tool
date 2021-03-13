@@ -170,7 +170,7 @@ class ActionPageBase:
         return True
 
     def update_action_subtitle(self, subtitle: Optional[str] = None):
-        title = 'Update hardware wallet firmware'
+        title = self.action_title
         if subtitle:
             title += ' - ' + subtitle
         self.set_action_title(f'<b>{title}</b>')

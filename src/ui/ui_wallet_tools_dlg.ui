@@ -22,13 +22,6 @@
     </widget>
    </item>
    <item>
-    <widget class="Line" name="line">
-     <property name="orientation">
-      <enum>Qt::Horizontal</enum>
-     </property>
-    </widget>
-   </item>
-   <item>
     <widget class="QStackedWidget" name="tabsMain">
      <property name="currentIndex">
       <number>0</number>
@@ -63,7 +56,7 @@
           <item>
            <widget class="QCommandLinkButton" name="actRecoverHw">
             <property name="text">
-             <string>Recover hardware wallet from seed</string>
+             <string>Recover hardware wallet from backup seed</string>
             </property>
            </widget>
           </item>

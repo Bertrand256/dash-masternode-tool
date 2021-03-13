@@ -28,7 +28,7 @@ import app_defs
 from app_config import AppConfig
 from app_defs import get_note_url
 from common import CancelException
-from hw_common import HWDevice, HWType
+from hw_common import HWDevice, HWType, HWModel
 from method_call_tracker import MethodCallLimit, method_call_tracker
 from seed_words_wdg import SeedWordsWdg
 from ui.ui_hw_recovery_wdg import Ui_WdgRecoverHw
@@ -70,11 +70,11 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
     def __init__(self, parent, hw_devices: HWDevices):
         QWidget.__init__(self, parent=parent)
         Ui_WdgRecoverHw.__init__(self)
-        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices, 'Initialize hardware wallet')
+        ActionPageBase.__init__(self, parent, parent.app_config, hw_devices, 'Recover from backup seed')
 
         self.cur_hw_device: Optional[HWDevice] = self.hw_devices.get_selected_device()
         self.current_step: Step = Step.STEP_NONE
-        self.hw_device_conn_change_active = True
+        self.hw_conn_change_allowed = True
         self.scenario: Scenario = Scenario.NONE
         self.entropy: Optional[bytearray] = None
         self.word_count: int = 24
@@ -129,7 +129,7 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
     @method_call_tracker
     def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
         self.cur_hw_device = cur_hw_device
-        if self.hw_device_conn_change_active:
+        if self.hw_conn_change_allowed:
             if self.on_validate_hw_device(cur_hw_device):
                 if self.current_step != Step.STEP_SEED_SOURCE:
                     self.set_current_step(Step.STEP_SEED_SOURCE)
@@ -289,7 +289,7 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                     self.pages.setCurrentIndex(Pages.PAGE_SEED_WORDS.value)
 
                 elif self.current_step == Step.STEP_OPTIONS:
-                    self.update_action_subtitle('hardware wallet recovery options')
+                    self.update_action_subtitle('hardware wallet options')
                     self.pages.setCurrentIndex(Pages.PAGE_OPTIONS.value)
 
                     if self.cur_hw_device.hw_type in (HWType.trezor, HWType.keepkey):
@@ -299,6 +299,12 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                         self.btnShowPassphrase.hide()
                         self.edtSecondaryPIN.hide()
                         self.btnShowSecondaryPIN.hide()
+                        self.lblPinMessage.show()
+                        self.lblPinMessage.setText('<span style="color:gray">Note: if set, the device will ask you for a new PIN during the recovery.</span>')
+                        self.lblPassphraseMessage.show()
+                        self.lblPassphraseMessage.setText('<span style="color:gray">Note: passphrase is not stored on the device - if set, '
+                                                          'you will<br>be asked for it every time you open the '
+                                                          'wallet.</span>')
                     elif self.cur_hw_device.hw_type == HWType.ledger_nano:
                         self.btnShowPIN.show()
                         self.edtHwOptionsPIN.show()
@@ -306,6 +312,8 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                         self.btnShowPassphrase.show()
                         self.edtSecondaryPIN.show()
                         self.btnShowSecondaryPIN.show()
+                        self.lblPinMessage.hide()
+                        self.lblPassphraseMessage.hide()
 
                         if self.chbUsePIN.isChecked():
                             self.edtHwOptionsPIN.setReadOnly(False)
@@ -336,7 +344,7 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                     else:
                         self.btnPreviewAddresses.hide()
 
-                    if self.scenario == Scenario.ON_DEVICE and self.cur_hw_device.hw_type == HWType.trezor:
+                    if self.scenario == Scenario.ON_DEVICE and self.cur_hw_device.get_hw_model() == HWModel.trezor_one:
                         self.lblDeviceWordsInputType.show()
                         self.gbDeviceWordsInputType.show()
                     else:
@@ -453,6 +461,7 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
 
     def recover_hw(self):
         try:
+            self.hw_conn_change_allowed = False
             use_pin = True if self.chbUsePIN.isChecked() else False
             use_passphrase = True if self.chbUsePassphrase.isChecked() else False
             label = self.edtDeviceLabel.text()
@@ -467,10 +476,12 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                                                input_type=input_type, parent_window=self.parent_dialog)
             else:
                 raise Exception('Not implemented')
-            self.go_to_next_step()
+            self.set_current_step(Step.STEP_FINISHED)
         except CancelException:
             self.go_to_prev_step()
             self.hw_devices.open_hw_session(self.cur_hw_device, force_reconnect=True)
         except Exception as e:
             self.go_to_prev_step()
             WndUtils.error_msg(str(e), True)
+        finally:
+            self.hw_conn_change_allowed = True
