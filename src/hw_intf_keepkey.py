@@ -5,14 +5,18 @@
 import binascii
 import hashlib
 import logging
+import threading
 import unicodedata
 import hid
 from decimal import Decimal
 from typing import Optional, Tuple, List, Generator, Iterator, Any
 
+from PyQt5 import QtWidgets, QtCore
+from PyQt5.QtCore import QEvent, Qt, QTimer
+from PyQt5.QtWidgets import QDialog, QLineEdit, QWidget
 from keepkeylib.transport_hid import HidTransport, DEVICE_IDS, is_normal_link, is_debug_link
 from keepkeylib.transport_webusb import WebUsbTransport
-from keepkeylib.client import TextUIMixin as keepkey_TextUIMixin
+from keepkeylib.client import TextUIMixin as keepkey_TextUIMixin, format_mnemonic
 from keepkeylib.client import ProtocolMixin as keepkey_ProtocolMixin
 from keepkeylib.client import BaseClient as keepkey_BaseClient, CallException
 from keepkeylib import messages_pb2 as keepkey_proto
@@ -27,8 +31,108 @@ from hw_common import ask_for_pin_callback, ask_for_pass_callback, ask_for_word_
     HWSessionBase, HWDevice, HWType
 import keepkeylib.types_pb2 as proto_types
 import wallet_common
-from wnd_utils import WndUtils
 from hw_common import clean_bip32_path
+from wnd_utils import WndUtils
+
+
+class CharInputLineEdit(QLineEdit):
+    """
+    Used in conjunction with CharInputDlg to get word characters when recovering Keepkey. Created to make
+    possible responding to the keyPressEvent, which is not feasible with the standard QLineEdit.
+    """
+    keyPressed = QtCore.pyqtSignal(int)
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setEchoMode(QLineEdit.Password)
+
+    def keyPressEvent(self, event):
+        # convert the Qt key code to an ascii character meeting the needs of
+        # the MyKeepkeyTextUIMixin.callback_CharacterRequest method.
+        key_ascii = event.key()
+        if key_ascii == Qt.Key_Tab:
+            key_ascii = 0x09
+        elif key_ascii == Qt.Key_Backspace:
+            key_ascii = 0x08
+        elif key_ascii in (Qt.Key_Enter, Qt.Key_Return):
+            key_ascii = 0x0d
+        elif key_ascii == Qt.Key_Escape:
+            key_ascii = 0x03
+
+        super().keyPressEvent(event)
+        self.keyPressed.emit(key_ascii)
+
+
+class CharInputDlg(QDialog):
+    """
+    The class used as an intermediary in retrieving individual characters of recovery words in collaboration with
+    Keppkey's recovery cipher matrix.
+    """
+    def __init__(self, parent: Optional[QWidget] = None):
+        QDialog.__init__(self, parent)
+        self.ev = threading.Event()
+        self.key_pressed: int = 0
+        self.waiting_for_input = False
+        self.edt_input = CharInputLineEdit()
+        self.setupUi(self)
+
+    def setupUi(self, dialog: QDialog):
+        self.setObjectName("CharInputDlg")
+        self.resize(486, 96)
+        size_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum)
+        size_policy.setHorizontalStretch(0)
+        size_policy.setVerticalStretch(0)
+        size_policy.setHeightForWidth(self.sizePolicy().hasHeightForWidth())
+        self.setSizePolicy(size_policy)
+        self.setModal(True)
+        self.layout_main = QtWidgets.QVBoxLayout(self)
+        self.lbl_message1 = QtWidgets.QLabel(self)
+        self.lbl_message1.setWordWrap(False)
+        self.layout_main.addWidget(self.lbl_message1)
+        self.lbl_message2 = QtWidgets.QLabel(self)
+        self.layout_main.addWidget(self.lbl_message2)
+        self.layout_main.addWidget(self.edt_input)
+        self.setWindowTitle("Keepkey recovery words input")
+        self.lbl_message1.setText(
+            "<span>Use recovery cipher on device to input mnemonic. Words are autocompleted<br>"
+            "at 3 or 4 characters (use <b>spacebar</b> to progress to next word after match, use<br>"
+            "<b>backspace</b> to correct bad character or word entries).</span>")
+        self.lbl_message2.setText("")
+        self.edt_input.keyPressed.connect(self.on_key_pressed)
+
+    def on_key_pressed(self, key: int):
+        self.key_pressed = key
+        self.ev.set()
+
+    def clear(self):
+        self.edt_input.clear()
+
+    def showEvent(self, _):
+        def set():
+            self.setFixedSize(self.sizeHint())
+        QTimer.singleShot(100, set)
+
+    def closeEvent(self, _):
+        if self.waiting_for_input:
+            self.key_pressed = 0x03  # simulate pressing escape
+
+    def ask_for_char(self, cur_characters: Optional[str], label: Optional[str] = None) -> int:
+        if label:
+            self.lbl_message2.setText('<b>' + label + '</b>')
+        if cur_characters is not None:
+            self.edt_input.setText(cur_characters)
+        self.key_pressed = None
+        self.edt_input.setFocus()
+        try:
+            self.waiting_for_input = True
+            while True:
+                QtWidgets.qApp.processEvents()
+                if self.key_pressed:
+                    break
+        finally:
+            self.waiting_for_input = False
+
+        return self.key_pressed
 
 
 class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):
@@ -39,6 +143,32 @@ class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):
         self.ask_for_pass_fun = ask_for_pass_fun
         self.passphrase_encoding = passphrase_encoding
         self.__mnemonic = Mnemonic('english')
+        self.char_request_dialog: Optional[CharInputDlg] = None
+        self.char_request_dialog_shown: bool = False
+        self.parent_dialog: Optional[QWidget] = None
+
+    def _request_character(self, cur_characters: Optional[str], label: Optional[str] = None) -> int:
+        if not self.char_request_dialog:
+            self.char_request_dialog = CharInputDlg(self.parent_dialog)
+            self.char_request_dialog.show()
+            self.char_request_dialog_shown = True
+        elif not self.char_request_dialog_shown:
+            self.char_request_dialog.clear()
+            self.char_request_dialog.show()
+            self.char_request_dialog_shown = True
+        return self.char_request_dialog.ask_for_char(cur_characters, label)
+
+    def request_character(self, cur_characters: Optional[str], label: Optional[str] = None) -> int:
+        return WndUtils.call_in_main_thread(self._request_character, cur_characters, label)
+
+    def hide_request_character_dialog(self):
+        if self.char_request_dialog and self.char_request_dialog_shown:
+            def hide():
+                self.char_request_dialog.hide()
+                del self.char_request_dialog
+                self.char_request_dialog = None
+                self.char_request_dialog_shown = False
+            WndUtils.call_in_main_thread(hide)
 
     def callback_PassphraseRequest(self, msg):
         passphrase = self.ask_for_pass_fun()
@@ -71,6 +201,43 @@ class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):
         if not word:
             raise CancelException('Cancelled')
         return keepkey_proto.WordAck(word=word)
+
+    def callback_CharacterRequest(self, msg):
+        from keepkeylib import messages_pb2 as proto
+        if self.character_request_first_pass:
+            self.character_request_first_pass = False
+
+        # format mnemonic for console
+        input_label = f'WORD {msg.word_pos + 1}:'
+
+        while True:
+            cur_str = msg.character_pos * '*'
+            character_ascii = self.request_character(cur_str, input_label)
+
+            # capture escape
+            if character_ascii in (3, 4):
+                return proto.Cancel()
+
+            if 65 <= character_ascii <= 90:
+                character_ascii = ord(chr(character_ascii).lower())
+
+            if 97 <= character_ascii <= 122 and msg.character_pos != 4:
+                # capture characters a-z
+                character = chr(character_ascii).lower()
+                return proto.CharacterAck(character=character)
+
+            elif character_ascii == 32 and msg.word_pos < 23 and msg.character_pos >= 3:
+                # capture spaces
+                return proto.CharacterAck(character=' ')
+
+            elif character_ascii == 8 or character_ascii == 127 \
+            and (msg.word_pos > 0 or msg.character_pos > 0):
+                # capture backspaces
+                return proto.CharacterAck(delete=True)
+
+            elif character_ascii == 13 and msg.word_pos in (11, 17, 23):
+                # capture returns
+                return proto.CharacterAck(done=True)
 
 
 class MyKeepkeyClient(keepkey_ProtocolMixin, MyKeepkeyTextUIMixin, keepkey_BaseClient):
@@ -427,111 +594,50 @@ def wipe_device(hw_device_id: str, hw_client: Any, passphrase_encoding: Optional
             client.close()
 
 
-def recover_device_with_seed_input(hw_device_id: str, mnemonic: str, pin: str, passphrase_enabled: bool, hw_label: str,
-                                   language: Optional[str] = None) -> Tuple[str, bool]:
+def recover_device(hw_device_id: str, hw_client: Any, word_count: int, passphrase_enabled: bool, pin_enabled: bool,
+                   hw_label: str, passphrase_encoding: Optional[str] = 'NFC', parent: Optional[QWidget] = None) \
+        -> Optional[str]:
     """
-    :param hw_device_id:
-    :param mnemonic:
-    :param pin:
-    :param passphrase_enabled:
-    :param hw_label:
-    :param language:
-    :return: Tuple
-        [0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
-            returned to the caller.
-        [1]: True, if the user cancelled the operation. In this case we deliberately don't raise the 'cancelled'
-            exception, because in the case of changing of the device id (when wiping) we want to pass the new device
-            id back to the caller.
+    Restore a seed using the device screen.
+    :return: A new device Id - depending on firmware, a new device id may be generated when wiping.
     """
     client = None
     try:
-        client = connect_keepkey(device_id=hw_device_id)
-
-        if client:
-            if client.features.initialized:
-                client.wipe_device()
-                hw_device_id = client.features.device_id
-            client.recover_device_with_seed_input(mnemonic, pin, passphrase_enabled, hw_label, language=language)
-            client.close()
-            return hw_device_id, False
+        if not hw_client:
+            client = open_session(device_id=hw_device_id, passphrase_encoding=passphrase_encoding)
         else:
-            raise Exception('Couldn\'t connect to Keepkey device.')
-
-    except CallException as e:
-        if client:
-            client.close()
-        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
-            raise
-        else:
-            return hw_device_id, True  # cancelled by user
-
-    except CancelException:
-        if client:
-            client.close()
-        return hw_device_id, True  # cancelled by user
-
-
-def recover_device(hw_device_id: str, word_count: int, passphrase_enabled: bool, pin_enabled: bool, hw_label: str) \
-        -> Tuple[str, bool]:
-    """
-    :param word_count:
-    :param hw_device_id:
-    :param passphrase_enabled:
-    :param pin_enabled:
-    :param hw_label:
-    :return: Tuple
-        [0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
-            returned to the caller.
-        [1]: True, if the user cancelled the operation. In this case we deliberately don't raise the 'cancelled'
-            exception, because in the case of changing of the device id (when wiping) we want to pass the new device
-            id back to the caller.
-    """
-    client = None
-    try:
-        client = connect_keepkey(device_id=hw_device_id)
+            client = hw_client
 
         if client:
             if client.features.initialized:
                 client.wipe_device()
                 hw_device_id = client.features.device_id
 
-            client.recovery_device(use_trezor_method=True, word_count=word_count,
+            client.parent_dialog = parent
+            client.recovery_device(use_trezor_method=False, word_count=word_count,
                                    passphrase_protection=passphrase_enabled, pin_protection=pin_enabled,
                                    label=hw_label, language='english')
             client.close()
-            return hw_device_id, False
+            return hw_device_id
         else:
             raise Exception('Couldn\'t connect to Keepkey device.')
 
     except CallException as e:
-        if client:
-            client.close()
-        if not (len(e.args) >= 0 and str(e.args[1]) == 'Action cancelled by user'):
-            raise
+        if len(e.args) >= 1 and (e.args[1] == 'Action cancelled by user' or e.args[1] == 'Aborted'):
+            raise CancelException
         else:
-            return hw_device_id, True  # cancelled by user
-
-    except CancelException:
-        if client:
+            raise
+    finally:
+        client.hide_request_character_dialog()
+        client.parent_dialog = None
+        if client and hw_client != client:
             client.close()
-        return hw_device_id, True  # cancelled by user
 
 
 def initialize_device(hw_device_id: str, hw_client: Any, strength: int, passphrase_enabled: bool,
                       pin_enabled: bool, hw_label: str, passphrase_encoding: Optional[str] = 'NFC') -> Optional[str]:
     """
-    Initialize device with a newly generated words.
-    :param hw_device_id: id of the device selected by the user
-    :param strength: number of bits of entropy (will have impact on number of words)
-    :param passphrase_enabled: if True, hw will have passphrase enabled
-    :param pin_enabled: if True, hw will have pin enabled
-    :param hw_label: label for device (Trezor/Keepkey)
-    :return: Tuple
-        Ret[0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
-            returned to the caller.
-        Ret[1]: True, if the user cancelled the operation. In this situation we deliberately don't raise the
-            'cancelled' exception, because in the case of changing of the device id (when wiping) we want to pass
-            it back to the caller function.
+    :return: A new device Id - depending on firmware, a new device id may be generated when wiping.
     """
     client = None
     try:

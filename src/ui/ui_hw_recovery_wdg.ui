@@ -32,7 +32,7 @@
    <item>
     <widget class="QStackedWidget" name="pages">
      <property name="currentIndex">
-      <number>4</number>
+      <number>2</number>
      </property>
      <widget class="QWidget" name="page0">
       <layout class="QVBoxLayout" name="verticalLayout">
@@ -157,7 +157,7 @@
        <item>
         <widget class="QLabel" name="label">
          <property name="text">
-          <string>&lt;b&gt;The number of words of the recovery seed&lt;/b&gt;</string>
+          <string>&lt;b&gt;Number of words of the recovery seed&lt;/b&gt;</string>
          </property>
         </widget>
        </item>
@@ -207,6 +207,16 @@
            </widget>
           </item>
          </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="lblPage1Message">
+         <property name="text">
+          <string/>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
         </widget>
        </item>
        <item>
@@ -336,7 +346,7 @@
            <item>
             <widget class="QLabel" name="lblPinMessage">
              <property name="text">
-              <string> </string>
+              <string/>
              </property>
              <property name="wordWrap">
               <bool>false</bool>
@@ -491,7 +501,7 @@
            <item>
             <widget class="QLabel" name="lblPassphraseMessage">
              <property name="text">
-              <string> </string>
+              <string/>
              </property>
              <property name="wordWrap">
               <bool>false</bool>
@@ -618,6 +628,26 @@
         </layout>
        </item>
        <item>
+        <widget class="QLabel" name="lblOptionsPageMessage">
+         <property name="text">
+          <string/>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>293</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
         <widget class="QLabel" name="lblOptionsEntropy">
          <property name="styleSheet">
           <string notr="true">font-size:11px</string>
@@ -635,19 +665,6 @@
           <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
          </property>
         </widget>
-       </item>
-       <item>
-        <spacer name="verticalSpacer">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>293</height>
-          </size>
-         </property>
-        </spacer>
        </item>
        <item>
         <widget class="QPushButton" name="btnPreviewAddresses">

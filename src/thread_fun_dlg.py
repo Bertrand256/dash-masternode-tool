@@ -96,7 +96,7 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         self.close_after_finish = close_after_finish
         self.force_close_dlg_callback = force_close_dlg_callback
         self.buttons = buttons
-        self.setTextCalled = False
+        self.set_text_called = False
         self.title = title
         self.text = text
         self.show_window_delay_ms = show_window_delay_ms
@@ -166,9 +166,9 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         Displays text on dialog.
         :param text: Text to be displayed.
         """
-        if not self.setTextCalled:
+        if not self.set_text_called:
             self.layout().setSizeConstraint(QLayout.SetFixedSize)
-            self.setTextCalled = True
+            self.set_text_called = True
         self.lblText.setText(text)
 
         # width = self.lblText.fontMetrics().boundingRect(text).width()
@@ -289,6 +289,10 @@ class CtrlObject(object):
         self.finish: bool = False
         self.__msg_label = None
 
+        # below: reference to a Qt dialog if this object is used by ThreadFunDlg to allow an underlying function (run
+        # as thread) to control some aspects of the dialog that is displayed during the thread's execution
+        self.dialog: Optional[QDialog] = None
+
     def set_callback_functions(
             self,
             display_msg_fun: Optional[Callable[[str], None]] = None,
@@ -332,7 +336,7 @@ class WorkerDlgThread(QThread):
     sent by external thread function (worker_fun) by calling callback functions passed to it.
     """
 
-    def __init__(self, dialog, worker_fun, worker_fun_args, display_msg_signal, set_progress_value_signal,
+    def __init__(self, dialog: QDialog, worker_fun, worker_fun_args, display_msg_signal, set_progress_value_signal,
                  dlg_config_signal, show_dialog_signal):
         """
         Constructor.
@@ -343,7 +347,7 @@ class WorkerDlgThread(QThread):
         :param dlg_config_signal: signal from owner's dialog to configure dialog
         """
         super(WorkerDlgThread, self).__init__()
-        self.dialog = dialog
+        self.dialog: QDialog = dialog
         self.worker_fun = worker_fun
         self.worker_fun_args = worker_fun_args
         self.display_msg_signal = display_msg_signal
@@ -353,6 +357,7 @@ class WorkerDlgThread(QThread):
 
         # prepare control object passed to a thread function
         self.ctrl_obj = CtrlObject()
+        self.ctrl_obj.dialog = self.dialog
         self.ctrl_obj.set_callback_functions(
             display_msg_fun=self.display_msg, set_progress_value_fun=self.set_progress_value,
             dlg_config_fun=self.dlg_config, show_dialog_fun=self.show_dialog)

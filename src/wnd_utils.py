@@ -405,7 +405,7 @@ class ThreadWndUtils(QObject):
 
     def fun_call_signalled(self, fun_to_call, args, kwargs, mutex):
         """
-        Function-event executed in the main thread as a result of emiting signal fun_call_signal from BG threads.
+        Function-event executed in the main thread as a result of emitting signal fun_call_signal from BG threads.
         :param fun_to_call: ref to a function which is to be called
         :param args: args passed to the function fun_to_call
         :param mutex: mutex object (QMutex) which is used in the calling thread to wait until

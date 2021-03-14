@@ -33,6 +33,7 @@ from hw_common import HWType, HWDevice, HWPinException, get_hw_type_from_client,
 import logging
 
 from method_call_tracker import MethodCallTracker
+from thread_fun_dlg import CtrlObject
 from wallet_common import UtxoType, TxOutputType
 from wnd_utils import WndUtils
 import hw_intf_ledgernano as ledger
@@ -328,51 +329,17 @@ def set_sd_protect(hw_device: HWDevice, operation: Literal["enable", "disable", 
 
 def recover_device_with_seed_input(hw_type: HWType, hw_device_id: Optional[str], mnemonic_words: str,
                                    pin: str, passphrase_enabled: bool, hw_label: str, passphrase: str,
-                                   secondary_pin: str) -> Tuple[Optional[str], bool]:
+                                   secondary_pin: str) -> Optional[str]:
     """
     Initializes hardware wallet with a mnemonic words. For security reasons use this function only on an offline
     system, that will never be connected to the Internet.
-    :param hw_type: app_config.HWType
-    :param hw_device_id: id of the device selected by the user (TrezorClient, KeepkeyClient); None for Ledger Nano S
-    :param mnemonic_words: string of 12/18/24 mnemonic words (separated by spaces)
-    :param pin: string with a new pin
-    :param passphrase_enabled: if True, hw will have passphrase enabled (Trezor/Keepkey)
-    :param hw_label: label for device (Trezor/Keepkey)
-    :param passphrase: passphrase to be saved in the device (Ledger Nano S)
-    :param secondary_pin: PIN securing passphrase (Ledger Nano S)
-    :return: Tuple
-        Ret[0]: Device id. If a device is wiped before initializing with mnemonics, a new device id is generated. It's
-            returned to the caller.
-        Ret[1]: True, if the user cancelled the operation. In this situation we deliberately don't raise the 'cancelled'
-            exception, because in the case of changing of the device id (when wiping) we want to pass it back to
-            the caller.
-        Ret[0] and Ret[1] are None for Ledger devices.
     """
 
-    def load(ctrl, hw_device_id_: str, mnemonic_: str, pin_: str, passphrase_enabled_: bool, hw_label_: str) -> \
-            Tuple[Optional[str], bool]:
-
-        ctrl.dlg_config(dlg_title="Please confirm", show_progress_bar=False)
-        ctrl.display_msg('<b>Read the messages displayed on your hardware wallet <br>'
-                         'and click the confirmation button when necessary...</b>')
-
-        if hw_device_id_:
-            if hw_type == HWType.trezor:
-                raise Exception('Feature no longer available for Trezor')
-            elif hw_type == HWType.keepkey:
-                return keepkey.recover_device_with_seed_input(hw_device_id_, mnemonic_, pin_, passphrase_enabled_,
-                                                              hw_label_)
-        else:
-            raise HWNotConnectedException()
-
     if hw_type == HWType.ledger_nano:
-
         ledger.recover_device_with_seed_input(mnemonic_words, pin, passphrase, secondary_pin)
-        return hw_device_id, False
-
+        return hw_device_id
     else:
-        return WndUtils.run_thread_dialog(load, (hw_device_id, mnemonic_words, pin, passphrase_enabled, hw_label),
-                                          True)
+        raise Exception('Not available for Trezor/Keepkey')
 
 
 def hw_connection_tracker(func):
@@ -749,7 +716,7 @@ class HWDevices(QObject):
         :return: The device id. If the device is wiped before recovery, a new device id is generated.
         """
 
-        def load(ctrl) -> Optional[str]:
+        def load(ctrl: CtrlObject) -> Optional[str]:
 
             ctrl.dlg_config(dlg_title="Please confirm", show_progress_bar=False)
             ctrl.display_msg('<b>Read the messages displayed on your hardware wallet <br>'
@@ -760,8 +727,9 @@ class HWDevices(QObject):
                     return trezor.recover_device(hw_device.device_id, hw_device.transport_id, hw_device.hw_client,
                                                  word_count, passphrase_enabled, pin_enabled, hw_label, input_type)
                 elif hw_device.hw_type == HWType.keepkey:
-                    return keepkey.recover_device(hw_device.device_id, word_count, passphrase_enabled, pin_enabled,
-                                                  hw_label)
+                    return keepkey.recover_device(hw_device.device_id, hw_device.hw_client, word_count,
+                                                  passphrase_enabled, pin_enabled, hw_label, self.__passphrase_encoding,
+                                                  ctrl.dialog)
             else:
                 raise HWNotConnectedException()
 

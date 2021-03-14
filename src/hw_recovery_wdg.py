@@ -260,15 +260,11 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                     else:
                         self.lblActionTypeMessage.setVisible(False)
 
-                    if self.cur_hw_device.hw_type == HWType.trezor:
+                    if self.cur_hw_device.hw_type in (HWType.trezor, HWType.keepkey):
                         self.rbSeedSourceHwScreen.setEnabled(True)
                         self.rbSeedSourceAppWords.setEnabled(False)
                         self.rbSeedSourceAppEntropy.setEnabled(False)
                         self.rbSeedSourceHwScreen.setChecked(True)
-                    elif self.cur_hw_device.hw_type == HWType.keepkey:
-                        self.rbSeedSourceHwScreen.setEnabled(True)
-                        self.rbSeedSourceAppWords.setEnabled(True)
-                        self.rbSeedSourceAppEntropy.setEnabled(True)
                     elif self.cur_hw_device.hw_type == HWType.ledger_nano:
                         self.rbSeedSourceHwScreen.setEnabled(False)
                         self.rbSeedSourceAppWords.setEnabled(True)
@@ -279,6 +275,12 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                 elif self.current_step == Step.STEP_NUMBER_OF_WORDS:
                     self.update_action_subtitle('number of seed words')
                     self.pages.setCurrentIndex(Pages.PAGE_NUMBER_OF_WORDS.value)
+                    if self.cur_hw_device.get_hw_model() == HWModel.trezor_t:
+                        self.lblPage1Message.show()
+                        self.lblPage1Message.setText('Note: Trezor T may ask you for the number words of your recovery '
+                                                     'seed regardless of this setting.')
+                    else:
+                        self.lblPage1Message.hide()
 
                 elif self.current_step == Step.STEP_HEX_ENTROPY:
                     self.update_action_subtitle('hexadecimal entropy')
@@ -302,9 +304,9 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                         self.lblPinMessage.show()
                         self.lblPinMessage.setText('<span style="color:gray">Note: if set, the device will ask you for a new PIN during the recovery.</span>')
                         self.lblPassphraseMessage.show()
-                        self.lblPassphraseMessage.setText('<span style="color:gray">Note: passphrase is not stored on the device - if set, '
-                                                          'you will<br>be asked for it every time you open the '
-                                                          'wallet.</span>')
+                        self.lblPassphraseMessage.setText(
+                            '<span style="color:gray">Note: passphrase is not stored on the device - if this setting '
+                            'is on, you will<br>be asked for it every time you open the wallet.</span>')
                     elif self.cur_hw_device.hw_type == HWType.ledger_nano:
                         self.btnShowPIN.show()
                         self.edtHwOptionsPIN.show()
@@ -350,6 +352,16 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                     else:
                         self.lblDeviceWordsInputType.hide()
                         self.gbDeviceWordsInputType.hide()
+
+                    if self.cur_hw_device.initialized:
+                        self.lblOptionsPageMessage.show()
+                        self.lblOptionsPageMessage.setText(
+                            'Note: The currently selected device is initialized. If you '
+                            'continue, the device will be wiped before starting recovery.')
+                        self.lblOptionsPageMessage.setWordWrap(True)
+                        self.lblOptionsPageMessage.setStyleSheet('QLabel{color:red}')
+                    else:
+                        self.lblOptionsPageMessage.hide()
 
                 elif self.current_step == Step.STEP_FINISHED:
                     self.update_action_subtitle('finished')
