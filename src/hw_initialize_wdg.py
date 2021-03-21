@@ -41,8 +41,6 @@ class WdgInitializeHw(QWidget, Ui_WdgInitializeHw, ActionPageBase):
 
     def initialize(self):
         ActionPageBase.initialize(self)
-        self.set_btn_cancel_text('Close')
-        self.set_btn_back_text('Back')
         self.set_hw_panel_visible(True)
         self.set_controls_initial_state_for_step()
         self.current_step = Step.STEP_NONE
@@ -96,6 +94,9 @@ class WdgInitializeHw(QWidget, Ui_WdgInitializeHw, ActionPageBase):
     def set_controls_initial_state_for_step(self):
         self.set_btn_cancel_enabled(True)
         self.set_btn_cancel_visible(True)
+        self.set_btn_close_visible(False)
+        self.set_btn_close_enabled(False)
+        self.set_hw_change_enabled(False)
         self.set_hw_change_enabled(True)
 
         if self.current_step == Step.STEP_INPUT_OPTIONS:
@@ -125,6 +126,8 @@ class WdgInitializeHw(QWidget, Ui_WdgInitializeHw, ActionPageBase):
             self.set_btn_back_enabled(True)
             self.set_btn_back_visible(True)
             self.set_btn_continue_visible(False)
+            self.set_btn_close_visible(True)
+            self.set_btn_close_enabled(True)
             self.set_hw_change_enabled(False)
         elif self.current_step == Step.STEP_NO_HW_ERROR:
             self.set_btn_back_visible(True)

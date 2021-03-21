@@ -42,8 +42,6 @@ class WdgWipeHwDevice(QWidget, Ui_WdgWipeHwDevice, ActionPageBase):
 
     def initialize(self):
         ActionPageBase.initialize(self)
-        self.set_btn_back_text('Back')
-        self.set_btn_cancel_text('Close')
         self.set_hw_panel_visible(True)
         self.set_controls_initial_state_for_step()
         self.current_step = Step.STEP_NONE
@@ -93,6 +91,8 @@ class WdgWipeHwDevice(QWidget, Ui_WdgWipeHwDevice, ActionPageBase):
     def set_controls_initial_state_for_step(self):
         self.set_btn_cancel_enabled(True)
         self.set_btn_cancel_visible(True)
+        self.set_btn_close_visible(False)
+        self.set_btn_close_enabled(False)
         self.set_hw_change_enabled(True)
 
         if self.current_step == Step.STEP_INITIAL:
@@ -114,6 +114,8 @@ class WdgWipeHwDevice(QWidget, Ui_WdgWipeHwDevice, ActionPageBase):
             self.set_btn_back_visible(True)
             self.set_btn_continue_visible(False)
             self.set_hw_change_enabled(False)
+            self.set_btn_close_visible(True)
+            self.set_btn_close_enabled(True)
             self.update_action_subtitle('finished')
             self.show_message_page('Operation completed.')
         elif self.current_step == Step.STEP_NO_HW_ERROR:

@@ -98,6 +98,9 @@ class Ui_WalletToolsDlg(object):
         self.btnContinue.setAutoDefault(False)
         self.btnContinue.setObjectName("btnContinue")
         self.horizontalLayout.addWidget(self.btnContinue)
+        self.btnClose = QtWidgets.QPushButton(self.widget)
+        self.btnClose.setObjectName("btnClose")
+        self.horizontalLayout.addWidget(self.btnClose)
         self.verticalLayout.addWidget(self.widget)
 
         self.retranslateUi(WalletToolsDlg)
@@ -117,3 +120,4 @@ class Ui_WalletToolsDlg(object):
         self.btnCancel.setText(_translate("WalletToolsDlg", "Cancel"))
         self.btnBack.setText(_translate("WalletToolsDlg", "Back"))
         self.btnContinue.setText(_translate("WalletToolsDlg", "Continue"))
+        self.btnClose.setText(_translate("WalletToolsDlg", "Close"))

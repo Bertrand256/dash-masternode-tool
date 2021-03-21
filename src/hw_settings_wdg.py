@@ -68,9 +68,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
         self.current_step = Step.STEP_NONE
         self.set_btn_cancel_visible(True)
         self.set_btn_back_visible(True)
-        self.set_btn_back_text('Back')
         self.set_btn_continue_visible(False)
-        self.set_btn_cancel_text('Close')
         self.set_hw_panel_visible(True)
         self.update_ui()
 
@@ -119,6 +117,8 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
             self.set_btn_back_visible(True)
             self.set_btn_continue_enabled(True)
             self.set_btn_continue_visible(False)
+            self.set_btn_close_visible(True)
+            self.set_btn_close_enabled(True)
             self.set_hw_change_enabled(True)
         elif self.current_step == Step.STEP_NO_HW_ERROR:
             self.set_btn_back_visible(True)

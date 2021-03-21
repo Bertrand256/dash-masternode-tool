@@ -108,6 +108,17 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
             self.error_msg(str(e), True)
 
     @pyqtSlot(bool)
+    def on_btnClose_clicked(self):
+        try:
+            if self.action_widget:
+                if self.action_widget.on_before_cancel() is False:
+                    # the action widget decided not to close
+                    return
+            self.close()
+        except Exception as e:
+            self.error_msg(str(e), True)
+
+    @pyqtSlot(bool)
     def on_btnBack_clicked(self):
         try:
             if self.action_widget:
@@ -164,10 +175,9 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
     def activate_menu_page(self):
         self.tabsMain.setCurrentIndex(Pages.PAGE_MENU.value)
         self.lblTitle.setText('<a>Choose action</a>')
-        self.btnCancel.setText('Close')
         self.btnCancel.setVisible(True)
         self.btnCancel.setEnabled(True)
-        self.btnBack.setText('Back')
+        self.btnClose.setVisible(False)
         self.btnBack.setVisible(False)
         self.btnBack.setEnabled(True)
         self.btnContinue.setText('Continue')
@@ -179,6 +189,12 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
 
     def set_action_title(self, title: str):
         self.lblTitle.setText(title)
+
+    def set_btn_close_visible(self, visible: bool):
+        self.btnClose.setVisible(visible)
+
+    def set_btn_close_enabled(self, enabled: bool):
+        self.btnClose.setEnabled(enabled)
 
     def set_btn_cancel_visible(self, visible: bool):
         self.btnCancel.setVisible(visible)
@@ -280,6 +296,8 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
                 self.action_widget.set_control_functions(
                     fn_exit_page=self.activate_menu_page,
                     fn_set_action_title=self.set_action_title,
+                    fn_set_btn_close_visible=self.set_btn_close_visible,
+                    fn_set_btn_close_enabled=self.set_btn_close_enabled,
                     fn_set_btn_cancel_visible=self.set_btn_cancel_visible,
                     fn_set_btn_cancel_enabled=self.set_btn_cancel_enabled,
                     fn_set_btn_cancel_text=self.set_btn_cancel_text,
@@ -352,5 +370,8 @@ class CurrentHwDeviceWdg(QWidget):
             logging.exception(str(e))
 
     def on_hw_device_selected(self, anchor: str):
-        if self.hw_change_enabled:
-            self.hw_devices.select_device(self.parent(), open_client_session=True)
+        try:
+            if self.hw_change_enabled:
+                self.hw_devices.select_device(self.parent(), open_client_session=True)
+        except Exception as e:
+            WndUtils.error_msg(str(e))

@@ -260,7 +260,6 @@ def apply_device_attributes(hw_device: hw_common.HWDevice, client: Any):
 
 
 def get_device_list(
-        return_clients: bool = True,
         allow_bootloader_mode: bool = False,
         use_webusb=True,
         use_bridge=True,
@@ -284,16 +283,12 @@ def get_device_list(
             if (not client.features.bootloader_mode or allow_bootloader_mode) and device_id not in device_ids:
 
                 locked = client.features.unlocked is False
-                hw_dev = hw_common.HWDevice(hw_type=HWType.trezor, hw_client=client if return_clients else None,
+                hw_dev = hw_common.HWDevice(hw_type=HWType.trezor, hw_client=None,
                                             transport_id=device_transport_id, locked=locked)
                 apply_device_attributes(hw_dev, client)
                 ret_list.append(hw_dev)
                 device_ids.append(device_id)
-                if not return_clients:
-                    client.close()
-            else:
-                # the same device is already connected using different connection medium
-                client.close()
+            client.close()
         except Exception as e:
             logging.warning(f'Cannot create Trezor client ({d.__class__.__name__}) due to the following error: ' +
                             str(e))

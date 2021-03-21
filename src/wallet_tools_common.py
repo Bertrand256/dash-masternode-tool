@@ -21,6 +21,8 @@ class ActionPageBase:
         self.action_title = action_title
         self.fn_exit_page: Optional[Callable[[], None]] = None
         self.fn_set_action_title: Optional[Callable[[str], None]] = None
+        self.fn_set_btn_close_visible: Optional[Callable[[bool], None]] = None
+        self.fn_set_btn_close_enabled: Optional[Callable[[bool], None]] = None
         self.fn_set_btn_cancel_visible: Optional[Callable[[bool], None]] = None
         self.fn_set_btn_cancel_enabled: Optional[Callable[[bool], None]] = None
         self.fn_set_btn_cancel_text: Optional[Callable[[str, str], None]] = None
@@ -38,6 +40,8 @@ class ActionPageBase:
             self,
             fn_exit_page: Callable[[], None],
             fn_set_action_title: Callable[[str], None],
+            fn_set_btn_close_visible: Callable[[bool], None],
+            fn_set_btn_close_enabled: Callable[[bool], None],
             fn_set_btn_cancel_visible: Callable[[bool], None],
             fn_set_btn_cancel_enabled: Callable[[bool], None],
             fn_set_btn_cancel_text: Callable[[str, str], None],
@@ -54,6 +58,8 @@ class ActionPageBase:
 
         self.fn_exit_page = fn_exit_page
         self.fn_set_action_title = fn_set_action_title
+        self.fn_set_btn_close_visible = fn_set_btn_close_visible
+        self.fn_set_btn_close_enabled = fn_set_btn_close_enabled
         self.fn_set_btn_cancel_visible = fn_set_btn_cancel_visible
         self.fn_set_btn_cancel_enabled = fn_set_btn_cancel_enabled
         self.fn_set_btn_cancel_text = fn_set_btn_cancel_text
@@ -70,6 +76,7 @@ class ActionPageBase:
 
     def initialize(self):
         self.update_action_subtitle('')
+        self.set_btn_close_visible(False)
 
     def on_close(self):
         pass
@@ -97,6 +104,14 @@ class ActionPageBase:
     def set_action_title(self, title: str):
         if self.fn_set_action_title:
             self.fn_set_action_title(title)
+
+    def set_btn_close_visible(self, visible: bool):
+        if self.fn_set_btn_close_visible:
+            self.fn_set_btn_close_visible(visible)
+
+    def set_btn_close_enabled(self, enabled: bool):
+        if self.fn_set_btn_close_enabled:
+            self.fn_set_btn_close_enabled(enabled)
 
     def set_btn_cancel_visible(self, visible: bool):
         if self.fn_set_btn_cancel_visible:
@@ -164,7 +179,14 @@ class ActionPageBase:
 
     def on_before_cancel(self) -> bool:
         """
-        Called by the wallet tools dialog before closing dialog (after the <Close/Cancel> button has been clicked.
+        Called by the wallet tools dialog before closing dialog (after the <Cancel> button has been clicked.
+        :return: True if the action widget allows for closure or False otherwise.
+        """
+        return True
+
+    def on_before_close(self) -> bool:
+        """
+        Called by the wallet tools dialog before closing dialog (after the <Close> button has been clicked.
         :return: True if the action widget allows for closure or False otherwise.
         """
         return True

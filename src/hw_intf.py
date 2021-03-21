@@ -127,22 +127,22 @@ def get_hw_device_state_str(hw_device: HWDevice):
     return dev_state_str
 
 
-def get_device_list(hw_types: Tuple[HWType, ...], return_clients: bool = True, allow_bootloader_mode: bool = False,
+def get_device_list(hw_types: Tuple[HWType, ...], allow_bootloader_mode: bool = False,
                     use_webusb=True, use_bridge=True, use_udp=True, use_hid=True, passphrase_encoding='NFC') \
         -> List[HWDevice]:
     dev_list = []
 
     if HWType.trezor in hw_types:
-        devs = trezor.get_device_list(return_clients, allow_bootloader_mode=allow_bootloader_mode,
+        devs = trezor.get_device_list(allow_bootloader_mode=allow_bootloader_mode,
                                       use_webusb=use_webusb, use_bridge=use_bridge, use_udp=use_udp, use_hid=use_hid)
         dev_list.extend(devs)
 
     if HWType.keepkey in hw_types:
-        devs = keepkey.get_device_list(return_clients, passphrase_encoding, allow_bootloader_mode=allow_bootloader_mode)
+        devs = keepkey.get_device_list(passphrase_encoding, allow_bootloader_mode=allow_bootloader_mode)
         dev_list.extend(devs)
 
     if HWType.ledger_nano in hw_types:
-        devs = ledger.get_device_list(return_clients, allow_bootloader_mode=allow_bootloader_mode)
+        devs = ledger.get_device_list(allow_bootloader_mode=allow_bootloader_mode)
         dev_list.extend(devs)
 
     return dev_list
@@ -326,22 +326,6 @@ def set_sd_protect(hw_device: HWDevice, operation: Literal["enable", "disable", 
         logging.error('Invalid HW type: ' + str(hw_device.hw_type))
 
 
-
-def recover_device_with_seed_input(hw_type: HWType, hw_device_id: Optional[str], mnemonic_words: str,
-                                   pin: str, passphrase_enabled: bool, hw_label: str, passphrase: str,
-                                   secondary_pin: str) -> Optional[str]:
-    """
-    Initializes hardware wallet with a mnemonic words. For security reasons use this function only on an offline
-    system, that will never be connected to the Internet.
-    """
-
-    if hw_type == HWType.ledger_nano:
-        ledger.recover_device_with_seed_input(mnemonic_words, pin, passphrase, secondary_pin)
-        return hw_device_id
-    else:
-        raise Exception('Not available for Trezor/Keepkey')
-
-
 def hw_connection_tracker(func):
     """
     The purpose of this decorator function is to track:
@@ -499,7 +483,7 @@ class HWDevices(QObject):
 
             self.clear_devices()
             self.__hw_devices = get_device_list(
-                hw_types=self.__hw_types_allowed, return_clients=False, use_webusb=self.__use_webusb,
+                hw_types=self.__hw_types_allowed, use_webusb=self.__use_webusb,
                 use_bridge=self.__use_bridge, use_udp=self.__use_udp, use_hid=self.__use_hid,
                 passphrase_encoding=self.__passphrase_encoding,
                 allow_bootloader_mode=self.__allow_bootloader_mode
@@ -755,6 +739,21 @@ class HWDevices(QObject):
 
             return new_hw_device_id
 
+    @hw_connection_tracker
+    def recover_device_with_seed_input(self, hw_device: HWDevice, mnemonic_words: str, pin: str, passphrase: str,
+                                       secondary_pin: str) -> Optional[str]:
+        """
+        Initializes hardware wallet with the mnemonic words provided by the user.
+        """
+
+        if hw_device.device_id or hw_device.hw_client:
+            if hw_device.hw_type == HWType.ledger_nano:
+                hw_device_id = ledger.recover_device_with_seed_input(
+                    cast(ledger.HIDDongleHIDAPI, hw_device.transport_id), mnemonic_words, pin, passphrase,
+                    secondary_pin)
+                return hw_device_id
+            else:
+                raise Exception('Not available for Trezor/Keepkey')
 
     @hw_connection_tracker
     def wipe_device(self, hw_device: HWDevice, parent_window=None) -> str:

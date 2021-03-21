@@ -169,7 +169,10 @@ def get_dongles() -> List[HIDDongleHIDAPI]:
 
 
 @process_ledger_exceptions
-def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = False) -> List[hw_common.HWDevice]:
+def get_device_list(allow_bootloader_mode: bool = False) -> List[hw_common.HWDevice]:
+    from ledgerwallet.client import LedgerClient
+    from ledgerwallet.transport.hid import HidDevice
+
     ret_list = []
     exception: Optional[Exception] = None
 
@@ -177,17 +180,23 @@ def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = F
         dongles = get_dongles()
         if dongles:
             for d in dongles:
-                client = btchipDMT(d)
                 model_symbol = d.device.get_manufacturer_string() + ' ' + d.device.get_product_string()
-                in_bootloader_mode = True if re.match(".*[Bb]ootloader", model_symbol) else False
-                if not in_bootloader_mode:
-                    try:
-                        ver = client.getFirmwareVersion()
-                    except BTChipException as e:
-                        # if the Dash application isn't running then we cannot read a version number of the app
-                        ver = None
-                else:
-                    ver = None
+                d.close()
+                in_bootloader_mode = False
+                initialized = True
+                version = None
+                try:
+                    dev = HidDevice(bytes(d.__getattribute__('hidDevicePath'), 'ascii'))
+                    client = LedgerClient(device=dev)
+                    version_info = client.get_version_info()
+                    in_bootloader_mode = version_info.flags.recovery_mode is True
+                    initialized = version_info.flags.is_onboarded is True
+                    version = version_info.se_version
+                    dev.close()
+                    del client
+                except Exception as e:
+                    pass
+
                 # device_transport_id = hashlib.sha256(str(d.hidDevicePath).encode('ascii')).hexdigest()
 
                 if allow_bootloader_mode or in_bootloader_mode is False:
@@ -197,15 +206,12 @@ def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = F
                             device_id=d.__getattribute__('hidDevicePath'),
                             model_symbol=model_symbol,
                             device_label=None,
-                            firmware_version=ver,
-                            hw_client=client if return_clients else None,
+                            firmware_version=version,
+                            hw_client=None,
                             bootloader_mode=in_bootloader_mode,
                             transport_id=d,
-                            initialized=True
+                            initialized=initialized
                         ))
-                if not return_clients:
-                    del client
-                d.close()
 
     except BTChipException as e:
         if e.message != 'No dongle found':
@@ -218,8 +224,7 @@ def get_device_list(return_clients: bool = True, allow_bootloader_mode: bool = F
     return ret_list
 
 
-@process_ledger_exceptions
-def open_session(dongle: HIDDongleHIDAPI):
+def open_dongle(dongle: HIDDongleHIDAPI):
     if not dongle.opened:
         dev = hid.device()
         dev.open_path(bytes(dongle.__getattribute__('hidDevicePath'), 'ascii'))
@@ -227,11 +232,25 @@ def open_session(dongle: HIDDongleHIDAPI):
         dongle.device = dev
         dongle.opened = True
 
-    client = btchipDMT(dongle)
-    ver = client.getFirmwareVersion()
-    logging.info('Ledger Nano connected. Firmware version: %s, specialVersion: %s, compressedKeys: %s' %
-                 (str(ver.get('version')), str(ver.get('specialVersion')), ver.get('compressedKeys')))
-    return client
+
+def is_dongle_open(dongle: HIDDongleHIDAPI) -> bool:
+    return dongle.opened
+
+
+@process_ledger_exceptions
+def open_session(dongle: HIDDongleHIDAPI):
+    open_dongle(dongle)
+
+    try:
+        client = btchipDMT(dongle)
+        ver = client.getFirmwareVersion()
+        logging.info('Ledger Nano connected. Firmware version: %s, specialVersion: %s, compressedKeys: %s' %
+                     (str(ver.get('version')), str(ver.get('specialVersion')), ver.get('compressedKeys')))
+        return client
+    except BTChipException as e:
+        # exception would occur if the user haven't run the Dash app on the device
+        dongle.close()
+        raise
 
 
 @process_ledger_exceptions
@@ -379,59 +398,58 @@ def get_xpub(client, bip32_path):
     return xpub
 
 
-def recover_device_with_seed_input(mnemonic_words: str, pin: str, passphrase: str, secondary_pin: str):
+def recover_device_with_seed_input(dongle: HIDDongleHIDAPI, mnemonic_words: str, pin: str, passphrase: str,
+                                   secondary_pin: str):
     """
-    Initialise Ledger Nano S device with a list of mnemonic words.
+    Initialize Ledger Nano S device with a list of mnemonic words.
     :param mnemonic_words: 12, 18 or 24 mnemonic words separated with spaces to initialise device.
     :param pin: PIN to be set in the device (4- or 8-character string)
     :param passphrase: Passphrase to be set in the device or empty.
-    :param secondary_pin: Secondary PIN to activate passphrase. It's required if 'passphrase' is set.
+    :param secondary_pin: Secondary PIN to activate passph. It's required if 'passph' is set.
     """
 
-    def process(ctrl, mnemonic_words_, pin_, passphrase_, secondary_pin_):
+    def process(ctrl):
         ctrl.dlg_config(dlg_title="Please confirm", show_progress_bar=False)
         ctrl.display_msg('<b>Please wait while initializing device...</b>')
 
-        dongle = getDongle()
-
         # stage 1: initialize the hardware wallet with mnemonic words
         apdudata = bytearray()
-        if pin_:
-            apdudata += bytearray([len(pin_)]) + bytearray(pin_, 'utf8')
+        if pin:
+            apdudata += bytearray([len(pin)]) + bytearray(pin, 'utf8')
         else:
             apdudata += bytearray([0])
 
         # empty prefix
         apdudata += bytearray([0])
 
-        # empty passphrase in this phase
+        # empty passph in this phase
         apdudata += bytearray([0])
 
-        if mnemonic_words_:
-            apdudata += bytearray([len(mnemonic_words_)]) + bytearray(mnemonic_words_, 'utf8')
+        if mnemonic_words:
+            apdudata += bytearray([len(mnemonic_words)]) + bytearray(mnemonic_words, 'utf8')
         else:
             apdudata += bytearray([0])
 
         apdu = bytearray([0xE0, 0xD0, 0x00, 0x00, len(apdudata)]) + apdudata
         dongle.exchange(apdu, timeout=3000)
 
-        # stage 2: setup the secondary pin and the passphrase if provided
-        if passphrase_ and secondary_pin_:
-            ctrl.display_msg('<b>Configuring the passphrase, enter the primary PIN on your <br>'
+        # stage 2: setup the secondary pin and the passph if provided
+        if passphrase and secondary_pin:
+            ctrl.display_msg('<b>Configuring passphrase, enter the primary PIN on your <br>'
                                  'hardware wallet when asked...</b>')
 
             apdudata = bytearray()
-            if pin_:
-                apdudata += bytearray([len(pin_)]) + bytearray(secondary_pin_, 'utf8')
+            if pin:
+                apdudata += bytearray([len(pin)]) + bytearray(secondary_pin, 'utf8')
             else:
                 apdudata += bytearray([0])
 
             # empty prefix
             apdudata += bytearray([0])
 
-            if passphrase_:
-                passphrase_ = unicodedata.normalize('NFKD', passphrase_)
-                apdudata += bytearray([len(passphrase_)]) + bytearray(passphrase_, 'utf8')
+            if passphrase:
+                _passph = unicodedata.normalize('NFKD', passphrase)
+                apdudata += bytearray([len(_passph)]) + bytearray(_passph, 'utf8')
             else:
                 apdudata += bytearray([0])
 
@@ -441,19 +459,22 @@ def recover_device_with_seed_input(mnemonic_words: str, pin: str, passphrase: st
             apdu = bytearray([0xE0, 0xD0, 0x01, 0x00, len(apdudata)]) + apdudata
             dongle.exchange(apdu, timeout=3000)
 
-        dongle.close()
-        del dongle
+            device_id = dongle.__getattribute__('hidDevicePath')
+            return device_id
 
+    was_open = is_dongle_open(dongle)
     try:
-        return WndUtils.run_thread_dialog(process, (mnemonic_words, pin, passphrase, secondary_pin), True)
+        open_dongle(dongle)
+        return WndUtils.run_thread_dialog(process, (), True)
     except BTChipException as e:
-        if e.message == 'Invalid status 6982':
+        if e.message in ('Invalid status 6982', 'Invalid status 6d00'):
             raise Exception('Operation failed with the following error: %s. \n\nMake sure you have reset the device '
                             'and started it in recovery mode.' % e.message)
         else:
             raise
-    except Exception:
-        raise
+    finally:
+        if not was_open and is_dongle_open(dongle):
+            dongle.close()
 
 
 @process_ledger_exceptions

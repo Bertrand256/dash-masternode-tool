@@ -94,8 +94,8 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
         self.rbWordsCount12.toggled.connect(self.on_radio_word_count_toggled)
         self.rbWordsCount18.toggled.connect(self.on_radio_word_count_toggled)
         self.rbWordsCount24.toggled.connect(self.on_radio_word_count_toggled)
-        self.btnShowPIN.pressed.connect(functools.partial(self.edtHwOptionsPIN.setEchoMode, QLineEdit.Normal))
-        self.btnShowPIN.released.connect(functools.partial(self.edtHwOptionsPIN.setEchoMode, QLineEdit.Password))
+        self.btnShowPIN.pressed.connect(functools.partial(self.edtPrimaryPIN.setEchoMode, QLineEdit.Normal))
+        self.btnShowPIN.released.connect(functools.partial(self.edtPrimaryPIN.setEchoMode, QLineEdit.Password))
         self.btnShowSecondaryPIN.pressed.connect(functools.partial(self.edtSecondaryPIN.setEchoMode,
                                                                    QLineEdit.Normal))
         self.btnShowSecondaryPIN.released.connect(functools.partial(self.edtSecondaryPIN.setEchoMode,
@@ -111,8 +111,6 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
 
     def initialize(self):
         ActionPageBase.initialize(self)
-        self.set_btn_cancel_text('Close')
-        self.set_btn_back_text('Back')
         self.set_hw_panel_visible(True)
         self.set_controls_initial_state_for_step()
         self.current_step = Step.STEP_NONE
@@ -120,11 +118,11 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
 
         with MethodCallLimit(self, self.on_connected_hw_device_changed, call_count_limit=1):
             if not self.cur_hw_device:
-                self.hw_devices.select_device(self.parent(), open_client_session=True)
-            else:
-                if not self.cur_hw_device.hw_client:
-                    self.hw_devices.open_hw_session(self.cur_hw_device)
-            self.on_connected_hw_device_changed(self.cur_hw_device)
+                self.hw_devices.select_device(self.parent(), open_client_session=False)
+            # else:
+            #     if not self.cur_hw_device.hw_client:
+            #         self.hw_devices.open_hw_session(self.cur_hw_device)
+            self.on_connected_hw_device_changed(self.hw_devices.get_selected_device())
 
     @method_call_tracker
     def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
@@ -140,7 +138,7 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                 self.set_current_step(Step.STEP_NO_HW_ERROR)
 
     def on_validate_hw_device(self, hw_device: HWDevice) -> bool:
-        if not hw_device or not hw_device.hw_client:
+        if not hw_device:
             return False
         else:
             return True
@@ -204,11 +202,13 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
         elif self.current_step in (Step.STEP_FINISHED, Step.STEP_RECOVERING):
             self.set_current_step(Step.STEP_OPTIONS)
 
-
     def set_controls_initial_state_for_step(self):
         self.set_btn_cancel_enabled(True)
         self.set_btn_cancel_visible(True)
+        self.set_btn_close_visible(False)
+        self.set_btn_close_enabled(False)
         self.set_hw_change_enabled(True)
+        self.btnPreviewAddresses.hide()
 
         if self.current_step == Step.STEP_SEED_SOURCE:
             self.set_btn_back_enabled(True)
@@ -240,6 +240,8 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
             self.set_btn_back_enabled(True)
             self.set_btn_back_visible(True)
             self.set_btn_continue_visible(False)
+            self.set_btn_close_visible(True)
+            self.set_btn_close_enabled(True)
             self.set_hw_change_enabled(False)
 
         elif self.current_step == Step.STEP_NO_HW_ERROR:
@@ -248,17 +250,11 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
 
     def update_ui(self):
         try:
-            if self.cur_hw_device and self.cur_hw_device.hw_client:
+            # if self.cur_hw_device and self.cur_hw_device.hw_client:
+            if self.cur_hw_device:
                 if self.current_step == Step.STEP_SEED_SOURCE:
                     self.pages.setCurrentIndex(Pages.PAGE_SEED_SOURCE.value)
                     self.update_action_subtitle('choose scenario')
-                    if self.scenario in (Scenario.IN_APP_WORDS, Scenario.IN_APP_ENTROPY):
-                        self.lblActionTypeMessage.setVisible(True)
-                        self.lblActionTypeMessage.setText(
-                            '<b style="color:red">Use this method only for test seeds and for real seeds only on an '
-                            'offline computer that will never be connected to the network.</b>')
-                    else:
-                        self.lblActionTypeMessage.setVisible(False)
 
                     if self.cur_hw_device.hw_type in (HWType.trezor, HWType.keepkey):
                         self.rbSeedSourceHwScreen.setEnabled(True)
@@ -269,8 +265,16 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                         self.rbSeedSourceHwScreen.setEnabled(False)
                         self.rbSeedSourceAppWords.setEnabled(True)
                         self.rbSeedSourceAppEntropy.setEnabled(True)
-                        if self.rbSeedSourceHwScreen.isChecked():
+                        if not self.rbSeedSourceAppWords.isChecked() and not self.rbSeedSourceAppEntropy.isChecked():
                             self.rbSeedSourceAppWords.setChecked(True)
+
+                    if self.scenario in (Scenario.IN_APP_WORDS, Scenario.IN_APP_ENTROPY):
+                        self.lblActionTypeMessage.setVisible(True)
+                        self.lblActionTypeMessage.setText(
+                            '<b style="color:red">Use this method only for test seeds and for real seeds only on an '
+                            'offline computer that will never be connected to the network.</b>')
+                    else:
+                        self.lblActionTypeMessage.setVisible(False)
 
                 elif self.current_step == Step.STEP_NUMBER_OF_WORDS:
                     self.update_action_subtitle('number of seed words')
@@ -296,11 +300,13 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
 
                     if self.cur_hw_device.hw_type in (HWType.trezor, HWType.keepkey):
                         self.btnShowPIN.hide()
-                        self.edtHwOptionsPIN.hide()
+                        self.edtPrimaryPIN.hide()
                         self.edtPassphrase.hide()
                         self.btnShowPassphrase.hide()
                         self.edtSecondaryPIN.hide()
                         self.btnShowSecondaryPIN.hide()
+                        self.edtDeviceLabel.show()
+                        self.lblDeviceLabel.show()
                         self.lblPinMessage.show()
                         self.lblPinMessage.setText('<span style="color:gray">Note: if set, the device will ask you for a new PIN during the recovery.</span>')
                         self.lblPassphraseMessage.show()
@@ -309,21 +315,23 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                             'is on, you will<br>be asked for it every time you open the wallet.</span>')
                     elif self.cur_hw_device.hw_type == HWType.ledger_nano:
                         self.btnShowPIN.show()
-                        self.edtHwOptionsPIN.show()
+                        self.edtPrimaryPIN.show()
                         self.edtPassphrase.show()
                         self.btnShowPassphrase.show()
                         self.edtSecondaryPIN.show()
                         self.btnShowSecondaryPIN.show()
+                        self.edtDeviceLabel.hide()
+                        self.lblDeviceLabel.hide()
                         self.lblPinMessage.hide()
                         self.lblPassphraseMessage.hide()
 
                         if self.chbUsePIN.isChecked():
-                            self.edtHwOptionsPIN.setReadOnly(False)
+                            self.edtPrimaryPIN.setReadOnly(False)
                             self.btnShowPIN.setEnabled(True)
                             self.edtSecondaryPIN.setReadOnly(False)
                             self.btnShowSecondaryPIN.setEnabled(True)
                         else:
-                            self.edtHwOptionsPIN.setReadOnly(True)
+                            self.edtPrimaryPIN.setReadOnly(True)
                             self.btnShowPIN.setDisabled(True)
                             self.edtSecondaryPIN.setReadOnly(True)
                             self.btnShowSecondaryPIN.setDisabled(True)
@@ -341,10 +349,10 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                     else:
                         self.lblOptionsEntropy.setVisible(False)
 
-                    if self.scenario in (Scenario.IN_APP_WORDS, Scenario.IN_APP_ENTROPY):
-                        self.btnPreviewAddresses.show()
-                    else:
-                        self.btnPreviewAddresses.hide()
+                    # if self.scenario in (Scenario.IN_APP_WORDS, Scenario.IN_APP_ENTROPY):
+                    #     self.btnPreviewAddresses.show()
+                    # else:
+                    #     self.btnPreviewAddresses.hide()
 
                     if self.scenario == Scenario.ON_DEVICE and self.cur_hw_device.get_hw_model() == HWModel.trezor_one:
                         self.lblDeviceWordsInputType.show()
@@ -353,15 +361,26 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                         self.lblDeviceWordsInputType.hide()
                         self.gbDeviceWordsInputType.hide()
 
-                    if self.cur_hw_device.initialized:
+                    if self.cur_hw_device.hw_type in (HWType.trezor, HWType.keepkey):
+                        if self.cur_hw_device.initialized:
+                            self.lblOptionsPageMessage.show()
+                            self.lblOptionsPageMessage.setText(
+                                'Note: The currently selected device is initialized. If you '
+                                'continue, the device will be wiped before starting recovery.')
+                            self.lblOptionsPageMessage.setWordWrap(True)
+                            self.lblOptionsPageMessage.setStyleSheet('QLabel{color:red}')
+                        else:
+                            self.lblOptionsPageMessage.hide()
+                    elif self.cur_hw_device.hw_type == HWType.ledger_nano:
+                        msg_text = '<span><b>Important! Start your Ledger Nano S wallet in recovery mode:</b></span>' \
+                                   '<ol><li>Clear the device by selecting the \'Settings->Device->Reset all\' menu ' \
+                                   'item.</li>' \
+                                   '<li>Power the device off.</li>' \
+                                   '<li>Power the device on while holding down the right-hand physical button.</li>' \
+                                   '</ol>'
                         self.lblOptionsPageMessage.show()
-                        self.lblOptionsPageMessage.setText(
-                            'Note: The currently selected device is initialized. If you '
-                            'continue, the device will be wiped before starting recovery.')
-                        self.lblOptionsPageMessage.setWordWrap(True)
-                        self.lblOptionsPageMessage.setStyleSheet('QLabel{color:red}')
-                    else:
-                        self.lblOptionsPageMessage.hide()
+                        self.lblOptionsPageMessage.setText(msg_text)
+                        self.lblOptionsPageMessage.setStyleSheet('')
 
                 elif self.current_step == Step.STEP_FINISHED:
                     self.update_action_subtitle('finished')
@@ -486,6 +505,15 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                 self.hw_devices.recover_device(self.cur_hw_device, word_count=self.word_count,
                                                passphrase_enabled=use_passphrase, pin_enabled=use_pin, hw_label=label,
                                                input_type=input_type, parent_window=self.parent_dialog)
+
+            elif self.scenario in (Scenario.IN_APP_WORDS, Scenario.IN_APP_ENTROPY):
+                words = ' '.join(self.entropy_to_mnemonic(self.entropy))
+                pin = self.edtPrimaryPIN.text() if use_pin else ''
+                secondary_pin = self.edtSecondaryPIN.text()
+                passphrase = self.edtPassphrase.text() if use_passphrase else ''
+
+                self.hw_devices.recover_device_with_seed_input(self.cur_hw_device, words, pin, passphrase,
+                                                               secondary_pin)
             else:
                 raise Exception('Not implemented')
             self.set_current_step(Step.STEP_FINISHED)

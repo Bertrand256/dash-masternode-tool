@@ -84,9 +84,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
         self.current_step: Step = Step.STEP_NONE
         self.set_btn_cancel_visible(True)
         self.set_btn_back_visible(True)
-        self.set_btn_back_text('Back')
         self.set_btn_continue_visible(True)
-        self.set_btn_cancel_text('Close')
         self.set_hw_panel_visible(True)
         if not self.hw_firmware_web_sources_all:
             self.load_remote_firmware_list()
@@ -186,6 +184,9 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
         This relates only to the initial state of the step, so it can be changed later by a background thread
         related to the particular step.
         """
+        self.set_btn_close_visible(False)
+        self.set_btn_close_enabled(False)
+
         if self.current_step == Step.STEP_SELECT_FIRMWARE_SOURCE:
             self.set_btn_cancel_enabled(True)
             self.set_btn_back_enabled(True)
@@ -213,6 +214,8 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
             self.set_btn_cancel_enabled(True)
             self.set_btn_back_enabled(True)
             self.set_btn_continue_enabled(False)
+            self.set_btn_close_visible(True)
+            self.set_btn_close_enabled(True)
             self.set_hw_change_enabled(False)
 
     @pyqtSlot(bool)
