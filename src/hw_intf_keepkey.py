@@ -591,7 +591,7 @@ def wipe_device(hw_device_id: str, hw_client: Any, passphrase_encoding: Optional
 
 
 def recover_device(hw_device_id: str, hw_client: Any, word_count: int, passphrase_enabled: bool, pin_enabled: bool,
-                   hw_label: str, passphrase_encoding: Optional[str] = 'NFC', parent: Optional[QWidget] = None) \
+                   hw_label: str, passphrase_encoding: Optional[str] = 'NFC', parent_window: Optional[QWidget] = None) \
         -> Optional[str]:
     """
     Restore a seed using the device screen.
@@ -609,7 +609,7 @@ def recover_device(hw_device_id: str, hw_client: Any, word_count: int, passphras
                 client.wipe_device()
                 hw_device_id = client.features.device_id
 
-            client.parent_dialog = parent
+            client.parent_dialog = parent_window
             client.recovery_device(use_trezor_method=False, word_count=word_count,
                                    passphrase_protection=passphrase_enabled, pin_protection=pin_enabled,
                                    label=hw_label, language='english')

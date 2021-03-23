@@ -32,6 +32,9 @@
    <property name="spacing">
     <number>6</number>
    </property>
+   <property name="sizeConstraint">
+    <enum>QLayout::SetNoConstraint</enum>
+   </property>
    <property name="leftMargin">
     <number>6</number>
    </property>
@@ -66,6 +69,9 @@
        <property name="text">
         <string>Enter PIN</string>
        </property>
+       <property name="wordWrap">
+        <bool>false</bool>
+       </property>
       </widget>
      </item>
     </layout>
@@ -93,7 +99,7 @@
         <item>
          <layout class="QGridLayout" name="gridLayout">
           <property name="sizeConstraint">
-           <enum>QLayout::SetDefaultConstraint</enum>
+           <enum>QLayout::SetMaximumSize</enum>
           </property>
           <property name="spacing">
            <number>6</number>

@@ -709,7 +709,8 @@ class HWDevices(QObject):
             if hw_device.device_id or hw_device.hw_client:
                 if hw_device.hw_type == HWType.trezor:
                     return trezor.recover_device(hw_device.device_id, hw_device.transport_id, hw_device.hw_client,
-                                                 word_count, passphrase_enabled, pin_enabled, hw_label, input_type)
+                                                 word_count, passphrase_enabled, pin_enabled, hw_label, input_type,
+                                                 ctrl.dialog)
                 elif hw_device.hw_type == HWType.keepkey:
                     return keepkey.recover_device(hw_device.device_id, hw_device.hw_client, word_count,
                                                   passphrase_enabled, pin_enabled, hw_label, self.__passphrase_encoding,

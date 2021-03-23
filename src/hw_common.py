@@ -197,9 +197,9 @@ def clean_bip32_path(bip32_path):
     return bip32_path
 
 
-def ask_for_pin_callback(msg, hide_numbers=True):
+def ask_for_pin_callback(msg, hide_numbers=True, parent_window: Optional[QWidget] = None):
     def dlg():
-        ui = hw_pin_dlg.HardwareWalletPinDlg(msg, hide_numbers=hide_numbers)
+        ui = hw_pin_dlg.HardwareWalletPinDlg(msg, hide_numbers=hide_numbers, parent_window=parent_window)
         if ui.exec_():
             return ui.pin
         else:
@@ -211,10 +211,12 @@ def ask_for_pin_callback(msg, hide_numbers=True):
         return dlg()
 
 
-def ask_for_martix_element_callback(msg):
+def ask_for_martix_element_callback(msg, columns: int = 3, parent_window: Optional[QWidget] = None):
+    # noinspection SqlResolve
     def dlg():
-        ui = hw_pin_dlg.HardwareWalletPinDlg(msg, hide_numbers=True, window_title='Select the matrix element',
-                                             max_length=1)
+        ui = hw_pin_dlg.HardwareWalletPinDlg(msg, hide_numbers=True, window_title='Enter element of seed word',
+                                             max_length=1, button_heights=35, parent_window=parent_window,
+                                             columns=columns)
         if ui.exec_():
             return ui.pin
         else:
@@ -243,7 +245,7 @@ def ask_for_pass_callback(pass_available_on_device: bool = False):
         return dlg()
 
 
-def ask_for_word_callback(msg: str, wordlist: List[str]) -> str:
+def ask_for_word_callback(msg: str, wordlist: List[str], parent_window: Optional[QWidget] = None) -> str:
     def dlg():
         ui = hw_word_dlg.HardwareWalletWordDlg(msg, wordlist)
         if ui.exec_():

@@ -186,6 +186,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
         """
         self.set_btn_close_visible(False)
         self.set_btn_close_enabled(False)
+        self.set_btn_continue_visible(True)
 
         if self.current_step == Step.STEP_SELECT_FIRMWARE_SOURCE:
             self.set_btn_cancel_enabled(True)
@@ -213,7 +214,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
         elif self.current_step == Step.STEP_FINISHED_UPDATE:
             self.set_btn_cancel_enabled(True)
             self.set_btn_back_enabled(True)
-            self.set_btn_continue_enabled(False)
+            self.set_btn_continue_visible(False)
             self.set_btn_close_visible(True)
             self.set_btn_close_enabled(True)
             self.set_hw_change_enabled(False)

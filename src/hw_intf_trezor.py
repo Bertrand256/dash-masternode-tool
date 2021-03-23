@@ -7,7 +7,7 @@ import sys
 from typing import Optional, Tuple, List, Iterable, Type, Any, Literal
 import binascii
 
-from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtWidgets import QMessageBox, QWidget
 from mnemonic import Mnemonic
 from trezorlib.client import TrezorClient, PASSPHRASE_ON_DEVICE
 from trezorlib.exceptions import TrezorFailure
@@ -29,7 +29,9 @@ import logging
 import wallet_common
 from wnd_utils import WndUtils
 
+
 log = logging.getLogger('dmt.hw_intf_trezor')
+
 
 BOOTLOADER_MODE_DUMMY_DEVICE_ID = '0000'
 
@@ -614,7 +616,7 @@ def wipe_device(hw_device_id: str, hw_device_transport_id: Any, hw_client: Optio
 
 def recover_device(hw_device_id: str, hw_device_transport_id: Any, hw_client: Any, word_count: int,
                    passphrase_enabled: bool, pin_enabled: bool, hw_label: str,
-                   input_type: Literal["scrambled_words", "matrix"]) -> Optional[str]:
+                   input_type: Literal["scrambled_words", "matrix"], parent_window: Optional[QWidget] = None) -> Optional[str]:
     mnem = Mnemonic('english')
     type = {
         "scrambled_words": messages.RecoveryDeviceType.ScrambledWords
@@ -624,12 +626,19 @@ def recover_device(hw_device_id: str, hw_device_transport_id: Any, hw_client: An
         nonlocal mnem
         if _type == 0:
             msg = "Enter one word of mnemonic: "
-            word = ask_for_word_callback(msg, mnem.wordlist)
+            word = ask_for_word_callback(msg, mnem.wordlist, parent_window)
             if not word:
                 raise exceptions.Cancelled
             return word
         elif _type in (1, 2):
-            element = hw_common.ask_for_martix_element_callback("Select the matrix element")
+            # _type
+            # 1: matrix has three columns
+            # 2: matrix has two columns
+            element = hw_common.ask_for_martix_element_callback("<span>Select the matrix element that corresponds<br>"
+                                                                "to the part of the word displayed on<br>"
+                                                                "the device screen</span>",
+                                                                columns=3 if _type == 1 else 2,
+                                                                parent_window=parent_window)
             if element:
                 return element
             else:
