@@ -385,12 +385,13 @@ class HWDevices(QObject):
         def __init__(self, connected_dev_ids: List[str], selected_device_id: Optional[str],
                      selected_device_model: Optional[str],
                      selected_device_bootloader_mode: Optional[bool],
-                     allow_bootloader_mode: bool):
+                     allow_bootloader_mode: bool, hw_types_allowed: Tuple[HWType, ...]):
             self.connected_device_ids: List[str] = connected_dev_ids
             self.device_id_selected: Optional[str] = selected_device_id
             self.selected_device_model = selected_device_model
             self.selected_device_bootloader_mode = selected_device_bootloader_mode
             self.allow_bootloader_mode: bool = allow_bootloader_mode
+            self.hw_types_allowed: Tuple[HWType, ...] = hw_types_allowed
 
     @staticmethod
     def get_instance() -> 'HWDevices':
@@ -425,13 +426,14 @@ class HWDevices(QObject):
                 connected_devices.append(dev.device_id)
         self.__saved_states.append(HWDevices.HWDevicesState(
             connected_devices, self.__hw_device_id_selected, self.__selected_device_model,
-            self.__selected_device_bootloader_mode, self.__allow_bootloader_mode))
+            self.__selected_device_bootloader_mode, self.__allow_bootloader_mode, self.__hw_types_allowed))
 
     @hw_connection_tracker
     def restore_state(self):
         if self.__saved_states:
             state = self.__saved_states.pop()
             self.__allow_bootloader_mode = state.allow_bootloader_mode
+            self.__hw_types_allowed = state.hw_types_allowed
 
             # reconnect all the devices that were connected during the call of 'save_state'
             for dev_id in state.connected_device_ids:
@@ -529,7 +531,7 @@ class HWDevices(QObject):
         self.__selected_device_model = None
         self.__selected_device_bootloader_mode = None
 
-    def set_hw_types_allowed(self, allowed: Tuple[HWType]):
+    def set_hw_types_allowed(self, allowed: Tuple[HWType, ...]):
         self.__hw_types_allowed = allowed[:]
 
     def get_selected_device_index(self) -> int:
@@ -818,6 +820,93 @@ class HWDevices(QObject):
         if hw_device and hw_device.hw_client:
             set_sd_protect(hw_device, operation)
 
+    @staticmethod
+    def hw_encrypt_value(hw_device: HWDevice, bip32_path_n: List[int], label: str,
+                         value: bytes, ask_on_encrypt=True, ask_on_decrypt=True) -> Tuple[bytearray, bytearray]:
+        """
+        Encrypts value with hardware wallet.
+        :return Tuple
+          0: encrypted data
+          1: public key
+        """
+        def encrypt(ctrl: CtrlObject):
+            ctrl.dlg_config(dlg_title="Data encryption", show_progress_bar=False)
+            ctrl.display_msg(f'<b>Encrypting \'{label}\'...</b>'
+                             f'<br><br>Enter the hardware wallet PIN/passphrase (if needed) to encrypt data.<br><br>'
+                             f'<b>Note:</b> encryption passphrase is independent from the wallet passphrase  <br>'
+                             f'and can vary for each encrypted file.')
+
+            if hw_device.hw_type == HWType.trezor:
+                try:
+                    data = trezorlib.misc.encrypt_keyvalue(hw_device.hw_client, cast(Address, bip32_path_n), label,
+                                                           value, ask_on_encrypt, ask_on_decrypt)
+                    pub_key = trezorlib.btc.get_public_node(hw_device.hw_client, bip32_path_n).node.public_key
+                    return data, pub_key
+                except (CancelException, trezorlib.exceptions.Cancelled):
+                    raise CancelException()
+
+            elif hw_device.hw_type == HWType.keepkey:
+                data = hw_device.hw_client.encrypt_keyvalue(bip32_path_n, label, value, ask_on_encrypt, ask_on_decrypt)
+                pub_key = hw_device.hw_client.get_public_node(bip32_path_n).node.public_key
+                return data, pub_key
+
+            elif hw_device.hw_type == HWType.ledger_nano:
+                raise Exception('Feature not available for Ledger Nano S.')
+
+            else:
+                raise Exception('Invalid HW type: ' + HWType.get_desc(hw_device.hw_type))
+
+        if len(value) != 32:
+            raise ValueError("Invalid password length (<> 32).")
+
+        return WndUtils.run_thread_dialog(
+            encrypt, (), True, force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_device.hw_client),
+            show_window_delay_ms=200)
+
+
+    @control_hw_call
+    def hw_decrypt_value(hw_device: HWDevice, bip32_path_n: List[int], label: str,
+                         value: bytes, ask_on_encrypt=True, ask_on_decrypt=True) -> Tuple[bytearray, bytearray]:
+        """
+        Encrypts value using hardware wallet.
+        :return Tuple
+          0: decrypted data
+          1: public key
+        """
+
+        def decrypt(ctrl: CtrlObject):
+            ctrl.dlg_config(dlg_title="Data decryption", show_progress_bar=False)
+            ctrl.display_msg(f'<b>Decrypting \'{label}\'...</b><br><br>Enter the hardware wallet PIN/passphrase '
+                             f'(if needed)<br> and click the confirmation button to decrypt data.')
+
+            if hw_device.hw_type == HWType.trezor:
+                try:
+                    client = hw_device.hw_client
+                    data = trezorlib.misc.decrypt_keyvalue(client, cast(Address, bip32_path_n), label, value,
+                                                           ask_on_encrypt, ask_on_decrypt)
+                    pub_key = trezorlib.btc.get_public_node(client, bip32_path_n).node.public_key
+                    return data, pub_key
+                except (CancelException, trezorlib.exceptions.Cancelled):
+                    raise CancelException()
+
+            elif hw_device.hw_type == HWType.keepkey:
+                client = hw_device.hw_client
+                data = client.decrypt_keyvalue(bip32_path_n, label, value, ask_on_encrypt, ask_on_decrypt)
+                pub_key = client.get_public_node(bip32_path_n).node.public_key
+                return data, pub_key
+
+            elif hw_device.hw_type == HWType.ledger_nano:
+                raise Exception('Feature not available for Ledger Nano S.')
+
+            else:
+                raise Exception('Invalid HW type: ' + HWType.get_desc(hw_device.hw_type))
+
+        if len(value) != 32:
+            raise ValueError("Invalid password length (<> 32).")
+
+        return WndUtils.run_thread_dialog(
+            decrypt, (), True, force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_device.hw_client))
+
 
 class HwSessionInfo(HWSessionBase):
     sig_hw_connected = QtCore.pyqtSignal(HWDevice)
@@ -1072,6 +1161,43 @@ class HwSessionInfo(HWSessionBase):
         if self.hw_client:
             self.__hw_devices.close_hw_session(self.hw_device)
             self.signal_hw_disconnected()
+
+    def save_state(self):
+        self.__hw_devices.save_state()
+
+    def restore_state(self):
+        self.__hw_devices.restore_state()
+
+    def set_hw_types_allowed(self, allowed: Tuple[HWType, ...]):
+        self.__hw_devices.set_hw_types_allowed(allowed)
+
+    def hw_encrypt_value(self, bip32_path_n: List[int], label: str,
+                         value: bytes, ask_on_encrypt=True, ask_on_decrypt=True) -> Tuple[bytearray, bytearray]:
+        if self.connect_hardware_wallet():
+            hw_device = self.__hw_devices.get_selected_device()
+            if hw_device:
+                if hw_device.hw_type not in (HWType.trezor, HWType.keepkey):
+                    raise Exception(HWType.get_desc(hw_device.hw_type) + ' device does not support data encryption.' )
+                return self.__hw_devices.hw_encrypt_value(self.__hw_devices.get_selected_device(), bip32_path_n, label,
+                                                          value, ask_on_encrypt, ask_on_decrypt)
+            else:
+                raise Exception('Hardware wallet not available')
+        else:
+            raise Exception('Hardware wallet not available')
+
+    def hw_decrypt_value(self, bip32_path_n: List[int], label: str,
+                         value: bytes, ask_on_encrypt=True, ask_on_decrypt=True) -> Tuple[bytearray, bytearray]:
+        if self.connect_hardware_wallet():
+            hw_device = self.__hw_devices.get_selected_device()
+            if hw_device:
+                if hw_device.hw_type not in (HWType.trezor, HWType.keepkey):
+                    raise Exception(HWType.get_desc(hw_device.hw_type) + ' device does not support data encryption.' )
+                return self.__hw_devices.hw_decrypt_value(self.__hw_devices.get_selected_device(), bip32_path_n, label,
+                                                          value, ask_on_encrypt, ask_on_decrypt)
+            else:
+                raise Exception('Hardware wallet not available')
+        else:
+            raise Exception('Hardware wallet not available')
 
 
 class HWDevicesListWdg(QWidget):
@@ -1454,107 +1580,6 @@ def get_xpub(hw_session: HwSessionInfo, bip32_path: str):
             raise Exception('Unknown hardware wallet type: ' + str(hw_session.hw_type))
     else:
         raise Exception('HW client not open.')
-
-
-@control_hw_call
-def hw_encrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: str,
-                     value: ByteString, ask_on_encrypt=True, ask_on_decrypt=True) -> Tuple[bytearray, bytearray]:
-    """Encrypts a value with a hardware wallet.
-    :param hw_session:
-    :param bip32_path_n: bip32 path of the private key used for encryption
-    :param label: key (in the meaning of key-value) used for encryption
-    :param value: value being encrypted
-    :param ask_on_encrypt: see Trezor doc
-    :param ask_on_decrypt: see Trezor doc
-    """
-
-    def encrypt(ctrl, hw_session_: HwSessionInfo, bip32_path_n_: List[int], label_: str,
-                value_: bytearray):
-        ctrl.dlg_config(dlg_title="Data encryption", show_progress_bar=False)
-        ctrl.display_msg(f'<b>Encrypting \'{label_}\'...</b>'
-                         f'<br><br>Enter the hardware wallet PIN/passphrase (if needed) to encrypt data.<br><br>'
-                         f'<b>Note:</b> encryption passphrase is independent from the wallet passphrase  <br>'
-                         f'and can vary for each encrypted file.')
-
-        if hw_session_.hw_type == HWType.trezor:
-            try:
-                client = hw_session_.hw_client
-                data = trezorlib.misc.encrypt_keyvalue(client, cast(Address, bip32_path_n_), label_, value_,
-                                                       ask_on_encrypt, ask_on_decrypt)
-                pub_key = trezorlib.btc.get_public_node(client, bip32_path_n_).node.public_key
-                return data, pub_key
-            except (CancelException, trezorlib.exceptions.Cancelled):
-                raise CancelException()
-
-        elif hw_session_.hw_type == HWType.keepkey:
-
-            client = hw_session_.hw_client
-            data = client.encrypt_keyvalue(bip32_path_n_, label_, value_, ask_on_encrypt, ask_on_decrypt)
-            pub_key = client.get_public_node(bip32_path_n_).node.public_key
-            return data, pub_key
-
-        elif hw_session_.hw_type == HWType.ledger_nano:
-
-            raise Exception('Feature not available for Ledger Nano S.')
-
-        else:
-            raise Exception('Invalid HW type: ' + str(hw_session_))
-
-    if len(value) != 32:
-        raise ValueError("Invalid password length (<> 32).")
-
-    return WndUtils.run_thread_dialog(encrypt, (hw_session, bip32_path_n, label, value), True,
-                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client),
-                                      show_window_delay_ms=200)
-
-
-@control_hw_call
-def hw_decrypt_value(hw_session: HwSessionInfo, bip32_path_n: List[int], label: str,
-                     value: ByteString, ask_on_encrypt=True, ask_on_decrypt=True) -> Tuple[bytearray, bytearray]:
-    """
-    :param hw_session:
-    :param bip32_path_n: bip32 path of the private key used for encryption
-    :param label: key (in the meaning of key-value) used for encryption
-    :param value: encrypted value to be decrypted,
-    :param ask_on_encrypt: see Trezor doc
-    :param ask_on_decrypt: see Trezor doc
-    """
-
-    def decrypt(ctrl, hw_session_: HwSessionInfo, bip32_path_n_: List[int], label_: str, value_: bytearray):
-        ctrl.dlg_config(dlg_title="Data decryption", show_progress_bar=False)
-        ctrl.display_msg(f'<b>Decrypting \'{label_}\'...</b><br><br>Enter the hardware wallet PIN/passphrase '
-                         f'(if needed)<br> and click the confirmation button to decrypt data.')
-
-        if hw_session_.hw_type == HWType.trezor:
-
-            try:
-                client = hw_session_.hw_client
-                data = trezorlib.misc.decrypt_keyvalue(client, cast(Address, bip32_path_n_), label_, value_,
-                                                       ask_on_encrypt, ask_on_decrypt)
-                pub_key = trezorlib.btc.get_public_node(client, bip32_path_n_).node.public_key
-                return data, pub_key
-            except (CancelException, trezorlib.exceptions.Cancelled):
-                raise CancelException()
-
-        elif hw_session_.hw_type == HWType.keepkey:
-
-            client = hw_session_.hw_client
-            data = client.decrypt_keyvalue(bip32_path_n_, label_, value_, ask_on_encrypt, ask_on_decrypt)
-            pub_key = client.get_public_node(bip32_path_n_).node.public_key
-            return data, pub_key
-
-        elif hw_session_.hw_type == HWType.ledger_nano:
-
-            raise Exception('Feature not available for Ledger Nano S.')
-
-        else:
-            raise Exception('Invalid HW type: ' + str(hw_session_))
-
-    if len(value) != 32:
-        raise ValueError("Invalid password length (<> 32).")
-
-    return WndUtils.run_thread_dialog(decrypt, (hw_session, bip32_path_n, label, value), True,
-                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
 
 
 def get_hw_firmware_web_sources(hw_models_allowed: Tuple[HWModel, ...],

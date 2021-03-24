@@ -1417,48 +1417,6 @@ class AppConfig(QObject):
     def get_hw_type(self):
         return self.hw_type
 
-    def initialize_hw_encryption(self, hw_session: 'HwSessionInfo'):
-        if threading.current_thread() != threading.main_thread():
-            raise Exception('This function must be called from the main thread.')
-
-        if not self.fernet:
-            self.hw_encryption_key = None
-            self.fernet = None
-            # encrypt generated_key with hardware wallet: it will be used to encrypt data in db cache
-            try:
-                if self.hw_type in (HWType.trezor, HWType.keepkey):
-                    v = hw_intf.hw_encrypt_value(hw_session, [10, 100, 1000], 'bip32address',
-                                                 self.hw_generated_key, False, False)
-                    self.hw_encryption_key = base64.urlsafe_b64encode(v[0])
-                else:
-                    # Ledger doesn't have encryption features like Trezor, so as an encryption
-                    # key we use the public key of the wallet's BIP32 root
-                    key = app_utils.SHA256.new(hw_session.base_public_key + self.hw_generated_key).digest()
-                    self.hw_encryption_key = base64.urlsafe_b64encode(key)
-
-                self.fernet = Fernet(self.hw_encryption_key)
-                return True
-            except Exception as e:
-                logging.warning("Couldn't encrypt data with hardware wallet: " + str(e))
-                return False
-        else:
-            return True
-
-    def hw_encrypt_string(self, data_str):
-        if self.fernet:
-            return self.fernet.encrypt(data_str)
-        else:
-            return None
-
-    def hw_decrypt_string(self, data_str):
-        if self.fernet:
-            try:
-                return self.fernet.decrypt(data_str)
-            except Exception:
-                return None
-        else:
-            return None
-
     def get_app_img_dir(self):
         return os.path.join(self.app_dir, '', 'img')
 
