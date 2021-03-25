@@ -1875,7 +1875,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.error_msg('Dash daemon not connected')
         else:
             try:
-                ui = wallet_dlg.WalletDlg(self, initial_mn_sel=initial_mn)
+                ui = wallet_dlg.WalletDlg(self, self.hw_session, initial_mn_sel=initial_mn)
                 ui.exec_()
             except Exception as e:
                 self.error_msg(str(e), True)

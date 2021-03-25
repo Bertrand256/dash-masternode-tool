@@ -75,7 +75,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     error_signal = QtCore.pyqtSignal(str)
     thread_finished = QtCore.pyqtSignal()
 
-    def __init__(self, main_ui, initial_mn_sel: int):
+    def __init__(self, main_ui, hw_session: HwSessionInfo, initial_mn_sel: int):
         """
         :param initial_mn_sel:
           if the value is from 0 to len(masternodes), show utxos for the masternode
@@ -87,7 +87,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         WndUtils.__init__(self, main_ui.app_config)
 
         self.main_ui = main_ui
-        self.hw_session: HwSessionInfo = self.main_ui.hw_session
+        self.hw_session: HwSessionInfo = hw_session
         self.rt_data: AppRuntimeData = AppRuntimeData.get_instance()
         self.hw_connection_established = False
         self.masternodes = main_ui.app_config.masternodes
@@ -317,11 +317,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.show_hide_txes_filter()
         self.update_context_actions()
 
-        self.hw_session.sig_hw_connected.connect(self.on_connect_hw)
-        self.hw_session.sig_hw_disconnected.connect(self.on_disconnect_hw)
-        if self.hw_session.hw_type is not None and self.hw_session.hw_client is not None:
-            # hw is initially connected
-            self.on_connect_hw()
+        self.hw_session.sig_hw_connected.connect(self.on_hardware_wallet_connected)
+        self.hw_session.sig_hw_disconnected.connect(self.on_hardware_wallet_disconnected)
+        if self.hw_session.hw_client is not None:
+            self.on_hardware_wallet_connected()
 
         self.start_threads()
 
@@ -471,7 +470,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             try:
                 ret = func(*args, **kwargs)
             except HWNotConnectedException:
-                self.on_disconnect_hw()
+                self.on_hardware_wallet_disconnected()
                 raise
             return ret
 
@@ -1036,7 +1035,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         else:
             return False
 
-    def on_connect_hw(self):
+    def on_hardware_wallet_connected(self):
         if self.hw_session.hw_type is not None and self.hw_session.hw_client:
             aft_saved = self.allow_fetch_transactions
             esmt_saved = self.enable_synch_with_main_thread
@@ -1047,7 +1046,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 tree_ident = self.hw_session.get_hd_tree_ident(self.app_config.hw_coin_name)
                 if self.cur_hd_tree_ident != tree_ident:
                     if self.cur_hd_tree_ident:
-                        self.on_disconnect_hw()  #hw identity has been changed
+                        self.on_hardware_wallet_disconnected()  #hw identity has been changed
 
                     self.cur_hd_tree_ident = tree_ident
                     self.cur_hd_tree_id, _ = self.bip44_wallet.get_hd_identity_info()
@@ -1066,7 +1065,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.allow_fetch_transactions = aft_saved
                 self.enable_synch_with_main_thread = esmt_saved
 
-    def on_disconnect_hw(self):
+            self.display_thread_event.set()
+            self.fetch_transactions()
+
+    def on_hardware_wallet_disconnected(self):
         aft_saved = self.allow_fetch_transactions
         self.allow_fetch_transactions = False
         esmt_saved = self.enable_synch_with_main_thread
@@ -1114,23 +1116,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def connect_hw(self):
         def connect():
             if self.hw_session.connect_hardware_wallet():
-                aft_saved = self.allow_fetch_transactions
-                esmt_saved = self.enable_synch_with_main_thread
-                self.allow_fetch_transactions = False
-                self.enable_synch_with_main_thread = False
-
-                try:
-                    self.on_connect_hw()
-                finally:
-                    self.allow_fetch_transactions = aft_saved
-                    self.enable_synch_with_main_thread = esmt_saved
-
-                self.display_thread_event.set()
-                self.fetch_transactions()
                 return True
             else:
                 if self.hw_connected():
-                    self.on_disconnect_hw()
+                    self.on_hardware_wallet_disconnected()
                 return False
 
         if threading.current_thread() != threading.main_thread():
@@ -1142,17 +1131,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             return connect()
 
     def disconnect_hw(self):
-        aft_saved = self.allow_fetch_transactions
-        self.allow_fetch_transactions = False
-        esmt_saved = self.enable_synch_with_main_thread
-        self.enable_synch_with_main_thread = False
-
-        try:
-            self.on_disconnect_hw()
-            self.hw_session.disconnect_hardware_wallet()
-        finally:
-            self.allow_fetch_transactions = aft_saved
-            self.enable_synch_with_main_thread = esmt_saved
+        self.hw_session.disconnect_hardware_wallet()
 
     def get_utxo_list_generator(self, only_new) -> Generator[UtxoType, None, None]:
         list_utxos = None
