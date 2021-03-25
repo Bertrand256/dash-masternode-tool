@@ -189,29 +189,42 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.mns_user_refused_updating = {}
 
         # after loading whole configuration, reset 'modified' variable
-        try:
-            self.app_config.read_from_file(hw_session=self.hw_session, create_config_file=True)
-        except Exception as e:
-            raise
-        self.display_window_title()
-        self.dashd_intf.initialize(self.app_config)
-
-        self.update_edit_controls_state()
-
-        self.run_thread(self, self.get_project_config_params_thread, (False,))
-
-        if self.app_config.app_config_file_name and os.path.exists(self.app_config.app_config_file_name):
-            self.add_item_to_config_files_mru_list(self.app_config.app_config_file_name)
-        self.update_config_files_mru_menu_items()
+        # # try:
+        # #     self.app_config.read_from_file(hw_session=self.hw_session, create_config_file=True)
+        # # except Exception as e:
+        # #     raise
+        # # self.display_window_title()
+        # # self.dashd_intf.initialize(self.app_config)
+        # #
+        # # self.update_edit_controls_state()
+        #
+        # self.run_thread(self, self.get_project_config_params_thread, (False,))
+        #
+        # if self.app_config.app_config_file_name and os.path.exists(self.app_config.app_config_file_name):
+        #     self.add_item_to_config_files_mru_list(self.app_config.app_config_file_name)
+        # self.update_config_files_mru_menu_items()
 
         self.inside_setup_ui = False
-        self.configuration_to_ui()
         self.display_app_messages()
         logging.info('Finished setup of the main dialog.')
 
     def showEvent(self, QShowEvent):
-        h = self.btnNewMn.height()
-        self.btnMoveMnUp.setFixedHeight(h)
+        def load_initial_config():
+            # Initial opening of the configuration file may involve showing some dialog boxes (e.g.
+            # related to file encryption), so reading the configuration must be performed only after
+            # the UI initialization. We do this through Qt's singleShot of this function.
+            try:
+                self.load_configuration_from_file(None)
+                self.run_thread(self, self.get_project_config_params_thread, (False,))
+                h = self.btnNewMn.height()
+                self.btnMoveMnUp.setFixedHeight(h)
+                self.wdg_masternode.masternode_data_to_ui()  # we need this to set controls' proper heights in
+                                                             # the masternode details widget
+            except Exception as e:
+                log.exception(str(e))
+                WndUtils.error_msg(str(e))
+
+        QTimer.singleShot(10, load_initial_config)
 
     def closeEvent(self, event):
         app_cache.save_window_size(self)
@@ -259,11 +272,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.action_open_log_file.setText('Open log file (%s)' % self.app_config.log_file)
         self.update_edit_controls_state()
 
-    def load_configuration_from_file(self, file_name: str, ask_save_changes = True,
+    def load_configuration_from_file(self, file_name: Optional[str], ask_save_changes = True,
                                      update_current_file_name = True) -> None:
         """
         Load configuration from a file.
-        :param file_name: A name of the configuration file to be loaded into the application.
+        :param file_name: Name of the configuration file to be loaded into the application. If the value is Noney, then
+          the default file name will be used (the last file opened).
         """
         if self.app_config.is_modified() and ask_save_changes:
             ret = self.query_dlg('Current configuration has been modified. Save?',
@@ -280,6 +294,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             dash_network_sav = self.app_config.dash_network
             self.app_config.read_from_file(hw_session=self.hw_session, file_name=file_name,
                                            update_current_file_name=update_current_file_name)
+            if not self.dashd_intf.initialized:
+                self.dashd_intf.initialize(self.app_config)
             self.editing_enabled = False
             self.configuration_to_ui()
             self.dashd_intf.reload_configuration()
@@ -629,7 +645,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         except Exception:
             logging.exception('Exception occurred while loading/processing the project remote configuration')
 
-    def display_masternode_config(self, set_mn_list_index):
+    def display_masternode_config(self, set_mn_list_index: bool):
         if self.cur_masternode:
             if set_mn_list_index:
                 self.cboMasternodes.setCurrentIndex(self.app_config.masternodes.index(self.cur_masternode))

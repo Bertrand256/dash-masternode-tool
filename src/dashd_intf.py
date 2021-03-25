@@ -574,6 +574,7 @@ class DashdInterface(WndUtils):
                  on_connection_disconnected_callback=None):
         WndUtils.__init__(self, app_config=None)
 
+        self.initialized = False
         self.app_config = None
         self.db_intf = None
         self.connections = []
@@ -625,6 +626,7 @@ class DashdInterface(WndUtils):
 
         if not for_testing_connections_only:
             self.load_data_from_db_cache()
+        self.initialized = True
 
     def load_data_from_db_cache(self):
         self.masternodes.clear()

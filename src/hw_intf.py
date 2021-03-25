@@ -863,8 +863,7 @@ class HWDevices(QObject):
             encrypt, (), True, force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_device.hw_client),
             show_window_delay_ms=200)
 
-
-    @control_hw_call
+    @staticmethod
     def hw_decrypt_value(hw_device: HWDevice, bip32_path_n: List[int], label: str,
                          value: bytes, ask_on_encrypt=True, ask_on_decrypt=True) -> Tuple[bytearray, bytearray]:
         """

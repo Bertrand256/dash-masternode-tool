@@ -41,8 +41,8 @@ import default_config
 import app_utils
 from common import CancelException
 from db_intf import DBCache
-from encrypted_files import read_file_encrypted, write_file_encrypted, NotConnectedToHardwareWallet
-from hw_common import HWType
+from encrypted_files import read_file_encrypted, write_file_encrypted
+from hw_common import HWType, HWNotConnectedException
 from wnd_utils import WndUtils
 
 
@@ -179,7 +179,7 @@ class AppConfig(QObject):
         self.log_dir = ''
         self.log_file = ''
         self.log_level_str = ''
-        self.db_intf = None
+        self.db_intf: Optional[DBCache] = None
         self.db_cache_file_name = ''
         self.cfg_backup_dir = ''
         self.app_last_version = ''
@@ -430,7 +430,8 @@ class AppConfig(QObject):
         self.save_cache_settings()
         self.save_loggers_config()
         app_cache.finish()
-        self.db_intf.close()
+        if self.db_intf:
+            self.db_intf.close()
 
     def save_cache_settings(self):
         if self.feature_register_dmn_automatic.get_value() is not None:
@@ -610,12 +611,12 @@ class AppConfig(QObject):
                         for data_chunk in read_file_encrypted(file_name, ret_info, hw_session):
                             mem_file += data_chunk.decode('utf-8')
                         break
-                    except NotConnectedToHardwareWallet as e:
+                    except HWNotConnectedException as e:
                         ret = WndUtils.query_dlg(
                             'Configuration file read error: ' + str(e) + '\n\n' +
-                            'Click \'Retry\' to try again, \'Restore Defaults\' to continue with default '
-                            'configuration or \'Cancel\' to exit.',
-                            buttons=QMessageBox.Retry | QMessageBox.Cancel | QMessageBox.RestoreDefaults,
+                            'Click \'Retry\' to try again, \'Open\' to choose another configuration file or '
+                            '\'Cancel\' to exit.',
+                            buttons=QMessageBox.Retry | QMessageBox.Cancel | QMessageBox.Open,
                             default_button=QMessageBox.Yes, icon=QMessageBox.Critical)
 
                         if ret == QMessageBox.Cancel:
@@ -634,7 +635,7 @@ class AppConfig(QObject):
                                                     update_current_file_name=update_current_file_name)
                                 return
                             else:
-                                raise Exception('Couldn\'t read the configuration. Exiting...')
+                                raise CancelException('Cancelled')
 
                 config_file_encrypted = ret_info.get('encrypted', False)
 
@@ -851,11 +852,10 @@ class AppConfig(QObject):
                 logging.exception('Read configuration error:')
                 errors_while_reading = True
                 self.hw_type = hw_type_sav
-                ret =  WndUtils.query_dlg('Configuration file read error: ' + str(e) + '\n\n' +
-                                         'Click \'Restore Defaults\' to continue with default configuration,'
-                                         '\'Open\' to choose another configuration file or \'\Cancel\' to exit.',
-                                          buttons=QMessageBox.RestoreDefaults | QMessageBox.Cancel | QMessageBox.Open,
-                                          default_button=QMessageBox.Yes, icon=QMessageBox.Critical)
+                ret = WndUtils.query_dlg('Configuration file read error: ' + str(e) + '\n\n' +
+                                         'Click \'Open\' to choose another configuration file or \'\Cancel\' to exit.',
+                                          buttons = QMessageBox.Cancel | QMessageBox.Open,
+                                          default_button = QMessageBox.Yes, icon=QMessageBox.Critical)
                 if ret == QMessageBox.Cancel:
                     raise CancelException('Couldn\'t read configuration file.')
                 elif ret == QMessageBox.Open:
@@ -869,7 +869,7 @@ class AppConfig(QObject):
                         self.read_from_file(hw_session, file_name)
                         return
                     else:
-                        raise Exception('Couldn\'t read the configuration. Exiting...')
+                        raise CancelException('Cancelled')
                 if update_current_file_name:
                     self.app_config_file_name = None
                 self.modified = True

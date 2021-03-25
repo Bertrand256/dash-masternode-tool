@@ -12,17 +12,12 @@ from app_defs import get_note_url
 from app_utils import SHA256, write_bytes_buf, write_int_list_buf, read_bytes_from_file, read_int_list_from_file
 from common import CancelException
 from dash_utils import num_to_varint, read_varint_from_file, bip32_path_n_to_string
-from hw_common import HWType
+from hw_common import HWType, HWNotConnectedException
 from hw_intf import hw_sign_message, get_address_and_pubkey, HwSessionInfo
 from wnd_utils import WndUtils
 
 DMT_ENCRYPTED_DATA_PREFIX = b'DMTEF'
 ENC_FILE_BLOCK_SIZE = 1000000
-
-
-class NotConnectedToHardwareWallet(Exception):
-    def __init__(self, *args, **kwargs):
-        Exception.__init__(self, *args, *kwargs)
 
 
 def prepare_hw_encryption_attrs(hw_session: HwSessionInfo, label: str) -> \
@@ -153,7 +148,7 @@ def read_file_encrypted(file_name: str, ret_attrs: dict, hw_session: HwSessionIn
                             else:
                                 hw_session.set_hw_types_allowed((hw_type,))
                             if not hw_session.connect_hardware_wallet():
-                                raise NotConnectedToHardwareWallet(
+                                raise HWNotConnectedException(
                                     f'This file was encrypted with {HWType.get_desc(hw_type)} hardware wallet, '
                                     f'which has to be connected to the computer decrypt the file.')
 
@@ -166,7 +161,7 @@ def read_file_encrypted(file_name: str, ret_attrs: dict, hw_session: HwSessionIn
 
                         while True:
                             if not hw_session.hw_client:
-                                raise NotConnectedToHardwareWallet(
+                                raise HWNotConnectedException(
                                     f'This file was encrypted with {HWType.get_desc(hw_type)} hardware wallet, '
                                     f'which has to be connected to the computer decrypt the file.')
 
