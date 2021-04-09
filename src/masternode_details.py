@@ -752,8 +752,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             if self.main_dlg.connect_hardware_wallet():
                 try:
                     hw_session = self.main_dlg.hw_session
-                    addr = hw_intf.get_address(hw_session, self.main_dlg.rt_data,
-                                               self.masternode.collateral_bip32_path, show_display=True)
+                    addr = hw_intf.get_address(hw_session, self.masternode.collateral_bip32_path, show_display=True)
                     if addr:
                         self.masternode.collateral_address = addr.strip()
                         self.edtCollateralAddress.setText(addr.strip())
@@ -769,7 +768,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 if self.main_dlg.connect_hardware_wallet():
                     hw_session = self.main_dlg.hw_session
                     addr = hw_intf.get_address(
-                        hw_session, self.main_dlg.rt_data, self.masternode.collateral_bip32_path, True,
+                        hw_session, self.masternode.collateral_bip32_path, True,
                         f'Displaying address for the BIP32 path <b>{self.masternode.collateral_bip32_path}</b>.'
                         f'<br>Click the confirmation button on your device.')
             except CancelException:

@@ -931,6 +931,14 @@ class DashdInterface(WndUtils):
             raise Exception('Not connected')
 
     @control_rpc_call
+    def getnetworkinfo(self):
+        if self.open():
+            info = self.proxy.getnetworkinfo()
+            return info
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
     def issynchronized(self):
         if self.open():
             try:

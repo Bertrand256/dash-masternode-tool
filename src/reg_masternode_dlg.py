@@ -59,7 +59,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.main_dlg = main_dlg
         self.masternode = masternode
         self.app_config = config
-        self.dashd_intf:DashdInterface = dashd_intf
+        self.dashd_intf: DashdInterface = dashd_intf
+        self.v016_network: bool = False
         self.on_proregtx_success_callback = on_proregtx_success_callback
         self.style = '<style>.info{color:darkblue} .warning{color:#ff6600} .error{background-color:red;color:white}</style>'
         self.operator_reward_saved = None
@@ -123,6 +124,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.chbWholeMNReward.setChecked(True)
         self.lblProtxSummary2.linkActivated.connect(self.save_summary_info)
         self.lblCollateralTxMsg.sizePolicy().setHeightForWidth(True)
+        self.get_network_info()
         self.prepare_keys()
         self.btnClose.hide()
         WndUtils.set_icon(self, self.btnManualFundingAddressPaste, 'content-paste@16px.png')
@@ -275,6 +277,18 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         else:
             tt = 'Change input type to private key'
         self.lblVotingKey.setToolTip(tt)
+
+    def get_network_info(self):
+        try:
+            info = self.dashd_intf.getnetworkinfo()
+            ver = info.get('version', 0)
+            if ver < 170000:
+                self.v016_network = True
+            else:
+                self.v016_network = False
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
+            QTimer.singleShot(100, self.close)
 
     def prepare_keys(self):
         gen_owner = False
@@ -987,8 +1001,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
         if self.dmn_collateral_tx_address_path:
             try:
-                addr = hw_intf.get_address(self.main_dlg.hw_session, self.main_dlg.rt_data,
-                                           self.dmn_collateral_tx_address_path)
+                addr = hw_intf.get_address(self.main_dlg.hw_session, self.dmn_collateral_tx_address_path)
             except CancelException:
                 return False
 
@@ -1109,21 +1122,33 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
     @pyqtSlot(bool)
     def on_btnContinue_clicked(self, active):
-        self.next_step()
+        try:
+            self.next_step()
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnBack_clicked(self, active):
-        self.previous_step()
+        try:
+            self.previous_step()
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_rbDMTDashNodeType_toggled(self, active):
-        if active:
-            self.upd_node_type_info()
+        try:
+            if active:
+                self.upd_node_type_info()
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_rbOwnDashNodeType_toggled(self, active):
-        if active:
-            self.upd_node_type_info()
+        try:
+            if active:
+                self.upd_node_type_info()
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     def sign_protx_message_with_hw(self, msg_to_sign) -> str:
         sig = WndUtils.call_in_main_thread(
@@ -1168,7 +1193,6 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             def call():
                 self.next_step()
             WndUtils.call_in_main_thread(call)
-
 
         try:
             try:
@@ -1219,7 +1243,10 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 set_text(self.lblProtxTransaction1, '<b>1. Preparing a ProRegTx transaction on a remote node...</b>')
 
                 if self.dmn_owner_key_type == InputKeyType.PRIVATE:
-                    owner_key = self.dmn_owner_privkey
+                    if self.v016_network:
+                        owner_key = self.dmn_owner_privkey
+                    else:
+                        owner_key = wif_privkey_to_address(self.dmn_owner_privkey, self.app_config.dash_network)
                 else:
                     owner_key = self.dmn_owner_address
 
@@ -1245,6 +1272,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                     self.lblProtxTransaction1,
                     '<b>1. Preparing a ProRegTx transaction on a remote node.</b> <span style="color:red">Failed '
                     f'with the following error: {str(e)}</span>')
+                log.exception(str(e))
                 return
 
             set_text(self.lblProtxTransaction2, '<b>Message to be signed:</b><br><code>' + msg_to_sign + '</code>')
@@ -1330,7 +1358,10 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             valid = validate_address(addr, self.app_config.dash_network)
             if valid:
                 if self.dmn_owner_key_type == InputKeyType.PRIVATE:
-                    owner_key = self.dmn_owner_privkey
+                    if self.v016_network:
+                        owner_key = self.dmn_owner_privkey
+                    else:
+                        owner_key = wif_privkey_to_address(self.dmn_owner_privkey, self.app_config.dash_network)
                 else:
                     owner_key = self.dmn_owner_address
 
