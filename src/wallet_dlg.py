@@ -596,7 +596,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                     addr_hw = bip32_to_address.get(bip32_path, None)
                     if not addr_hw:
-                        addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, self.rt_data, bip32_path)
+                        addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, bip32_path)
                         bip32_to_address[bip32_path] = addr_hw
 
                     if addr_hw != utxo.address:
@@ -653,7 +653,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                         try:
                             serialized_tx, amount_to_send = self.hw_call_wrapper(hw_intf.sign_tx)\
-                                (self.hw_session, self.rt_data, tx_inputs, tx_outputs, fee)
+                                (self.hw_session, tx_inputs, tx_outputs, fee)
                         except HWNotConnectedException:
                             raise
                         except CancelException:
@@ -786,7 +786,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def show_address_on_hw(self, addr: Bip44AddressType):
         try:
             _a = self.hw_call_wrapper(hw_intf.get_address)\
-                (self.hw_session, self.rt_data, addr.bip32_path, True,
+                (self.hw_session, addr.bip32_path, True,
                  f'Displaying address <b>{addr.address}</b>.<br>Click the confirmation button on your device.')
             if _a != addr.address:
                 raise Exception('Address inconsistency between db cache and device')
@@ -812,7 +812,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 if addr:
                     # for security purposes get the address from hardware wallet and compare it to the one
                     # read from db cache
-                    addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, self.rt_data, addr.bip32_path, False)
+                    addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, addr.bip32_path, False)
                     if addr_hw != addr.address:
                         self.error_msg('Inconsistency between the wallet cache and the hardware wallet data occurred. '
                                       'Please clear the wallet cache.')
@@ -1583,8 +1583,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                         # for security reasons get the address from hardware wallet and compare it to the one
                         # read from db cache
-                        addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, self.rt_data,
-                                                                            addr.bip32_path, False)
+                        addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, addr.bip32_path, False)
                         if addr_hw != addr.address:
                             addr_str = 'Address inconsistency. Please clear the wallet cache.'
 

@@ -912,12 +912,12 @@ class HwSessionInfo(HWSessionBase):
     sig_hw_disconnected = QtCore.pyqtSignal()
     sig_hw_connection_error = QtCore.pyqtSignal(str)
 
-    def __init__(self, main_dlg, app_config: 'AppConfig', rt_data: AppRuntimeData):
+    def __init__(self, main_dlg, app_config: 'AppConfig', runtime_data: AppRuntimeData):
         super().__init__()
 
         self.__locks = {}  # key: hw_client, value: EnhRLock
         self.__main_dlg = main_dlg
-        self.__rt_data = rt_data
+        self.__runtime_data: AppRuntimeData = runtime_data
         self.__base_bip32_path: str = ''
         self.__base_public_key: bytes = b''
         self.__hd_tree_ident: str = ''
@@ -949,6 +949,10 @@ class HwSessionInfo(HWSessionBase):
         if hw_device:
             return hw_device.hw_client
         return None
+
+    @property
+    def runtime_data(self) -> AppRuntimeData:
+        return self.__runtime_data
 
     @property
     def hw_type(self) -> Optional[HWType]:
@@ -1011,7 +1015,7 @@ class HwSessionInfo(HWSessionBase):
                 pk = get_public_node_fun_(path_n_).node.public_key
                 return pk
 
-            path_ = dash_utils.get_default_bip32_base_path(self.__rt_data.dash_network)
+            path_ = dash_utils.get_default_bip32_base_path(self.__runtime_data.dash_network)
             path_n = dash_utils.bip32_path_string_to_n(path_)
 
             # show message for Trezor device while waiting for the user to choose the passphrase input method
@@ -1048,7 +1052,7 @@ class HwSessionInfo(HWSessionBase):
                     raise HWPinException(e.args[1])
 
             elif hw_device.hw_type == HWType.ledger_nano:
-                path = dash_utils.get_default_bip32_base_path(self.__rt_data.dash_network)
+                path = dash_utils.get_default_bip32_base_path(self.__runtime_data.dash_network)
                 ap = ledger.get_address_and_pubkey(self, path)
                 self.set_base_info(path, ap['publicKey'])
 
@@ -1089,25 +1093,25 @@ class HwSessionInfo(HWSessionBase):
                 try:
                     self.initiate_hw_session()
 
-                    if self.__rt_data.dash_network == 'TESTNET':
+                    if self.__runtime_data.dash_network == 'TESTNET':
                         # check if Dash testnet is supported by this hardware wallet
                         found_testnet_support = False
                         if self.hw_type in (HWType.trezor, HWType.keepkey):
                             try:
-                                path = dash_utils.get_default_bip32_base_path(self.__rt_data.dash_network)
+                                path = dash_utils.get_default_bip32_base_path(self.__runtime_data.dash_network)
                                 path += "/0'/0/0"
                                 path_n = dash_utils.bip32_path_string_to_n(path)
-                                addr = get_address(self, self.__rt_data, path_n, False)
-                                if addr and dash_utils.validate_address(addr, self.__rt_data.dash_network):
+                                addr = get_address(self, path_n, False)
+                                if addr and dash_utils.validate_address(addr, self.__runtime_data.dash_network):
                                     found_testnet_support = True
                             except Exception as e:
                                 if str(e).find('Invalid coin name') < 0:
                                     raise
 
                         elif self.hw_type == HWType.ledger_nano:
-                            addr = get_address(self, self.__rt_data,
-                                               dash_utils.get_default_bip32_path(self.__rt_data.dash_network))
-                            if dash_utils.validate_address(addr, self.__rt_data.dash_network):
+                            addr = get_address(self, dash_utils.get_default_bip32_path(
+                                self.__runtime_data.dash_network))
+                            if dash_utils.validate_address(addr, self.__runtime_data.dash_network):
                                 found_testnet_support = False
 
                         if not found_testnet_support:
@@ -1371,8 +1375,7 @@ class SelectHWDeviceDlg(QDialog):
 
 
 @control_hw_call
-def sign_tx(hw_session: HwSessionInfo, rt_data: AppRuntimeData, utxos_to_spend: List[UtxoType],
-            tx_outputs: List[TxOutputType], tx_fee):
+def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[UtxoType], tx_outputs: List[TxOutputType], tx_fee):
     """
     Creates a signed transaction.
     :param hw_session:
@@ -1390,15 +1393,15 @@ def sign_tx(hw_session: HwSessionInfo, rt_data: AppRuntimeData, utxos_to_spend: 
 
         if hw_session.hw_type == HWType.trezor:
 
-            return trezor.sign_tx(hw_session, rt_data, utxos_to_spend, tx_outputs, tx_fee)
+            return trezor.sign_tx(hw_session, hw_session.runtime_data, utxos_to_spend, tx_outputs, tx_fee)
 
         elif hw_session.hw_type == HWType.keepkey:
 
-            return keepkey.sign_tx(hw_session, rt_data, utxos_to_spend, tx_outputs, tx_fee)
+            return keepkey.sign_tx(hw_session, hw_session.runtime_data, utxos_to_spend, tx_outputs, tx_fee)
 
         elif hw_session.hw_type == HWType.ledger_nano:
 
-            return ledger.sign_tx(hw_session, rt_data, utxos_to_spend, tx_outputs, tx_fee)
+            return ledger.sign_tx(hw_session, hw_session.runtime_data, utxos_to_spend, tx_outputs, tx_fee)
 
         else:
             logging.error('Invalid HW type: ' + str(hw_session.hw_type))
@@ -1446,10 +1449,10 @@ def hw_sign_message(hw_session: HwSessionInfo, hw_coin_name: str, bip32path, mes
 
 
 @control_hw_call
-def get_address(hw_session: HwSessionInfo, rt_data: AppRuntimeData, bip32_path: str, show_display: bool = False,
+def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool = False,
                 message_to_display: str = None):
     def _get_address(ctrl):
-        nonlocal hw_session, rt_data, bip32_path, show_display, message_to_display
+        nonlocal hw_session, bip32_path, show_display, message_to_display
         if ctrl:
             ctrl.dlg_config(dlg_title=DEFAULT_HW_BUSY_TITLE, show_progress_bar=False)
             if message_to_display:
@@ -1470,7 +1473,8 @@ def get_address(hw_session: HwSessionInfo, rt_data: AppRuntimeData, bip32_path: 
                 try:
                     if isinstance(bip32_path, str):
                         bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
-                    ret = trezorlib.btc.get_address(client, rt_data.hw_coin_name, bip32_path, show_display)
+                    ret = trezorlib.btc.get_address(client, hw_session.runtime_data.hw_coin_name, bip32_path,
+                                                    show_display)
                     return ret
                 except (CancelException, trezorlib.exceptions.Cancelled):
                     raise CancelException()
@@ -1480,7 +1484,7 @@ def get_address(hw_session: HwSessionInfo, rt_data: AppRuntimeData, bip32_path: 
                 try:
                     if isinstance(bip32_path, str):
                         bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
-                    return client.get_address(rt_data.hw_coin_name, bip32_path, show_display)
+                    return client.get_address(hw_session.runtime_data.hw_coin_name, bip32_path, show_display)
                 except keepkeylib.client.CallException as e:
                     if isinstance(e.args, tuple) and len(e.args) >= 2 and isinstance(e.args[1], str) and \
                             e.args[1].find('cancel') >= 0:
