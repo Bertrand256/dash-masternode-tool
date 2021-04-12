@@ -545,7 +545,6 @@ def json_cache_wrapper(func, intf, cache_file_ident, skip_cache=False,
             try:  # looking into cache first
                 with open(cache_file) as fp:
                     j = json.load(fp, parse_float=decimal.Decimal)
-                log.debug('Loaded data from existing cache file: ' + cache_file)
 
                 if accept_cache_data_fun is None or accept_cache_data_fun(j):
                     return j

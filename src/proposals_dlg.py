@@ -4,6 +4,7 @@
 # Created on: 2017-05
 
 import datetime
+import hashlib
 import json
 import logging
 import sys
@@ -130,13 +131,11 @@ class Proposal(AttrsProtected):
     def __init__(self, data_model, vote_columns_by_mn_ident, next_superblock_time,
                  user_masternodes: List[VotingMasternode],
                  get_governance_info_fun: Callable,
-                 find_prev_superblock: Callable,
-                 find_next_superblock: Callable):
+                 find_superblocks_for_timestamp: Callable):
         super().__init__()
         self.visible = True
         self.get_governance_info: Callable = get_governance_info_fun
-        self.find_prev_superblock = find_prev_superblock
-        self.find_next_superblock = find_next_superblock
+        self.find_superblocks_for_timestamp = find_superblocks_for_timestamp
         self.budget_cycle_hours: Optional[int] = None
         self.data_model: ExtSortFilterItemModel = data_model
         self.values: Dict[ProposalColumn, Any] = {}  # dictionary of proposal values (key: ProposalColumn)
@@ -229,75 +228,78 @@ class Proposal(AttrsProtected):
 
     def apply_values(self, masternodes, last_superblock_time, next_superblock_datetime):
         """ Calculate auto-calculated columns (eg. voting_in_progress and voting_status values). """
+        try:
+            gi = self.get_governance_info()
+            cycle_blocks = gi.get('superblockcycle', 16616)
+            last_superblock = gi.get('lastsuperblock', 0)
+            cycle_seconds = cycle_blocks * 2.5 * 60
+            self.budget_cycle_hours = round(cycle_blocks * 2.5)
 
-        gi = self.get_governance_info()
-        cycle_blocks = gi.get('superblockcycle', 16616)
-        last_superblock = gi.get('lastsuperblock', 0)
-        cycle_seconds = cycle_blocks * 2.5 * 60
-        self.budget_cycle_hours = round(cycle_blocks * 2.5)
-
-        payment_start = self.get_value('payment_start')
-        if payment_start:
-            payment_start = payment_start.timestamp()
-        else:
-            payment_start = None
-        payment_end = self.get_value('payment_end')
-        if payment_end:
-            payment_end = payment_end.timestamp()
-        else:
-            payment_end = None
-        funding_enabled = self.get_value('fCachedFunding')
-
-        if payment_start and payment_end and isinstance(last_superblock_time, (int, float)) \
-                and isinstance(next_superblock_datetime, (int, float)):
-            self.voting_in_progress = (payment_start > last_superblock_time) or \
-                                      (payment_end > next_superblock_datetime)
-        else:
-            self.voting_in_progress = False
-
-        start_sb = self.find_next_superblock(payment_start)
-        end_sb = self.find_prev_superblock(payment_end)
-
-        payment_cycles = int((end_sb - start_sb) / cycle_blocks) + 1
-
-        # calculate number of payment-months that passed already for the proposal
-        if start_sb > last_superblock:
-            cur_cycle = 0
-        else:
-            cur_cycle = int(((last_superblock - start_sb) / cycle_blocks)) + 1
-
-        self.set_value('cycles', payment_cycles)
-        self.set_value('current_cycle', cur_cycle)
-        amt = self.get_value('payment_amount')
-        if amt is not None:
-            self.set_value('payment_amount_total', amt * payment_cycles)
-
-        if not self.get_value('title'):
-            # if title value is not set (it's an external attribute, from dashcentral) then copy value from the
-            # name column
-            self.set_value('title', self.get_value('name'))
-
-        abs_yes_count = self.get_value('absolute_yes_count')
-        mns_count = 0
-        for mn in masternodes:
-            if mn.status in ('ENABLED', 'PRE_ENABLED'):
-                mns_count += 1
-        if self.voting_in_progress:
-            if abs_yes_count >= mns_count * 0.1:
-                self.voting_status = 1  # will be funded
-                self.set_value('voting_status_caption', 'Passing +%d (%d of %d needed)' %
-                               (abs_yes_count - int(mns_count * 0.1), abs_yes_count, int(mns_count * 0.1)))
+            payment_start = self.get_value('payment_start')
+            if payment_start:
+                payment_start = payment_start.timestamp()
             else:
-                self.voting_status = 2  # needs additional votes
-                self.set_value('voting_status_caption', 'Needs additional %d votes' % (int(mns_count * 0.1) -
-                                                                                       abs_yes_count))
-        else:
-            if funding_enabled:
-                self.voting_status = 3  # funded
-                self.set_value('voting_status_caption', f'Passed with funding ({abs_yes_count} abs. yes votes)')
+                payment_start = None
+            payment_end = self.get_value('payment_end')
+            if payment_end:
+                payment_end = payment_end.timestamp()
             else:
-                self.voting_status = 4  # not funded
-                self.set_value('voting_status_caption', f'Not funded ({abs_yes_count} abs. yes votes)')
+                payment_end = None
+            funding_enabled = self.get_value('fCachedFunding')
+
+            if payment_start and payment_end and isinstance(last_superblock_time, (int, float)) \
+                    and isinstance(next_superblock_datetime, (int, float)):
+                self.voting_in_progress = (payment_start > last_superblock_time) or \
+                                          (payment_end > next_superblock_datetime)
+            else:
+                self.voting_in_progress = False
+
+            _, start_sb = self.find_superblocks_for_timestamp(payment_start)
+            end_sb, _ = self.find_superblocks_for_timestamp(payment_end)
+
+            payment_cycles = int((end_sb - start_sb) / cycle_blocks) + 1
+
+            # calculate number of payment-months that passed already for the proposal
+            if start_sb > last_superblock:
+                cur_cycle = 0
+            else:
+                cur_cycle = int(((last_superblock - start_sb) / cycle_blocks)) + 1
+
+            self.set_value('cycles', payment_cycles)
+            self.set_value('current_cycle', cur_cycle)
+            amt = self.get_value('payment_amount')
+            if amt is not None:
+                self.set_value('payment_amount_total', amt * payment_cycles)
+
+            if not self.get_value('title'):
+                # if title value is not set (it's an external attribute, from dashcentral) then copy value from the
+                # name column
+                self.set_value('title', self.get_value('name'))
+
+            abs_yes_count = self.get_value('absolute_yes_count')
+            mns_count = 0
+            for mn in masternodes:
+                if mn.status in ('ENABLED', 'PRE_ENABLED'):
+                    mns_count += 1
+            if self.voting_in_progress:
+                if abs_yes_count >= mns_count * 0.1:
+                    self.voting_status = 1  # will be funded
+                    self.set_value('voting_status_caption', 'Passing +%d (%d of %d needed)' %
+                                   (abs_yes_count - int(mns_count * 0.1), abs_yes_count, int(mns_count * 0.1)))
+                else:
+                    self.voting_status = 2  # needs additional votes
+                    self.set_value('voting_status_caption', 'Needs additional %d votes' % (int(mns_count * 0.1) -
+                                                                                           abs_yes_count))
+            else:
+                if funding_enabled:
+                    self.voting_status = 3  # funded
+                    self.set_value('voting_status_caption', f'Passed with funding ({abs_yes_count} abs. yes votes)')
+                else:
+                    self.voting_status = 4  # not funded
+                    self.set_value('voting_status_caption', f'Not funded ({abs_yes_count} abs. yes votes)')
+
+        except Exception as e:
+            log.exception(str(e))
 
     def not_voted_by_user(self):
         for umn in self.user_masternodes:
@@ -330,6 +332,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.masternodes: List[Masternode] = []
         self.masternodes_by_ident = {}
         self.initial_messages = []
+        self.block_interval_seconds = 2.5 * 60
 
         self.masternodes_cfg: List[MasternodeConfig] = []
         pkeys = []
@@ -370,7 +373,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.budget_cycle_days = 28.8
         self.cur_block_height = 0
         self.cur_block_timestamp = 0
-        self.superblock_cycle = None
+        self.superblock_cycle_blocks = None
         self.last_superblock = None
         self.next_superblock = None
         self.last_superblock_time = None
@@ -884,7 +887,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         is_new = True
                         prop = Proposal(self.propsModel, self.vote_columns_by_mn_ident, self.next_superblock_time,
                                         self.users_masternodes, self.get_governance_info,
-                                        self.find_prev_superblock, self.find_next_superblock)
+                                        self.find_superblocks_for_timestamp)
                     else:
                         is_new = False
                     prop.marker = True
@@ -1085,8 +1088,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             # get the date-time of the last superblock and calculate the date-time of the next one
             self.governanceinfo = self.dashd_intf.getgovernanceinfo()
-            self.superblock_cycle = self.governanceinfo.get('superblockcycle', 16616)
-            self.budget_cycle_days = round(self.superblock_cycle * 2.5 / 60 /24, 3)
+            self.superblock_cycle_blocks = self.governanceinfo.get('superblockcycle', 16616)
+            self.budget_cycle_days = round(self.superblock_cycle_blocks * 2.5 / 60 / 24, 3)
             self.propsModel.set_budget_cycle_days(self.budget_cycle_days)
 
             self.last_superblock = self.governanceinfo.get('lastsuperblock')
@@ -1126,45 +1129,62 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.block_timestamps[superblock] = ts
         return ts
 
-    def find_prev_superblock(self, timestamp: int):
-        if timestamp < self.last_superblock_time:
-            superblock = self.last_superblock
-            while True:
-                prev_sb_ts = self.get_block_timestamp(superblock - self.superblock_cycle)
-                if timestamp > prev_sb_ts:
-                    return superblock - self.superblock_cycle
-                else:
-                    superblock -= self.superblock_cycle
-        else:
-            superblock = self.last_superblock
-            sb_ts = self.last_superblock_time
-            while True:
-                if sb_ts + (self.superblock_cycle * 2.5 * 60) > timestamp:
-                    return superblock
-                else:
-                    superblock += self.superblock_cycle
-                    sb_ts += (self.superblock_cycle * 2.5 * 60)
+    def find_superblocks_for_timestamp(self, timestamp: int) -> Tuple[int, int]:
+        """The method looks for two consecutive superblocks, the first with a smaller timestamp than given in
+        the argument, the second with a greater."""
 
-    def find_next_superblock(self, timestamp: int):
-        if timestamp < self.last_superblock_time:
-            superblock = self.last_superblock
-            while True:
-                if self.finishing:
-                    raise CloseDialogException
-                prev_sb_ts = self.get_block_timestamp(superblock - self.superblock_cycle)
-                if timestamp > prev_sb_ts:
-                    return superblock
-                else:
-                    superblock -= self.superblock_cycle
+        def get_next_sb_ts(sb_nr: int) -> int:
+            if sb_nr > self.last_superblock:
+                sb_timestamp = sb_before_ts + (self.superblock_cycle_blocks * self.block_interval_seconds)
+            else:
+                sb_timestamp = self.get_block_timestamp(sb_nr)
+            return sb_timestamp
+
+        if timestamp >= self.last_superblock_time:
+            # the timestamp checked is in the future relative to the last superblock - estimate what would
+            # be the last superblock before that time
+            sb_cycles_diff = int((timestamp - self.last_superblock_time) /
+                                 (self.block_interval_seconds * self.superblock_cycle_blocks))
+            sb_before = self.last_superblock + (sb_cycles_diff * self.superblock_cycle_blocks)
+            sb_after = sb_before + self.superblock_cycle_blocks
+
         else:
-            superblock = self.last_superblock
-            sb_ts = self.last_superblock_time
+            sb_cycles_diff = int((self.last_superblock_time - timestamp) /
+                                 (self.block_interval_seconds * self.superblock_cycle_blocks)) + 1
+
+            # look for the last superblock before timestamp
+            sb_before = self.last_superblock - (sb_cycles_diff * self.superblock_cycle_blocks)
+            sb_before_ts = self.get_block_timestamp(sb_before)
+
             while True:
-                if sb_ts + (self.superblock_cycle * 2.5 * 60) > timestamp:
-                    return superblock + self.superblock_cycle
-                else:
-                    superblock += self.superblock_cycle
-                    sb_ts += (self.superblock_cycle * 2.5 * 60)
+                # move with superblocks back in history until the sb timestamp is less than the 'timestamp' value
+                while sb_before_ts > timestamp:
+                    diff_ts = sb_before_ts - timestamp
+                    sb_cycles_diff = int(diff_ts / (self.block_interval_seconds * self.superblock_cycle_blocks))
+                    sb_cycles_diff = int(sb_cycles_diff / 2)
+                    if sb_cycles_diff == 0:
+                        sb_cycles_diff = 1
+
+                    sb_before = sb_before - (sb_cycles_diff * self.superblock_cycle_blocks)
+                    sb_before_ts = self.get_block_timestamp(sb_before)
+
+                sb_after = sb_before + self.superblock_cycle_blocks
+                sb_after_ts = get_next_sb_ts(sb_after)
+                if sb_before_ts <= timestamp <= sb_after_ts:
+                    break
+
+                # moved too far in history, let's move forward
+                while sb_before_ts < timestamp:
+                    diff_ts = timestamp - sb_before_ts
+                    sb_cycles_diff = int(diff_ts / (self.block_interval_seconds * self.superblock_cycle_blocks))
+                    sb_cycles_diff = int(sb_cycles_diff / 2)
+                    if sb_cycles_diff == 0:
+                        sb_cycles_diff = 1
+
+                    sb_before = sb_before + (sb_cycles_diff * self.superblock_cycle_blocks)
+                    sb_before_ts = self.get_block_timestamp(sb_before)
+
+        return sb_before, sb_after
 
     def refresh_filter(self):
         self.propsModel.invalidateFilter()
@@ -1272,7 +1292,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 prop = Proposal(self.propsModel, self.vote_columns_by_mn_ident,
                                                 self.next_superblock_time, self.users_masternodes,
                                                 self.get_governance_info,
-                                                self.find_prev_superblock, self.find_next_superblock)
+                                                self.find_superblocks_for_timestamp)
                                 prop.set_value('name', row[0])
                                 prop.set_value('payment_start', datetime.datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S'))
                                 prop.set_value('payment_end',  datetime.datetime.strptime(row[2], '%Y-%m-%d %H:%M:%S'))
@@ -1311,10 +1331,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                         # the proposal title changed
                                         prop.ext_attributes_loaded = False
 
-                                # todo: optimize; for very old proposals existing in the cache, especially for testnet,
-                                #  apply_values may have to fetch a large number of transactions from the network (to
-                                #  calculate the number of payment cycles that apply to the proposal), which can
-                                #  significantly slowdown the display of the list of proposals
                                 prop.apply_values(self.masternodes, self.last_superblock_time,
                                                   self.next_superblock_time)
                                 self.proposals.append(prop)
@@ -2674,10 +2690,13 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                     log.info('Vote message to sign: ' + serialize_for_sig)
                     step = 2
-                    vote_sig = dash_utils.ecdsa_sign(
-                        serialize_for_sig,
-                        mn_info.masternode_config.get_current_key_for_voting(self.app_config, self.dashd_intf),
-                        self.app_config.dash_network)
+                    vote_key = mn_info.masternode_config.get_current_key_for_voting(self.app_config, self.dashd_intf)
+
+                    if self.app_config.is_testnet:
+                        # todo: support for testnet voting
+                        vote_sig = dash_utils.ecdsa_sign(serialize_for_sig, vote_key, self.app_config.dash_network)
+                    else:
+                        vote_sig = dash_utils.ecdsa_sign(serialize_for_sig, vote_key, self.app_config.dash_network)
 
                     step = 3
                     v_res = self.dashd_intf.voteraw(
