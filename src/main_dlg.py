@@ -37,7 +37,6 @@ import about_dlg
 import app_cache
 import wallet_dlg
 import app_utils
-from hw_tools_dlg import HwToolsDlg
 from masternode_details import WdgMasternodeDetails
 from proposals_dlg import ProposalsDlg
 from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
@@ -141,10 +140,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         WndUtils.set_icon(self, self.action_connect_hw, "hw-test.png")
         WndUtils.set_icon(self, self.action_disconnect_hw, "hw-disconnect.png")
         WndUtils.set_icon(self, self.action_hw_wallet, "wallet.png")
-        WndUtils.set_icon(self, self.action_hw_tools, "hw.png")
         WndUtils.set_icon(self, self.btnMoveMnUp, "arrow-downward@16px.png", rotate=180)
         WndUtils.set_icon(self, self.btnMoveMnDown, "arrow-downward@16px.png")
-        WndUtils.set_icon(self, self.action_wallet_tools, "../img/png/business-center-tools@32px.png")  # todo: move image to base dir
+        WndUtils.set_icon(self, self.action_wallet_tools, "tools@32px.png")
 
         self.mnuSignMessage = QMenu()
         self.mnuSignMessage.addAction(self.action_sign_message_with_collateral_addr)
@@ -167,7 +165,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.action_run_trezor_emulator.setIconVisibleInMenu(False)
         self.action_run_trezor_emulator.setVisible(False)
         self.action_hw_wallet.setIconVisibleInMenu(False)
-        self.action_hw_tools.setIconVisibleInMenu(False)
 
         # register dialog-type actions:
         self.addAction(self.action_gen_mn_priv_key_uncompressed)
@@ -888,7 +885,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                 if t:
                     t += '<br>'
-                # t += f'<span style="{s}">{m.message}</span><a href="{str(m_id)}"><img height={h} src="{img_path+"/highlight-off@16px"}"></img></a>'
                 t += f'<span style="{s}">{m.message}</span>&nbsp;' \
                     f'<span style="display:inline-box"><a style="text-decoration:none;color:black;" href="{str(m_id)}">\u2715</img></a><span>'
 
@@ -1929,14 +1925,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.error_msg(str(e), True)
         else:
             self.error_msg("To sign messages, you must select a masternode.")
-
-    @pyqtSlot(bool)
-    def on_action_hw_tools_triggered(self):
-        try:
-            ui = HwToolsDlg(self)
-            ui.exec_()
-        except Exception as e:
-            self.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_wallet_tools_triggered(self):

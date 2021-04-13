@@ -530,7 +530,6 @@ QLineEdit:read-only {
     <addaction name="action_sign_message_with_owner_key"/>
     <addaction name="action_sign_message_with_voting_key"/>
     <addaction name="separator"/>
-    <addaction name="action_hw_tools"/>
     <addaction name="action_wallet_tools"/>
     <addaction name="separator"/>
     <addaction name="action_import_masternode_conf"/>
