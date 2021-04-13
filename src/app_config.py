@@ -139,7 +139,8 @@ class AppConfig(QObject):
         self.feature_update_service_automatic = AppFeatureStatus(True, 0, '')
         self.feature_revoke_operator_automatic = AppFeatureStatus(True, 0, '')
 
-        self.hw_type: Optional[HWType] = None  # TREZOR, KEEPKEY, LEDGERNANOS
+        self.__hw_type: Optional[HWType] = None  # obsolete and will be removed in the future (we are leaving it to
+                                                 # preserve compatibility of the config file with older versions)
         self.hw_keepkey_psw_encoding = 'NFC'  # Keepkey passphrase UTF8 chars encoding:
                                               #  NFC: compatible with official Keepkey client app
                                               #  NFKD: compatible with Trezor
@@ -461,7 +462,7 @@ class AppConfig(QObject):
         self.dash_network = src_config.dash_network
         self.dash_net_configs = copy.deepcopy(src_config.dash_net_configs)
         self.random_dash_net_config = src_config.random_dash_net_config
-        self.hw_type = src_config.hw_type
+        self.__hw_type = src_config.__hw_type
         self.hw_keepkey_psw_encoding = src_config.hw_keepkey_psw_encoding
         self.block_explorer_tx_mainnet = src_config.block_explorer_tx_mainnet
         self.block_explorer_tx_testnet = src_config.block_explorer_tx_testnet
@@ -599,7 +600,6 @@ class AppConfig(QObject):
 
         configuration_corrected = False
         errors_while_reading = False
-        hw_type_sav = self.hw_type
 
         if os.path.exists(file_name):
             config = ConfigParser()
@@ -676,7 +676,7 @@ class AppConfig(QObject):
                 self.bip32_recursive_search = config.getboolean(section, 'bip32_recursive', fallback=True)
 
                 type = config.get(section, 'hw_type', fallback=HWType.trezor.value)
-                self.hw_type = HWType.from_string(type)
+                self.__hw_type = HWType.from_string(type)
 
                 self.hw_keepkey_psw_encoding = config.get(section, 'hw_keepkey_psw_encoding', fallback='NFC')
                 if self.hw_keepkey_psw_encoding not in ('NFC', 'NFKD'):
@@ -845,13 +845,11 @@ class AppConfig(QObject):
                                      'Look into the log file for more details.')
 
             except CancelException:
-                self.hw_type = hw_type_sav
                 raise
 
             except Exception as e:
                 logging.exception('Read configuration error:')
                 errors_while_reading = True
-                self.hw_type = hw_type_sav
                 ret = WndUtils.query_dlg('Configuration file read error: ' + str(e) + '\n\n' +
                                          'Click \'Open\' to choose another configuration file or \'\Cancel\' to exit.',
                                           buttons = QMessageBox.Cancel | QMessageBox.Open,
@@ -949,7 +947,7 @@ class AppConfig(QObject):
         config.set(section, 'CFG_VERSION', str(CURRENT_CFG_FILE_VERSION))
         config.set(section, 'log_level', self.log_level_str)
         config.set(section, 'dash_network', self.dash_network)
-        config.set(section, 'hw_type', self.hw_type.value)
+        config.set(section, 'hw_type', self.__hw_type.value)
         config.set(section, 'hw_keepkey_psw_encoding', self.hw_keepkey_psw_encoding)
         config.set(section, 'bip32_base_path', self.last_bip32_base_path)
         config.set(section, 'random_dash_net_config', '1' if self.random_dash_net_config else '0')
@@ -1413,9 +1411,6 @@ class AppConfig(QObject):
             return self.tx_api_url_mainnet
         else:
             return self.tx_api_url_testnet
-
-    def get_hw_type(self):
-        return self.hw_type
 
     def get_app_img_dir(self):
         return os.path.join(self.app_dir, '', 'img')

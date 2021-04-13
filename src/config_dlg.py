@@ -202,13 +202,6 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             else:
                 self.connections_mainnet.append(cfg)
 
-        if self.local_config.hw_type == HWType.trezor:
-            self.chbHwTrezor.setChecked(True)
-        elif self.local_config.hw_type == HWType.keepkey:
-            self.chbHwKeepKey.setChecked(True)
-        else:
-            self.chbHwLedgerNanoS.setChecked(True)
-
         if self.local_config.hw_keepkey_psw_encoding == 'NFC':
             self.cboKeepkeyPassEncoding.setCurrentIndex(0)
         else:
@@ -238,7 +231,6 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         if len(self.local_config.dash_net_configs):
             self.lstConns.setCurrentRow(0)
 
-        self.update_keepkey_pass_encoding_ui()
         self.update_connection_details_ui()
         self.disable_cfg_update = False
         self.splitter.setSizes(app_cache.get_value('ConfigDlg_ConnectionSplitter_Sizes', [100, 100], list))
@@ -271,12 +263,6 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             item.setCheckState(Qt.Checked if cfg.enabled else Qt.Unchecked)
             item.checkState()
             self.lstConns.addItem(item)
-
-    def update_keepkey_pass_encoding_ui(self):
-        """Display widget for setting up the encoding of UTF-8 characters in passphrase when
-        Keepkey HW type is selected.
-        """
-        self.wdgKeepkeyPassEncoding.setVisible(self.local_config.hw_type == HWType.keepkey)
 
     @pyqtSlot(int)
     def on_cboDashNetwork_currentIndexChanged(self, index):
@@ -685,29 +671,6 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.chbRandomConn.setChecked(self.local_config.random_dash_net_config)
         finally:
             self.disable_cfg_update = dis_old
-
-    def on_HwType_toggled(self):
-        if self.chbHwTrezor.isChecked():
-            self.local_config.hw_type = HWType.trezor
-        elif self.chbHwKeepKey.isChecked():
-            self.local_config.hw_type = HWType.keepkey
-        else:
-            self.local_config.hw_type = HWType.ledger_nano
-
-        self.update_keepkey_pass_encoding_ui()
-        self.set_modified()
-
-    @pyqtSlot(bool)
-    def on_chbHwTrezor_toggled(self, checked):
-        self.on_HwType_toggled()
-
-    @pyqtSlot(bool)
-    def on_chbHwKeepKey_toggled(self, checked):
-        self.on_HwType_toggled()
-
-    @pyqtSlot(bool)
-    def on_chbHwLedgerNanoS_toggled(self, checked):
-        self.on_HwType_toggled()
 
     @pyqtSlot(int)
     def on_cboKeepkeyPassEncoding_currentIndexChanged(self, index):

@@ -658,13 +658,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def on_action_open_settings_window_triggered(self):
         try:
             dash_network_sav = self.app_config.dash_network
-            hw_type_sav = self.app_config.hw_type
             dlg = ConfigDlg(self, self.app_config)
             res = dlg.exec_()
             if res and dlg.get_is_modified():
                 self.app_config.configure_cache()
                 self.dashd_intf.reload_configuration()
-                if dash_network_sav != self.app_config.dash_network or hw_type_sav != self.app_config.hw_type:
+                if dash_network_sav != self.app_config.dash_network:
                     self.disconnect_hardware_wallet()
                     self.app_config.reset_network_dependent_dyn_params()
                 self.display_window_title()
@@ -940,16 +939,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         except Exception as e:
             self.error_msg(str(e), True)
 
-    def getHwName(self):
-        if self.app_config.hw_type == HWType.trezor:
-            return 'Trezor'
-        elif self.app_config.hw_type == HWType.keepkey:
-            return 'KeepKey'
-        elif self.app_config.hw_type == HWType.ledger_nano:
-            return 'Ledger Nano S'
-        else:
-            return 'Unknown HW Type'
-
     @pyqtSlot(bool)
     def connect_hardware_wallet(self) -> Optional[object]:
         try:
@@ -1174,9 +1163,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 msg_text = 'Successfully imported %s masternode(s)' % str(imported_cnt)
                                 if skipped_cnt:
                                     msg_text += ', skipped: %s' % str(skipped_cnt)
-                                msg_text += ".\n\nIf you want to scan your " + self.getHwName() + \
-                                            " for BIP32 path(s) corresponding to collateral addresses, connect your " + \
-                                            self.getHwName() + " and click Yes." + \
+                                msg_text += ".\n\nIf you want to scan your hardware wallet" \
+                                            " for BIP32 path(s) corresponding to collateral addresses, connect the " \
+                                            " device to the computer and click Yes." + \
                                             "\n\nIf you want to enter BIP32 path(s) manually, click No."
 
                                 if self.query_dlg(message=msg_text, buttons=QMessageBox.Yes | QMessageBox.No,
