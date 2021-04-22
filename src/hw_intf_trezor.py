@@ -427,7 +427,9 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
         it = trezor_proto.TxInputType(
             address_n=address_n,
             prev_hash=binascii.unhexlify(utxo.txid),
-            prev_index=int(utxo.output_index))
+            prev_index=int(utxo.output_index),
+            amount=utxo.satoshis
+        )
 
         inputs.append(it)
         inputs_amount += utxo.satoshis
