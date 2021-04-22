@@ -38,7 +38,7 @@ jobs:
     - name: Add Local Bin To Path
       run: |
         prefix=$(python3 -m site --user-base)
-        echo "::add-path::$prefix/bin"
+        echo "$prefix/bin" >> $GITHUB_PATH
     - name: Bundle Application
       run: pyinstaller -w --distpath=bin --workpath=work dash_masternode_tool.spec
     - name: Upload Release Artifact
