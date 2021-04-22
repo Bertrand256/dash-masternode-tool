@@ -3,7 +3,7 @@
 dashd_default_connections = [
     {
         "use_ssh_tunnel": False,
-        "host": "xzc32615.allnodes.me",
+        "host": "firo32615.allnodes.me",
         "port": "8898",
         "username": "ZtUser",
         "password": "67414141414142653466453577715276767554657a686e4b35474e304b48527879696b3634534d32764d6c3549486a4c6f53465f7333417168547235612d3945656f2d53327a457666454639667256583378784153686363434631567335574a47773d3d",
@@ -12,7 +12,7 @@ dashd_default_connections = [
     },
     {
         "use_ssh_tunnel": False,
-        "host": "xzc22191.allnodes.me",
+        "host": "firo22191.allnodes.me",
         "port": "8898",
         "username": "ZtUser",
         "password": "67414141414142653466453577715276767554657a686e4b35474e304b48527879696b3634534d32764d6c3549486a4c6f53465f7333417168547235612d3945656f2d53327a457666454639667256583378784153686363434631567335574a47773d3d",
