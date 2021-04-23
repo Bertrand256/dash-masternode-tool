@@ -192,7 +192,9 @@
         "install -D 'src/upd_mn_registrar_dlg.py' '/app/opt/znode-tool/src/upd_mn_registrar_dlg.py'",
         "install -D 'src/masternode_details.py' '/app/opt/znode-tool/src/masternode_details.py'",
         "install -D 'src/initialize_hw_dlg.py' '/app/opt/znode-tool/src/initialize_hw_dlg.py'",
-        "install -D 'src/dash_tx.py' '/app/opt/znode-tool/src/dash_tx.py'"
+        "install -D 'src/dash_tx.py' '/app/opt/znode-tool/src/dash_tx.py'",
+        "install -D 'img/znode-tool.png' '/app/share/icons/hicolor/256x256/apps/io.zcoin.ZnodeTool.png'",
+        "install -D 'exports/io.zcoin.ZnodeTool.desktop' '/app/share/applications/io.zcoin.ZnodeTool.desktop'"
       ],
       "post-install": [
         "cd /app/opt/znode-tool && pip3 install --prefix=/app -r requirements.txt"
@@ -977,6 +979,11 @@
           "type": "file",
           "path": "src/dash_tx.py",
           "dest": "src"
+        },
+        {
+          "type": "file",
+          "path": "exports/io.zcoin.ZnodeTool.desktop",
+          "dest": "exports"
         }
       ]
     }
