@@ -947,7 +947,8 @@ class AppConfig(QObject):
         config.set(section, 'CFG_VERSION', str(CURRENT_CFG_FILE_VERSION))
         config.set(section, 'log_level', self.log_level_str)
         config.set(section, 'dash_network', self.dash_network)
-        config.set(section, 'hw_type', self.__hw_type.value)
+        if self.__hw_type:
+            config.set(section, 'hw_type', self.__hw_type.value)
         config.set(section, 'hw_keepkey_psw_encoding', self.hw_keepkey_psw_encoding)
         config.set(section, 'bip32_base_path', self.last_bip32_base_path)
         config.set(section, 'random_dash_net_config', '1' if self.random_dash_net_config else '0')
@@ -1447,6 +1448,7 @@ class MasternodeConfig:
             self.modified = True
 
     def copy_from(self, src_mn: 'MasternodeConfig'):
+        self.name = src_mn.name
         self.ip = src_mn.ip
         self.port = src_mn.port
         self.collateral_bip32_path = src_mn.collateral_bip32_path

@@ -368,7 +368,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.users_masternodes_by_ident = {}
 
         self.mn_count = None
-        self.block_timestamps: Dict[int, int] = {}
         self.governanceinfo = {}
         self.budget_cycle_days = 28.8
         self.cur_block_height = 0
@@ -1101,10 +1100,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.cur_block_height = self.dashd_intf.getblockcount()
             self.cur_block_timestamp = int(time.time())
 
-            self.last_superblock_time = self.get_block_timestamp(self.last_superblock)
+            self.last_superblock_time = self.dashd_intf.get_block_timestamp(self.last_superblock)
             self.next_superblock_time = 0
             if 0 < self.cur_block_height <= self.next_superblock:
-                self.next_superblock_time = self.get_block_timestamp(self.cur_block_height) + (self.next_superblock - self.cur_block_height) * 2.5 * 60
+                self.next_superblock_time = self.dashd_intf.get_block_timestamp(self.cur_block_height) + (self.next_superblock - self.cur_block_height) * 2.5 * 60
 
             if self.next_superblock_time == 0:
                 self.next_superblock_time = self.last_superblock_time + (self.next_superblock - self.last_superblock) * 2.5 * 60
@@ -1120,15 +1119,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.error_msg("Couldn't read governance info from the Dash network. "
                       "Some features may not work correctly because of this. Details: " + str(e))
 
-    def get_block_timestamp(self, superblock: int):
-        ts = self.block_timestamps.get(superblock)
-        if ts is None:
-            bhash = self.dashd_intf.getblockhash(superblock)
-            bh = self.dashd_intf.getblockheader(bhash)
-            ts = bh['time']
-            self.block_timestamps[superblock] = ts
-        return ts
-
     def find_superblocks_for_timestamp(self, timestamp: int) -> Tuple[int, int]:
         """The method looks for two consecutive superblocks, the first with a smaller timestamp than given in
         the argument, the second with a greater."""
@@ -1137,7 +1127,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             if sb_nr > self.last_superblock:
                 sb_timestamp = sb_before_ts + (self.superblock_cycle_blocks * self.block_interval_seconds)
             else:
-                sb_timestamp = self.get_block_timestamp(sb_nr)
+                sb_timestamp = self.dashd_intf.get_block_timestamp(sb_nr)
             return sb_timestamp
 
         if timestamp >= self.last_superblock_time:
@@ -1154,7 +1144,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             # look for the last superblock before timestamp
             sb_before = self.last_superblock - (sb_cycles_diff * self.superblock_cycle_blocks)
-            sb_before_ts = self.get_block_timestamp(sb_before)
+            sb_before_ts = self.dashd_intf.get_block_timestamp(sb_before)
 
             while True:
                 # move with superblocks back in history until the sb timestamp is less than the 'timestamp' value
@@ -1166,7 +1156,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         sb_cycles_diff = 1
 
                     sb_before = sb_before - (sb_cycles_diff * self.superblock_cycle_blocks)
-                    sb_before_ts = self.get_block_timestamp(sb_before)
+                    sb_before_ts = self.dashd_intf.get_block_timestamp(sb_before)
 
                 sb_after = sb_before + self.superblock_cycle_blocks
                 sb_after_ts = get_next_sb_ts(sb_after)
@@ -1182,7 +1172,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         sb_cycles_diff = 1
 
                     sb_before = sb_before + (sb_cycles_diff * self.superblock_cycle_blocks)
-                    sb_before_ts = self.get_block_timestamp(sb_before)
+                    sb_before_ts = self.dashd_intf.get_block_timestamp(sb_before)
 
         return sb_before, sb_after
 

@@ -28,6 +28,7 @@ import reg_masternode_dlg
 import revoke_mn_dlg
 import upd_mn_registrar_dlg
 import upd_mn_service_dlg
+from app_main_view_wdg import WdgAppMainView
 from app_runtime_data import AppRuntimeData
 from bip44_wallet import find_wallet_addresses, Bip44Wallet
 from cmd_console_dlg import CmdConsoleDlg
@@ -37,7 +38,7 @@ import about_dlg
 import app_cache
 import wallet_dlg
 import app_utils
-from masternode_details import WdgMasternodeDetails
+from masternode_details_wdg import WdgMasternodeDetails
 from proposals_dlg import ProposalsDlg
 from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
 from app_defs import PROJECT_URL
@@ -111,6 +112,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.recent_config_files.append(file_name)
 
         self.cmd_console_dlg = None
+        self.main_view: Optional[WdgAppMainView] = None
         self.setupUi(self)
         ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -140,8 +142,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         WndUtils.set_icon(self, self.action_connect_hw, "hw-test.png")
         WndUtils.set_icon(self, self.action_disconnect_hw, "hw-disconnect.png")
         WndUtils.set_icon(self, self.action_hw_wallet, "wallet.png")
-        WndUtils.set_icon(self, self.btnMoveMnUp, "arrow-downward@16px.png", rotate=180)
-        WndUtils.set_icon(self, self.btnMoveMnDown, "arrow-downward@16px.png")
         WndUtils.set_icon(self, self.action_wallet_tools, "tools@32px.png")
 
         self.mnuSignMessage = QMenu()
@@ -175,31 +175,18 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         # add masternodes' info to the combobox
         self.cur_masternode = None
 
-        self.wdg_masternode = WdgMasternodeDetails(self, self.app_config, self.dashd_intf)
-        l = self.frmMasternodeDetails.layout()
-        l.insertWidget(0, self.wdg_masternode)
-        self.wdg_masternode.name_modified.connect(self.on_mn_name_modified)
-        self.wdg_masternode.role_modified.connect(self.update_mn_controls_state)
-        self.wdg_masternode.data_changed.connect(self.on_mn_data_changed)
-        self.wdg_masternode.label_width_changed.connect(self.set_mn_labels_width)
+        l = self.gbMain.layout()
+        self.main_view = WdgAppMainView(self, self.app_config, self.dashd_intf, self.hw_session)
+        l.insertWidget(0, self.main_view)
+        self.main_view.masternode_data_changed.connect(self.update_edit_controls_state)
+
+        # self.wdg_masternode = WdgMasternodeDetails(self, self.app_config, self.dashd_intf)
+        # l.insertWidget(0, self.wdg_masternode)
+        # self.wdg_masternode.role_modified.connect(self.update_mn_controls_state)
+        # self.wdg_masternode.data_changed.connect(self.on_mn_data_changed)
+        # self.wdg_masternode.label_width_changed.connect(self.set_mn_labels_width)
 
         self.mns_user_refused_updating = {}
-
-        # after loading whole configuration, reset 'modified' variable
-        # # try:
-        # #     self.app_config.read_from_file(hw_session=self.hw_session, create_config_file=True)
-        # # except Exception as e:
-        # #     raise
-        # # self.display_window_title()
-        # # self.dashd_intf.initialize(self.app_config)
-        # #
-        # # self.update_edit_controls_state()
-        #
-        # self.run_thread(self, self.get_project_config_params_thread, (False,))
-        #
-        # if self.app_config.app_config_file_name and os.path.exists(self.app_config.app_config_file_name):
-        #     self.add_item_to_config_files_mru_list(self.app_config.app_config_file_name)
-        # self.update_config_files_mru_menu_items()
 
         self.inside_setup_ui = False
         self.display_app_messages()
@@ -213,10 +200,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             try:
                 self.load_configuration_from_file(None)
                 self.run_thread(self, self.get_project_config_params_thread, (False,))
-                h = self.btnNewMn.height()
-                self.btnMoveMnUp.setFixedHeight(h)
-                self.wdg_masternode.masternode_data_to_ui()  # we need this to set controls' proper heights in
-                                                             # the masternode details widget
+                self.main_view.update_ui()
             except Exception as e:
                 log.exception(str(e))
                 WndUtils.error_msg(str(e))
@@ -234,38 +218,15 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                               buttons=QMessageBox.Yes | QMessageBox.No,
                               default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
                 self.save_configuration()
+        self.main_view.on_close()
         self.app_config.close()
-
-    def set_mn_labels_width(self, width):
-        self.lblMasternodeStatus.setFixedWidth(width)
 
     def configuration_to_ui(self):
         """
         Show the information read from configuration file on the user interface.
         :return:
         """
-
-        # add masternodes data to the combobox
-        self.cur_masternode = None
-        self.cboMasternodes.clear()
-        try:
-            self.cboMasternodes.blockSignals(True)
-            for mn in self.app_config.masternodes:
-                self.cboMasternodes.addItem(mn.name, mn)
-        finally:
-            self.cboMasternodes.blockSignals(False)
-
-        if self.app_config.masternodes:
-            # get last masternode selected
-            idx = app_cache.get_value('MainWindow_CurMasternodeIndex', 0, int)
-            if idx >= len(self.app_config.masternodes):
-                idx = 0
-            self.cur_masternode = self.app_config.masternodes[idx]
-            self.display_masternode_config(True)
-        else:
-            self.cur_masternode = None
-
-        self.wdg_masternode.set_masternode(self.cur_masternode)
+        self.main_view.initialize_ui()
         self.action_open_log_file.setText('Open log file (%s)' % self.app_config.log_file)
         self.update_edit_controls_state()
 
@@ -290,7 +251,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.disconnect_hardware_wallet()
             dash_network_sav = self.app_config.dash_network
             self.app_config.read_from_file(hw_session=self.hw_session, file_name=file_name,
-                                           update_current_file_name=update_current_file_name)
+                                           update_current_file_name=update_current_file_name,
+                                           create_config_file=(not file_name))
             if not self.dashd_intf.initialized:
                 self.dashd_intf.initialize(self.app_config)
             self.editing_enabled = False
@@ -412,7 +374,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.update_config_files_mru_menu_items()
         self.display_window_title()
         self.editing_enabled = self.app_config.is_modified()
-        self.wdg_masternode.set_edit_mode(self.editing_enabled )
+        self.main_view.set_edit_mode(self.editing_enabled )
         self.update_edit_controls_state()
 
     @pyqtSlot(bool)
@@ -642,18 +604,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         except Exception:
             logging.exception('Exception occurred while loading/processing the project remote configuration')
 
-    def display_masternode_config(self, set_mn_list_index: bool):
-        if self.cur_masternode:
-            if set_mn_list_index:
-                self.cboMasternodes.setCurrentIndex(self.app_config.masternodes.index(self.cur_masternode))
-            else:
-                self.wdg_masternode.set_masternode(self.cur_masternode)
-            self.update_edit_controls_state()
-        else:
-            self.wdg_masternode.set_masternode(None)
-        self.update_mn_controls_state()
-        self.lblMnStatus.setText('')
-
     @pyqtSlot(bool)
     def on_action_open_settings_window_triggered(self):
         try:
@@ -814,9 +764,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         def connection_test_finished():
 
             self.action_check_network_connection.setEnabled(True)
-            self.btnRegisterDmn.setEnabled(True)
-            self.btnUpdMnPayoutAddr.setEnabled(True)
-            self.btnRefreshMnStatus.setEnabled(True)
             self.action_hw_wallet.setEnabled(True)
 
             if self.dashd_connection_ok:
@@ -833,9 +780,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
         if self.app_config.is_config_complete():
             self.action_check_network_connection.setEnabled(False)
-            self.btnRegisterDmn.setEnabled(False)
-            self.btnUpdMnPayoutAddr.setEnabled(False)
-            self.btnRefreshMnStatus.setEnabled(False)
             self.action_hw_wallet.setEnabled(False)
             self.connect_dash_network(call_on_check_finished=connection_test_finished)
         else:
@@ -868,9 +812,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def display_app_messages(self):
         left, top, right, bottom = self.layMessage.getContentsMargins()
-        img_path = os.path.join(self.app_config.app_dir if self.app_config.app_dir else '', 'img')
-        h = int(self.lblMasternodeStatus.height() * 0.6)
-
         t = ''
         for m_id in self.app_messages:
             m = self.app_messages[m_id]
@@ -995,254 +936,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         except Exception as e:
             self.error_msg(str(e), True)
 
-    @pyqtSlot(bool)
-    def on_btnNewMn_clicked(self):
-        try:
-            self.add_new_masternode_cfg(copy_values_from_current=False)
-        except Exception as e:
-            self.error_msg(str(e), True)
-
-    @pyqtSlot(bool)
-    def on_btnDeleteMn_clicked(self):
-        if self.cur_masternode:
-            try:
-                msg = QMessageBox()
-                msg.setIcon(QMessageBox.Warning)
-                msg.setText('Do you really want to delete current masternode configuration?')
-                msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-                msg.setDefaultButton(QMessageBox.No)
-                retval = msg.exec_()
-                if retval == QMessageBox.No:
-                    return
-                self.app_config.masternodes.remove(self.cur_masternode)
-                self.cboMasternodes.removeItem(self.cboMasternodes.currentIndex())
-                self.app_config.modified = True
-                self.update_edit_controls_state()
-            except Exception as e:
-                self.error_msg(str(e), True)
-
-    @pyqtSlot(bool)
-    def on_btnDuplicateMn_clicked(self):
-        try:
-            self.add_new_masternode_cfg(copy_values_from_current=True)
-        except Exception as e:
-            self.error_msg(str(e), True)
-
-    @pyqtSlot(bool)
-    def on_btnEditMn_clicked(self):
-        try:
-            self.editing_enabled = True
-            self.wdg_masternode.set_edit_mode(self.editing_enabled )
-            self.update_edit_controls_state()
-            self.update_mn_controls_state()
-        except Exception as e:
-            self.error_msg(str(e), True)
-
-    @pyqtSlot(bool)
-    def on_btnCancelEditingMn_clicked(self, checked):
-        try:
-            if self.app_config.is_modified():
-                if WndUtils.query_dlg('Configuration modified. Discard changes?',
-                                      buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                                      default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
-                    # reload the configuration (we don't keep the old values)
-                    sel_mn_idx = self.app_config.masternodes.index(self.cur_masternode)
-                    # reload the configuration from file
-                    self.load_configuration_from_file(self.app_config.app_config_file_name, ask_save_changes=False)
-                    self.editing_enabled = False
-                    if 0 <= sel_mn_idx < len(self.app_config.masternodes):
-                        self.cur_masternode = self.app_config.masternodes[sel_mn_idx]
-                        self.display_masternode_config(sel_mn_idx)
-                    self.wdg_masternode.set_edit_mode(self.editing_enabled)
-                    self.update_edit_controls_state()
-            else:
-                if self.cur_masternode and self.cur_masternode.new:
-                    idx = self.app_config.masternodes.index(self.cur_masternode)
-                    if idx >= 0:
-                        self.app_config.masternodes.remove(self.cur_masternode)
-                        self.cboMasternodes.removeItem(self.cboMasternodes.currentIndex())
-                self.editing_enabled = False
-                self.wdg_masternode.set_edit_mode(self.editing_enabled)
-                self.update_edit_controls_state()
-            self.update_mn_controls_state()
-        except Exception as e:
-            self.error_msg(str(e), True)
-
-    @pyqtSlot(bool)
-    def on_action_import_masternode_conf_triggered(self, checked):
-        """
-        Imports masternodes configuration from masternode.conf file.
-        """
-        try:
-            file_name = self.open_file_query(self, self.app_config,
-                                             message='Enter the path to the masternode.conf configuration file',
-                                             directory='', filter="All Files (*);;Conf files (*.conf)",
-                                             initial_filter="Conf files (*.conf)")
-
-            if file_name:
-                if os.path.exists(file_name):
-                    if not self.editing_enabled:
-                        self.on_btnEditMn_clicked()
-
-                    bip44_wallet = None
-                    try:
-                        with open(file_name, 'r') as f_ptr:
-                            bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.hw_session,
-                                                       self.app_config.db_intf, self.dashd_intf,
-                                                       self.app_config.dash_network)
-
-                            modified = False
-                            imported_cnt = 0
-                            skipped_cnt = 0
-                            mns_imported = []
-                            for line in f_ptr.readlines():
-                                line = line.strip()
-                                if not line:
-                                    continue
-                                elems = line.split()
-                                if len(elems) >= 5 and not line.startswith('#'):
-                                    mn_name = elems[0]
-                                    mn_ipport = elems[1]
-                                    mn_privkey = elems[2]
-                                    mn_tx_hash = elems[3]
-                                    mn_tx_idx = elems[4]
-                                    mn_dash_addr = ''
-                                    if len(elems) > 5:
-                                        mn_dash_addr = elems[5]
-
-                                    def update_mn(in_mn):
-                                        in_mn.name = mn_name
-                                        ipelems = mn_ipport.split(':')
-                                        if len(ipelems) >= 2:
-                                            in_mn.ip = ipelems[0]
-                                            in_mn.port = ipelems[1]
-                                        else:
-                                            in_mn.ip = mn_ipport
-                                            in_mn.port = '9999'
-                                        in_mn.collateral_address = mn_dash_addr
-                                        in_mn.collateral_tx = mn_tx_hash
-                                        in_mn.collateral_tx_index = mn_tx_idx
-                                        in_mn.collateral_bip32_path = ''
-
-                                    mn = self.app_config.get_mn_by_name(mn_name)
-                                    if mn:
-                                        msg = QMessageBox()
-                                        msg.setIcon(QMessageBox.Information)
-                                        msg.setText('Masternode ' + mn_name + ' exists. Overwrite?')
-                                        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-                                        msg.setDefaultButton(QMessageBox.Yes)
-                                        retval = msg.exec_()
-                                        del msg
-                                        if retval == QMessageBox.No:
-                                            skipped_cnt += 1
-                                            continue
-                                        else:
-                                            # overwrite data
-                                            imported_cnt += 1
-                                            update_mn(mn)
-                                            mn.modified = True
-                                            modified = True
-                                            mns_imported.append(mn)
-                                            if self.cur_masternode == mn:
-                                                # current mn has been updated - update UI controls to new data
-                                                self.display_masternode_config(False)
-                                    else:
-                                        imported_cnt += 1
-                                        mn = MasternodeConfig()
-                                        update_mn(mn)
-                                        modified = True
-                                        self.app_config.add_mn(mn)
-                                        self.cboMasternodes.addItem(mn.name, mn)
-                                        mns_imported.append(mn)
-                                else:
-                                    # incorrect number of elements
-                                    skipped_cnt += 1
-                            if modified:
-                                self.update_edit_controls_state()
-                            if imported_cnt:
-                                msg_text = 'Successfully imported %s masternode(s)' % str(imported_cnt)
-                                if skipped_cnt:
-                                    msg_text += ', skipped: %s' % str(skipped_cnt)
-                                msg_text += ".\n\nIf you want to scan your hardware wallet" \
-                                            " for BIP32 path(s) corresponding to collateral addresses, connect the " \
-                                            " device to the computer and click Yes." + \
-                                            "\n\nIf you want to enter BIP32 path(s) manually, click No."
-
-                                if self.query_dlg(message=msg_text, buttons=QMessageBox.Yes | QMessageBox.No,
-                                                  default_button=QMessageBox.Yes) == QMessageBox.Yes:
-                                    # scan all Dash addresses from imported masternodes for BIP32 path, starting from
-                                    # first standard Dash BIP32 path
-                                    try:
-                                        if not self.connect_hardware_wallet():
-                                            return
-                                    except CancelException:
-                                        return
-
-                                    addresses_to_scan = []
-                                    for mn in mns_imported:
-                                        if not mn.collateral_bip32_path and mn.collateral_address:
-                                            addresses_to_scan.append(mn.collateral_address)
-
-                                    found_paths = {}
-                                    try:
-                                        bip44_addrs = find_wallet_addresses(addresses_to_scan, bip44_wallet)
-                                        for a in bip44_addrs:
-                                            if a and a.bip32_path:
-                                                found_paths[a.address] = a.bip32_path
-                                    except CancelException:
-                                        pass
-
-                                    paths_missing = 0
-                                    for mn in mns_imported:
-                                        if not mn.collateral_bip32_path and mn.collateral_address:
-                                            path = found_paths.get(mn.collateral_address)
-                                            mn.collateral_bip32_path = path
-                                            mn.set_modified()
-                                            if path:
-                                                if self.cur_masternode == mn:
-                                                    # current mn has been updated - update UI controls
-                                                    # to new data
-                                                    self.display_masternode_config(False)
-                                                    self.wdg_masternode.set_modified()
-                                            else:
-                                                paths_missing += 1
-
-                                    if paths_missing:
-                                        self.warn_msg('Not all BIP32 paths were found. You have to manually enter '
-                                                     'missing paths.')
-
-                            elif skipped_cnt:
-                                self.info_msg('Operation finished with no imported and %s skipped masternodes.'
-                                              % str(skipped_cnt))
-
-                            if modified:
-                                self.update_edit_controls_state()
-
-                    except Exception as e:
-                        self.error_msg('Reading file failed: ' + str(e))
-
-                    finally:
-                        if bip44_wallet:
-                            del bip44_wallet
-                else:
-                    if file_name:
-                        self.error_msg("File '" + file_name + "' does not exist")
-        except Exception as e:
-            self.error_msg(str(e), True)
-
     def update_edit_controls_state(self):
         def update_fun():
             editing = (self.editing_enabled and self.cur_masternode is not None)
             self.action_gen_mn_priv_key_uncompressed.setEnabled(editing)
             self.action_gen_mn_priv_key_compressed.setEnabled(editing)
-            self.btnDeleteMn.setEnabled(self.cur_masternode is not None)
-            self.btnEditMn.setEnabled(not self.editing_enabled and self.cur_masternode is not None)
-            self.btnCancelEditingMn.setEnabled(self.editing_enabled and self.cur_masternode is not None)
-            self.btnDuplicateMn.setEnabled(self.cur_masternode is not None)
             self.action_save_config_file.setEnabled(self.app_config.is_modified())
             self.action_disconnect_hw.setEnabled(True if self.hw_session.hw_client else False)
-            self.btnRefreshMnStatus.setEnabled(self.cur_masternode is not None)
-            self.btnRegisterDmn.setEnabled(self.cur_masternode is not None)
             self.action_sign_message_with_collateral_addr.setEnabled(self.cur_masternode is not None)
             self.action_sign_message_with_owner_key.setEnabled(self.cur_masternode is not None)
             self.action_sign_message_with_voting_key.setEnabled(self.cur_masternode is not None)
@@ -1257,127 +957,21 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             enabled = self.cur_masternode.dmn_user_roles & DMN_ROLE_OWNER > 0
         else:
             enabled = False
-        self.btnRegisterDmn.setEnabled(enabled)
 
         if self.cur_masternode:
             enabled = self.cur_masternode.dmn_user_roles & DMN_ROLE_OWNER > 0
         else:
             enabled = False
-        self.btnUpdMnPayoutAddr.setEnabled(enabled)
-        self.btnUpdMnOperatorKey.setEnabled(enabled)
-        self.btnUpdMnVotingKey.setEnabled(enabled)
 
         if self.cur_masternode:
             enabled = self.cur_masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0
         else:
             enabled = False
-        self.btnUpdMnService.setEnabled(enabled)
-        self.btnRevokeMn.setEnabled(enabled)
-
-        if self.cur_masternode:
-            idx = self.app_config.masternodes.index(self.cur_masternode)
-            self.btnMoveMnUp.setEnabled(idx > 0)
-            self.btnMoveMnDown.setEnabled(idx < len(self.app_config.masternodes) - 1)
-        else:
-            self.btnMoveMnUp.setEnabled(False)
-            self.btnMoveMnDown.setEnabled(False)
-
-    def add_new_masternode_cfg(self, copy_values_from_current: bool = False):
-        new_mn = MasternodeConfig()
-        new_mn.new = True
-        cur_masternode_sav = self.cur_masternode
-        self.cur_masternode = new_mn
-
-        if copy_values_from_current and cur_masternode_sav:
-            mn_template = cur_masternode_sav.name
-        else:
-            if self.app_config.is_testnet:
-                new_mn.port = '19999'
-            mn_template = 'MN'
-        name_found = None
-        for nr in range(1, 100):
-            exists = False
-            for mn in self.app_config.masternodes:
-                if mn.name == mn_template + str(nr):
-                    exists = True
-                    break
-            if not exists:
-                name_found = mn_template + str(nr)
-                break
-        if name_found:
-            new_mn.name = name_found
-
-        if copy_values_from_current and cur_masternode_sav:
-            new_mn.copy_from(cur_masternode_sav)
-
-        self.app_config.masternodes.append(new_mn)
-        self.editing_enabled = True
-        old_index = self.cboMasternodes.currentIndex()
-        self.cboMasternodes.addItem(new_mn.name, new_mn)
-        if old_index != -1:
-            # if masternodes combo was not empty before adding new mn, we have to manually set combobox
-            # position to a new masternode position
-            self.cboMasternodes.setCurrentIndex(self.app_config.masternodes.index(self.cur_masternode))
-        self.wdg_masternode.set_masternode(self.cur_masternode)
-        self.wdg_masternode.set_edit_mode(self.editing_enabled )
-
-    @pyqtSlot(int)
-    def on_cboMasternodes_currentIndexChanged(self):
-        try:
-            if self.cboMasternodes.currentIndex() >= 0:
-                self.cur_masternode = self.app_config.masternodes[self.cboMasternodes.currentIndex()]
-            else:
-                self.cur_masternode = None
-            self.display_masternode_config(False)
-        except Exception as e:
-            self.error_msg(str(e), True)
-
-    def on_mn_name_modified(self, new_name):
-        if self.cur_masternode:
-            self.cboMasternodes.setItemText(self.cboMasternodes.currentIndex(), self.cur_masternode.name)
 
     def on_mn_data_changed(self, masternode: MasternodeConfig):
         if self.cur_masternode == masternode:
             self.cur_masternode.set_modified()
             self.action_save_config_file.setEnabled(self.app_config.is_modified())
-
-    @pyqtSlot(bool)
-    def on_btnMoveMnUp_clicked(self, enabled):
-        if self.cur_masternode:
-            idx = self.app_config.masternodes.index(self.cur_masternode)
-            if idx > 0:
-                old = self.cboMasternodes.blockSignals(True)
-                try:
-                    self.cboMasternodes.insertItem(idx-1, self.cur_masternode.name, self.cur_masternode)
-                    self.cboMasternodes.removeItem(idx+1)
-                    self.cboMasternodes.setCurrentIndex(idx-1)
-
-                    self.app_config.masternodes[idx - 1], self.app_config.masternodes[idx] = self.app_config.masternodes[idx], \
-                                                                                             self.app_config.masternodes[idx - 1]
-                    self.app_config.modified = True
-                finally:
-                    self.cboMasternodes.blockSignals(old)
-                    self.update_mn_controls_state()
-                    self.update_edit_controls_state()
-
-    @pyqtSlot(bool)
-    def on_btnMoveMnDown_clicked(self, enabled):
-        if self.cur_masternode:
-            idx = self.app_config.masternodes.index(self.cur_masternode)
-            if idx < len(self.app_config.masternodes) - 1:
-                old = self.cboMasternodes.blockSignals(True)
-                try:
-                    self.cboMasternodes.removeItem(idx)
-                    self.cboMasternodes.insertItem(idx+1, self.cur_masternode.name, self.cur_masternode)
-                    self.cboMasternodes.setCurrentIndex(idx+1)
-
-                    self.app_config.masternodes[idx + 1], self.app_config.masternodes[idx] = self.app_config.masternodes[idx], \
-                                                                                             self.app_config.masternodes[idx + 1]
-                    self.app_config.modified = True
-                finally:
-                    self.cboMasternodes.blockSignals(old)
-                    self.update_mn_controls_state()
-                    self.update_edit_controls_state()
 
     def get_deterministic_tx(self, masternode: MasternodeConfig) -> Optional[Dict]:
         protx = None
@@ -1625,8 +1219,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                 if mn_data_modified:
                     def update():
-                        self.wdg_masternode.masternode_data_to_ui()
-                        self.wdg_masternode.set_modified()
+                        self.main_view.update_ui()
                     if not self.finishing:
                         self.call_in_main_thread(update)
 
@@ -1797,42 +1390,42 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
             self.call_in_main_thread(self.lblMnStatus.setText, status)
 
-    @pyqtSlot(bool)
-    def on_btnRefreshMnStatus_clicked(self):
-        def enable_buttons():
-            self.btnRefreshMnStatus.setEnabled(True)
-            self.btnRegisterDmn.setEnabled(True)
-            self.update_mn_controls_state()
-
-        def on_get_status_exception(exception):
-            enable_buttons()
-            self.lblMnStatus.setText('')
-            WndUtils.error_msg(str(exception))
-
-        try:
-            self.lblMnStatus.setText('<b>Retrieving masternode information, please wait...<b>')
-            self.btnRefreshMnStatus.setEnabled(False)
-            self.btnRegisterDmn.setEnabled(False)
-            self.btnUpdMnPayoutAddr.setEnabled(False)
-            self.btnUpdMnOperatorKey.setEnabled(False)
-            self.btnUpdMnVotingKey.setEnabled(False)
-            self.btnUpdMnService.setEnabled(False)
-            self.btnRevokeMn.setEnabled(False)
-
-            self.connect_dash_network(wait_for_check_finish=True)
-            if self.dashd_connection_ok:
-                try:
-                    self.run_thread(self, self.get_masternode_status_description_thread, (self.cur_masternode,),
-                                    on_thread_finish=enable_buttons, on_thread_exception=on_get_status_exception)
-                except Exception as e:
-                    self.lblMnStatus.setText('')
-                    raise
-            else:
-                enable_buttons()
-                self.lblMnStatus.setText('')
-                self.error_msg('Dash daemon not connected')
-        except Exception as e:
-            self.error_msg(str(e), True)
+    # @pyqtSlot(bool)
+    # def on_btnRefreshMnStatus_clicked(self):
+    #     def enable_buttons():
+    #         self.btnRefreshMnStatus.setEnabled(True)
+    #         self.btnRegisterDmn.setEnabled(True)
+    #         self.update_mn_controls_state()
+    #
+    #     def on_get_status_exception(exception):
+    #         enable_buttons()
+    #         self.lblMnStatus.setText('')
+    #         WndUtils.error_msg(str(exception))
+    #
+    #     try:
+    #         self.lblMnStatus.setText('<b>Retrieving masternode information, please wait...<b>')
+    #         self.btnRefreshMnStatus.setEnabled(False)
+    #         self.btnRegisterDmn.setEnabled(False)
+    #         self.btnUpdMnPayoutAddr.setEnabled(False)
+    #         self.btnUpdMnOperatorKey.setEnabled(False)
+    #         self.btnUpdMnVotingKey.setEnabled(False)
+    #         self.btnUpdMnService.setEnabled(False)
+    #         self.btnRevokeMn.setEnabled(False)
+    #
+    #         self.connect_dash_network(wait_for_check_finish=True)
+    #         if self.dashd_connection_ok:
+    #             try:
+    #                 self.run_thread(self, self.get_masternode_status_description_thread, (self.cur_masternode,),
+    #                                 on_thread_finish=enable_buttons, on_thread_exception=on_get_status_exception)
+    #             except Exception as e:
+    #                 self.lblMnStatus.setText('')
+    #                 raise
+    #         else:
+    #             enable_buttons()
+    #             self.lblMnStatus.setText('')
+    #             self.error_msg('Dash daemon not connected')
+    #     except Exception as e:
+    #         self.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_hw_wallet_triggered(self):
@@ -1935,79 +1528,79 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def on_action_about_qt_triggered(self, enabled):
         QApplication.aboutQt()
 
-    @pyqtSlot(bool)
-    def on_btnRegisterDmn_clicked(self, enabled):
-        reg_dlg = None
-
-        def on_proregtx_finished(masternode: MasternodeConfig):
-            nonlocal reg_dlg, self
-            try:
-                if self.cur_masternode.dmn_tx_hash != reg_dlg.dmn_reg_tx_hash or \
-                        self.cur_masternode.dmn_owner_key_type != reg_dlg.dmn_owner_key_type or \
-                        (self.cur_masternode.dmn_owner_key_type == InputKeyType.PRIVATE and
-                         self.cur_masternode.dmn_owner_private_key != reg_dlg.dmn_owner_privkey) or \
-                        (self.cur_masternode.dmn_owner_key_type == InputKeyType.PUBLIC and
-                         self.cur_masternode.dmn_owner_address != reg_dlg.dmn_owner_address) or \
-                        self.cur_masternode.dmn_operator_key_type != reg_dlg.dmn_operator_key_type or \
-                        (self.cur_masternode.dmn_operator_key_type == InputKeyType.PRIVATE and
-                         self.cur_masternode.dmn_operator_private_key != reg_dlg.dmn_operator_privkey) or \
-                        (self.cur_masternode.dmn_operator_key_type == InputKeyType.PUBLIC and
-                         self.cur_masternode.dmn_operator_public_key != reg_dlg.dmn_operator_pubkey) or \
-                        self.cur_masternode.dmn_voting_key_type != reg_dlg.dmn_voting_key_type or \
-                        (self.cur_masternode.dmn_voting_key_type == InputKeyType.PRIVATE and
-                         self.cur_masternode.dmn_voting_private_key != reg_dlg.dmn_voting_privkey) or \
-                        (self.cur_masternode.dmn_voting_key_type == InputKeyType.PUBLIC and
-                         self.cur_masternode.dmn_voting_address != reg_dlg.dmn_voting_address):
-
-                    self.cur_masternode.dmn_tx_hash = reg_dlg.dmn_reg_tx_hash
-
-                    self.cur_masternode.dmn_owner_key_type = reg_dlg.dmn_owner_key_type
-                    if self.cur_masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
-                        self.cur_masternode.dmn_owner_private_key = reg_dlg.dmn_owner_privkey
-                    else:
-                        self.cur_masternode.dmn_owner_address = reg_dlg.dmn_owner_address
-                        self.cur_masternode.dmn_owner_private_key = ''
-
-                    self.cur_masternode.dmn_operator_key_type = reg_dlg.dmn_operator_key_type
-                    if self.cur_masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
-                        self.cur_masternode.dmn_operator_private_key = reg_dlg.dmn_operator_privkey
-                    else:
-                        self.cur_masternode.dmn_operator_public_key = reg_dlg.dmn_operator_pubkey
-                        self.cur_masternode.dmn_operator_private_key = ''
-
-                    self.cur_masternode.dmn_voting_key_type = reg_dlg.dmn_voting_key_type
-                    if self.cur_masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-                        self.cur_masternode.dmn_voting_private_key = reg_dlg.dmn_voting_privkey
-                    else:
-                        self.cur_masternode.dmn_voting_address = reg_dlg.dmn_voting_address
-                        self.cur_masternode.dmn_voting_private_key = ''
-
-                    if self.cur_masternode == masternode:
-                        self.wdg_masternode.masternode_data_to_ui()
-                    if self.app_config.is_modified():
-                        self.wdg_masternode.set_modified()
-                    else:
-                        self.save_configuration()
-            except Exception as e:
-                logging.exception(str(e))
-
-        if self.cur_masternode:
-            try:
-                reg_dlg = reg_masternode_dlg.RegMasternodeDlg(self, self.app_config, self.dashd_intf, self.cur_masternode,
-                                                              on_proregtx_success_callback=on_proregtx_finished)
-                reg_dlg.exec_()
-            except Exception as e:
-                self.error_msg(str(e), True)
-        else:
-            self.error_msg('No masternode selected')
+    # @pyqtSlot(bool)
+    # def on_btnRegisterDmn_clicked(self, enabled):
+    #     reg_dlg = None
+    #
+    #     def on_proregtx_finished(masternode: MasternodeConfig):
+    #         nonlocal reg_dlg, self
+    #         try:
+    #             if self.cur_masternode.dmn_tx_hash != reg_dlg.dmn_reg_tx_hash or \
+    #                     self.cur_masternode.dmn_owner_key_type != reg_dlg.dmn_owner_key_type or \
+    #                     (self.cur_masternode.dmn_owner_key_type == InputKeyType.PRIVATE and
+    #                      self.cur_masternode.dmn_owner_private_key != reg_dlg.dmn_owner_privkey) or \
+    #                     (self.cur_masternode.dmn_owner_key_type == InputKeyType.PUBLIC and
+    #                      self.cur_masternode.dmn_owner_address != reg_dlg.dmn_owner_address) or \
+    #                     self.cur_masternode.dmn_operator_key_type != reg_dlg.dmn_operator_key_type or \
+    #                     (self.cur_masternode.dmn_operator_key_type == InputKeyType.PRIVATE and
+    #                      self.cur_masternode.dmn_operator_private_key != reg_dlg.dmn_operator_privkey) or \
+    #                     (self.cur_masternode.dmn_operator_key_type == InputKeyType.PUBLIC and
+    #                      self.cur_masternode.dmn_operator_public_key != reg_dlg.dmn_operator_pubkey) or \
+    #                     self.cur_masternode.dmn_voting_key_type != reg_dlg.dmn_voting_key_type or \
+    #                     (self.cur_masternode.dmn_voting_key_type == InputKeyType.PRIVATE and
+    #                      self.cur_masternode.dmn_voting_private_key != reg_dlg.dmn_voting_privkey) or \
+    #                     (self.cur_masternode.dmn_voting_key_type == InputKeyType.PUBLIC and
+    #                      self.cur_masternode.dmn_voting_address != reg_dlg.dmn_voting_address):
+    #
+    #                 self.cur_masternode.dmn_tx_hash = reg_dlg.dmn_reg_tx_hash
+    #
+    #                 self.cur_masternode.dmn_owner_key_type = reg_dlg.dmn_owner_key_type
+    #                 if self.cur_masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+    #                     self.cur_masternode.dmn_owner_private_key = reg_dlg.dmn_owner_privkey
+    #                 else:
+    #                     self.cur_masternode.dmn_owner_address = reg_dlg.dmn_owner_address
+    #                     self.cur_masternode.dmn_owner_private_key = ''
+    #
+    #                 self.cur_masternode.dmn_operator_key_type = reg_dlg.dmn_operator_key_type
+    #                 if self.cur_masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
+    #                     self.cur_masternode.dmn_operator_private_key = reg_dlg.dmn_operator_privkey
+    #                 else:
+    #                     self.cur_masternode.dmn_operator_public_key = reg_dlg.dmn_operator_pubkey
+    #                     self.cur_masternode.dmn_operator_private_key = ''
+    #
+    #                 self.cur_masternode.dmn_voting_key_type = reg_dlg.dmn_voting_key_type
+    #                 if self.cur_masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
+    #                     self.cur_masternode.dmn_voting_private_key = reg_dlg.dmn_voting_privkey
+    #                 else:
+    #                     self.cur_masternode.dmn_voting_address = reg_dlg.dmn_voting_address
+    #                     self.cur_masternode.dmn_voting_private_key = ''
+    #
+    #                 if self.cur_masternode == masternode:
+    #                     self.main_view.update_ui()
+    #                 if self.app_config.is_modified():
+    #                     self.main_view.set_cur_masternode_modified()
+    #                 else:
+    #                     self.save_configuration()
+    #         except Exception as e:
+    #             logging.exception(str(e))
+    #
+    #     if self.cur_masternode:
+    #         try:
+    #             reg_dlg = reg_masternode_dlg.RegMasternodeDlg(self, self.app_config, self.dashd_intf, self.cur_masternode,
+    #                                                           on_proregtx_success_callback=on_proregtx_finished)
+    #             reg_dlg.exec_()
+    #         except Exception as e:
+    #             self.error_msg(str(e), True)
+    #     else:
+    #         self.error_msg('No masternode selected')
 
     def update_registrar(self, show_upd_payout: bool, show_upd_operator: bool, show_upd_voting: bool):
         def on_updtx_finished(masternode: MasternodeConfig):
             try:
                 if self.cur_masternode == masternode:
-                    self.wdg_masternode.masternode_data_to_ui()
+                    self.main_view.update_ui()
                 if self.app_config.is_modified():
-                    self.wdg_masternode.set_modified()
+                    self.main_view.set_cur_masternode_modified()
                 else:
                     self.save_configuration()
             except Exception as e:
@@ -2026,9 +1619,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         def on_mn_config_updated(masternode: MasternodeConfig):
             try:
                 if self.cur_masternode == masternode:
-                    self.wdg_masternode.masternode_data_to_ui()
+                    self.main_view.update_ui()
                 if self.app_config.is_modified():
-                    self.wdg_masternode.set_modified()
+                    self.main_view.set_cur_masternode_modified()
                 else:
                     self.save_configuration()
             except Exception as e:
@@ -2050,38 +1643,38 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             self.error_msg('No masternode selected')
 
-    @pyqtSlot()
-    def on_btnUpdMnPayoutAddr_clicked(self):
-        try:
-            self.update_registrar(show_upd_payout=True, show_upd_operator=False, show_upd_voting=False)
-        except Exception as e:
-            self.error_msg(str(e), True)
+    # @pyqtSlot()
+    # def on_btnUpdMnPayoutAddr_clicked(self):
+    #     try:
+    #         self.update_registrar(show_upd_payout=True, show_upd_operator=False, show_upd_voting=False)
+    #     except Exception as e:
+    #         self.error_msg(str(e), True)
 
-    @pyqtSlot()
-    def on_btnUpdMnOperatorKey_clicked(self):
-        try:
-            self.update_registrar(show_upd_payout=False, show_upd_operator=True, show_upd_voting=False)
-        except Exception as e:
-            self.error_msg(str(e), True)
+    # @pyqtSlot()
+    # def on_btnUpdMnOperatorKey_clicked(self):
+    #     try:
+    #         self.update_registrar(show_upd_payout=False, show_upd_operator=True, show_upd_voting=False)
+    #     except Exception as e:
+    #         self.error_msg(str(e), True)
 
-    @pyqtSlot()
-    def on_btnUpdMnVotingKey_clicked(self):
-        try:
-            self.update_registrar(show_upd_payout=False, show_upd_operator=False, show_upd_voting=True)
-        except Exception as e:
-            self.error_msg(str(e), True)
+    # @pyqtSlot()
+    # def on_btnUpdMnVotingKey_clicked(self):
+    #     try:
+    #         self.update_registrar(show_upd_payout=False, show_upd_operator=False, show_upd_voting=True)
+    #     except Exception as e:
+    #         self.error_msg(str(e), True)
 
-    @pyqtSlot()
-    def on_btnUpdMnService_clicked(self):
-        try:
-            self.update_service()
-        except Exception as e:
-            self.error_msg(str(e), True)
+    # @pyqtSlot()
+    # def on_btnUpdMnService_clicked(self):
+    #     try:
+    #         self.update_service()
+    #     except Exception as e:
+    #         self.error_msg(str(e), True)
 
-    @pyqtSlot()
-    def on_btnRevokeMn_clicked(self):
-        try:
-            self.revoke_mn_operator()
-        except Exception as e:
-            self.error_msg(str(e), True)
-
+    # @pyqtSlot()
+    # def on_btnRevokeMn_clicked(self):
+    #     try:
+    #         self.revoke_mn_operator()
+    #     except Exception as e:
+    #         self.error_msg(str(e), True)
+    #

@@ -1,53 +1,52 @@
-import os
-import sys
-from enum import Enum
-from functools import partial
 from typing import Callable, Optional
 
 import bitcoin
 from PyQt5 import QtCore
-from PyQt5.QtCore import QSize, pyqtSlot, Qt
-from PyQt5.QtGui import QPixmap, QTextDocument
-from PyQt5.QtWidgets import QDialog, QWidget, QLineEdit, QMessageBox, QAction, QApplication, QActionGroup
+from PyQt5.QtCore import pyqtSlot, Qt, QTimer
+from PyQt5.QtGui import QTextDocument
+from PyQt5.QtWidgets import QWidget, QLineEdit, QMessageBox, QAction, QApplication, QActionGroup
 
 import dash_utils
 import hw_intf
-from app_config import MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING, InputKeyType
+from app_config import MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING, InputKeyType, AppConfig
 from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException
 from common import CancelException
+from dashd_intf import DashdInterface
 from find_coll_tx_dlg import ListCollateralTxsDlg
 from thread_fun_dlg import CtrlObject
-from ui import ui_masternode_details
+from ui import ui_masternode_details_wdg
 from wnd_utils import WndUtils
 
 
-class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetails):
-    name_modified = QtCore.pyqtSignal(str)
+class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDetails):
+    name_modified = QtCore.pyqtSignal(object, str)
     data_changed = QtCore.pyqtSignal(object)
     role_modified = QtCore.pyqtSignal()
     label_width_changed = QtCore.pyqtSignal(int)
 
-    def __init__(self, main_dlg, app_config, dashd_intf):
-        QWidget.__init__(self, main_dlg)
-        ui_masternode_details.Ui_WdgMasternodeDetails.__init__(self)
-        self.main_dlg = main_dlg
+    def __init__(self, parent, app_config: AppConfig, dashd_intf: DashdInterface, hw_session: hw_intf.HwSessionInfo):
+        QWidget.__init__(self, parent)
+        ui_masternode_details_wdg.Ui_WdgMasternodeDetails.__init__(self)
+        self.parent = parent
         self.app_config = app_config
         self.dashd_intf = dashd_intf
-        self.masternode: Optional[MasternodeConfig] = None
+        self.hw_session = hw_session
+        self.masternode = MasternodeConfig()  # temporary object to avoid changing attributes of the global
+                                              # mn object, since user has the ability to cancel edition
         self.updating_ui = False
         self.edit_mode = False
         self.setupUi(self)
 
     def setupUi(self, widget: QWidget):
-        ui_masternode_details.Ui_WdgMasternodeDetails.setupUi(self, self)
-        WndUtils.set_icon(self.main_dlg, self.btnShowOwnerPrivateKey, 'eye@16px.png')
-        WndUtils.set_icon(self.main_dlg, self.btnShowOperatorPrivateKey, 'eye@16px.png')
-        WndUtils.set_icon(self.main_dlg, self.btnShowVotingPrivateKey, 'eye@16px.png')
-        WndUtils.set_icon(self.main_dlg, self.btnCopyOwnerKey, 'content-copy@16px.png')
-        WndUtils.set_icon(self.main_dlg, self.btnCopyOperatorKey, 'content-copy@16px.png')
-        WndUtils.set_icon(self.main_dlg, self.btnCopyVotingKey, 'content-copy@16px.png')
-        WndUtils.set_icon(self.main_dlg, self.btnCopyProtxHash, 'content-copy@16px.png')
-        WndUtils.set_icon(self.main_dlg, self.btnShowCollateralPathAddress, 'eye@16px.png')
+        ui_masternode_details_wdg.Ui_WdgMasternodeDetails.setupUi(self, self)
+        WndUtils.set_icon(self.parent, self.btnShowOwnerPrivateKey, 'eye@16px.png')
+        WndUtils.set_icon(self.parent, self.btnShowOperatorPrivateKey, 'eye@16px.png')
+        WndUtils.set_icon(self.parent, self.btnShowVotingPrivateKey, 'eye@16px.png')
+        WndUtils.set_icon(self.parent, self.btnCopyOwnerKey, 'content-copy@16px.png')
+        WndUtils.set_icon(self.parent, self.btnCopyOperatorKey, 'content-copy@16px.png')
+        WndUtils.set_icon(self.parent, self.btnCopyVotingKey, 'content-copy@16px.png')
+        WndUtils.set_icon(self.parent, self.btnCopyProtxHash, 'content-copy@16px.png')
+        WndUtils.set_icon(self.parent, self.btnShowCollateralPathAddress, 'eye@16px.png')
 
         self.act_view_as_owner_private_key = QAction('View as private key', self)
         self.act_view_as_owner_private_key.setData('privkey')
@@ -117,10 +116,11 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.update_ui_controls_state()
 
     def showEvent(self, QShowEvent):
-        self.update_key_controls_state()  # qt 0.9.2: control styles aren't updated properly without reapplying
-                                          # them here
-        self.lblOwnerKey.fontMetrics()
-        self.set_buttons_height()
+        def apply():
+            self.update_key_controls_state()
+            self.lblOwnerKey.fontMetrics()
+            self.set_buttons_height()
+        QTimer.singleShot(100, apply)
 
     def set_buttons_height(self):
         h = self.edtName.height()
@@ -141,7 +141,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.btnShowCollateralPathAddress.setFixedHeight(h)
         self.btnBip32PathToAddress.setFixedHeight(h)
         self.btnLocateCollateral.setFixedHeight(h)
-
 
     def update_ui_controls_state(self):
         """Update visibility and enabled/disabled state of the UI controls.
@@ -511,7 +510,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 self.masternode.dmn_owner_key_type = InputKeyType.PRIVATE
                 self.edtOwnerKey.setText(self.masternode.dmn_owner_private_key)
                 self.act_view_as_owner_public_address.setChecked(True)
-            self.set_modified()
+            self.on_mn_data_modified()
             self.update_ui_controls_state()
 
     @pyqtSlot(str)
@@ -525,7 +524,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 self.masternode.dmn_operator_key_type = InputKeyType.PRIVATE
                 self.edtOperatorKey.setText(self.masternode.dmn_operator_private_key)
                 self.act_view_as_operator_public_key.setChecked(True)
-            self.set_modified()
+            self.on_mn_data_modified()
             self.update_ui_controls_state()
 
     @pyqtSlot(str)
@@ -539,7 +538,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 self.masternode.dmn_voting_key_type = InputKeyType.PRIVATE
                 self.edtVotingKey.setText(self.masternode.dmn_voting_private_key)
                 self.act_view_as_voting_public_address.setChecked(True)
-            self.set_modified()
+            self.on_mn_data_modified()
             self.update_ui_controls_state()
 
     @pyqtSlot(str)
@@ -602,10 +601,17 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         self.lblOperatorKey.setFixedWidth(width)
         self.lblVotingKey.setFixedWidth(width)
 
-    def set_masternode(self, masternode: Optional[MasternodeConfig]):
+    def set_masternode(self, src_masternode: Optional[MasternodeConfig]):
         self.updating_ui = True
-        self.masternode = masternode
+        self.masternode.copy_from(src_masternode)
+        self.masternode.modified = False
         self.masternode_data_to_ui()
+
+    def get_masternode_data(self, dest_masternode: MasternodeConfig):
+        """Copies masternode data from the internal MasternodeConfig object to dest_masternode.
+          Used to get modified data and pass it to the global MasternodeConfig object.
+        """
+        dest_masternode.copy_from(self.masternode)
 
     def set_edit_mode(self, enabled: bool):
         if self.edit_mode != enabled:
@@ -616,7 +622,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 self.lblOperatorKey.setToolTip('')
                 self.lblVotingKey.setToolTip('')
 
-    def set_modified(self):
+    def is_modified(self) -> bool:
+        return self.masternode and self.masternode.modified
+
+    def on_mn_data_modified(self):
         if self.masternode and not self.updating_ui:
             self.masternode.set_modified()
             self.data_changed.emit(self.masternode)
@@ -629,7 +638,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             else:
                 self.masternode.dmn_user_roles &= ~DMN_ROLE_OWNER
             self.update_ui_controls_state()
-            self.set_modified()
+            self.on_mn_data_modified()
             self.role_modified.emit()
 
     @pyqtSlot(bool)
@@ -640,7 +649,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             else:
                 self.masternode.dmn_user_roles &= ~DMN_ROLE_OPERATOR
             self.update_ui_controls_state()
-            self.set_modified()
+            self.on_mn_data_modified()
             self.role_modified.emit()
 
     @pyqtSlot(bool)
@@ -651,33 +660,33 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             else:
                 self.masternode.dmn_user_roles &= ~DMN_ROLE_VOTING
             self.update_ui_controls_state()
-            self.set_modified()
+            self.on_mn_data_modified()
             self.role_modified.emit()
 
     @pyqtSlot(str)
     def on_edtName_textEdited(self, text):
         if self.masternode and not self.updating_ui:
-            self.set_modified()
+            self.on_mn_data_modified()
             self.masternode.name = text.strip()
-            self.name_modified.emit(text)
+            self.name_modified.emit(self.masternode, text)
 
     @pyqtSlot(str)
     def on_edtIP_textEdited(self, text):
         if self.masternode and not self.updating_ui:
-            self.set_modified()
+            self.on_mn_data_modified()
             self.masternode.ip = text.strip()
 
     @pyqtSlot(str)
     def on_edtPort_textEdited(self, text):
         if self.masternode and not self.updating_ui:
-            self.set_modified()
+            self.on_mn_data_modified()
             self.masternode.port = text.strip()
 
     @pyqtSlot(str)
     def on_edtCollateralAddress_textEdited(self, text):
         if self.masternode and not self.updating_ui:
             update_ui = ((not text) != (not self.masternode.collateral_address))
-            self.set_modified()
+            self.on_mn_data_modified()
             self.masternode.collateral_address = text.strip()
             if update_ui:
                 self.update_ui_controls_state()
@@ -686,7 +695,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     def on_edtCollateralPath_textEdited(self, text):
         if self.masternode and not self.updating_ui:
             update_ui = ((not text) != (not self.masternode.collateral_bip32_path))
-            self.set_modified()
+            self.on_mn_data_modified()
             self.masternode.collateral_bip32_path = text.strip()
             if update_ui:
                 self.update_ui_controls_state()
@@ -695,7 +704,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     def on_edtCollateralTxHash_textEdited(self, text):
         if self.masternode and not self.updating_ui:
             update_ui = ((not text) != (not self.masternode.collateral_tx))
-            self.set_modified()
+            self.on_mn_data_modified()
             self.masternode.collateral_tx = text.strip()
             if update_ui:
                 self.update_ui_controls_state()
@@ -703,13 +712,13 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     @pyqtSlot(str)
     def on_edtCollateralTxIndex_textEdited(self, text):
         if self.masternode and not self.updating_ui:
-            self.set_modified()
+            self.on_mn_data_modified()
             self.masternode.collateral_tx_index = text.strip()
 
     @pyqtSlot(str)
     def on_edtDMNTxHash_textEdited(self, text):
         if self.masternode and not self.updating_ui:
-            self.set_modified()
+            self.on_mn_data_modified()
             self.masternode.dmn_tx_hash = text.strip()
 
     @pyqtSlot(bool)
@@ -741,22 +750,21 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 else:
                     self.edtDMNTxHash.setText(protx.get('proTxHash'))
                     self.masternode.dmn_tx_hash = protx.get('proTxHash')
-                    self.set_modified()
+                    self.on_mn_data_modified()
             else:
                 WndUtils.warn_msg('Couldn\'t find this masternode in the list of registered deterministic masternodes.')
-            self.set_modified()
+            self.on_mn_data_modified()
 
     @pyqtSlot(bool)
     def on_btnBip32PathToAddress_clicked(self, checked):
         if self.masternode.collateral_bip32_path:
-            if self.main_dlg.connect_hardware_wallet():
+            if self.hw_session.connect_hardware_wallet():
                 try:
-                    hw_session = self.main_dlg.hw_session
-                    addr = hw_intf.get_address(hw_session, self.masternode.collateral_bip32_path, show_display=True)
+                    addr = hw_intf.get_address(self.hw_session, self.masternode.collateral_bip32_path, show_display=True)
                     if addr:
                         self.masternode.collateral_address = addr.strip()
                         self.edtCollateralAddress.setText(addr.strip())
-                        self.set_modified()
+                        self.on_mn_data_modified()
                         self.update_ui_controls_state()
                 except CancelException:
                     pass
@@ -765,10 +773,9 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     def on_btnShowCollateralPathAddress_clicked(self, checked):
         if self.masternode.collateral_bip32_path:
             try:
-                if self.main_dlg.connect_hardware_wallet():
-                    hw_session = self.main_dlg.hw_session
+                if self.hw_session.connect_hardware_wallet():
                     addr = hw_intf.get_address(
-                        hw_session, self.masternode.collateral_bip32_path, True,
+                        self.hw_session, self.masternode.collateral_bip32_path, True,
                         f'Displaying address for the BIP32 path <b>{self.masternode.collateral_bip32_path}</b>.'
                         f'<br>Click the confirmation button on your device.')
             except CancelException:
@@ -781,7 +788,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 self.masternode.dmn_owner_private_key = text.strip()
             else:
                 self.masternode.dmn_owner_address = text.strip()
-            self.set_modified()
+            self.on_mn_data_modified()
 
     @pyqtSlot(str)
     def on_edtOperatorKey_textEdited(self, text):
@@ -790,7 +797,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 self.masternode.dmn_operator_private_key = text.strip()
             else:
                 self.masternode.dmn_operator_public_key = text.strip()
-            self.set_modified()
+            self.on_mn_data_modified()
 
     @pyqtSlot(str)
     def on_edtVotingKey_textEdited(self, text):
@@ -799,7 +806,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 self.masternode.dmn_voting_private_key = text.strip()
             else:
                 self.masternode.dmn_voting_address = text.strip()
-            self.set_modified()
+            self.on_mn_data_modified()
 
     def generate_priv_key(self, pk_type:str, edit_control: QLineEdit, compressed: bool):
         if edit_control.text():
@@ -823,7 +830,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             if pk:
                 self.masternode.dmn_owner_private_key = pk
                 self.btnShowOwnerPrivateKey.setChecked(True)
-                self.set_modified()
+                self.on_mn_data_modified()
 
     @pyqtSlot(bool)
     def on_btnGenerateOperatorPrivateKey_clicked(self, checked):
@@ -833,7 +840,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             if pk:
                 self.masternode.dmn_operator_private_key = pk
                 self.btnShowOperatorPrivateKey.setChecked(True)
-                self.set_modified()
+                self.on_mn_data_modified()
 
     @pyqtSlot(bool)
     def on_btnGenerateVotingPrivateKey_clicked(self, checked):
@@ -842,7 +849,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             if pk:
                 self.masternode.dmn_voting_private_key = pk
                 self.btnShowVotingPrivateKey.setChecked(True)
-                self.set_modified()
+                self.on_mn_data_modified()
 
     @pyqtSlot(bool)
     def on_btnShowOwnerPrivateKey_toggled(self, checked):
@@ -861,56 +868,59 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
 
     @pyqtSlot(bool)
     def on_btnLocateCollateral_clicked(self, checked):
-        break_scanning = False
+        try:
+            break_scanning = False
 
-        if not self.main_dlg.connect_hardware_wallet():
-            return
-
-        def do_break_scanning():
-            nonlocal break_scanning
-            break_scanning = True
-            return False
-
-        def check_break_scanning():
-            nonlocal break_scanning
-            return break_scanning
-
-        def apply_utxo(utxo):
-            self.masternode.collateral_address = utxo.address
-            self.edtCollateralAddress.setText(utxo.address)
-            self.masternode.collateral_bip32_path = utxo.bip32_path
-            self.edtCollateralPath.setText(utxo.bip32_path)
-            self.masternode.collateral_tx = utxo.txid
-            self.edtCollateralTxHash.setText(utxo.txid)
-            self.masternode.collateral_tx_index = str(utxo.output_index)
-            self.edtCollateralTxIndex.setText(str(utxo.output_index))
-            self.update_ui_controls_state()
-            self.set_modified()
-
-        bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.main_dlg.hw_session,
-                                   self.app_config.db_intf, self.dashd_intf, self.app_config.dash_network)
-
-        utxos = WndUtils.run_thread_dialog(
-            self.get_collateral_tx_address_thread,
-            (bip44_wallet, check_break_scanning, self.edtCollateralAddress.text()),
-            True, force_close_dlg_callback=do_break_scanning)
-
-        if utxos:
-            if len(utxos) == 1 and \
-                    (not self.masternode.collateral_address or
-                     (utxos[0].address_obj and self.masternode.collateral_address == utxos[0].address_obj.address)) \
-                    and (not self.masternode.collateral_tx or utxos[0].txid == self.masternode.collateral_tx):
-                apply_utxo(utxos[0])
+            if not self.hw_session.connect_hardware_wallet():
                 return
 
-            dlg = ListCollateralTxsDlg(self, self.masternode, self.app_config, False, utxos)
-            if dlg.exec_():
-                utxo = dlg.get_selected_utxo()
-                if utxo:
-                    apply_utxo(utxo)
-        else:
-            if utxos is not None:
-                WndUtils.warn_msg('Couldn\'t find any 1000 Dash UTXO in your wallet.')
+            def do_break_scanning():
+                nonlocal break_scanning
+                break_scanning = True
+                return False
+
+            def check_break_scanning():
+                nonlocal break_scanning
+                return break_scanning
+
+            def apply_utxo(utxo):
+                self.masternode.collateral_address = utxo.address
+                self.edtCollateralAddress.setText(utxo.address)
+                self.masternode.collateral_bip32_path = utxo.bip32_path
+                self.edtCollateralPath.setText(utxo.bip32_path)
+                self.masternode.collateral_tx = utxo.txid
+                self.edtCollateralTxHash.setText(utxo.txid)
+                self.masternode.collateral_tx_index = str(utxo.output_index)
+                self.edtCollateralTxIndex.setText(str(utxo.output_index))
+                self.update_ui_controls_state()
+                self.on_mn_data_modified()
+
+            bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.hw_session,
+                                       self.app_config.db_intf, self.dashd_intf, self.app_config.dash_network)
+
+            utxos = WndUtils.run_thread_dialog(
+                self.get_collateral_tx_address_thread,
+                (bip44_wallet, check_break_scanning, self.edtCollateralAddress.text()),
+                True, force_close_dlg_callback=do_break_scanning)
+
+            if utxos:
+                if len(utxos) == 1 and \
+                        (not self.masternode.collateral_address or
+                         (utxos[0].address_obj and self.masternode.collateral_address == utxos[0].address_obj.address)) \
+                        and (not self.masternode.collateral_tx or utxos[0].txid == self.masternode.collateral_tx):
+                    apply_utxo(utxos[0])
+                    return
+
+                dlg = ListCollateralTxsDlg(self, self.masternode, self.app_config, False, utxos)
+                if dlg.exec_():
+                    utxo = dlg.get_selected_utxo()
+                    if utxo:
+                        apply_utxo(utxo)
+            else:
+                if utxos is not None:
+                    WndUtils.warn_msg('Couldn\'t find any 1000 Dash UTXO in your wallet.')
+        except Exception as e:
+            WndUtils.error_msg(str(e))
 
     def get_collateral_tx_address_thread(self, ctrl: CtrlObject,
                                          bip44_wallet: Bip44Wallet,

@@ -273,6 +273,20 @@ def seconds_to_human(number_of_seconds, out_seconds=True, out_minutes=True, out_
     return ' '.join(human_strings)
 
 
+def bytes_to_human(bytes_count: int):
+    if bytes_count >= 1099511627776:
+        ret_str = '{0:.2f} TB'.format(bytes_count / 1099511627776)
+    elif bytes_count >= 1073741824:
+        ret_str = '{0:.2f} GB'.format(bytes_count / 1073741824)
+    elif bytes_count >= 1048576:
+        ret_str = '{0:.2f} MB'.format(bytes_count / 1048576)
+    elif bytes_count >= 1024:
+        ret_str = '{0:.2f} kB'.format(bytes_count / 1024)
+    else:
+        ret_str = f'{bytes_count} {"Byte" if bytes_count == 1 else "Bytes"}'
+    return ret_str
+
+
 def get_default_locale():
     return QLocale.system()
 
@@ -281,7 +295,7 @@ ctx = decimal.Context()
 ctx.prec = 20
 
 
-def to_string(data) -> str:
+def to_string(data) -> Optional[str]:
     """ Converts date/datetime or number to string using the current locale.
     """
 

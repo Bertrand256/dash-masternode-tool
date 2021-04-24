@@ -185,7 +185,10 @@ class ExtSortFilterItemModel(QAbstractItemModel, AttrsProtected):
                          'width': width})
         app_cache.set_value(setting_name, cols)
 
-    def restore_col_defs(self, setting_name: str):
+    def restore_col_defs(self, setting_name: str) -> bool:
+        """
+        :return: True, if columns settings were found in cache, False otherwise
+        """
         cols = app_cache.get_value(setting_name, [], list)
         if cols:
             idx = 0
@@ -199,6 +202,8 @@ class ExtSortFilterItemModel(QAbstractItemModel, AttrsProtected):
                     idx += 1
             self._columns.sort(key=lambda x: x.visual_index)
             self._rebuild_column_index()
+            return True
+        return False
 
     def on_view_column_moved(self, logicalIndex, oldVisualIndex, newVisualIndex):
         hdr = self.get_view_horizontal_header()
