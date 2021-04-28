@@ -150,7 +150,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.accounts_view_show_individual_addresses = False
         self.accounts_view_show_zero_balance_addesses = False
         self.accounts_view_show_not_used_addresses = False
-        self.wdg_loading_txs_animation = None
+        self.loading_data_spinner: Optional[SpinnerWidget] = None
 
         # display thread data:
         self.dt_last_addr_selection_hash_for_utxo = ''
@@ -168,6 +168,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.restore_cache_settings()
         self.splitterMain.setStretchFactor(0, 0)
         self.splitterMain.setStretchFactor(1, 1)
+
+        # setup the "loading" spinner
+        self.loading_data_spinner = SpinnerWidget(self.pnl_input, 22, message='Fetching transactions')
+        self.loading_data_spinner.hide()
+        self.lay_input.insertWidget(self.lay_input.indexOf(self.btnFetchTransactions) + 1, self.loading_data_spinner)
 
         self.utxo_table_model.set_hide_collateral_utxos(True)
         self.utxoTableView.setSortingEnabled(True)
@@ -214,7 +219,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             log.warning(f'Invalid value of self.utxo_src_mode: {self.utxo_src_mode}')
         self.cboAddressSourceMode.blockSignals(False)
 
-        self.set_message("")
         self.wdg_dest_adresses = SendFundsDestination(self.dest_widget, self, self.main_ui.app_config,
                                                       self.hw_session)
         self.wdg_dest_adresses.resized_signal.connect(self.on_dest_addresses_resized)
@@ -504,20 +508,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def on_dest_addresses_resized(self):
         self.splitter.setSizes([1, self.wdg_dest_adresses.sizeHint().height()])
-
-    def set_message(self, message):
-        def set_msg(message):
-            if not message:
-                self.lbl_message.setVisible(False)
-            else:
-                self.lbl_message.setVisible(True)
-                self.lbl_message.setText(message)
-
-        if threading.current_thread() != threading.main_thread():
-            if self.enable_synch_with_main_thread:
-                self.call_in_main_thread(set_msg, message)
-        else:
-            set_msg(message)
 
     @pyqtSlot(bool)
     def chbHideCollateralTxToggled(self, checked):
@@ -1108,7 +1098,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.update_context_actions()
                 self.update_details_tab()
                 self.update_hw_info()
-                self.set_message('')
         finally:
             self.allow_fetch_transactions = aft_saved
             self.enable_synch_with_main_thread = esmt_saved
@@ -1339,7 +1328,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                     if self.last_txs_fetch_time == 0 or (time.time() - self.last_txs_fetch_time > FETCH_DATA_INTERVAL_SECONDS):
                         if self.allow_fetch_transactions:
-                            self.set_message('Fetching transactions...')
                             self.show_loading_tx_animation()
 
                             if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
@@ -1365,7 +1353,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                                 if not ctrl.finish and not self.finishing:
                                     self.hide_loading_tx_animation()
-                                    self.set_message('')
 
                 self.data_thread_event.wait(1)
                 if self.data_thread_event.is_set():
@@ -1524,34 +1511,26 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.update_recipient_area_utxos()
 
     def show_loading_tx_animation(self):
-        if not self.wdg_loading_txs_animation:
-            def show():
-                size = min(self.wdgSpinner.height(), self.wdgSpinner.width())
-                g = self.wdgSpinner.geometry()
-                g.setWidth(size)
-                g.setHeight(size)
-                self.wdgSpinner.setGeometry(g)
-                self.wdg_loading_txs_animation = SpinnerWidget(self.wdgSpinner, size, '', 11)
-                self.wdg_loading_txs_animation.show()
+        def show():
+            self.loading_data_spinner.show()
+            self.loading_data_spinner.set_spinner_active(True)
 
-            if threading.current_thread() != threading.main_thread():
-                if self.enable_synch_with_main_thread:
-                    WndUtils.call_in_main_thread_ext(show, skip_if_main_thread_locked=True)
-            else:
-                show()
+        if threading.current_thread() != threading.main_thread():
+            if self.enable_synch_with_main_thread:
+                WndUtils.call_in_main_thread_ext(show, skip_if_main_thread_locked=True)
+        else:
+            show()
 
     def hide_loading_tx_animation(self):
-        if self.wdg_loading_txs_animation:
-            def hide():
-                self.wdg_loading_txs_animation.hide()
-                del self.wdg_loading_txs_animation
-                self.wdg_loading_txs_animation = None
+        def hide():
+            self.loading_data_spinner.set_spinner_active(False)
+            self.loading_data_spinner.hide()
 
-            if threading.current_thread() != threading.main_thread():
-                if self.enable_synch_with_main_thread:
-                    WndUtils.call_in_main_thread_ext(hide, skip_if_main_thread_locked=True)
-            else:
-                hide()
+        if threading.current_thread() != threading.main_thread():
+            if self.enable_synch_with_main_thread:
+                WndUtils.call_in_main_thread_ext(hide, skip_if_main_thread_locked=True)
+        else:
+            hide()
 
     def update_details_tab(self):
         def set_text(text):

@@ -19,10 +19,10 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEvent, QPointF, QSize, QModelIndex, QRect, \
     QRectF
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap, QTextDocument, QCursor, \
-    QAbstractTextDocumentLayout, QFontMetrics, QTransform, QKeySequence
+    QAbstractTextDocumentLayout, QFontMetrics, QTransform, QKeySequence, QFont
 from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit, \
     QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView, QAction, QMenu, QApplication, \
-    QProxyStyle, QWidgetItem, QLayout, QSpacerItem
+    QProxyStyle, QWidgetItem, QLayout, QSpacerItem, QLabel
 import math
 import message_dlg
 from common import CancelException
@@ -207,6 +207,34 @@ class WndUtils:
 
         return thread_wnd_utils.call_in_main_thread_ext(fun_to_call, skip_if_main_thread_locked,
                                                         callback_if_main_thread_locked, *args, **kwargs)
+
+    @staticmethod
+    def get_pixmap(parent, name: str, rotate=0, force_color_change: str = None) -> Optional[QPixmap]:
+        pixmap = None
+        if app_defs.APP_IMAGE_DIR:
+            path = app_defs.APP_IMAGE_DIR
+        else:
+            path = 'img'
+
+        path = os.path.join(path, name)
+        if not os.path.isfile(path):
+            logging.warning(f'File {path} does not exist or is not a file')
+        else:
+            pixmap = QPixmap(path)
+            if rotate:
+                transf = QTransform().rotate(rotate)
+                pixmap = QPixmap(pixmap.transformed(transf))
+
+            if force_color_change:
+                tmp = pixmap.toImage()
+                color = QColor(force_color_change)
+                for y in range(0, tmp.height()):
+                    for x in range(0, tmp.width()):
+                        color.setAlpha(tmp.pixelColor(x,y).alpha())
+                        tmp.setPixelColor(x, y, color)
+
+                pixmap = QPixmap.fromImage(tmp)
+        return pixmap
 
     @staticmethod
     def get_icon(parent, ico, rotate=0, force_color_change: str = None):
@@ -554,44 +582,66 @@ thread_wnd_utils = ThreadWndUtils()
 
 
 class SpinnerWidget(QWidget):
-    def __init__(self, parent: QWidget, spinner_size, message: str = '', font_size=None):
+    SPINNER_TO_TEXT_DISTANCE = 5
 
+    def __init__(self, parent: QWidget, spinner_size: Optional[int] = None, message: Optional[str] = None,
+                 font_size = None):
         QWidget.__init__(self, parent)
         self.spinner_size = spinner_size
         self.message = message
         self.font_size = font_size
+        self._spinner_active = False
+        self.vertical_align = Qt.AlignVCenter
         self.timer_id = None
 
-    def sizeHint(self):
-        return self.parent().size()
+    def set_spinner_active(self, active: bool):
+        if not active and self.timer_id:
+            self.killTimer(self.timer_id)
+            self.timer_id = None
+            self.updateGeometry()
+        elif active and not self.timer_id:
+            self.timer_id = self.startTimer(200)
+            self.counter = 0
+            self.updateGeometry()
 
     def paintEvent(self, event):
-        par = self.parent()
-        size = min(self.spinner_size, par.width(), par.height())
+        content_rect = self.contentsRect()
+        if self.spinner_size:
+            size = min(self.spinner_size, content_rect.width(), content_rect.height())
+        else:
+            size = min(content_rect.width(), content_rect.height())
         dot_count = 5
         dot_size = int(size / dot_count) * 1.5
 
-        r = par.rect()
-        spinner_rect = QRect(r.width()/2 - size/2, r.height()/2 - size/2, size, size)
+        spinner_rect = QRect(content_rect.left(), content_rect.top(), size, size)
 
-        painter = QPainter()
-        painter.begin(self)
-        painter.setPen(QPen(Qt.NoPen))
+        painter = QPainter(self)
+        painter.setClipRect(content_rect)
 
-        for i in range(dot_count):
-            if self.counter % dot_count == i:
-                painter.setBrush(QBrush(QColor(0, 0, 0)))
-                d_size = dot_size * 1.1
-            else:
-                painter.setBrush(QBrush(QColor(200, 200, 200)))
-                d_size = dot_size
+        if self.timer_id:
+            diff_height = content_rect.height() - size
+            offs_y = 0
+            if diff_height > 0:
+                if self.vertical_align == Qt.AlignVCenter:
+                    offs_y = diff_height / 2
+                elif self.vertical_align == Qt.AlignBottom:
+                    offs_y = diff_height
 
-            r = size / 2 - dot_size / 2
-            x = r * math.cos(2 * math.pi * i / dot_count)
-            y = r * math.sin(2 * math.pi * i / dot_count)
             x_center = spinner_rect.left() + spinner_rect.width() / 2 - dot_size / 2
-            y_center = spinner_rect.top() + spinner_rect.height() / 2 - dot_size / 2
-            painter.drawEllipse(x_center + x, y_center + y, d_size, d_size)
+            y_center = spinner_rect.top() + offs_y + spinner_rect.height() / 2 - dot_size / 2
+
+            for i in range(dot_count):
+                if self.counter % dot_count == i:
+                    painter.setBrush(QBrush(QColor(0, 0, 0)))
+                    d_size = dot_size * 1.1
+                else:
+                    painter.setBrush(QBrush(QColor(200, 200, 200)))
+                    d_size = dot_size
+
+                r = size / 2 - dot_size / 2
+                x = r * math.cos(2 * math.pi * i / dot_count)
+                y = r * math.sin(2 * math.pi * i / dot_count)
+                painter.drawEllipse(x_center + x, y_center + y, d_size, d_size)
 
         if self.message:
             painter.setPen(QPen(Qt.black))
@@ -599,21 +649,24 @@ class SpinnerWidget(QWidget):
                 f = painter.font()
                 f.setPointSize(self.font_size)
                 painter.setFont(f)
-            spinner_rect.setTop(spinner_rect.bottom() + 3)
-            spinner_rect.setHeight(painter.fontMetrics().height() * 1.5)
-            r = painter.boundingRect(spinner_rect, Qt.AlignHCenter | Qt.AlignTop, self.message)
-            painter.drawText(r.bottomLeft(), self.message)
 
+            text_rect = QRect(content_rect)
+            text_rect.translate(spinner_rect.width() + SpinnerWidget.SPINNER_TO_TEXT_DISTANCE if self.timer_id else 0, 0)
+            painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, self.message)
         painter.end()
 
-    def showEvent(self, event):
-        self.timer_id = self.startTimer(200)
-        self.counter = 0
+    def sizeHint(self):
+        sh: QSize = self.size()
+        if self.message:
+            fm = self.fontMetrics()
+            w = fm.width(self.message)
+            if self.timer_id:
+                cr = self.contentsRect()
+                w += (min(self.spinner_size, cr.width(), cr.height()) + SpinnerWidget.SPINNER_TO_TEXT_DISTANCE)
+            sh.setWidth(w)
+        return sh
 
     def timerEvent(self, event):
-        target_geom = QRect(0, 0, self.parent().width(), self.parent().height())
-        if self.geometry() != target_geom:
-            self.setGeometry(target_geom)
         self.counter += 1
         self.update()
 

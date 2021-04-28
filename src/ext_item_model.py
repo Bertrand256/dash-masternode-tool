@@ -3,6 +3,8 @@
 # Author: Bertrand256
 # Created on: 2018-07
 import logging
+from enum import Enum
+
 from PyQt5.QtCore import Qt, pyqtSlot, QSortFilterProxyModel, QVariant, QAbstractItemModel, \
     QModelIndex
 from PyQt5.QtWidgets import QTableView, QWidget, QAbstractItemView, QTreeView
@@ -18,14 +20,22 @@ from wnd_utils import WndUtils
 log = logging.getLogger('dmt.ext_item_model')
 
 
+class HorizontalAlignment(Enum):
+    LEFT = 1
+    RIGHT = 2
+
+
 class TableModelColumn(AttrsProtected):
-    def __init__(self, name, caption, visible, initial_width: int = None, additional_attrs: Optional[List[str]] = None):
+    def __init__(self, name, caption, visible, initial_width: int = None,
+                 additional_attrs: Optional[List[str]] = None,
+                 horizontal_alignment: Optional[HorizontalAlignment] = None):
         AttrsProtected.__init__(self)
         self.name = name
         self.caption = caption
         self.visible = visible
         self.initial_width = initial_width
         self.visual_index = None
+        self.horizontal_alignment = horizontal_alignment
         if additional_attrs:
             for attr in additional_attrs:
                 self.add_attribute(attr)
