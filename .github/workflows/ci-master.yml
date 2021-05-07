@@ -44,8 +44,6 @@ jobs:
         echo "$prefix/bin" >> $GITHUB_PATH
     - name: Bundle Application
       run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
-    - name: Allow Execute
-      run: chmod a+x bin/firo-masternode-tool.app
     - name: Upload Release Artifact
       uses: actions/upload-artifact@v2
       with:

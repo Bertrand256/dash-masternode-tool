@@ -41,8 +41,6 @@ jobs:
         echo "$prefix/bin" >> $GITHUB_PATH
     - name: Bundle Application
       run: pyinstaller -w --distpath=bin --workpath=work dash_masternode_tool.spec
-    - name: Allow Execute
-      run: chmod a+x bin/firo-masternode-tool.app
     - name: Upload Release Artifact
       uses: actions/upload-artifact@v2
       with:
@@ -127,7 +125,7 @@ jobs:
         mkdir -v "$ASSETS_ROOT"
 
         echo "==> Prepare Win32 binaries"
-        contents="Znode Tool"
+        contents="Firo Masternode Toool"
         mv -v "$BIN_ROOT/win32/amd64" "$ASSETS_ROOT/$contents"
 
         echo "==> Zip Win32 contents"
@@ -136,8 +134,9 @@ jobs:
         popd > /dev/null
 
         echo "==> Prepare macOS bundle"
-        contents="Znode Tool.app"
+        contents="Firo Masternode Tool.app"
         mv -v "$BIN_ROOT/osx/amd64" "$ASSETS_ROOT/$contents"
+        chmod a+x "$ASSETS_ROOT/$contents/Contents/MacOS/firo-masternode-tool"
 
         echo "==> Zip macOS bundle"
         pushd "$ASSETS_ROOT" > /dev/null
