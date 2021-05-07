@@ -315,7 +315,7 @@ class Ui_WalletDlg(object):
         self.btnFetchTransactions.setToolTip(_translate("WalletDlg", "Force fetch transactions"))
         self.btnFetchTransactions.setText(_translate("WalletDlg", "..."))
         self.cboAddressSourceMode.setItemText(0, _translate("WalletDlg", "View As: Wallet Account"))
-        self.cboAddressSourceMode.setItemText(1, _translate("WalletDlg", "View As: Znode Address"))
+        self.cboAddressSourceMode.setItemText(1, _translate("WalletDlg", "View As: Masternode Address"))
         self.btnViewModeOptions.setToolTip(_translate("WalletDlg", "Options"))
         self.btnViewModeOptions.setText(_translate("WalletDlg", "..."))
         self.lblViewModeOptions.setToolTip(_translate("WalletDlg", "Options"))

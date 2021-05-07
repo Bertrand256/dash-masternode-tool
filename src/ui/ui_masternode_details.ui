@@ -426,7 +426,7 @@
         <item>
          <widget class="QToolButton" name="btnFindDMNTxHash">
           <property name="toolTip">
-           <string>Find Znode TX hash based on the ip/port or collateral tx</string>
+           <string>Find Masternode TX hash based on the ip/port or collateral tx</string>
           </property>
           <property name="text">
            <string>Find</string>

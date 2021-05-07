@@ -555,7 +555,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         """
         try:
             response = urllib.request.urlopen(
-                'https://raw.githubusercontent.com/zcoinofficial/znode-tool-evo/master/app-params.json',
+                'https://raw.githubusercontent.com/firoorg/firo-masternode-tool/master/app-params.json',
                 context=ssl._create_unverified_context())
             contents = response.read()
 
@@ -1029,7 +1029,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         if self.cur_masternode:
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Warning)
-            msg.setText('Do you really want to delete current Znode configuration?')
+            msg.setText('Do you really want to delete current Masternode configuration?')
             msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
             msg.setDefaultButton(QMessageBox.No)
             retval = msg.exec_()
@@ -1789,7 +1789,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 else:
                     status = '<span style="color:red">Masternode not found.</span>'
             else:
-                status = '<span style="color:red">Znode not found.</span>'
+                status = '<span style="color:red">Masternode not found.</span>'
         else:
             status = '<span style="color:red">Problem with connection to dashd.</span>'
 

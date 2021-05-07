@@ -482,8 +482,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         else:
             if self.show_field_hinds:
                 if self.chbWholeMNReward.isChecked():
-                    msg = 'Here you can specify how much of the Znode earnings will go to the ' \
-                          'Znode operator.'
+                    msg = 'Here you can specify how much of the Masternode earnings will go to the ' \
+                          'node operator.'
                     style = 'info'
                 else:
                     msg = 'The masternode operator will have to specify his reward payee address in a ProUpServTx ' \
@@ -576,8 +576,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         nt = self.get_dash_node_type()
         msg = ''
         if nt is None:
-            msg = 'Znode registration involves sending a special transaction via the Zcoin node ' \
-                  '(eg Zcoin-Qt). <b>Note, that this requires incurring a certain transaction fee, as with any ' \
+            msg = 'Masternode registration involves sending a special transaction via the Firo node ' \
+                  '(eg Firo-Qt). <b>Note, that this requires incurring a certain transaction fee, as with any ' \
                   'other ("normal") transaction.</b>'
         elif nt == NODE_TYPE_PUBLIC_RPC:
             msg = 'The ProRegTx transaction will be processed via the remote RPC node stored in the app configuration.' \
@@ -1093,7 +1093,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 self.start_manual_process()
             elif self.current_step == STEP_SUMMARY:
                 self.lblProtxSummary1.setText('<b><span style="color:green">Congratultions! The transaction for your '
-                                              'Znode has been submitted and is currently awaiting confirmations.'
+                                              'Masternode has been submitted and is currently awaiting confirmations.'
                                               '</b></span>')
                 if self.on_proregtx_success_callback:
                     self.on_proregtx_success_callback(self.masternode)

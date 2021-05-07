@@ -316,7 +316,7 @@ class Ui_WdgMasternodeDetails(object):
         self.lblCollateralTxIndex.setText(_translate("WdgMasternodeDetails", "index"))
         self.lblDMNTxHash.setText(_translate("WdgMasternodeDetails", "Protx hash"))
         self.btnCopyProtxHash.setToolTip(_translate("WdgMasternodeDetails", "Copy protx hash to clipboard"))
-        self.btnFindDMNTxHash.setToolTip(_translate("WdgMasternodeDetails", "Find Znode TX hash based on the ip/port or collateral tx"))
+        self.btnFindDMNTxHash.setToolTip(_translate("WdgMasternodeDetails", "Find Masternode TX hash based on the ip/port or collateral tx"))
         self.btnFindDMNTxHash.setText(_translate("WdgMasternodeDetails", "Find"))
         self.lblOwnerKey.setText(_translate("WdgMasternodeDetails", "Owner private key"))
         self.btnCopyOwnerKey.setToolTip(_translate("WdgMasternodeDetails", "Copy key to clipboard"))

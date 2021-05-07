@@ -27,7 +27,7 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: binaries-win32-amd64
-        path: bin\znode-tool.exe
+        path: bin\firo-masternode-tool.exe
   build-mac:
     name: Build for macOS
     runs-on: macos-10.15
@@ -44,11 +44,13 @@ jobs:
         echo "$prefix/bin" >> $GITHUB_PATH
     - name: Bundle Application
       run: pyinstaller --distpath=bin --workpath=work dash_masternode_tool.spec
+    - name: Allow Execute
+      run: chmod a+x bin/firo-masternode-tool.app
     - name: Upload Release Artifact
       uses: actions/upload-artifact@v2
       with:
         name: binaries-osx-amd64
-        path: bin/znode-tool.app
+        path: bin/firo-masternode-tool.app
   build-linux:
     name: Build for Linux
     runs-on: ubuntu-18.04
@@ -66,11 +68,11 @@ jobs:
     - name: Install Required Flatpak Runtimes
       run: flatpak install --user -y flathub org.freedesktop.Platform//19.08 org.freedesktop.Sdk//19.08
     - name: Build Application
-      run: mkdir -p "$FLATPAK_LOCAL_REPO" && flatpak-builder --repo="$FLATPAK_LOCAL_REPO" "$FLATPAK_BUILD_ROOT/znode-tool" flatpak.json
+      run: mkdir -p "$FLATPAK_LOCAL_REPO" && flatpak-builder --repo="$FLATPAK_LOCAL_REPO" "$FLATPAK_BUILD_ROOT/firo-masternode-tool" flatpak.json
     - name: Bundle Application
-      run: flatpak build-bundle --runtime-repo="$FLATPAK_FLATHUB_REPO" "$FLATPAK_LOCAL_REPO" znode-tool.flatpak io.zcoin.ZnodeTool
+      run: flatpak build-bundle --runtime-repo="$FLATPAK_FLATHUB_REPO" "$FLATPAK_LOCAL_REPO" firo-masternode-tool.flatpak org.firo.FiroMasternodeTool
     - name: Upload Release Artifact
       uses: actions/upload-artifact@v2
       with:
         name: binaries-linux-amd64
-        path: znode-tool.flatpak
+        path: firo-masternode-tool.flatpak

@@ -106,7 +106,7 @@
             </size>
            </property>
            <property name="text">
-            <string>Znode</string>
+            <string>Masternode</string>
            </property>
            <property name="alignment">
             <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
@@ -134,7 +134,7 @@
             </size>
            </property>
            <property name="toolTip">
-            <string>List of configured Znode</string>
+            <string>List of configured Masternode</string>
            </property>
            <property name="editable">
             <bool>false</bool>
@@ -156,7 +156,7 @@
             </size>
            </property>
            <property name="toolTip">
-            <string>Move up in the Znode list</string>
+            <string>Move up in the Masternode list</string>
            </property>
            <property name="styleSheet">
             <string notr="true">padding-left: 0px;
@@ -173,7 +173,7 @@ padding-right: 0px;</string>
          <item>
           <widget class="QPushButton" name="btnMoveMnDown">
            <property name="toolTip">
-            <string>Move down in the Znode list</string>
+            <string>Move down in the Masternode list</string>
            </property>
            <property name="styleSheet">
             <string notr="true">padding-left: 0px;
@@ -199,7 +199,7 @@ padding-right: 0px;</string>
             </size>
            </property>
            <property name="toolTip">
-            <string>Create a new Znode configuration</string>
+            <string>Create a new Masternode configuration</string>
            </property>
            <property name="text">
             <string>New</string>
@@ -215,7 +215,7 @@ padding-right: 0px;</string>
             </sizepolicy>
            </property>
            <property name="toolTip">
-            <string>Duplicate Znode entry</string>
+            <string>Duplicate Masternode entry</string>
            </property>
            <property name="text">
             <string>Duplicate</string>
@@ -231,7 +231,7 @@ padding-right: 0px;</string>
             </sizepolicy>
            </property>
            <property name="toolTip">
-            <string>Delete current Znode configuration</string>
+            <string>Delete current Masternode configuration</string>
            </property>
            <property name="text">
             <string>Delete</string>
@@ -326,7 +326,7 @@ padding-right: 0px;</string>
                </size>
               </property>
               <property name="text">
-               <string>Znode status</string>
+               <string>Masternode status</string>
               </property>
               <property name="alignment">
                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -364,7 +364,7 @@ padding-right: 0px;</string>
                </sizepolicy>
               </property>
               <property name="toolTip">
-               <string>Get Znode's status</string>
+               <string>Get Masternode's status</string>
               </property>
               <property name="text">
                <string>Get status</string>
@@ -381,10 +381,10 @@ padding-right: 0px;</string>
             <item>
              <widget class="QPushButton" name="btnRegisterDmn">
               <property name="toolTip">
-               <string>Register new/update existing Znode by sending a ProRegTx transaction.</string>
+               <string>Register new/update existing Masternode by sending a ProRegTx transaction.</string>
               </property>
               <property name="text">
-               <string>Register Znode</string>
+               <string>Register Masternode</string>
               </property>
              </widget>
             </item>
@@ -409,7 +409,7 @@ padding-right: 0px;</string>
                </size>
               </property>
               <property name="toolTip">
-               <string>Update the Znode payout address on the network.</string>
+               <string>Update the Masternode payout address on the network.</string>
               </property>
               <property name="styleSheet">
                <string notr="true"/>
@@ -422,7 +422,7 @@ padding-right: 0px;</string>
             <item>
              <widget class="QPushButton" name="btnUpdMnOperatorKey">
               <property name="toolTip">
-               <string>Update the Znode operator key on the network.</string>
+               <string>Update the Masternode operator key on the network.</string>
               </property>
               <property name="text">
                <string>Update operator key</string>
@@ -432,7 +432,7 @@ padding-right: 0px;</string>
             <item>
              <widget class="QPushButton" name="btnUpdMnVotingKey">
               <property name="toolTip">
-               <string>Update the Znode voting key on the network.</string>
+               <string>Update the Masternode voting key on the network.</string>
               </property>
               <property name="text">
                <string>Update voting key</string>
@@ -442,7 +442,7 @@ padding-right: 0px;</string>
             <item>
              <widget class="QPushButton" name="btnUpdMnService">
               <property name="toolTip">
-               <string>Update the Znode IP:port and/or the operator reward Zcoin address.</string>
+               <string>Update the Masternode IP:port and/or the operator reward Zcoin address.</string>
               </property>
               <property name="text">
                <string>Update service</string>
@@ -452,7 +452,7 @@ padding-right: 0px;</string>
             <item>
              <widget class="QPushButton" name="btnRevokeMn">
               <property name="toolTip">
-               <string>Revoke the Znode operator key.</string>
+               <string>Revoke the Masternode operator key.</string>
               </property>
               <property name="text">
                <string>Revoke operator</string>
@@ -687,7 +687,7 @@ padding-right: 0px;</string>
   </action>
   <action name="action_about_app">
    <property name="text">
-    <string>About Znode Tool...</string>
+    <string>About Firo Masternode Tool...</string>
    </property>
    <property name="menuRole">
     <enum>QAction::AboutRole</enum>

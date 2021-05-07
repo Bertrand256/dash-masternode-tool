@@ -601,11 +601,11 @@ class Ui_RegMasternodeDlg(object):
 
     def retranslateUi(self, RegMasternodeDlg):
         _translate = QtCore.QCoreApplication.translate
-        RegMasternodeDlg.setWindowTitle(_translate("RegMasternodeDlg", "Znode migration wizard"))
+        RegMasternodeDlg.setWindowTitle(_translate("RegMasternodeDlg", "Masternode migration wizard"))
         self.lblOwnerMsg.setText(_translate("RegMasternodeDlg", "..."))
         self.lblVotingMsg.setText(_translate("RegMasternodeDlg", "..."))
         self.label_5.setText(_translate("RegMasternodeDlg", "Port"))
-        self.chbWholeMNReward.setText(_translate("RegMasternodeDlg", "The entire Znode reward goes to the owner"))
+        self.chbWholeMNReward.setText(_translate("RegMasternodeDlg", "The entire Masternode reward goes to the owner"))
         self.label_16.setText(_translate("RegMasternodeDlg", "%"))
         self.btnGenerateVotingKey.setText(_translate("RegMasternodeDlg", "Generate new"))
         self.btnGenerateOperatorKey.setText(_translate("RegMasternodeDlg", "Generate new"))

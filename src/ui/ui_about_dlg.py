@@ -82,14 +82,14 @@ class Ui_AboutDlg(object):
     def retranslateUi(self, AboutDlg):
         _translate = QtCore.QCoreApplication.translate
         AboutDlg.setWindowTitle(_translate("AboutDlg", "Dialog"))
-        self.lblAppName.setText(_translate("AboutDlg", "Znode Tool"))
+        self.lblAppName.setText(_translate("AboutDlg", "Firo Masternode Tool"))
         self.textAbout.setHtml(_translate("AboutDlg", "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
 "<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
 "p, li { white-space: pre-wrap; }\n"
 "</style></head><body style=\" font-family:\'Arial\'; font-size:13pt; font-weight:400; font-style:normal;\">\n"
 "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">This application is free for commercial and non-commercial use and is released as open source project.</span></p>\n"
 "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\"> </span></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">Project\'s GitHub URL:</span><span style=\" font-size:11pt;\"> </span><a href=\"https://github.com/zcoinofficial/znode-tool-evo\"><span style=\" font-size:11pt; text-decoration: underline; color:#0000ff;\">https://github.com/zcoinofficial/znode-tool-evo</span></a><span style=\" font-size:11pt;\"> </span></p>\n"
+"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">Project\'s GitHub URL:</span><span style=\" font-size:11pt;\"> </span><a href=\"https://github.com/firoorg/firo-masternode-tool\"><span style=\" font-size:11pt; text-decoration: underline; color:#0000ff;\">https://github.com/firoorg/firo-masternode-tool</span></a><span style=\" font-size:11pt;\"> </span></p>\n"
 "<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:11pt;\"><br /></p>\n"
 "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">Special thanks to:</span></p>\n"
 "<ul style=\"margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px; -qt-list-indent: 1;\"><li style=\" font-size:11pt;\" style=\" margin-top:4px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">chaeplin for <a href=\"https://github.com/chaeplin/dashmnb\"><span style=\" text-decoration: underline; color:#0000ff;\">dashmnb</span></a>, of which parts are used here</li>\n"

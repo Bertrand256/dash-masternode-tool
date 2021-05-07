@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Firo Masternode Tool
+GenericName=Firo Masternode Tool
+Comment=A tool for managing Firo masternodes
+Exec=/app/opt/firo-masternode-tool/src/dash_masternode_tool.py
+Icon=org.firo.FiroMasternodeTool
+Terminal=false
