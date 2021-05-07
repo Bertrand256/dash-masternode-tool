@@ -226,7 +226,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         Show the information read from configuration file on the user interface.
         :return:
         """
-        self.main_view.initialize_ui()
+        self.main_view.configuration_to_ui()
         self.action_open_log_file.setText('Open log file (%s)' % self.app_config.log_file)
         self.update_edit_controls_state()
 

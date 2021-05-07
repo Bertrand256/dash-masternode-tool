@@ -846,6 +846,103 @@ class HyperlinkItemDelegate(QStyledItemDelegate):
         clipboard.setText(self.last_text)
 
 
+class IconTextItemDelegate(QItemDelegate):
+    """
+    This deledate is used to display text values with icon on the left of the text in QTableView cells.
+    For this delegate, the `data` method of the model associated should return:
+      - a tuple; the first element is of type QPixmap and the second is str - the text to display
+      - a single value (str) - the text to display
+    """
+    CellVerticalMargin = 2
+    CellHorizontalMargin = 2
+    CellLinesMargin = 2
+    IconRightMargin = 4
+
+    def __init__(self, parent: QTableView):
+        QItemDelegate.__init__(self, parent)
+        self.view = parent
+
+    def createEditor(self, parent, option, index):
+        return None
+
+    def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
+        if index.isValid():
+            text_alignment = index.data(Qt.TextAlignmentRole)
+            if not text_alignment:
+                text_alignment = Qt.AlignLeft
+            fg_color = index.data(Qt.ForegroundRole)
+            if not fg_color:
+                fg_color = Qt.black
+            data = index.data()
+
+            if isinstance(self.view, QTableView):
+                view_has_focus = self.view.hasFocus()
+                select_whole_row = self.view.selectionBehavior() == QAbstractItemView.SelectRows
+            else:
+                view_has_focus = False
+                select_whole_row = False
+
+            painter.save()
+
+            painter.setPen(QPen(Qt.NoPen))
+            if option.state & QStyle.State_Selected:
+                if (option.state & QStyle.State_HasFocus) or (view_has_focus and select_whole_row):
+                    fg_color = Qt.white
+                    painter.setBrush(QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
+                else:
+                    fg_color = Qt.black
+                    painter.setBrush(QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
+            else:
+                painter.setBrush(QBrush(Qt.white))
+            painter.drawRect(option.rect)
+
+            r = option.rect
+            r.translate(IconTextItemDelegate.CellHorizontalMargin, IconTextItemDelegate.CellVerticalMargin)
+
+            offs = 0
+            if isinstance(data, tuple) and len(data) > 0 and isinstance(data[0], QPixmap):
+                offs += 1
+                pix = data[0]
+                if pix:
+                    rp = QRect(r)
+                    rp.setWidth(pix.width())
+                    rp.setHeight(pix.height())
+                    painter.drawImage(rp, pix.toImage())
+                    r.translate(rp.width() + IconTextItemDelegate.IconRightMargin, 0)
+                    r.setWidth(r.width() - rp.width() - IconTextItemDelegate.IconRightMargin)
+
+            if isinstance(data, tuple) and len(data) > offs and isinstance(data[offs], str):
+                text = data[offs]
+            elif isinstance(data, str):
+                text = data
+            else:
+                text = ''
+
+            if text:
+                painter.setPen(QPen(fg_color))
+                painter.setFont(option.font)
+                painter.drawText(r, text_alignment, text)
+                painter.restore()
+
+    def sizeHint(self, option, index):
+        sh = QItemDelegate.sizeHint(self, option, index)
+        if index.isValid():
+            data = index.data()
+            h = 0
+            offs = 0
+            if isinstance(data, tuple) and len(data) > 0 and isinstance(data[0], QPixmap):
+                pix: QPixmap = data[0]
+                h = pix.height()
+                offs += 1
+
+            fm = option.fontMetrics
+            h1 = IconTextItemDelegate.CellVerticalMargin * 2 + IconTextItemDelegate.CellLinesMargin
+            h1 += (fm.height() * 2) - 2
+            h = max(h, h1)
+            sh.setHeight(h)
+        return sh
+
+
 class ProxyStyleNoFocusRect(QProxyStyle):
     """
     Dedicated to hide a dotted focus rectangle surrounding HTML elements (especially hypelinks) rendered inside

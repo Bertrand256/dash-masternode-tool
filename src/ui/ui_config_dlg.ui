@@ -398,6 +398,13 @@
         </widget>
        </item>
        <item>
+        <widget class="QCheckBox" name="chbFetchDataAfterStart">
+         <property name="text">
+          <string>Automatically fetch data from the network after starting the app</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QCheckBox" name="chbBackupConfigFile">
          <property name="toolTip">
           <string>If checked, old config file will be saved when changing configuration</string>

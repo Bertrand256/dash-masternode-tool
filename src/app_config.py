@@ -187,6 +187,7 @@ class AppConfig(QObject):
         self.data_dir = ''
         self.encrypt_config_file = False
         self.config_file_encrypted = False
+        self.fetch_network_data_after_start = True
 
         # attributes related to encryption cache data with hardware wallet:
         self.hw_generated_key = b"\xab\x0fs}\x8b\t\xb4\xc3\xb8\x05\xba\xd1\x96\x9bq`I\xed(8w\xbf\x95\xf0-\x1a\x14\xcb\x1c\x1d+\xcd"
@@ -475,6 +476,7 @@ class AppConfig(QObject):
         self.dont_use_file_dialogs = src_config.dont_use_file_dialogs
         self.confirm_when_voting = src_config.confirm_when_voting
         self.add_random_offset_to_vote_time = src_config.add_random_offset_to_vote_time
+        self.fetch_network_data_after_start = src_config.fetch_network_data_after_start
         self.csv_delimiter = src_config.csv_delimiter
         if self.initialized:
             # if this object is the main AppConfig object (it's initialized)
@@ -698,6 +700,9 @@ class AppConfig(QObject):
                     self.value_to_bool(config.get(section, 'add_random_offset_to_vote_time', fallback='1'))
                 self.encrypt_config_file = \
                     self.value_to_bool(config.get(section, 'encrypt_config_file', fallback='0'))
+
+                self.fetch_network_data_after_start = self.value_to_bool(
+                    config.get(section, 'fetch_network_data_after_start', fallback='1'))
 
                 # with ini ver 3 we changed the connection password encryption scheme, so connections in new ini
                 # file will be saved under different section names - with this we want to disallow the old app
@@ -958,6 +963,7 @@ class AppConfig(QObject):
         config.set(section, 'read_external_proposal_attributes',
                    '1' if self.read_proposals_external_attributes else '0')
         config.set(section, 'confirm_when_voting', '1' if self.confirm_when_voting else '0')
+        config.set(section, 'fetch_network_data_after_start', '1' if self.fetch_network_data_after_start else '0')
         config.set(section, 'add_random_offset_to_vote_time', '1' if self.add_random_offset_to_vote_time else '0')
         config.set(section, 'encrypt_config_file', '1' if self.encrypt_config_file else '0')
 

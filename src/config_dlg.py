@@ -216,6 +216,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.chbConfirmWhenVoting.setChecked(self.local_config.confirm_when_voting)
         self.chbAddRandomOffsetToVotingTime.setChecked(self.local_config.add_random_offset_to_vote_time)
         self.chbEncryptConfigFile.setChecked(self.local_config.encrypt_config_file)
+        self.chbFetchDataAfterStart.setChecked(self.local_config.fetch_network_data_after_start)
 
         idx = {
                 'CRITICAL': 0,
@@ -708,6 +709,11 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
     @pyqtSlot(bool)
     def on_chbAddRandomOffsetToVotingTime_toggled(self, checked):
         self.local_config.add_random_offset_to_vote_time = checked
+        self.set_modified()
+
+    @pyqtSlot(bool)
+    def on_chbFetchDataAfterStart_toggled(self, checked):
+        self.local_config.fetch_network_data_after_start = checked
         self.set_modified()
 
     @pyqtSlot(bool)

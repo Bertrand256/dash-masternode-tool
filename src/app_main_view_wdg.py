@@ -10,24 +10,23 @@ import threading
 import time
 from datetime import datetime
 from enum import Enum
-from typing import Callable, Optional, List, Dict
+from typing import Callable, Optional, List, Dict, Any
 
 import bitcoin
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import pyqtSlot, Qt, QTimer, QVariant, QModelIndex, QRect
-from PyQt5.QtGui import QTextDocument, QPen, QBrush, QPalette, QImage
+from PyQt5.QtGui import QTextDocument, QPen, QBrush, QPalette, QImage, QPixmap
 from PyQt5.QtWidgets import QWidget, QLineEdit, QMessageBox, QAction, QApplication, QActionGroup, QTableView, \
     QItemDelegate, QStyleOptionViewItem, QStyle, QAbstractItemView, QLabel
 
 import app_utils
-import dash_utils
 import hw_intf
 from app_config import AppConfig, MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING
 from dashd_intf import DashdInterface
 from ext_item_model import ExtSortFilterItemModel, TableModelColumn, HorizontalAlignment
 from masternode_details_wdg import WdgMasternodeDetails
 from ui import ui_app_main_view_wdg
-from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget
+from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, IconTextItemDelegate
 
 
 class Pages(Enum):
@@ -37,6 +36,7 @@ class Pages(Enum):
 
 
 log = logging.getLogger('dmt.main')
+SORTING_MAX_VALUE_FOR_NULL = 1e10
 
 
 class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
@@ -51,13 +51,14 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.cur_masternode: Optional[MasternodeConfig] = None
         self.editing_enabled = False
         self.mns_status: Dict[MasternodeConfig, MasternodeStatus] = {}
-        self.masernodes_table_model = MasternodesTableModel(self, self.app_config.masternodes, self.mns_status)
+        self.masternodes_table_model = MasternodesTableModel(self, self.app_config.masternodes, self.mns_status)
         self.mn_list_columns_cache_name: str = ''
         self.mn_list_columns_resized_by_user = False
         self.refresh_status_thread = None
         self.network_status: NetworkStatus = NetworkStatus()
         self.loading_data_spinner: Optional[SpinnerWidget] = None
         self.finishing = False
+        self.mn_view_column_delegates: Dict[int, QItemDelegate] = {}
         self.setupUi(self)
 
     def setupUi(self, widget: QWidget):
@@ -74,7 +75,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.wdg_masternode.data_changed.connect(self.on_mn_data_changed)
         self.stackedWidget.setCurrentIndex(self.current_view.value)
         l = self.pnlNavigation.layout()
-        self.loading_data_spinner = SpinnerWidget(self.pnlNavigation, 18, 'Reading data, please wait...')
+        self.loading_data_spinner = SpinnerWidget(self.pnlNavigation, 18, 'Fetching data from the network, please wait...')
         self.loading_data_spinner.hide()
         l.insertWidget(l.indexOf(self.btnMnListColumns) + 1, self.loading_data_spinner)
 
@@ -84,13 +85,11 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.viewMasternodes.verticalHeader().setDefaultSectionSize(
             self.viewMasternodes.verticalHeader().fontMetrics().height() + 10)
         self.viewMasternodes.horizontalHeader().setSortIndicator(
-            self.masernodes_table_model.col_index_by_name('name'), Qt.AscendingOrder)
-        self.masernodes_table_model.set_view(self.viewMasternodes)
+            self.masternodes_table_model.col_index_by_name('no'), Qt.AscendingOrder)
+        self.masternodes_table_model.set_view(self.viewMasternodes)
         self.viewMasternodes.horizontalHeader().sectionResized.connect(self.on_mn_list_column_resized)
         self.viewMasternodes.selectionModel().selectionChanged.connect(self.on_mn_view_selection_changed)
-        col_idx = self.masernodes_table_model.col_index_by_name('status')
-        if col_idx is not None:
-            self.viewMasternodes.setItemDelegateForColumn(col_idx, MNStatusItemDelegate(self.viewMasternodes))
+        self.configure_mn_view_delegates()
 
     def on_close(self):
         """closeEvent is not fired for widgets, so this method will be called from the closeEvent method of the
@@ -109,24 +108,40 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         """
         if self.mn_list_columns_cache_name:
             if self.mn_list_columns_resized_by_user:
-                self.masernodes_table_model.save_col_defs(self.mn_list_columns_cache_name)
+                self.masternodes_table_model.save_col_defs(self.mn_list_columns_cache_name)
 
     def restore_cache_config_config_dependent(self):
         """Save runtime configuration (stored in cache) that is dependent on the main configuration file."""
 
         old_block = self.viewMasternodes.horizontalHeader().blockSignals(True)
         try:
-            if not self.masernodes_table_model.restore_col_defs(self.mn_list_columns_cache_name):
+            if not self.masternodes_table_model.restore_col_defs(self.mn_list_columns_cache_name):
                 self.viewMasternodes.resizeColumnsToContents()
             else:
-                self.masernodes_table_model.set_view(self.viewMasternodes)
+                self.masternodes_table_model.set_view(self.viewMasternodes)
+            self.configure_mn_view_delegates()
         finally:
             self.viewMasternodes.horizontalHeader().blockSignals(old_block)
 
-    def initialize_ui(self):
+    def configure_mn_view_delegates(self):
+        # delete old column delegates for viewMasternodes
+        for col_idx in self.mn_view_column_delegates.keys():
+            d = self.mn_view_column_delegates[col_idx]
+            del d
+            self.viewMasternodes.setItemDelegateForColumn(col_idx, None)
+        self.mn_view_column_delegates.clear()
+
+        col_idx = self.masternodes_table_model.col_index_by_name('status')
+        if col_idx is not None:
+            deleg = IconTextItemDelegate(self.viewMasternodes)
+            self.mn_view_column_delegates[col_idx] = deleg
+            self.viewMasternodes.setItemDelegateForColumn(col_idx, deleg)
+
+    def configuration_to_ui(self):
         def set_cur_mn():
             try:
                 self.network_status.loaded = False
+                self.masternodes_table_model.set_masternodes(self.app_config.masternodes, self.mns_status)
                 self.refresh_masternodes_view()
                 self.save_cache_config_config_dependent()
                 h = hashlib.sha256(self.app_config.app_config_file_name.encode('ascii', 'ignore')).hexdigest()
@@ -139,6 +154,9 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 self.update_navigation_panel()
                 self.update_ui()
                 self.update_info_page()
+
+                if self.app_config.fetch_network_data_after_start:
+                    self.fetch_network_data()
             except Exception as e:
                 logging.exception(str(e))
 
@@ -148,17 +166,17 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         cur_index = self.viewMasternodes.currentIndex()
         current_row = -1
         if cur_index:
-            source_row = self.masernodes_table_model.mapToSource(cur_index)
+            source_row = self.masternodes_table_model.mapToSource(cur_index)
             if source_row:
                 current_row = source_row.row()
 
-        self.masernodes_table_model.beginResetModel()
-        self.masernodes_table_model.endResetModel()
+        self.masternodes_table_model.beginResetModel()
+        self.masternodes_table_model.endResetModel()
 
         # restore the focused row
         if current_row >= 0:
-            idx = self.masernodes_table_model.index(current_row, 0)
-            idx = self.masernodes_table_model.mapFromSource(idx)
+            idx = self.masternodes_table_model.index(current_row, 0)
+            idx = self.masternodes_table_model.mapFromSource(idx)
             self.viewMasternodes.setCurrentIndex(idx)
 
     def set_current_masternode(self, masternode: Optional[MasternodeConfig], update_ui: bool = True):
@@ -302,10 +320,9 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
 
     @pyqtSlot(bool)
     def on_btnMnListColumns_clicked(self):
-        self.masernodes_table_model.exec_columns_dialog(self)
+        self.masternodes_table_model.exec_columns_dialog(self)
 
-    @pyqtSlot(bool)
-    def on_btnRefreshMnStatus_clicked(self):
+    def fetch_network_data(self):
         def update():
             self.hide_loading_animation()
             self.update_info_page()
@@ -315,6 +332,10 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
             self.show_loading_animation()
             self.refresh_status_thread = WndUtils.run_thread(self, self.get_masternode_status_thread, (),
                                                              on_thread_finish=update)
+
+    @pyqtSlot(bool)
+    def on_btnRefreshMnStatus_clicked(self):
+        self.fetch_network_data()
 
     @pyqtSlot(QModelIndex)
     def on_viewMasternodes_doubleClicked(self, index):
@@ -328,7 +349,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         mn = None
         cur_index = self.viewMasternodes.currentIndex()
         if cur_index:
-            source_row = self.masernodes_table_model.mapToSource(cur_index)
+            source_row = self.masternodes_table_model.mapToSource(cur_index)
             if source_row:
                 current_row = source_row.row()
                 if current_row is not None and current_row < len(self.app_config.masternodes):
@@ -505,8 +526,6 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         protx_list_registered: List[Dict] = []  # result of the call: protx list registered
 
         try:
-            # WndUtils.call_in_main_thread(self.lblMnListMessage.setText, 'Reading data, please wait...')
-
             # read new masternodes data from the network every 30 seconds:
             self.dashd_intf.get_masternodelist('json', data_max_age=30)
             self.fetch_governance_info()
@@ -713,6 +732,7 @@ class MasternodesTableModel(ExtSortFilterItemModel):
     def __init__(self, parent, masternodes: List[MasternodeConfig],
                  mns_status: Dict[MasternodeConfig, MasternodeStatus]):
         ExtSortFilterItemModel.__init__(self, parent, [
+            TableModelColumn('no', '', True, 20, horizontal_alignment=HorizontalAlignment.RIGHT),
             TableModelColumn('name', 'Name', True, 100),
             TableModelColumn('status', 'Status', True, 100),
             TableModelColumn('ip_port', 'IP/port', True, 140),
@@ -735,7 +755,12 @@ class MasternodesTableModel(ExtSortFilterItemModel):
         ], True, True)
         self.masternodes = masternodes
         self.mns_status = mns_status
+        self.background_color = QtGui.QColor('lightgray')
         self.set_attr_protection()
+
+    def set_masternodes(self, mns: List[MasternodeConfig], mns_status: Dict[MasternodeConfig, MasternodeStatus]):
+        self.masternodes = mns
+        self.mns_status = mns_status
 
     def rowCount(self, parent=None, *args, **kwargs):
         return len(self.masternodes)
@@ -745,6 +770,8 @@ class MasternodesTableModel(ExtSortFilterItemModel):
 
     def set_view(self, table_view: QTableView):
         super().set_view(table_view)
+        h = table_view.horizontalHeader()
+        self.background_color = h.palette().color(QPalette.Active, h.palette().Background)
 
     def data(self, index, role=None):
         if index.isValid():
@@ -753,130 +780,169 @@ class MasternodesTableModel(ExtSortFilterItemModel):
             if row_idx < len(self.masternodes):
                 mn = self.masternodes[row_idx]
                 if mn:
-                    st = self.mns_status.get(mn)
                     if role in (Qt.DisplayRole, Qt.EditRole):
-                        col = self.col_by_index(col_idx)
-                        if col:
-                            field_name = col.name
-                            if field_name == 'name':
-                                return mn.name
-                            elif field_name == 'ip_port':
-                                return mn.ip + (':' + str(mn.port) if mn.port else '')
-                            elif field_name == 'collateral':
-                                return mn.collateral_address
-                            elif field_name == 'collateral_tx':
-                                return mn.collateral_tx + (
-                                    ':' + str(mn.collateral_tx_index) if mn.collateral_tx_index else '')
-                            elif col.name == 'roles':
-                                val = ''
-                                if mn.dmn_user_roles & DMN_ROLE_OWNER > 0:
-                                    val = 'owner'
-                                if mn.dmn_user_roles & DMN_ROLE_OPERATOR > 0:
-                                    val = 'operator' if not val else val + ' | operator'
-                                if mn.dmn_user_roles & DMN_ROLE_VOTING > 0:
-                                    val = 'voting' if not val else val + ' | voting'
-                                return val
-                            elif col.name == 'protx':
-                                return mn.dmn_tx_hash
-                            elif col.name == 'status':
-                                #if st:
-                                #     if st.not_found:
-                                #         return 'Not found'
-                                #     return st.status
-                                return st
-                            elif col.name == 'last_paid_block':
-                                if st and st.last_paid_block:
-                                    return st.last_paid_block
-                            elif col.name == 'last_paid_time':
-                                if st and st.last_paid_dt:
-                                    return app_utils.to_string(st.last_paid_dt)
-                            elif col.name == 'last_paid_ago':
-                                if st and st.last_paid_ago_str:
-                                    return st.last_paid_ago_str
-                            elif col.name == 'next_payment_block':
-                                if st:
-                                    return st.next_payment_block
-                            elif col.name == 'next_payment_time':
-                                if st and st.next_payment_dt:
-                                    return app_utils.to_string(st.next_payment_dt)
-                            elif col.name == 'next_payment_in':
-                                if st and st.next_payment_in_str:
-                                    return st.next_payment_in_str
-                            elif col.name == 'collateral_addr_balance':
-                                if st:
-                                    return app_utils.to_string(st.collateral_addr_balance)
-                            elif col.name == 'payout_addr_balance':
-                                if st:
-                                    return app_utils.to_string(st.payout_addr_balance)
-
-                            else:
-                                return QVariant()
+                        val = self.get_cell_value(row_idx, col_idx, for_sorting=False)
+                        if val is None:
+                            val = QVariant()
+                        return val
 
                     elif role == Qt.ForegroundRole:
+                        st = self.mns_status.get(mn)
                         col: TableModelColumn = self.col_by_index(col_idx)
                         if col:
                             if col.name == 'status':
                                 if st:
-                                    if st.not_found or re.match(r".*BAN.*", st.status, re.IGNORECASE):
-                                        return QtGui.QColor('white')
+                                    if st.is_error():
+                                        return QtGui.QColor('red')
+                                    elif st.is_warning():
+                                        return QtGui.QColor('#e65c00')
                                     else:
                                         return QtGui.QColor('green')
                         return None
 
-                    elif role == Qt.BackgroundRole:
-                        col: TableModelColumn = self.col_by_index(col_idx)
-                        if col:
-                            if col.name == 'status':
-                                if st:
-                                    if st.not_found:
-                                        return QtGui.QColor('red')
-                                    elif re.match(r".*BAN.*", st.status, re.IGNORECASE):
-                                        return QtGui.QColor('orange')
-
                     elif role == Qt.TextAlignmentRole:
                         col: TableModelColumn = self.col_by_index(col_idx)
                         if col and col.horizontal_alignment:
-                            return Qt.AlignRight | Qt.AlignVCenter if col.horizontal_alignment == HorizontalAlignment.RIGHT else \
+                            return Qt.AlignRight | Qt.AlignVCenter if col.horizontal_alignment == \
+                                                                      HorizontalAlignment.RIGHT else\
                                 Qt.AlignLeft | Qt.AlignVCenter
                         return None
         return QVariant()
 
+    def get_cell_value(self, row_idx: int, col_idx: int, for_sorting: bool):
+        ret_val: Any = None
+        if row_idx < len(self.masternodes):
+            mn = self.masternodes[row_idx]
+            if mn:
+                st = self.mns_status.get(mn)
+
+            st = self.mns_status.get(mn)
+            col = self.col_by_index(col_idx)
+            if col:
+                col_name = col.name
+                if col_name == 'no':
+                    ret_val = row_idx + 1
+                    if not for_sorting:
+                        ret_val = str(ret_val) + '.'
+                elif col_name == 'name':
+                    ret_val = mn.name
+                elif col_name == 'ip_port':
+                    ret_val = mn.ip + (':' + str(mn.port) if mn.port else '')
+                elif col_name == 'collateral':
+                    ret_val = mn.collateral_address
+                elif col_name == 'collateral_tx':
+                    ret_val = mn.collateral_tx + (
+                        ':' + str(mn.collateral_tx_index) if mn.collateral_tx_index else '')
+                elif col_name == 'roles':
+                    val = ''
+                    if mn.dmn_user_roles & DMN_ROLE_OWNER > 0:
+                        val = 'owner'
+                    if mn.dmn_user_roles & DMN_ROLE_OPERATOR > 0:
+                        val = 'operator' if not val else val + ' | operator'
+                    if mn.dmn_user_roles & DMN_ROLE_VOTING > 0:
+                        val = 'voting' if not val else val + ' | voting'
+                    ret_val = val
+                elif col_name == 'protx':
+                    ret_val = mn.dmn_tx_hash
+                elif col_name == 'status':
+                    if for_sorting:
+                        ret_val = st.status if st else ''
+                    else:
+                        if st:
+                            if st.is_error():
+                                img_file = 'error@16px.png'
+                            elif st.is_warning():
+                                img_file = 'warning@16px.png'
+                            else:
+                                img_file = 'check-circle@16px.png'
+
+                            pix = WndUtils.get_pixmap(self, img_file)
+                            ret_val = (pix, st.get_status())
+
+                elif col_name == 'last_paid_block':
+                    if st:
+                        ret_val = st.last_paid_block
+                        if ret_val is None and for_sorting:
+                            ret_val = SORTING_MAX_VALUE_FOR_NULL
+                elif col_name == 'last_paid_time':
+                    if st:
+                        if for_sorting:
+                            ret_val = st.last_paid_ts
+                            if ret_val is None:
+                                ret_val = 0
+                        else:
+                            ret_val = app_utils.to_string(st.last_paid_dt)
+                elif col_name == 'last_paid_ago':
+                    if st:
+                        if for_sorting:
+                            ret_val = st.last_paid_ago
+                            if ret_val is None:
+                                ret_val = SORTING_MAX_VALUE_FOR_NULL
+                        else:
+                            ret_val = st.last_paid_ago_str
+                elif col_name == 'next_payment_block':
+                    if st:
+                        ret_val = st.next_payment_block
+                        if ret_val is None and for_sorting:
+                            ret_val = SORTING_MAX_VALUE_FOR_NULL
+                elif col_name == 'next_payment_time':
+                    if st:
+                        if for_sorting:
+                            ret_val = st.next_payment_ts
+                            if ret_val is None:
+                                ret_val = SORTING_MAX_VALUE_FOR_NULL
+                        else:
+                            ret_val = app_utils.to_string(st.next_payment_dt)
+                elif col_name == 'next_payment_in':
+                    if st:
+                        if for_sorting:
+                            ret_val = st.next_payment_ts
+                            if ret_val is None:
+                                ret_val = SORTING_MAX_VALUE_FOR_NULL
+                        else:
+                            ret_val = st.next_payment_in_str
+                elif col_name == 'collateral_addr_balance':
+                    if st:
+                        if for_sorting:
+                            ret_val = st.collateral_addr_balance
+                            if ret_val is None:
+                                ret_val = 0
+                        else:
+                            ret_val = app_utils.to_string(st.collateral_addr_balance)
+                elif col_name == 'payout_addr_balance':
+                    if st:
+                        if for_sorting:
+                            ret_val = st.payout_addr_balance
+                            if ret_val is None:
+                                ret_val = 0
+                        else:
+                            ret_val = app_utils.to_string(st.payout_addr_balance)
+        return ret_val
+
     def lessThan(self, col_index, left_row_index, right_row_index):
-        # col = self.col_by_index(col_index)
-        # if col:
-        #     col_name = col.name
-        #     reverse = False
-        #     if col_name == 'time_str':
-        #         col_name = 'confirmations'
-        #         reverse = True
-        #
-        #     if 0 <= left_row_index < len(self.utxos) and \
-        #        0 <= right_row_index < len(self.utxos):
-        #         left_utxo = self.utxos[left_row_index]
-        #         right_utxo = self.utxos[right_row_index]
-        #         left_value = left_utxo.__getattribute__(col_name)
-        #         right_value = right_utxo.__getattribute__(col_name)
-        #         if isinstance(left_value, (int, float)) and isinstance(right_value, (int, float)):
-        #             if not reverse:
-        #                 return left_value < right_value
-        #             else:
-        #                 return right_value < left_value
-        #         elif isinstance(left_value, str) and isinstance(right_value, str):
-        #             left_value = left_value.lower()
-        #             right_value = right_value.lower()
-        #             if not reverse:
-        #                 return left_value < right_value
-        #             else:
-        #                 return right_value < left_value
+        col = self.col_by_index(col_index)
+        if col:
+            reverse = False
+
+            left_value = self.get_cell_value(left_row_index, col_index, True)
+            right_value = self.get_cell_value(right_row_index, col_index, True)
+
+            if isinstance(left_value, (int, float)) and isinstance(right_value, (int, float)):
+                if not reverse:
+                    return left_value < right_value
+                else:
+                    return right_value < left_value
+            elif isinstance(left_value, str) and isinstance(right_value, str):
+                left_value = left_value.lower()
+                right_value = right_value.lower()
+                if not reverse:
+                    return left_value < right_value
+                else:
+                    return right_value < left_value
         return False
 
     def filterAcceptsRow(self, source_row, source_parent):
         will_show = True
-        # if 0 <= source_row < len(self.utxos):
-        #     if self.hide_collateral_utxos:
-        #         utxo = self.utxos[source_row]
-        #         if utxo.is_collateral:
-        #             will_show = False
         return will_show
 
 
@@ -972,81 +1038,3 @@ class MasternodeStatus:
             if self.not_found:
                 return 'DOES NOT EXIST'
 
-
-class MNStatusItemDelegate(QItemDelegate):
-    """
-    """
-    CellVerticalMargin = 2
-    CellHorizontalMargin = 2
-    CellLinesMargin = 2
-    IconRightMargin = 4
-
-    def __init__(self, parent):
-        QItemDelegate.__init__(self, parent)
-
-    def createEditor(self, parent, option, index):
-        return None
-
-    def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
-        if index.isValid():
-            view = self.parent()
-            if isinstance(view, QTableView):
-                view_has_focus = view.hasFocus()
-                select_whole_row = view.selectionBehavior() == QAbstractItemView.SelectRows
-            else:
-                view_has_focus = False
-                select_whole_row = False
-
-            mn_status = index.data()
-            painter.save()
-
-            painter.setPen(QPen(Qt.NoPen))
-            if option.state & QStyle.State_Selected:
-                fg_color = Qt.white
-                if (option.state & QStyle.State_HasFocus) or (view_has_focus and select_whole_row):
-                    fg_color = Qt.white
-                    painter.setBrush(QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
-                else:
-                    fg_color = Qt.black
-                    painter.setBrush(QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
-            else:
-                painter.setBrush(QBrush(Qt.white))
-                fg_color = Qt.black
-            painter.drawRect(option.rect)
-
-            r = option.rect
-            r.translate(MNStatusItemDelegate.CellHorizontalMargin, MNStatusItemDelegate.CellVerticalMargin)
-
-            if isinstance(mn_status, MasternodeStatus):
-                if mn_status.is_error():
-                    img_file = 'error@16px.png'
-                elif mn_status.is_warning():
-                    img_file = 'warning@16px.png'
-                else:
-                    img_file = 'check-circle@16px.png'
-
-                if img_file:
-                    pix = WndUtils.get_pixmap(self, img_file)
-                    if pix:
-                        rp = QRect(r)
-                        rp.setWidth(pix.width())
-                        rp.setHeight(pix.height())
-                        painter.drawImage(rp, pix.toImage())
-                        r.translate(rp.width() + MNStatusItemDelegate.IconRightMargin, 0)
-                        r.setWidth(r.width() - rp.width() - MNStatusItemDelegate.IconRightMargin)
-
-                painter.setPen(QPen(fg_color))
-                painter.setFont(option.font)
-                painter.drawText(r, Qt.AlignLeft, mn_status.get_status())
-            painter.restore()
-
-    def sizeHint(self, option, index):
-        sh = QItemDelegate.sizeHint(self, option, index)
-        if index.isValid():
-            mn_status = index.data()
-            if isinstance(mn_status, MasternodeStatus):
-                fm = option.fontMetrics
-                h = MNStatusItemDelegate.CellVerticalMargin * 2 + MNStatusItemDelegate.CellLinesMargin
-                h += (fm.height() * 2) - 2
-                sh.setHeight(h)
-        return sh
