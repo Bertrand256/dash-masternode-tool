@@ -125,10 +125,6 @@ QLineEdit:read-only {
     <addaction name="action_hw_wallet"/>
     <addaction name="action_wallet_tools"/>
     <addaction name="separator"/>
-    <addaction name="action_sign_message_with_collateral_addr"/>
-    <addaction name="action_sign_message_with_owner_key"/>
-    <addaction name="action_sign_message_with_voting_key"/>
-    <addaction name="separator"/>
     <addaction name="action_check_for_updates"/>
     <addaction name="action_command_console"/>
     <addaction name="action_open_log_file"/>
@@ -157,7 +153,26 @@ QLineEdit:read-only {
     <addaction name="action_about_app"/>
     <addaction name="action_about_qt"/>
    </widget>
+   <widget class="QMenu" name="menuMasternode">
+    <property name="title">
+     <string>Masternode</string>
+    </property>
+    <addaction name="action_show_masternode_details"/>
+    <addaction name="action_new_masternode_entry"/>
+    <addaction name="separator"/>
+    <addaction name="action_register_masternode"/>
+    <addaction name="action_update_masternode_payout_address"/>
+    <addaction name="action_update_masternode_operator_key"/>
+    <addaction name="action_update_masternode_voting_key"/>
+    <addaction name="action_update_masternode_service"/>
+    <addaction name="action_revoke_masternode"/>
+    <addaction name="separator"/>
+    <addaction name="action_sign_message_with_collateral_addr"/>
+    <addaction name="action_sign_message_with_owner_key"/>
+    <addaction name="action_sign_message_with_voting_key"/>
+   </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuMasternode"/>
    <addaction name="menuTools"/>
   </widget>
   <widget class="QToolBar" name="toolBar">
@@ -404,6 +419,67 @@ QLineEdit:read-only {
   <action name="action_wallet_tools">
    <property name="text">
     <string>Toolbox</string>
+   </property>
+  </action>
+  <action name="action_register_masternode">
+   <property name="text">
+    <string>Register Masternode...</string>
+   </property>
+  </action>
+  <action name="action_update_masternode_payout_address">
+   <property name="text">
+    <string>Update Payout Address...</string>
+   </property>
+   <property name="toolTip">
+    <string>Send a transaction setting up a new payout address</string>
+   </property>
+  </action>
+  <action name="action_update_masternode_operator_key">
+   <property name="text">
+    <string>Update Operator Key...</string>
+   </property>
+   <property name="toolTip">
+    <string>Send a transaction setting up a new operator key</string>
+   </property>
+  </action>
+  <action name="action_update_masternode_voting_key">
+   <property name="text">
+    <string>Update Voting Key...</string>
+   </property>
+   <property name="toolTip">
+    <string>Send a transaction setting up a new voting key</string>
+   </property>
+  </action>
+  <action name="action_revoke_masternode">
+   <property name="text">
+    <string>Revoke Masternode...</string>
+   </property>
+   <property name="toolTip">
+    <string>Send a transaction revoking masternode</string>
+   </property>
+  </action>
+  <action name="action_new_masternode_entry">
+   <property name="text">
+    <string>Add New Masternode Entry...</string>
+   </property>
+   <property name="toolTip">
+    <string>Add a new masternode entry to configuration</string>
+   </property>
+  </action>
+  <action name="action_update_masternode_service">
+   <property name="text">
+    <string>Update Service (IP/port/operator payout address)...</string>
+   </property>
+   <property name="toolTip">
+    <string>Update masternode IP address, TCP port or operator payout address</string>
+   </property>
+  </action>
+  <action name="action_show_masternode_details">
+   <property name="text">
+    <string>Show Details</string>
+   </property>
+   <property name="toolTip">
+    <string>Show masternode configuration details</string>
    </property>
   </action>
  </widget>

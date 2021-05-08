@@ -14,19 +14,24 @@ from typing import Callable, Optional, List, Dict, Any
 
 import bitcoin
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtCore import pyqtSlot, Qt, QTimer, QVariant, QModelIndex, QRect
+from PyQt5.QtCore import pyqtSlot, Qt, QTimer, QVariant, QModelIndex, QRect, QPoint
 from PyQt5.QtGui import QTextDocument, QPen, QBrush, QPalette, QImage, QPixmap
 from PyQt5.QtWidgets import QWidget, QLineEdit, QMessageBox, QAction, QApplication, QActionGroup, QTableView, \
-    QItemDelegate, QStyleOptionViewItem, QStyle, QAbstractItemView, QLabel
+    QItemDelegate, QStyleOptionViewItem, QStyle, QAbstractItemView, QLabel, QMenu, QPushButton
 
+import app_cache
 import app_utils
 import hw_intf
 from app_config import AppConfig, MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING
+from app_defs import COLOR_ERROR_STR, COLOR_WARNING_STR, COLOR_OK_STR, COLOR_ERROR, COLOR_WARNING, COLOR_OK
 from dashd_intf import DashdInterface
 from ext_item_model import ExtSortFilterItemModel, TableModelColumn, HorizontalAlignment
 from masternode_details_wdg import WdgMasternodeDetails
 from ui import ui_app_main_view_wdg
 from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, IconTextItemDelegate
+
+
+CACHE_ITEM_SHOW_MN_DETAILS_PANEL = 'MainWindow_ShowMNDetailsPanel'
 
 
 class Pages(Enum):
@@ -41,10 +46,12 @@ SORTING_MAX_VALUE_FOR_NULL = 1e10
 
 class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
     masternode_data_changed = QtCore.pyqtSignal()
+    cur_masternode_changed = QtCore.pyqtSignal(object)
 
     def __init__(self, parent, app_config: AppConfig, dashd_intf: DashdInterface, hw_session: hw_intf.HwSessionInfo):
         QWidget.__init__(self, parent)
         self.current_view = Pages.PAGE_MASTERNODE_LIST
+        self.main_window = parent
         self.app_config = app_config
         self.dashd_intf = dashd_intf
         self.hw_session = hw_session
@@ -55,14 +62,18 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.mn_list_columns_cache_name: str = ''
         self.mn_list_columns_resized_by_user = False
         self.refresh_status_thread = None
+        self.refresh_status_count = 0
         self.network_status: NetworkStatus = NetworkStatus()
         self.loading_data_spinner: Optional[SpinnerWidget] = None
+        self.mn_details_panel_visible = True
+        self.mnu_masternode_actions = QMenu()
         self.finishing = False
         self.mn_view_column_delegates: Dict[int, QItemDelegate] = {}
         self.setupUi(self)
 
     def setupUi(self, widget: QWidget):
         ui_app_main_view_wdg.Ui_WdgAppMainView.setupUi(self, self)
+        self.restore_cache_settings()
         self.lblNoMasternodeMessage.setVisible(False)
         self.lblNavigation1.linkActivated.connect(self.on_link_activated)
         self.lblNavigation2.linkActivated.connect(self.on_link_activated)
@@ -75,7 +86,8 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.wdg_masternode.data_changed.connect(self.on_mn_data_changed)
         self.stackedWidget.setCurrentIndex(self.current_view.value)
         l = self.pnlNavigation.layout()
-        self.loading_data_spinner = SpinnerWidget(self.pnlNavigation, 18, 'Fetching data from the network, please wait...')
+        self.loading_data_spinner = SpinnerWidget(self.pnlNavigation, 18,
+                                                  'Fetching data from the network, please wait...')
         self.loading_data_spinner.hide()
         l.insertWidget(l.indexOf(self.btnMnListColumns) + 1, self.loading_data_spinner)
 
@@ -89,6 +101,25 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.masternodes_table_model.set_view(self.viewMasternodes)
         self.viewMasternodes.horizontalHeader().sectionResized.connect(self.on_mn_list_column_resized)
         self.viewMasternodes.selectionModel().selectionChanged.connect(self.on_mn_view_selection_changed)
+        self.viewMasternodes.setContextMenuPolicy(Qt.CustomContextMenu)
+
+        # configure the masternode actions menu:
+        self.mnu_masternode_actions.addAction(self.main_window.action_show_masternode_details)
+        self.mnu_masternode_actions.addAction(self.main_window.action_new_masternode_entry)
+        self.mnu_masternode_actions.addSeparator()
+        self.mnu_masternode_actions.addAction(self.main_window.action_register_masternode)
+        self.mnu_masternode_actions.addAction(self.main_window.action_update_masternode_payout_address)
+        self.mnu_masternode_actions.addAction(self.main_window.action_update_masternode_operator_key)
+        self.mnu_masternode_actions.addAction(self.main_window.action_update_masternode_voting_key)
+        self.mnu_masternode_actions.addAction(self.main_window.action_update_masternode_service)
+        self.mnu_masternode_actions.addAction(self.main_window.action_revoke_masternode)
+        self.mnu_masternode_actions.addSeparator()
+        self.mnu_masternode_actions.addAction(self.main_window.action_sign_message_with_collateral_addr)
+        self.mnu_masternode_actions.addAction(self.main_window.action_sign_message_with_owner_key)
+        self.mnu_masternode_actions.addAction(self.main_window.action_sign_message_with_voting_key)
+        self.btnMnActions.setMenu(self.mnu_masternode_actions)
+
+        self.update_details_panel_controls()
         self.configure_mn_view_delegates()
 
     def on_close(self):
@@ -97,9 +128,11 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.save_cache_settings()
 
     def restore_cache_settings(self):
-        pass
+        ena = app_cache.get_value(CACHE_ITEM_SHOW_MN_DETAILS_PANEL, True, bool)
+        self.mn_details_panel_visible = ena
 
     def save_cache_settings(self):
+        app_cache.set_value(CACHE_ITEM_SHOW_MN_DETAILS_PANEL, self.mn_details_panel_visible)
         self.save_cache_config_config_dependent()
 
     def save_cache_config_config_dependent(self):
@@ -141,6 +174,9 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         def set_cur_mn():
             try:
                 self.network_status.loaded = False
+                self.refresh_status_count = 0
+                if self.cur_masternode and self.cur_masternode not in self.app_config.masternodes:
+                    self.cur_masternode = None
                 self.masternodes_table_model.set_masternodes(self.app_config.masternodes, self.mns_status)
                 self.refresh_masternodes_view()
                 self.save_cache_config_config_dependent()
@@ -150,7 +186,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 self.restore_cache_config_config_dependent()
 
                 if len(self.app_config.masternodes) and not self.cur_masternode:
-                    self.set_current_masternode(self.app_config.masternodes[0], False)
+                    self.set_current_masternode(self.app_config.masternodes[0])
                 self.update_navigation_panel()
                 self.update_ui()
                 self.update_info_page()
@@ -163,36 +199,40 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         QTimer.singleShot(10, set_cur_mn)
 
     def refresh_masternodes_view(self):
-        cur_index = self.viewMasternodes.currentIndex()
-        current_row = -1
-        if cur_index:
-            source_row = self.masternodes_table_model.mapToSource(cur_index)
-            if source_row:
-                current_row = source_row.row()
-
         self.masternodes_table_model.beginResetModel()
         self.masternodes_table_model.endResetModel()
 
         # restore the focused row
-        if current_row >= 0:
-            idx = self.masternodes_table_model.index(current_row, 0)
-            idx = self.masternodes_table_model.mapFromSource(idx)
-            self.viewMasternodes.setCurrentIndex(idx)
+        if self.get_cur_masternode_from_view() != self.cur_masternode:
+            old_state = self.viewMasternodes.selectionModel().blockSignals(True)
+            try:
+                self.set_cur_masternode_in_view(self.cur_masternode)
+            finally:
+                self.viewMasternodes.selectionModel().blockSignals(old_state)
 
-    def set_current_masternode(self, masternode: Optional[MasternodeConfig], update_ui: bool = True):
+    def set_current_masternode(self, masternode: Optional[MasternodeConfig]):
         if self.cur_masternode != masternode:
             self.editing_enabled = False
             self.cur_masternode = masternode
             self.wdg_masternode.set_masternode(masternode)
-            if update_ui:
-                self.update_ui()
+            if self.get_cur_masternode_from_view() != self.cur_masternode:
+                old_state = self.viewMasternodes.selectionModel().blockSignals(True)
+                try:
+                    self.set_cur_masternode_in_view(self.cur_masternode)
+                finally:
+                    self.viewMasternodes.selectionModel().blockSignals(old_state)
+            self.update_ui()
             self.update_actions_state()
+            self.cur_masternode_changed.emit(masternode)
 
     def set_edit_mode(self, editing_enabled: bool):
         self.editing_enabled = editing_enabled
         self.wdg_masternode.set_edit_mode(editing_enabled)
         self.update_navigation_panel()
         self.update_actions_state()
+
+    def get_cur_masternode(self) -> Optional[MasternodeConfig]:
+        return self.cur_masternode
 
     def set_cur_masternode_modified(self):
         pass
@@ -218,9 +258,9 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         else:
             self.btnMnListColumns.setVisible(False)
 
-        self.lblMnStatus.setVisible(self.cur_masternode is not None and
-                                    self.current_view in (Pages.PAGE_SINGLE_MASTERNODE, Pages.PAGE_MASTERNODE_LIST))
+        self.update_details_panel_controls()
         self.wdg_masternode.masternode_data_to_ui()
+        self.update_mn_preview()
 
     def update_actions_state(self):
         def update_fun():
@@ -322,14 +362,29 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
     def on_btnMnListColumns_clicked(self):
         self.masternodes_table_model.exec_columns_dialog(self)
 
+    @pyqtSlot(str)
+    def on_lblMnStatusLabel_linkActivated(self, link: str):
+        self.mn_details_panel_visible = not self.mn_details_panel_visible
+        self.update_details_panel_controls()
+
+    def update_details_panel_controls(self):
+        panel_visible = self.cur_masternode is not None and \
+                        self.current_view in (Pages.PAGE_SINGLE_MASTERNODE, Pages.PAGE_MASTERNODE_LIST) and \
+                        self.mn_details_panel_visible
+
+        link_text = 'hide' if self.mn_details_panel_visible else 'show'
+        t = f'Masternode status details (<a href="{link_text}">{link_text}</a>)'
+        self.lblMnStatusLabel.setText(t)
+        self.lblMnStatus.setVisible(panel_visible)
+
     def fetch_network_data(self):
         def update():
             self.hide_loading_animation()
             self.update_info_page()
+            self.update_mn_preview()
             self.refresh_masternodes_view()
 
         if not self.refresh_status_thread:
-            self.show_loading_animation()
             self.refresh_status_thread = WndUtils.run_thread(self, self.get_masternode_status_thread, (),
                                                              on_thread_finish=update)
 
@@ -340,21 +395,44 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
     @pyqtSlot(QModelIndex)
     def on_viewMasternodes_doubleClicked(self, index):
         try:
-            self.current_view = Pages.PAGE_SINGLE_MASTERNODE
-            self.update_ui()
+            self.goto_cur_masternode_details()
         except Exception as e:
             WndUtils.error_msg(str(e))
 
-    def on_mn_view_selection_changed(self, selected, deselected):
-        mn = None
+    @pyqtSlot(QPoint)
+    def on_viewMasternodes_customContextMenuRequested(self, point):
+        try:
+            p = self.viewMasternodes.mapToGlobal(point)
+            p.setY(p.y() + 12)
+            self.mnu_masternode_actions.exec_(p)
+        except Exception as e:
+            self.error_msg(str(e))
+
+    def goto_cur_masternode_details(self):
+        self.current_view = Pages.PAGE_SINGLE_MASTERNODE
+        self.update_ui()
+
+    def get_cur_masternode_from_view(self) -> Optional[MasternodeConfig]:
+        mn: Optional[MasternodeConfig] = None
         cur_index = self.viewMasternodes.currentIndex()
         if cur_index:
             source_row = self.masternodes_table_model.mapToSource(cur_index)
             if source_row:
                 current_row = source_row.row()
-                if current_row is not None and current_row < len(self.app_config.masternodes):
+                if current_row is not None and 0 <= current_row < len(self.app_config.masternodes):
                     mn = self.app_config.masternodes[current_row]
-        self.set_current_masternode(mn, True)
+        return mn
+
+    def set_cur_masternode_in_view(self, mn: MasternodeConfig):
+        idx = self.app_config.masternodes.index(mn)
+        if idx >= 0:
+            midx = self.masternodes_table_model.index(idx, 0)
+            if midx and midx.isValid():
+                self.viewMasternodes.setCurrentIndex(midx)
+
+    def on_mn_view_selection_changed(self, selected, deselected):
+        mn = self.get_cur_masternode_from_view()
+        self.set_current_masternode(mn)
 
     def delete_masternode(self, masternode: MasternodeConfig):
         if masternode and masternode in self.app_config.masternodes:
@@ -458,9 +536,6 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         gi.blockchain_size_on_disk = bi.get('size_on_disk')
         gi.blocks = bi.get('blocks')
 
-        mempool = self.dashd_intf.getrawmempool()
-        gi.mempool_entries_count = len(mempool)
-
         gi.last_block_ts = self.dashd_intf.get_block_timestamp(cur_block_height)
         gi.loaded = True
 
@@ -523,13 +598,23 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         return None
 
     def get_masternode_status_thread(self, ctrl):
+        def on_start():
+            self.show_loading_animation()
+            self.update_mn_preview()
+
         protx_list_registered: List[Dict] = []  # result of the call: protx list registered
 
         try:
-            # read new masternodes data from the network every 30 seconds:
+            if self.finishing:
+                return
+            WndUtils.call_in_main_thread(on_start)
+
             self.dashd_intf.get_masternodelist('json', data_max_age=30)
             self.fetch_governance_info()
             block_height = self.dashd_intf.getblockcount()
+
+            mempool = self.dashd_intf.getrawmempool()
+            self.network_status.mempool_entries_count = len(mempool)
 
             mns = list(self.app_config.masternodes)
             for mn in mns:
@@ -624,10 +709,12 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                     ms.collateral_addr_balance = round(coll_bal.get('balance') / 1e8, 5)
 
                 if mn_info.protx and mn_info.protx.payout_address:
+                    ms.payout_address = mn_info.protx.payout_address
                     payout_bal = self.dashd_intf.getaddressbalance([mn_info.protx.payout_address])
                     ms.payout_addr_balance = round(payout_bal.get('balance') / 1e8, 5)
 
                 if mn_info.protx and mn_info.protx.operator_payout_address:
+                    ms.operator_payout_address = mn_info.protx.operator_payout_address
                     if mn_info.protx.operator_payout_address != mn_info.protx.payout_address:
                         payout_bal = self.dashd_intf.getaddressbalance([mn_info.protx.operator_payout_address])
                         ms.operator_payout_addr_balance = round(payout_bal.get('balance') / 1e8, 5)
@@ -647,17 +734,18 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 if ms.last_paid_ts:
                     ms.last_paid_dt = datetime.fromtimestamp(float(ms.last_paid_ts))
                     ms.last_paid_ago = int(time.time()) - int(ms.last_paid_ts)
-                    ms.last_paid_ago_str = app_utils.seconds_to_human(ms.last_paid_ago, out_unit_auto_adjust=True) + \
-                                           ' ago'
+                    ago_str = app_utils.seconds_to_human(ms.last_paid_ago, out_unit_auto_adjust=True)
+                    ms.last_paid_ago_str = ago_str + ' ago' if ago_str else ''
 
                 if ms.next_payment_block and ms.next_payment_ts:
                     ms.next_payment_dt = datetime.fromtimestamp(float(ms.next_payment_ts))
                     ms.next_payment_in = ms.next_payment_ts - int(time.time())
-                    ms.next_payment_in_str = app_utils.seconds_to_human(ms.next_payment_in, out_unit_auto_adjust=True)
+                    in_str = app_utils.seconds_to_human(ms.next_payment_in, out_unit_auto_adjust=True)
+                    ms.next_payment_in_str = 'in ' + in_str if in_str else ''
 
                 # todo: verify masternodes' confirmations and protx updates pending
 
-            # WndUtils.call_in_main_thread(self.lblMnListMessage.setText, '')
+            self.refresh_status_count += 1
         except Exception as e:
             if not self.finishing:
                 log.exception(str(e))
@@ -672,10 +760,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
             status = (
                 '<style>td {white-space:nowrap;padding-right:8px;padding-top:4px}'
                 '.title {text-align:right;font-weight:normal}'
-                '.ago {font-style:normal}'
                 '.value {color:navy}'
-                '.error {color:red}'
-                '.warning {color:#e65c00}'
                 '</style>'
                 '<table>'
                 f'<tr><td class="title">Next superblock date</td><td class="value">{app_utils.to_string(gi.next_superblock_date) if gi.loaded else "?"}</td></tr>'
@@ -704,6 +789,122 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
             self.lblNetworkInfo.setText(status)
         except Exception as e:
             log.exception(str(e))
+
+    def update_mn_preview(self):
+        status_lines = []
+
+        def add_status_line(label: str, value: str, value_color: Optional[str] = None):
+            col = f'style="color:{value_color}"' if value_color else ''
+            status_lines.append(f'<tr><td class="title">{label}</td><td class="value" colspan="2" '
+                                f'{col}>{value}</td></tr>')
+
+        status = ''
+        mn = self.cur_masternode
+        if mn:
+            st = self.mns_status.get(mn)
+            if st:
+                errors: List[str] = []
+                warnings: List[str] = []
+
+                if st.is_error():
+                    status_color = COLOR_ERROR_STR
+                elif st.is_warning():
+                    status_color = COLOR_WARNING_STR
+                else:
+                    status_color = COLOR_OK_STR
+                status_text = st.get_status()
+                if st.pose_penalty:
+                    status_text += ', PoSePenalty: ' + str(st.pose_penalty)
+                add_status_line('Status', status_text, status_color)
+
+                if st.payout_address:
+                    url = self.app_config.get_block_explorer_addr().replace('%ADDRESS%', st.payout_address)
+                    link = '<a href="%s">%s</a>' % (url, st.payout_address)
+                else:
+                    link = ''
+                add_status_line('Payout address', link)
+
+                add_status_line('Payout addr. balance',
+                                app_utils.to_string(st.payout_addr_balance) if st.payout_addr_balance else '')
+
+                if mn.collateral_address.strip() and mn.collateral_address.strip() != st.payout_address:
+                    url = self.app_config.get_block_explorer_addr().replace('%ADDRESS%', mn.collateral_address.strip())
+                    link = '<a href="%s">%s</a>' % (url, mn.collateral_address.strip())
+                    add_status_line('Collateral address', link)
+
+                    add_status_line('Collateral addr. balance',
+                                    app_utils.to_string(st.collateral_addr_balance) if st.collateral_addr_balance
+                                    else '')
+
+                if st.operator_payout_address:
+                    url = self.app_config.get_block_explorer_addr().replace('%ADDRESS%', st.operator_payout_address)
+                    link = '<a href="%s">%s</a>' % (url, st.operator_payout_address)
+                    add_status_line('Operator payout address', link)
+
+                if st.last_paid_dt:
+                    lp = app_utils.to_string(st.last_paid_dt)
+                    if st.last_paid_block:
+                        lp += ' / block# ' + str(st.last_paid_block)
+                    if st.last_paid_ago_str:
+                        lp += ' / ' + st.last_paid_ago_str
+                    add_status_line('Last paid', lp)
+
+                if st.next_payment_dt:
+                    np = app_utils.to_string(st.next_payment_dt)
+                    if st.next_payment_block:
+                        np += ' / block# ' + str(st.next_payment_block)
+                    if st.next_payment_in_str:
+                        np += ' / ' + st.next_payment_in_str
+                    add_status_line('Next payment', np)
+
+                if st.operator_service_update_required:
+                    errors.append('Operator service update required')
+                if st.operator_key_update_required:
+                    errors.append('Operator key update required')
+                if st.ip_port_mismatch:
+                    warnings.append('Masternode IP/port mismatch (config)')
+                if st.collateral_tx_mismatch:
+                    warnings.append('Collateral tx mismatch between (config)')
+                if st.collateral_address_mismatch:
+                    warnings.append('Collateral address mismatch (config)')
+                if st.owner_public_address_mismatch:
+                    warnings.append('Owner address mismatch (config)')
+                if st.operator_pubkey_mismatch:
+                    warnings.append('Operator public key mismatch (config)')
+                if st.voting_public_address_mismatch:
+                    warnings.append('Voting address mismatch (config)')
+
+                for idx, val in enumerate(errors):
+                    if idx == 0:
+                        label = 'Errors'
+                    else:
+                        label = ''
+                    add_status_line(label, val, COLOR_ERROR_STR)
+
+                for idx, val in enumerate(warnings):
+                    if idx == 0:
+                        label = 'Warnings'
+                    else:
+                        label = ''
+                    add_status_line(label, val, COLOR_WARNING_STR)
+
+                status = \
+                    '<style>td {white-space:nowrap;padding-right:8px}' \
+                    '.title {text-align:right;font-weight:bold}' \
+                    '.ago {font-style:normal}' \
+                    '.value {color:navy}' \
+                    '.error {color:' + COLOR_ERROR_STR + '}' \
+                                                         '.warning {color: ' + COLOR_WARNING_STR + '}' \
+                                                                                                   '</style>' \
+                                                                                                   '<table>' + ''.join(
+                        status_lines) + '</table>'
+            else:
+                if self.refresh_status_count == 0:
+                    if self.refresh_status_thread:
+                        status = 'Fetching data from the network, please wait...'
+                    else:
+                        status = 'Status data will be available after fetching data from the network'
+        self.lblMnStatus.setText(status)
 
     def show_loading_animation(self):
         def show():
@@ -793,20 +994,28 @@ class MasternodesTableModel(ExtSortFilterItemModel):
                             if col.name == 'status':
                                 if st:
                                     if st.is_error():
-                                        return QtGui.QColor('red')
+                                        return COLOR_ERROR
                                     elif st.is_warning():
-                                        return QtGui.QColor('#e65c00')
+                                        return COLOR_WARNING
                                     else:
-                                        return QtGui.QColor('green')
+                                        return COLOR_OK
                         return None
 
                     elif role == Qt.TextAlignmentRole:
                         col: TableModelColumn = self.col_by_index(col_idx)
                         if col and col.horizontal_alignment:
                             return Qt.AlignRight | Qt.AlignVCenter if col.horizontal_alignment == \
-                                                                      HorizontalAlignment.RIGHT else\
+                                                                      HorizontalAlignment.RIGHT else \
                                 Qt.AlignLeft | Qt.AlignVCenter
                         return None
+
+                    elif role == Qt.FontRole:
+                        col: TableModelColumn = self.col_by_index(col_idx)
+                        if col and col.name == 'name':
+                            font = QtGui.QFont()
+                            font.setBold(True)
+                            return font
+
         return QVariant()
 
     def get_cell_value(self, row_idx: int, col_idx: int, for_sorting: bool):
@@ -984,19 +1193,21 @@ class MasternodeStatus:
         self.owner_public_address_mismatch = False
         self.operator_pubkey_mismatch = False
         self.voting_public_address_mismatch = False
+        self.payout_address: Optional[str] = None
         self.payout_addr_balance = 0
+        self.operator_payout_address: Optional[str] = None
         self.operator_payout_addr_balance = 0
         self.collateral_addr_balance = 0
         self.last_paid_block: Optional[int] = None
         self.last_paid_ts: Optional[int] = None
         self.last_paid_dt: Optional[datetime] = None
         self.last_paid_ago: Optional[int] = None  # used for sorting
-        self.last_paid_ago_str: Optional[int] = None  # used for displaying
+        self.last_paid_ago_str: Optional[str] = None  # used for displaying
         self.next_payment_block: Optional[int] = None
         self.next_payment_ts: Optional[int] = None
         self.next_payment_dt: Optional[datetime] = None
         self.next_payment_in: Optional[int] = None  # used for sorting
-        self.next_payment_in_str: Optional[int] = None  # used for displaying
+        self.next_payment_in_str: Optional[str] = None  # used for displaying
         self.messages: List[str] = []
 
     def clear(self):
@@ -1010,6 +1221,11 @@ class MasternodeStatus:
         self.owner_public_address_mismatch = False
         self.operator_pubkey_mismatch = False
         self.voting_public_address_mismatch = False
+        self.payout_address = None
+        self.payout_addr_balance = 0
+        self.operator_payout_address = None
+        self.operator_payout_addr_balance = 0
+        self.collateral_addr_balance = 0
         self.last_paid_block = None
         self.last_paid_ts = None
         self.last_paid_dt = None
@@ -1023,13 +1239,13 @@ class MasternodeStatus:
         self.messages.clear()
 
     def is_error(self):
-        return self.not_found
+        return self.not_found or re.match(r".*BAN.*", self.status, re.IGNORECASE)
 
     def is_warning(self):
         return self.operator_key_update_required or self.operator_service_update_required or self.ip_port_mismatch or \
                self.protx_mismatch or self.collateral_tx_mismatch or self.collateral_address_mismatch or \
                self.owner_public_address_mismatch or self.operator_pubkey_mismatch or \
-               self.voting_public_address_mismatch or re.match(r".*BAN.*", self.status, re.IGNORECASE)
+               self.voting_public_address_mismatch or self.pose_penalty
 
     def get_status(self):
         if self.status:
@@ -1037,4 +1253,3 @@ class MasternodeStatus:
         else:
             if self.not_found:
                 return 'DOES NOT EXIST'
-

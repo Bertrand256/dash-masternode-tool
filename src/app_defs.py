@@ -6,6 +6,8 @@ import collections
 import logging
 from typing import List
 
+from PyQt5.QtGui import QColor
+
 APP_NAME_SHORT = 'DashMasternodeTool'
 APP_NAME_LONG = 'Dash Masternode Tool'
 APP_DATA_DIR_NAME = '.dmt'
@@ -20,6 +22,13 @@ APP_PATH = ''
 APP_IMAGE_DIR = ''
 BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) ' \
                      'Chrome/88.0.4324.152 Safari/537.36'
+
+COLOR_WARNING_STR = '#e65c00'
+COLOR_WARNING = QColor(COLOR_WARNING_STR)
+COLOR_ERROR_STR = 'red'
+COLOR_ERROR = QColor(COLOR_ERROR_STR)
+COLOR_OK_STR = '#00cc00'
+COLOR_OK = QColor(COLOR_OK_STR)
 
 
 def get_note_url(note_symbol):

@@ -100,7 +100,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.is_dashd_syncing = False
         self.dashd_connection_ok = False
         self.connecting_to_dashd = False
-        self.cur_masternode: Optional[MasternodeConfig] = None
         self.editing_enabled = False
         self.recent_config_files = []
 
@@ -119,7 +118,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def setupUi(self, main_dlg: QMainWindow):
         ui_main_dlg.Ui_MainWindow.setupUi(self, self)
         SshPassCache.set_parent_window(self)
-        app_cache.restore_window_size(self)
+        self.restore_cache_settings()
         self.inside_setup_ui = True
         self.dashd_intf.window = self
         self.lblStatus1 = QtWidgets.QLabel(self)
@@ -144,17 +143,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         WndUtils.set_icon(self, self.action_hw_wallet, "wallet.png")
         WndUtils.set_icon(self, self.action_wallet_tools, "tools@32px.png")
 
-        self.mnuSignMessage = QMenu()
-        self.mnuSignMessage.addAction(self.action_sign_message_with_collateral_addr)
-        self.mnuSignMessage.addAction(self.action_sign_message_with_owner_key)
-        self.mnuSignMessage.addAction(self.action_sign_message_with_voting_key)
-
-        self.btnSignMessage = QToolButton()
-        self.btnSignMessage.setMenu(self.mnuSignMessage)
-        self.btnSignMessage.setPopupMode(QToolButton.InstantPopup)
-        WndUtils.set_icon(self, self.btnSignMessage, "sign@32px.png")
-        self.toolBar.addWidget(self.btnSignMessage)
-
         # icons will not be visible in menu
         self.action_save_config_file.setIconVisibleInMenu(False)
         self.action_check_network_connection.setIconVisibleInMenu(False)
@@ -170,23 +158,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.addAction(self.action_gen_mn_priv_key_uncompressed)
         self.addAction(self.action_gen_mn_priv_key_compressed)
 
-        self.app_config.feature_update_registrar_automatic.value_changed.connect(self.update_mn_controls_state)
-
-        # add masternodes' info to the combobox
-        self.cur_masternode = None
-
         l = self.gbMain.layout()
         self.main_view = WdgAppMainView(self, self.app_config, self.dashd_intf, self.hw_session)
         l.insertWidget(0, self.main_view)
         self.main_view.masternode_data_changed.connect(self.update_edit_controls_state)
-
-        # self.wdg_masternode = WdgMasternodeDetails(self, self.app_config, self.dashd_intf)
-        # l.insertWidget(0, self.wdg_masternode)
-        # self.wdg_masternode.role_modified.connect(self.update_mn_controls_state)
-        # self.wdg_masternode.data_changed.connect(self.on_mn_data_changed)
-        # self.wdg_masternode.label_width_changed.connect(self.set_mn_labels_width)
-
-        self.mns_user_refused_updating = {}
+        self.main_view.cur_masternode_changed.connect(self.on_cur_masternode_changed)
 
         self.inside_setup_ui = False
         self.display_app_messages()
@@ -208,7 +184,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         QTimer.singleShot(10, load_initial_config)
 
     def closeEvent(self, event):
-        app_cache.save_window_size(self)
+        self.save_cache_settings()
         self.finishing = True
         if self.dashd_intf:
             self.dashd_intf.disconnect()
@@ -220,6 +196,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.save_configuration()
         self.main_view.on_close()
         self.app_config.close()
+
+    def restore_cache_settings(self):
+        app_cache.restore_window_size(self)
+
+    def save_cache_settings(self):
+        app_cache.save_window_size(self)
 
     def configuration_to_ui(self):
         """
@@ -936,42 +918,42 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         except Exception as e:
             self.error_msg(str(e), True)
 
+    @pyqtSlot(object)
+    def on_cur_masternode_changed(self, cur_masternode: Optional[MasternodeConfig]):
+        self.update_edit_controls_state()
+
     def update_edit_controls_state(self):
         def update_fun():
-            editing = (self.editing_enabled and self.cur_masternode is not None)
+            cur_mn = self.main_view.get_cur_masternode()
+            mn_is_selected = cur_mn is not None
+            editing = (self.editing_enabled and mn_is_selected)
             self.action_gen_mn_priv_key_uncompressed.setEnabled(editing)
             self.action_gen_mn_priv_key_compressed.setEnabled(editing)
             self.action_save_config_file.setEnabled(self.app_config.is_modified())
             self.action_disconnect_hw.setEnabled(True if self.hw_session.hw_client else False)
-            self.action_sign_message_with_collateral_addr.setEnabled(self.cur_masternode is not None)
-            self.action_sign_message_with_owner_key.setEnabled(self.cur_masternode is not None)
-            self.action_sign_message_with_voting_key.setEnabled(self.cur_masternode is not None)
-            self.update_mn_controls_state()
+            self.action_sign_message_with_collateral_addr.setEnabled(mn_is_selected)
+            self.action_sign_message_with_owner_key.setEnabled(mn_is_selected)
+            self.action_sign_message_with_voting_key.setEnabled(mn_is_selected)
+            self.action_register_masternode.setEnabled(mn_is_selected and cur_mn.dmn_user_roles & DMN_ROLE_OWNER)
+            self.action_show_masternode_details.setEnabled(mn_is_selected)
+            self.action_update_masternode_payout_address.setEnabled(mn_is_selected and
+                                                                    cur_mn.dmn_user_roles & DMN_ROLE_OWNER)
+            self.action_update_masternode_operator_key.setEnabled(mn_is_selected and
+                                                                  cur_mn.dmn_user_roles & DMN_ROLE_OWNER)
+            self.action_update_masternode_voting_key.setEnabled(mn_is_selected and
+                                                                cur_mn.dmn_user_roles & DMN_ROLE_OWNER)
+            self.action_update_masternode_service.setEnabled(mn_is_selected and
+                                                                cur_mn.dmn_user_roles & DMN_ROLE_OPERATOR)
+            self.action_revoke_masternode.setEnabled(mn_is_selected and
+                                                     cur_mn.dmn_user_roles & DMN_ROLE_OPERATOR)
+
         if threading.current_thread() != threading.main_thread():
             self.call_in_main_thread(update_fun)
         else:
             update_fun()
 
-    def update_mn_controls_state(self):
-        if self.cur_masternode:
-            enabled = self.cur_masternode.dmn_user_roles & DMN_ROLE_OWNER > 0
-        else:
-            enabled = False
-
-        if self.cur_masternode:
-            enabled = self.cur_masternode.dmn_user_roles & DMN_ROLE_OWNER > 0
-        else:
-            enabled = False
-
-        if self.cur_masternode:
-            enabled = self.cur_masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0
-        else:
-            enabled = False
-
     def on_mn_data_changed(self, masternode: MasternodeConfig):
-        if self.cur_masternode == masternode:
-            self.cur_masternode.set_modified()
-            self.action_save_config_file.setEnabled(self.app_config.is_modified())
+        self.action_save_config_file.setEnabled(self.app_config.is_modified())
 
     def get_deterministic_tx(self, masternode: MasternodeConfig) -> Optional[Dict]:
         protx = None
@@ -1029,415 +1011,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             return protx
         return None
 
-    def get_masternode_status_description_thread(self, ctrl, masternode: MasternodeConfig):
-        """
-        Get current masternode extended status.
-        """
-        if self.dashd_connection_ok:
-            if masternode.collateral_tx and str(masternode.collateral_tx_index):
-                collateral_id = masternode.collateral_tx + '-' + masternode.collateral_tx_index
-            else:
-                collateral_id = None
-            if masternode.ip and masternode.port:
-                ip_port = masternode.ip + ':' + str(masternode.port)
-            else:
-                ip_port = None
-
-            if not collateral_id and not ip_port:
-                if not masternode.collateral_tx:
-                    return '<span style="color:red">Enter the collateral TX hash + index or IP + port</span>'
-
-            self.dashd_intf.get_masternodelist('json', data_max_age=30)  # read new data from the network
-                                                                         # every 30 seconds
-            if collateral_id:
-                mn_info = self.dashd_intf.masternodes_by_ident.get(collateral_id)
-            else:
-                mn_info = self.dashd_intf.masternodes_by_ip_port.get(ip_port)
-
-            block_height = self.dashd_intf.getblockcount()
-            dmn_tx = self.get_deterministic_tx(masternode)
-            if dmn_tx:
-                dmn_tx_state = dmn_tx.get('state')
-            else:
-                dmn_tx_state = {}
-                dmn_tx = {}
-
-            next_payment_block = None
-            next_payout_ts = None
-
-            if mn_info:
-                mn_ident = mn_info.ident
-                mn_ip_port = mn_info.ip
-                if mn_info.queue_position is not None:
-                    next_payment_block = block_height + mn_info.queue_position + 1
-                    next_payout_ts = int(time.time()) + (mn_info.queue_position * 2.5 * 60)
-            else:
-                if dmn_tx_state:
-                    mn_ident = str(dmn_tx.get('collateralHash')) + '-' + str(dmn_tx.get('collateralIndex'))
-                    mn_ip_port = dmn_tx_state.get('service')
-                else:
-                    mn_ident = None
-                    mn_ip_port = None
-
-            status_color = 'black'
-            if mn_info or dmn_tx:
-                mn_status = ''
-                no_operator_pub_key = False
-
-                if mn_info:
-                    if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
-                        status_color = 'green'
-                    else:
-                        status_color = 'red'
-                    mn_status = mn_info.status
-
-                if dmn_tx:
-                    pose = dmn_tx_state.get('PoSePenalty', 0)
-                    if pose:
-                        mn_status += (', ' if mn_status else '') + 'PoSePenalty: ' + str(pose)
-                        status_color = 'red'
-
-                    oper_pub_key = dmn_tx_state.get('pubKeyOperator', '')
-                    if re.match('^0+$', oper_pub_key):
-                        no_operator_pub_key = True
-
-                    service = dmn_tx_state.get('service', '')
-                    if service == '[0:0:0:0:0:0:0:0]:0':
-                        if no_operator_pub_key:
-                            mn_status += (', ' if mn_status else '') + 'operator key update required'
-                        else:
-                            mn_status += (', ' if mn_status else '') + 'service update required'
-                        status_color = 'red'
-
-                update_mn_info = False
-                collateral_address_mismatch = False
-                collateral_tx_mismatch = False
-                ip_port_mismatch = False
-                mn_data_modified = False
-                owner_public_address_mismatch = False
-                operator_pubkey_mismatch = False
-                voting_public_address_mismatch = False
-
-                if masternode not in self.mns_user_refused_updating:
-                    missing_data = []
-                    if not masternode.collateral_tx or not masternode.collateral_tx_index:
-                        missing_data.append('collateral tx/index')
-                    if not masternode.collateral_address and masternode.dmn_user_roles & DMN_ROLE_OWNER:
-                        missing_data.append('collateral address')
-                    if dmn_tx and masternode.dmn_tx_hash != dmn_tx.get('proTxHash'):
-                        missing_data.append('protx hash')
-
-                    if missing_data:
-                        msg = 'In the configuration of your masternode the following information is ' \
-                            f'missing/incorrect: {", ".join(missing_data)}.<br><br>' \
-                            f'Do you want to update your configuration from the information that exists on ' \
-                            f'the network?'
-
-                        if self.query_dlg(msg, buttons=QMessageBox.Yes | QMessageBox.No,
-                                          default_button=QMessageBox.Yes,
-                                          icon=QMessageBox.Warning) == QMessageBox.Yes:
-                            update_mn_info = True
-                        else:
-                            self.mns_user_refused_updating[masternode] = self.cur_masternode
-
-                if masternode.collateral_tx + '-' + str(masternode.collateral_tx_index) != mn_ident:
-                    elems = mn_ident.split('-')
-                    if len(elems) == 2:
-                        if update_mn_info:
-                            masternode.collateral_tx = elems[0]
-                            masternode.collateral_tx_index = elems[1]
-                            mn_data_modified = True
-                        else:
-                            collateral_tx_mismatch = True
-
-                if not collateral_tx_mismatch:
-                    if masternode.dmn_user_roles & DMN_ROLE_OWNER:
-
-                        # check outputs of the collateral transaction
-                        tx_json = self.dashd_intf.getrawtransaction(masternode.collateral_tx, 1)
-                        if tx_json:
-                            vout = tx_json.get('vout')
-                            if vout and int(masternode.collateral_tx_index) < len(vout):
-                                v = vout[ int(masternode.collateral_tx_index)]
-                                if v and v.get('scriptPubKey'):
-                                    addrs = v.get('scriptPubKey').get('addresses')
-                                    if addrs:
-                                        collateral_address = addrs[0]
-                                        if masternode.collateral_address != collateral_address:
-                                            if update_mn_info:
-                                                masternode.collateral_address = collateral_address
-                                                mn_data_modified = True
-                                            else:
-                                                collateral_address_mismatch = True
-
-                if masternode.ip + ':' + masternode.port != mn_ip_port:
-                    elems = mn_ip_port.split(':')
-                    if len(elems) == 2:
-                        if update_mn_info:
-                            masternode.ip = elems[0]
-                            masternode.port = elems[1]
-                            mn_data_modified = True
-                        else:
-                            ip_port_mismatch = True
-
-                if dmn_tx:
-                    dmn_hash = dmn_tx.get('proTxHash')
-                    if dmn_hash and masternode.dmn_tx_hash != dmn_hash:
-                        if update_mn_info:
-                            masternode.dmn_tx_hash = dmn_tx.get('proTxHash')
-                            mn_data_modified = True
-
-                    if dmn_tx_state:
-                        owner_address_network = dmn_tx_state.get('ownerAddress')
-                        owner_address_cfg = masternode.get_dmn_owner_public_address(self.app_config.dash_network)
-                        if owner_address_network and owner_address_cfg and owner_address_network != owner_address_cfg:
-                            owner_public_address_mismatch = True
-                            logging.warning(
-                                f'The owner public address mismatch for masternode: {masternode.name}, '
-                                f'address from the app configuration: {owner_address_cfg}, address from the Dash '
-                                f'network: {owner_address_network}')
-
-                        voting_address_network = dmn_tx_state.get('votingAddress')
-                        voting_address_cfg = masternode.get_dmn_voting_public_address(self.app_config.dash_network)
-                        if voting_address_network and voting_address_cfg and voting_address_network != voting_address_cfg:
-                            voting_public_address_mismatch = True
-                            logging.warning(
-                                f'The voting public address mismatch for masternode: {masternode.name}. '
-                                f'address from the app configuration: {voting_address_cfg}, address from the Dash '
-                                f'network: {voting_address_network}')
-
-                        if not no_operator_pub_key:
-                            operator_pubkey_network = dmn_tx_state.get('pubKeyOperator')
-                            operator_pubkey_cfg = masternode.get_dmn_operator_pubkey()
-                            if operator_pubkey_network and operator_pubkey_cfg and \
-                                    operator_pubkey_network != operator_pubkey_cfg:
-                                operator_pubkey_mismatch = True
-                                logging.warning(
-                                    f'The operator public key mismatch for masternode: {masternode.name}. '
-                                    f'pubkey from the app configuration: {operator_pubkey_cfg}, pubkey from the Dash '
-                                    f'network: {operator_pubkey_network}')
-
-                if mn_data_modified:
-                    def update():
-                        self.main_view.update_ui()
-                    if not self.finishing:
-                        self.call_in_main_thread(update)
-
-                if masternode == self.cur_masternode:
-                    # get balance
-                    collateral_address = masternode.collateral_address.strip()
-                    payout_address = dmn_tx_state.get('payoutAddress','')
-                    payment_url = self.app_config.get_block_explorer_addr().replace('%ADDRESS%', payout_address)
-                    payout_link = '<a href="%s">%s</a>' % (payment_url, payout_address)
-                    payout_entry = f'<tr><td class="title">Payout address:</td><td class="value" colspan="2">' \
-                        f'{payout_link}</td></tr>'
-                    balance_entry = ''
-                    last_paid_entry = ''
-                    next_payment_entry = ''
-                    operator_payout_entry = ''
-
-                    try:
-                        if collateral_address:
-                            collateral_bal = self.dashd_intf.getaddressbalance([collateral_address])
-                            collateral_bal = round(collateral_bal.get('balance') / 1e8, 5)
-
-                            if collateral_address == payout_address:
-                                balance_entry = f'<tr><td class="title">Balance:</td><td class="value">' \
-                                            f'{app_utils.to_string(collateral_bal)}</td><td></td></tr>'
-                            else:
-                                balance_entry = f'<tr><td class="title">Collateral addr. balance:</td><td class="value">' \
-                                            f'{app_utils.to_string(collateral_bal)}</td><td></td></tr>'
-
-                        if collateral_address != payout_address and payout_address:
-                            payout_bal = self.dashd_intf.getaddressbalance([payout_address])
-                            payout_bal = round(payout_bal.get('balance') / 1e8, 5)
-                            balance_entry += f'<tr><td class="title">Payout addr. balance:</td><td class="value" ' \
-                                f'colspan="2">{app_utils.to_string(payout_bal)}</td></tr>'
-
-                        operator_reward = float(dmn_tx.get('operatorReward', 0))
-                        if operator_reward:
-                            operator_payout_addr = dmn_tx_state.get('operatorPayoutAddress', '')
-                            if operator_payout_addr:
-                                addr_info = operator_payout_addr
-                            else:
-                                addr_info = 'not claimed'
-
-                            operator_payout_entry = \
-                                f'<tr><td class="title">Operator payout:</td><td class="value" ' \
-                                f'colspan="2">{app_utils.to_string(operator_reward)}%, {addr_info}</td></tr>'
-
-                        lastpaid_ts = 0
-                        if mn_info:
-                            if mn_info.lastpaidtime > time.time() - 3600 * 24 * 365:
-                                # fresh dmns have lastpaidtime set to some day in the year 2014
-                                lastpaid_ts = mn_info.lastpaidtime
-                        else:
-                            paid_block = dmn_tx_state.get('lastPaidHeight')
-                            if paid_block:
-                                bh = self.dashd_intf.getblockhash(paid_block)
-                                blk = self.dashd_intf.getblockheader(bh, 1)
-                                lastpaid_ts = blk.get('time')
-
-                        if lastpaid_ts:
-                            lastpaid_dt = datetime.datetime.fromtimestamp(float(lastpaid_ts))
-                            lastpaid_str = app_utils.to_string(lastpaid_dt)
-                            lastpaid_ago = int(time.time()) - int(lastpaid_ts)
-                            if lastpaid_ago >= 2:
-                                lastpaid_ago_str = ' / ' + app_utils.seconds_to_human(lastpaid_ago,
-                                                                              out_unit_auto_adjust=True) + ' ago'
-                            else:
-                                lastpaid_ago_str = ' / a few seconds ago'
-                            lastpaid_block_str = f' / block# {str(mn_info.lastpaidblock)}' if mn_info.lastpaidblock \
-                                else ''
-
-                            last_paid_entry = f'<tr><td class="title">Last Paid:</td><td class="value">' \
-                                f'{lastpaid_str}{lastpaid_block_str}{lastpaid_ago_str}</td><td class="ago"></td></tr>'
-
-                        if next_payment_block and next_payout_ts:
-                            nextpayment_dt = datetime.datetime.fromtimestamp(float(next_payout_ts))
-                            nextpayment_str = app_utils.to_string(nextpayment_dt)
-                            next_payment_block_str = f' / block# {next_payment_block}'
-
-                            next_payment_in = next_payout_ts - int(time.time())
-                            if next_payment_in >= 2:
-                                next_payment_in_str = ' / in ' + app_utils.seconds_to_human(next_payment_in,
-                                                                                  out_unit_auto_adjust=True)
-                            else:
-                                next_payment_in_str = ' / in a few seconds'
-
-                            next_payment_entry = f'<tr><td class="title">Next payment:</td><td class="value">' \
-                                f'{nextpayment_str}{next_payment_block_str}' \
-                                f'{next_payment_in_str}</td><td></td></tr>'
-
-                    except Exception:
-                        pass
-
-                    errors = []
-                    warnings  = []
-                    skip_data_mismatch = False
-                    if dmn_tx and not dmn_tx.get('confirmations'):
-                        warnings.append('<td class="warning" colspan="2">ProRegTx not yet confirmed</td>')
-                    else:
-                        if self.dashd_intf.is_protx_update_pending(self.cur_masternode.dmn_tx_hash):
-                            warnings.append('<td class="warning" colspan="2">The related protx update transaction '
-                                            'is awaiting confirmations</td>')
-                            skip_data_mismatch = True
-
-                    if collateral_address_mismatch:
-                        errors.append('<td class="error" colspan="2">Collateral address missing&frasl;mismatch</td>')
-                    if collateral_tx_mismatch:
-                        errors.append('<td class="error" colspan="2">Collateral TX hash and&frasl;or index '
-                                      'missing&frasl;mismatch</td>')
-                    if ip_port_mismatch and not skip_data_mismatch:
-                        errors.append('<td class="error" colspan="2">Masternode IP and&frasl;or TCP port number '
-                                      'missing&frasl;mismatch</td>')
-                    if owner_public_address_mismatch and not skip_data_mismatch:
-                        errors.append('<td class="error" colspan="2">Owner Dash address mismatch</td>')
-                    if operator_pubkey_mismatch and not skip_data_mismatch:
-                        errors.append('<td class="error" colspan="2">Operator public key mismatch</td>')
-                    if voting_public_address_mismatch and not skip_data_mismatch:
-                        errors.append('<td class="error" colspan="2">Voting Dash address mismatch</td>')
-                    if not dmn_tx:
-                        warnings.append('<td class="warning" colspan="2">Couldn\'d read protx info for this masternode'
-                                        ' (look into the logfile for details)</td>')
-
-                    errors_msg = ''
-                    if errors:
-                        for idx, e in enumerate(errors):
-                            if idx == 0:
-                                errors_msg += '<tr><td class="title">Errors:</td>'
-                            else:
-                                errors_msg += '<tr><td></td>'
-                            errors_msg += e + '</tr>'
-                    warnings_msg = ''
-                    if warnings:
-                        for idx, e in enumerate(warnings):
-                            if idx == 0:
-                                warnings_msg += '<tr><td class="title">Warnings:</td>'
-                            else:
-                                warnings_msg += '<tr><td></td>'
-                            warnings_msg += e + '</tr>'
-
-                    last_seen_html = ''
-
-                    status = '<style>td {white-space:nowrap;padding-right:8px}' \
-                             '.title {text-align:right;font-weight:bold}' \
-                             '.ago {font-style:normal}' \
-                             '.value {color:navy}' \
-                             '.error {color:red}' \
-                             '.warning {color:#e65c00}' \
-                             '</style>' \
-                             '<table>' \
-                             f'<tr><td class="title">Status:</td><td class="value"><span style="color:{status_color}">{mn_status}</span>' \
-                             f'</td><td></td></tr>' + \
-                             last_seen_html + \
-                             f'{payout_entry}' + \
-                             f'{balance_entry}' + \
-                             f'{operator_payout_entry}' + \
-                             f'{last_paid_entry}' + \
-                             f'{next_payment_entry}' + \
-                             errors_msg + warnings_msg + '</table>'
-                else:
-                    status = '<span style="color:red">Masternode not found.</span>'
-            else:
-                status = '<span style="color:red">Masternode not found.</span>'
-        else:
-            status = '<span style="color:red">Problem with connection to dashd.</span>'
-
-        if not self.finishing:
-            if masternode != self.cur_masternode:
-                status = ''
-
-            self.call_in_main_thread(self.lblMnStatus.setText, status)
-
-    # @pyqtSlot(bool)
-    # def on_btnRefreshMnStatus_clicked(self):
-    #     def enable_buttons():
-    #         self.btnRefreshMnStatus.setEnabled(True)
-    #         self.btnRegisterDmn.setEnabled(True)
-    #         self.update_mn_controls_state()
-    #
-    #     def on_get_status_exception(exception):
-    #         enable_buttons()
-    #         self.lblMnStatus.setText('')
-    #         WndUtils.error_msg(str(exception))
-    #
-    #     try:
-    #         self.lblMnStatus.setText('<b>Retrieving masternode information, please wait...<b>')
-    #         self.btnRefreshMnStatus.setEnabled(False)
-    #         self.btnRegisterDmn.setEnabled(False)
-    #         self.btnUpdMnPayoutAddr.setEnabled(False)
-    #         self.btnUpdMnOperatorKey.setEnabled(False)
-    #         self.btnUpdMnVotingKey.setEnabled(False)
-    #         self.btnUpdMnService.setEnabled(False)
-    #         self.btnRevokeMn.setEnabled(False)
-    #
-    #         self.connect_dash_network(wait_for_check_finish=True)
-    #         if self.dashd_connection_ok:
-    #             try:
-    #                 self.run_thread(self, self.get_masternode_status_description_thread, (self.cur_masternode,),
-    #                                 on_thread_finish=enable_buttons, on_thread_exception=on_get_status_exception)
-    #             except Exception as e:
-    #                 self.lblMnStatus.setText('')
-    #                 raise
-    #         else:
-    #             enable_buttons()
-    #             self.lblMnStatus.setText('')
-    #             self.error_msg('Dash daemon not connected')
-    #     except Exception as e:
-    #         self.error_msg(str(e), True)
-
     @pyqtSlot(bool)
     def on_action_hw_wallet_triggered(self):
-        """
-        Shows the hardware wallet window.
-        """
-        if self.cur_masternode:
-            mn_index = self.app_config.masternodes.index(self.cur_masternode)
-        else:
-            mn_index = None
+        """ Shows the hardware wallet window. """
         try:
-            self.show_wallet_window(mn_index)
+            self.show_wallet_window(None)
         except Exception as e:
             self.error_msg(str(e), True)
 
@@ -1460,16 +1038,16 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_action_sign_message_with_collateral_addr_triggered(self):
-        if self.cur_masternode:
+        mn = self.main_view.get_cur_masternode()
+        if mn:
             try:
                 self.connect_hardware_wallet()
                 if self.hw_session.hw_client:
-                    if not self.cur_masternode.collateral_bip32_path:
+                    if not mn.collateral_bip32_path:
                         self.error_msg("No masternode collateral BIP32 path")
                     else:
-                        ui = SignMessageDlg(self, self.hw_session, self.app_rt_data,
-                                            self.cur_masternode.collateral_bip32_path,
-                                            self.cur_masternode.collateral_address)
+                        ui = SignMessageDlg(self, self.hw_session, self.app_rt_data, mn.collateral_bip32_path,
+                                            mn.collateral_address)
                         ui.exec_()
             except CancelException:
                 return
@@ -1480,9 +1058,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_action_sign_message_with_owner_key_triggered(self):
-        if self.cur_masternode:
+        mn = self.main_view.get_cur_masternode()
+        if mn:
             try:
-                pk = self.cur_masternode.dmn_owner_private_key
+                pk = mn.dmn_owner_private_key
                 if not pk:
                     self.error_msg("The masternode owner private key has not been configured.")
                 else:
@@ -1495,9 +1074,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot(bool)
     def on_action_sign_message_with_voting_key_triggered(self):
-        if self.cur_masternode:
+        mn = self.main_view.get_cur_masternode()
+        if mn:
             try:
-                pk = self.cur_masternode.dmn_voting_private_key
+                pk = mn.dmn_voting_private_key
                 if not pk:
                     self.error_msg("The masternode voting private key has not been configured.")
                 else:
@@ -1528,76 +1108,77 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def on_action_about_qt_triggered(self, enabled):
         QApplication.aboutQt()
 
-    # @pyqtSlot(bool)
-    # def on_btnRegisterDmn_clicked(self, enabled):
-    #     reg_dlg = None
-    #
-    #     def on_proregtx_finished(masternode: MasternodeConfig):
-    #         nonlocal reg_dlg, self
-    #         try:
-    #             if self.cur_masternode.dmn_tx_hash != reg_dlg.dmn_reg_tx_hash or \
-    #                     self.cur_masternode.dmn_owner_key_type != reg_dlg.dmn_owner_key_type or \
-    #                     (self.cur_masternode.dmn_owner_key_type == InputKeyType.PRIVATE and
-    #                      self.cur_masternode.dmn_owner_private_key != reg_dlg.dmn_owner_privkey) or \
-    #                     (self.cur_masternode.dmn_owner_key_type == InputKeyType.PUBLIC and
-    #                      self.cur_masternode.dmn_owner_address != reg_dlg.dmn_owner_address) or \
-    #                     self.cur_masternode.dmn_operator_key_type != reg_dlg.dmn_operator_key_type or \
-    #                     (self.cur_masternode.dmn_operator_key_type == InputKeyType.PRIVATE and
-    #                      self.cur_masternode.dmn_operator_private_key != reg_dlg.dmn_operator_privkey) or \
-    #                     (self.cur_masternode.dmn_operator_key_type == InputKeyType.PUBLIC and
-    #                      self.cur_masternode.dmn_operator_public_key != reg_dlg.dmn_operator_pubkey) or \
-    #                     self.cur_masternode.dmn_voting_key_type != reg_dlg.dmn_voting_key_type or \
-    #                     (self.cur_masternode.dmn_voting_key_type == InputKeyType.PRIVATE and
-    #                      self.cur_masternode.dmn_voting_private_key != reg_dlg.dmn_voting_privkey) or \
-    #                     (self.cur_masternode.dmn_voting_key_type == InputKeyType.PUBLIC and
-    #                      self.cur_masternode.dmn_voting_address != reg_dlg.dmn_voting_address):
-    #
-    #                 self.cur_masternode.dmn_tx_hash = reg_dlg.dmn_reg_tx_hash
-    #
-    #                 self.cur_masternode.dmn_owner_key_type = reg_dlg.dmn_owner_key_type
-    #                 if self.cur_masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
-    #                     self.cur_masternode.dmn_owner_private_key = reg_dlg.dmn_owner_privkey
-    #                 else:
-    #                     self.cur_masternode.dmn_owner_address = reg_dlg.dmn_owner_address
-    #                     self.cur_masternode.dmn_owner_private_key = ''
-    #
-    #                 self.cur_masternode.dmn_operator_key_type = reg_dlg.dmn_operator_key_type
-    #                 if self.cur_masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
-    #                     self.cur_masternode.dmn_operator_private_key = reg_dlg.dmn_operator_privkey
-    #                 else:
-    #                     self.cur_masternode.dmn_operator_public_key = reg_dlg.dmn_operator_pubkey
-    #                     self.cur_masternode.dmn_operator_private_key = ''
-    #
-    #                 self.cur_masternode.dmn_voting_key_type = reg_dlg.dmn_voting_key_type
-    #                 if self.cur_masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-    #                     self.cur_masternode.dmn_voting_private_key = reg_dlg.dmn_voting_privkey
-    #                 else:
-    #                     self.cur_masternode.dmn_voting_address = reg_dlg.dmn_voting_address
-    #                     self.cur_masternode.dmn_voting_private_key = ''
-    #
-    #                 if self.cur_masternode == masternode:
-    #                     self.main_view.update_ui()
-    #                 if self.app_config.is_modified():
-    #                     self.main_view.set_cur_masternode_modified()
-    #                 else:
-    #                     self.save_configuration()
-    #         except Exception as e:
-    #             logging.exception(str(e))
-    #
-    #     if self.cur_masternode:
-    #         try:
-    #             reg_dlg = reg_masternode_dlg.RegMasternodeDlg(self, self.app_config, self.dashd_intf, self.cur_masternode,
-    #                                                           on_proregtx_success_callback=on_proregtx_finished)
-    #             reg_dlg.exec_()
-    #         except Exception as e:
-    #             self.error_msg(str(e), True)
-    #     else:
-    #         self.error_msg('No masternode selected')
+    @pyqtSlot(bool)
+    def on_action_register_masternode_triggered(self, enabled):
+        reg_dlg = None
+        cur_masternode = self.main_view.get_cur_masternode()
+
+        def on_proregtx_finished(masternode: MasternodeConfig):
+            nonlocal reg_dlg, self, cur_masternode
+            try:
+                if cur_masternode.dmn_tx_hash != reg_dlg.dmn_reg_tx_hash or \
+                        cur_masternode.dmn_owner_key_type != reg_dlg.dmn_owner_key_type or \
+                        (cur_masternode.dmn_owner_key_type == InputKeyType.PRIVATE and
+                         cur_masternode.dmn_owner_private_key != reg_dlg.dmn_owner_privkey) or \
+                        (cur_masternode.dmn_owner_key_type == InputKeyType.PUBLIC and
+                         cur_masternode.dmn_owner_address != reg_dlg.dmn_owner_address) or \
+                        cur_masternode.dmn_operator_key_type != reg_dlg.dmn_operator_key_type or \
+                        (cur_masternode.dmn_operator_key_type == InputKeyType.PRIVATE and
+                         cur_masternode.dmn_operator_private_key != reg_dlg.dmn_operator_privkey) or \
+                        (cur_masternode.dmn_operator_key_type == InputKeyType.PUBLIC and
+                         cur_masternode.dmn_operator_public_key != reg_dlg.dmn_operator_pubkey) or \
+                        cur_masternode.dmn_voting_key_type != reg_dlg.dmn_voting_key_type or \
+                        (cur_masternode.dmn_voting_key_type == InputKeyType.PRIVATE and
+                         cur_masternode.dmn_voting_private_key != reg_dlg.dmn_voting_privkey) or \
+                        (cur_masternode.dmn_voting_key_type == InputKeyType.PUBLIC and
+                         cur_masternode.dmn_voting_address != reg_dlg.dmn_voting_address):
+
+                    cur_masternode.dmn_tx_hash = reg_dlg.dmn_reg_tx_hash
+
+                    cur_masternode.dmn_owner_key_type = reg_dlg.dmn_owner_key_type
+                    if cur_masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+                        cur_masternode.dmn_owner_private_key = reg_dlg.dmn_owner_privkey
+                    else:
+                        cur_masternode.dmn_owner_address = reg_dlg.dmn_owner_address
+                        cur_masternode.dmn_owner_private_key = ''
+
+                    cur_masternode.dmn_operator_key_type = reg_dlg.dmn_operator_key_type
+                    if cur_masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
+                        cur_masternode.dmn_operator_private_key = reg_dlg.dmn_operator_privkey
+                    else:
+                        cur_masternode.dmn_operator_public_key = reg_dlg.dmn_operator_pubkey
+                        cur_masternode.dmn_operator_private_key = ''
+
+                    cur_masternode.dmn_voting_key_type = reg_dlg.dmn_voting_key_type
+                    if cur_masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
+                        cur_masternode.dmn_voting_private_key = reg_dlg.dmn_voting_privkey
+                    else:
+                        cur_masternode.dmn_voting_address = reg_dlg.dmn_voting_address
+                        cur_masternode.dmn_voting_private_key = ''
+
+                    if cur_masternode == masternode:
+                        self.main_view.update_ui()
+                    if self.app_config.is_modified():
+                        self.main_view.set_cur_masternode_modified()
+                    else:
+                        self.save_configuration()
+            except Exception as e:
+                logging.exception(str(e))
+
+        if cur_masternode:
+            try:
+                reg_dlg = reg_masternode_dlg.RegMasternodeDlg(self, self.app_config, self.dashd_intf, cur_masternode,
+                                                              on_proregtx_success_callback=on_proregtx_finished)
+                reg_dlg.exec_()
+            except Exception as e:
+                self.error_msg(str(e), True)
+        else:
+            self.error_msg('No masternode selected')
 
     def update_registrar(self, show_upd_payout: bool, show_upd_operator: bool, show_upd_voting: bool):
         def on_updtx_finished(masternode: MasternodeConfig):
             try:
-                if self.cur_masternode == masternode:
+                if self.main_view.get_cur_masternode() == masternode:
                     self.main_view.update_ui()
                 if self.app_config.is_modified():
                     self.main_view.set_cur_masternode_modified()
@@ -1606,9 +1187,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             except Exception as e:
                 logging.exception(str(e))
 
-        if self.cur_masternode:
+        if self.main_view.get_cur_masternode():
             upd_dlg = upd_mn_registrar_dlg.UpdMnRegistrarDlg(
-                self, self.app_config, self.dashd_intf, self.cur_masternode,
+                self, self.app_config, self.dashd_intf, self.main_view.get_cur_masternode(),
                 on_upd_success_callback=on_updtx_finished, show_upd_payout=show_upd_payout,
                 show_upd_operator=show_upd_operator, show_upd_voting=show_upd_voting)
             upd_dlg.exec_()
@@ -1618,7 +1199,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def update_service(self):
         def on_mn_config_updated(masternode: MasternodeConfig):
             try:
-                if self.cur_masternode == masternode:
+                if self.main_view.get_cur_masternode() == masternode:
                     self.main_view.update_ui()
                 if self.app_config.is_modified():
                     self.main_view.set_cur_masternode_modified()
@@ -1627,54 +1208,61 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             except Exception as e:
                 logging.exception(str(e))
 
-        if self.cur_masternode:
+        if self.main_view.get_cur_masternode():
             upd_dlg = upd_mn_service_dlg.UpdMnServiceDlg(
-                self, self.app_config, self.dashd_intf, self.cur_masternode,
+                self, self.app_config, self.dashd_intf, self.main_view.get_cur_masternode(),
                 on_mn_config_updated_callback=on_mn_config_updated)
             upd_dlg.exec_()
         else:
             self.error_msg('No masternode selected')
 
     def revoke_mn_operator(self):
-        if self.cur_masternode:
+        if self.main_view.get_cur_masternode():
             revoke_dlg = revoke_mn_dlg.RevokeMnDlg(
-                self, self.app_config, self.dashd_intf, self.cur_masternode)
+                self, self.app_config, self.dashd_intf, self.main_view.get_cur_masternode())
             revoke_dlg.exec_()
         else:
             self.error_msg('No masternode selected')
 
-    # @pyqtSlot()
-    # def on_btnUpdMnPayoutAddr_clicked(self):
-    #     try:
-    #         self.update_registrar(show_upd_payout=True, show_upd_operator=False, show_upd_voting=False)
-    #     except Exception as e:
-    #         self.error_msg(str(e), True)
+    @pyqtSlot()
+    def on_action_show_masternode_details_triggered(self):
+        try:
+            self.main_view.goto_cur_masternode_details()
+        except Exception as e:
+            self.error_msg(str(e), True)
 
-    # @pyqtSlot()
-    # def on_btnUpdMnOperatorKey_clicked(self):
-    #     try:
-    #         self.update_registrar(show_upd_payout=False, show_upd_operator=True, show_upd_voting=False)
-    #     except Exception as e:
-    #         self.error_msg(str(e), True)
+    @pyqtSlot()
+    def on_action_update_masternode_payout_address_triggered(self):
+        try:
+            self.update_registrar(show_upd_payout=True, show_upd_operator=False, show_upd_voting=False)
+        except Exception as e:
+            self.error_msg(str(e), True)
 
-    # @pyqtSlot()
-    # def on_btnUpdMnVotingKey_clicked(self):
-    #     try:
-    #         self.update_registrar(show_upd_payout=False, show_upd_operator=False, show_upd_voting=True)
-    #     except Exception as e:
-    #         self.error_msg(str(e), True)
+    @pyqtSlot()
+    def on_action_update_masternode_operator_key_triggered(self):
+        try:
+            self.update_registrar(show_upd_payout=False, show_upd_operator=True, show_upd_voting=False)
+        except Exception as e:
+            self.error_msg(str(e), True)
 
-    # @pyqtSlot()
-    # def on_btnUpdMnService_clicked(self):
-    #     try:
-    #         self.update_service()
-    #     except Exception as e:
-    #         self.error_msg(str(e), True)
+    @pyqtSlot()
+    def on_action_update_masternode_voting_key_triggered(self):
+        try:
+            self.update_registrar(show_upd_payout=False, show_upd_operator=False, show_upd_voting=True)
+        except Exception as e:
+            self.error_msg(str(e), True)
 
-    # @pyqtSlot()
-    # def on_btnRevokeMn_clicked(self):
-    #     try:
-    #         self.revoke_mn_operator()
-    #     except Exception as e:
-    #         self.error_msg(str(e), True)
-    #
+    @pyqtSlot()
+    def on_action_update_masternode_service_triggered(self):
+        try:
+            self.update_service()
+        except Exception as e:
+            self.error_msg(str(e), True)
+
+    @pyqtSlot()
+    def on_action_revoke_masternode_triggered(self):
+        try:
+            self.revoke_mn_operator()
+        except Exception as e:
+            self.error_msg(str(e), True)
+

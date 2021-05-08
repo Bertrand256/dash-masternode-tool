@@ -161,6 +161,14 @@ class DBCache(object):
 
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_PROPOSALS_HASH ON PROPOSALS(hash)")
 
+            # structure for protx info
+            cur.execute("CREATE TABLE IF NOT EXISTS protx(id INTEGER PRIMARY KEY, protx_hash TEXT, "
+                        "collateral_hash TEXT, collateral_index INTEGER, collateral_address TEXT, "
+                        "operator_reward REAL, service TEXT, registered_height INTEGER, last_paid_height INTEGER,"
+                        "pose_penalty INTEGER, pose_revived_height INTEGER, pose_ban_height INTEGER, "
+                        "owner_address TEXT, voting_address TEXT, payout_address TEXT, pubkey_operator TEXT,"
+                        "operator_payout_address TEXT)")
+
             # upgrade schema do v 0.9.11:
             cur.execute("PRAGMA table_info(PROPOSALS)")
             columns = cur.fetchall()

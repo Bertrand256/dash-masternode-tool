@@ -44,7 +44,7 @@ except ImportError:
 # how many seconds cached masternodes data are valid; cached masternode data is used only for non-critical
 # features
 MASTERNODES_CACHE_VALID_SECONDS = 60 * 60  # 60 minutes
-PROTX_CACHE_VALID_SECONDS = 3 * 60 * 60  # 60 minutes
+PROTX_CACHE_VALID_SECONDS = 60 * 60
 
 
 class ForwardServer (socketserver.ThreadingTCPServer):
@@ -502,11 +502,14 @@ def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching
 
 class MasternodeProtx:
     def __init__(self):
+        self.marker = False
+        self.modified = False
+        self.db_id: Optional[int] = None
         self.protx_hash: str = ''
         self.collateral_hash: str = ''
         self.collateral_index: int = -1
         self.collateral_address: str = ''
-        self.operator_reward: int = 0
+        self.operator_reward: float = 0.0
         self.service: str = ''
         self.registered_height: int = -1
         self.last_paid_height: int = -1
@@ -520,11 +523,12 @@ class MasternodeProtx:
         self.operator_payout_address: str = ''
 
     def clear(self):
+        self.db_id = None
         self.protx_hash = ''
         self.collateral_hash = ''
         self.collateral_index = -1
         self.collateral_address = ''
-        self.operator_reward = 0
+        self.operator_reward = 0.0
         self.service = ''
         self.registered_height = -1
         self.last_paid_height = -1
@@ -574,6 +578,49 @@ class MasternodeProtx:
             self.payout_address = s.get('payoutAddress')
             self.pubkey_operator = s.get('pubKeyOperator')
             self.operator_payout_address = s.get('operatorPayoutAddress')
+
+    def __setattr__(self, name, value):
+        if hasattr(self, name) and name not in ('modified', 'marker', 'db_id', '_AttrsProtected__allow_attr_definition'):
+            if isinstance(value, decimal.Decimal):
+                value = float(value)
+            if getattr(self, name) != value:
+                self.modified = True
+        super().__setattr__(name, value)
+
+    def update_in_db(self, cursor):
+        try:
+            if self.db_id is None:
+                cursor.execute(
+                    "INSERT INTO protx(protx_hash, collateral_hash, collateral_index, collateral_address,"
+                    "operator_reward, service, registered_height, last_paid_height, pose_penalty, "
+                    "pose_revived_height, pose_ban_height, owner_address, voting_address, payout_address,"
+                    "pubkey_operator, operator_payout_address) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (self.protx_hash, self.collateral_hash, self.collateral_index,
+                     self.collateral_address, self.operator_reward, self.service,
+                     self.registered_height, self.last_paid_height, self.pose_penalty,
+                     self.pose_revived_height, self.pose_ban_height, self.owner_address,
+                     self.voting_address, self.payout_address, self.pubkey_operator,
+                     self.operator_payout_address))
+                self.db_id = cursor.lastrowid
+            else:
+                cursor.execute(
+                    "update protx set protx_hash=?, collateral_hash=?, collateral_index=?, collateral_address=?,"
+                    "operator_reward=?, service=?, registered_height=?, last_paid_height=?, pose_penalty=?, "
+                    "pose_revived_height=?, pose_ban_height=?, owner_address=?, voting_address=?, payout_address=?,"
+                    "pubkey_operator=?, operator_payout_address=? where id=?",
+                    (self.protx_hash, self.collateral_hash, self.collateral_index,
+                     self.collateral_address, self.operator_reward, self.service,
+                     self.registered_height, self.last_paid_height, self.pose_penalty,
+                     self.pose_revived_height, self.pose_ban_height, self.owner_address,
+                     self.voting_address, self.payout_address, self.pubkey_operator,
+                     self.operator_payout_address, self.db_id))
+        except Exception as e:
+            log.exception(str(e))
+
+    def delete_from_db(self, cursor):
+        if self.db_id is not None:
+            cursor.execute("delete from protx where id=?", (self.db_id,))
 
 
 class Masternode(AttrsProtected):
@@ -747,6 +794,7 @@ class DashdInterface(WndUtils):
 
     def load_data_from_db_cache(self):
         self.masternodes.clear()
+        self.protx_by_hash.clear()
         self.masternodes_by_ident.clear()
         self.masternodes_by_ip_port.clear()
         self.block_timestamps.clear()
@@ -756,7 +804,7 @@ class DashdInterface(WndUtils):
         try:
             tm_start = time.time()
             db_correction_duration = 0.0
-            log.debug("Reading masternodes' data from DB")
+            log.debug("Reading masternode data from DB")
             cur.execute("SELECT id, ident, status, payee, last_paid_time, last_paid_block, IP, queue_position, "
                         "protx_hash from MASTERNODES where dmt_active=1")
             for row in cur.fetchall():
@@ -792,6 +840,41 @@ class DashdInterface(WndUtils):
             tm_diff = time.time() - tm_start
             log.info('DB read time of %d MASTERNODES: %s s, db fix time: %s' %
                          (len(self.masternodes), str(tm_diff), str(db_correction_duration)))
+
+            log.debug("Reading protx data from DB")
+            cur.execute("SELECT id, protx_hash, collateral_hash, collateral_index, collateral_address,"
+                        "operator_reward, service, registered_height, last_paid_height, pose_penalty,"
+                        "pose_revived_height, pose_ban_height, owner_address, voting_address, payout_address,"
+                        "pubkey_operator, operator_payout_address from protx")
+            for row in cur.fetchall():
+                protx = MasternodeProtx()
+                protx.db_id = row[0]
+                protx.protx_hash = row[1]
+                protx.collateral_hash = row[2]
+                protx.collateral_index = row[3]
+                protx.collateral_address = row[4]
+                protx.operator_reward = row[5]
+                protx.service = row[6]
+                protx.registered_height = row[7]
+                protx.last_paid_height = row[8]
+                protx.pose_penalty = row[9]
+                protx.pose_revived_height = row[10]
+                protx.pose_ban_height = row[11]
+                protx.owner_address = row[12]
+                protx.voting_address = row[13]
+                protx.payout_address = row[14]
+                protx.pubkey_operator = row[15]
+                protx.operator_payout_address = row[16]
+                protx.modified = False
+                self.protx_by_hash[protx.protx_hash] = protx
+
+            # assign protx objects to masternodes
+            for mn in self.masternodes:
+                protx = self.protx_by_hash.get(mn.protx_hash)
+                if protx and mn.protx != protx:
+                    mn.protx = protx
+            log.debug("Finished reading protx data from DB")
+
         except Exception as e:
             log.exception('SQLite initialization error')
         finally:
@@ -1088,20 +1171,62 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
-    def _read_protx_list(self):
+    def _read_protx_list(self, data_max_age: int = PROTX_CACHE_VALID_SECONDS):
         cache_item_name = 'ProtxLastReadTime_' + self.app_config.dash_network
         last_read_time = app_cache.get_value(cache_item_name, 0, int)
 
-        if not self.protx_by_hash or (int(time.time()) - last_read_time) >= PROTX_CACHE_VALID_SECONDS:
-            self.protx_by_hash.clear()
+        if not self.protx_by_hash or data_max_age == 0 or (int(time.time()) - last_read_time) >= data_max_age:
+            log.info('Fetching protx data from network')
+            for protx_hash in self.protx_by_hash.keys():
+                protx = self.protx_by_hash[protx_hash]
+                protx.marker = False
+                protx.modified = False
+
+            # read protx list from the network:
             protx_list = self.proxy.protx('list', 'registered', True)
             app_cache.set_value(cache_item_name, int(time.time()))
 
-            for protx in protx_list:
-                p = MasternodeProtx()
-                p.copy_from_json(protx)
-                if p.protx_hash:
-                    self.protx_by_hash[p.protx_hash] = p
+            # update local cache in RAM
+            for protx_json in protx_list:
+                protx_hash = protx_json.get('proTxHash')
+                if protx_hash:
+                    protx = self.protx_by_hash.get(protx_hash)
+                    if not protx:
+                        protx = MasternodeProtx()
+                        self.protx_by_hash[protx_hash] = protx
+                    protx.copy_from_json(protx_json)
+                    protx.marker = True
+
+            # update db cache:
+            db_modified = False
+            cur = None
+            try:
+                if self.db_intf.db_active:
+                    cur = self.db_intf.get_cursor()
+
+                for protx_hash in self.protx_by_hash.keys():
+                    protx = self.protx_by_hash[protx_hash]
+                    if protx.db_id is None or protx.modified:
+                        protx.update_in_db(cur)
+                        db_modified = True
+
+                # remove non existing protx entries
+                protx_to_remove = []
+                for protx_hash in self.protx_by_hash.keys():
+                    protx = self.protx_by_hash[protx_hash]
+                    if not protx.marker:
+                        protx_to_remove.append(protx)
+
+                for protx in protx_to_remove:
+                    protx.delete_from_db(cur)
+                    del self.protx_by_hash[protx.protx_hash]
+            finally:
+                if db_modified:
+                    self.db_intf.commit()
+                if cur is not None:
+                    self.db_intf.release_cursor()
+            log.info('Finished fetching protx data from network')
+
         return self.protx_by_hash
 
     def _update_mn_queue_values(self, masternodes: List[Masternode]):
@@ -1150,12 +1275,10 @@ class DashdInterface(WndUtils):
         if self.open():
             if len(args) == 1 and args[0] == 'json':
                 last_read_time = app_cache.get_value(f'MasternodesLastReadTime_{self.app_config.dash_network}', 0, int)
-
-                if self.masternodes and data_max_age > 0 and \
-                   int(time.time()) - last_read_time < data_max_age:
+                if self.masternodes and data_max_age > 0 and int(time.time()) - last_read_time < data_max_age:
                     return self.masternodes
                 else:
-                    self._read_protx_list()
+                    self._read_protx_list(protx_data_max_age)
 
                     for mn in self.masternodes:
                         mn.marker = False  # mark to delete masternode existing in cache but no longer
