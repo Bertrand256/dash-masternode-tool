@@ -56,6 +56,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.dashd_intf = dashd_intf
         self.hw_session = hw_session
         self.cur_masternode: Optional[MasternodeConfig] = None
+        self.edited_masternode: Optional[MasternodeConfig] = None
         self.editing_enabled = False
         self.mns_status: Dict[MasternodeConfig, MasternodeStatus] = {}
         self.masternodes_table_model = MasternodesTableModel(self, self.app_config.masternodes, self.mns_status)
@@ -105,7 +106,10 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
 
         # configure the masternode actions menu:
         self.mnu_masternode_actions.addAction(self.main_window.action_show_masternode_details)
+        self.mnu_masternode_actions.addSeparator()
         self.mnu_masternode_actions.addAction(self.main_window.action_new_masternode_entry)
+        self.mnu_masternode_actions.addAction(self.main_window.action_clone_masternode_entry)
+        self.mnu_masternode_actions.addAction(self.main_window.action_delete_masternode_entry)
         self.mnu_masternode_actions.addSeparator()
         self.mnu_masternode_actions.addAction(self.main_window.action_register_masternode)
         self.mnu_masternode_actions.addAction(self.main_window.action_update_masternode_payout_address)
@@ -186,7 +190,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 self.restore_cache_config_config_dependent()
 
                 if len(self.app_config.masternodes) and not self.cur_masternode:
-                    self.set_current_masternode(self.app_config.masternodes[0])
+                    self.set_cur_masternode(self.app_config.masternodes[0])
                 self.update_navigation_panel()
                 self.update_ui()
                 self.update_info_page()
@@ -206,30 +210,9 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         if self.get_cur_masternode_from_view() != self.cur_masternode:
             old_state = self.viewMasternodes.selectionModel().blockSignals(True)
             try:
-                self.set_cur_masternode_in_view(self.cur_masternode)
+                self.set_cur_masternode_in_list(self.cur_masternode)
             finally:
                 self.viewMasternodes.selectionModel().blockSignals(old_state)
-
-    def set_current_masternode(self, masternode: Optional[MasternodeConfig]):
-        if self.cur_masternode != masternode:
-            self.editing_enabled = False
-            self.cur_masternode = masternode
-            self.wdg_masternode.set_masternode(masternode)
-            if self.get_cur_masternode_from_view() != self.cur_masternode:
-                old_state = self.viewMasternodes.selectionModel().blockSignals(True)
-                try:
-                    self.set_cur_masternode_in_view(self.cur_masternode)
-                finally:
-                    self.viewMasternodes.selectionModel().blockSignals(old_state)
-            self.update_ui()
-            self.update_actions_state()
-            self.cur_masternode_changed.emit(masternode)
-
-    def set_edit_mode(self, editing_enabled: bool):
-        self.editing_enabled = editing_enabled
-        self.wdg_masternode.set_edit_mode(editing_enabled)
-        self.update_navigation_panel()
-        self.update_actions_state()
 
     def get_cur_masternode(self) -> Optional[MasternodeConfig]:
         return self.cur_masternode
@@ -240,8 +223,6 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
     def update_ui(self):
         if self.current_view.value != self.stackedWidget.currentIndex():
             self.stackedWidget.setCurrentIndex(self.current_view.value)
-            if self.current_view == Pages.PAGE_SINGLE_MASTERNODE:
-                self.wdg_masternode.set_masternode(self.cur_masternode)
             self.update_navigation_panel()
 
         if self.current_view == Pages.PAGE_MASTERNODE_LIST:
@@ -251,12 +232,15 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 self.lblNoMasternodeMessage.setText(msg)
                 self.viewMasternodes.setVisible(False)
                 self.btnMnListColumns.setVisible(False)
+                self.btnMnActions.setVisible(False)
             elif self.app_config.masternodes:
                 self.lblNoMasternodeMessage.setVisible(False)
                 self.viewMasternodes.setVisible(True)
                 self.btnMnListColumns.setVisible(True)
+                self.btnMnActions.setVisible(True)
         else:
             self.btnMnListColumns.setVisible(False)
+            self.btnMnActions.setVisible(False)
 
         self.update_details_panel_controls()
         self.wdg_masternode.masternode_data_to_ui()
@@ -321,40 +305,21 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
     @pyqtSlot(bool)
     def on_btnEditMn_clicked(self):
         try:
-            self.set_edit_mode(True)
+            self.edit_masternode()
         except Exception as e:
             WndUtils.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnCancelEditingMn_clicked(self):
         try:
-            self.set_edit_mode(False)
-            if self.wdg_masternode.is_modified():
-                mod = self.cur_masternode.modified
-                self.wdg_masternode.set_masternode(self.cur_masternode)  # restore the original (non-modified) data
-                self.cur_masternode.modified = mod
+            self.cancel_masternode_changes()
         except Exception as e:
             WndUtils.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnApplyMnChanges_clicked(self):
         try:
-            self.set_edit_mode(False)
-            if self.wdg_masternode.is_modified():
-                self.wdg_masternode.get_masternode_data(self.cur_masternode)
-                self.app_config.modified = True
-                self.masternode_data_changed.emit()
-        except Exception as e:
-            WndUtils.error_msg(str(e), True)
-
-    @pyqtSlot(bool)
-    def on_btnSingleMnGoBack_clicked(self):
-        try:
-            if self.editing_enabled:
-                self.set_edit_mode(False)
-            self.current_view = Pages.PAGE_MASTERNODE_LIST
-            self.update_navigation_panel()
-            self.update_ui()
+            self.apply_masternode_changes()
         except Exception as e:
             WndUtils.error_msg(str(e), True)
 
@@ -395,7 +360,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
     @pyqtSlot(QModelIndex)
     def on_viewMasternodes_doubleClicked(self, index):
         try:
-            self.goto_cur_masternode_details()
+            self.goto_masternode_details()
         except Exception as e:
             WndUtils.error_msg(str(e))
 
@@ -406,10 +371,17 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
             p.setY(p.y() + 12)
             self.mnu_masternode_actions.exec_(p)
         except Exception as e:
-            self.error_msg(str(e))
+            WndUtils.error_msg(str(e))
 
-    def goto_cur_masternode_details(self):
+    def goto_masternode_details(self):
         self.current_view = Pages.PAGE_SINGLE_MASTERNODE
+        self.update_ui()
+
+    def goto_masternode_list(self):
+        if self.editing_enabled:
+            self.set_edit_mode(False)
+        self.current_view = Pages.PAGE_MASTERNODE_LIST
+        self.update_navigation_panel()
         self.update_ui()
 
     def get_cur_masternode_from_view(self) -> Optional[MasternodeConfig]:
@@ -423,7 +395,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                     mn = self.app_config.masternodes[current_row]
         return mn
 
-    def set_cur_masternode_in_view(self, mn: MasternodeConfig):
+    def set_cur_masternode_in_list(self, mn: MasternodeConfig):
         idx = self.app_config.masternodes.index(mn)
         if idx >= 0:
             midx = self.masternodes_table_model.index(idx, 0)
@@ -432,50 +404,124 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
 
     def on_mn_view_selection_changed(self, selected, deselected):
         mn = self.get_cur_masternode_from_view()
-        self.set_current_masternode(mn)
+        self.set_cur_masternode(mn)
+
+    def set_cur_masternode(self, masternode: Optional[MasternodeConfig]):
+        if self.cur_masternode != masternode:
+            self.editing_enabled = False
+            self.cur_masternode = masternode
+            self.wdg_masternode.set_masternode(masternode)
+            if self.get_cur_masternode_from_view() != self.cur_masternode:
+                old_state = self.viewMasternodes.selectionModel().blockSignals(True)
+                try:
+                    self.set_cur_masternode_in_list(self.cur_masternode)
+                finally:
+                    self.viewMasternodes.selectionModel().blockSignals(old_state)
+            self.update_ui()
+            self.update_actions_state()
+            self.cur_masternode_changed.emit(masternode)
+
+    def set_edit_mode(self, editing_enabled: bool):
+        self.editing_enabled = editing_enabled
+        self.wdg_masternode.set_edit_mode(editing_enabled)
+        self.update_navigation_panel()
+        self.update_actions_state()
+
+    def edit_masternode(self):
+        if not self.editing_enabled:
+            if self.cur_masternode:
+                self.edited_masternode = self.cur_masternode
+                self.wdg_masternode.set_masternode(self.edited_masternode)
+                self.set_edit_mode(True)
+        else:
+            WndUtils.error_msg('Editing already enabled!')
+
+    def add_new_masternode(self, src_masternode: Optional[MasternodeConfig]):
+        def mn_name_exists(name: str):
+            for mn in self.app_config.masternodes:
+                if mn.name == name:
+                    return True
+
+        if not self.editing_enabled:
+            new_mn = MasternodeConfig()
+
+            force_append_numbers = False
+            if src_masternode:
+                mn_template = src_masternode.name + '-Clone'
+            else:
+                if self.app_config.is_testnet:
+                    new_mn.port = '19999'
+                mn_template = 'MN'
+                force_append_numbers = True
+            name_found = None
+
+            if force_append_numbers or mn_name_exists(mn_template):
+                # look for a unique mn name by adding consecutive numbers at the end
+                for nr in range(1, 100):
+                    if not mn_name_exists(mn_template + str(nr)):
+                        name_found = mn_template + str(nr)
+                        break
+            else:
+                name_found = mn_template
+
+            if src_masternode:
+                new_mn.copy_from(src_masternode)
+            if name_found:
+                new_mn.name = name_found
+            new_mn.is_new = True
+
+            self.edited_masternode = new_mn
+            self.wdg_masternode.set_masternode(self.edited_masternode)
+            self.goto_masternode_details()
+            self.set_edit_mode(True)
+            self.wdg_masternode.on_mn_data_modified()
+            # self.on_mn_data_changed()
+        else:
+            WndUtils.error_msg('Editing already enabled!')
+
+    def apply_masternode_changes(self):
+        self.set_edit_mode(False)
+        if self.wdg_masternode.is_modified():
+            self.wdg_masternode.get_masternode_data(self.edited_masternode)
+            is_new = False
+            if self.edited_masternode.is_new:
+                self.edited_masternode.is_new = False
+                self.app_config.add_mn(self.edited_masternode)
+                self.set_cur_masternode(self.edited_masternode)
+                is_new = True
+            self.app_config.modified = True
+            self.masternode_data_changed.emit()
+            self.refresh_masternodes_view()
+            if is_new:
+                self.goto_masternode_list()
+
+    def cancel_masternode_changes(self):
+        self.set_edit_mode(False)
+        if self.edited_masternode.is_new:
+            self.wdg_masternode.set_masternode(self.cur_masternode)
+            self.goto_masternode_list()
+        else:
+            if self.wdg_masternode.is_modified():
+                self.wdg_masternode.set_masternode(self.cur_masternode)  # restore the original (non-modified) data
 
     def delete_masternode(self, masternode: MasternodeConfig):
         if masternode and masternode in self.app_config.masternodes:
             idx = self.app_config.masternodes.index(masternode)
             try:
-                if self.query_dlg(f'Do you really want to remove masternode "{masternode.name}" from configuration?',
+                if WndUtils.query_dlg(f'Do you really want to remove masternode "{masternode.name}" from configuration?',
                                   buttons=QMessageBox.Yes | QMessageBox.Cancel,
                                   default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
                     self.app_config.masternodes.remove(self.cur_masternode)
                     self.app_config.modified = True
+                    mn = None
+                    if self.app_config.masternodes:
+                        if idx > len(self.app_config.masternodes) - 1:
+                            mn = self.app_config.masternodes[-1]
+                        else:
+                            mn = self.app_config.masternodes[idx]
+                    self.set_cur_masternode(mn)
             except Exception as e:
-                self.error_msg(str(e), True)
-
-    def add_new_masternode(self, src_masternode: Optional[MasternodeConfig]):
-        new_mn = MasternodeConfig()
-        new_mn.new = True
-        self.cur_masternode = new_mn
-
-        if src_masternode:
-            mn_template = src_masternode.name
-        else:
-            if self.app_config.is_testnet:
-                new_mn.port = '19999'
-            mn_template = 'MN'
-        name_found = None
-        for nr in range(1, 100):
-            exists = False
-            for mn in self.app_config.masternodes:
-                if mn.name == mn_template + str(nr):
-                    exists = True
-                    break
-            if not exists:
-                name_found = mn_template + str(nr)
-                break
-        if name_found:
-            new_mn.name = name_found
-
-        if src_masternode:
-            new_mn.copy_from(src_masternode)
-
-        self.app_config.masternodes.append(new_mn)
-        self.set_masternode(self.cur_masternode)
-        self.set_edit_mode(self.editing_enabled)
+                WndUtils.error_msg(str(e), True)
 
     def fetch_governance_info(self):
         gi = self.network_status

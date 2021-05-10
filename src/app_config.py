@@ -1445,7 +1445,7 @@ class MasternodeConfig:
         self.__dmn_owner_address = ''
         self.__dmn_operator_public_key = ''
         self.__dmn_voting_address = ''
-        self.new = False
+        self.is_new = False  # True if this mn configuration entry isn't included in the app configuration yet
         self.modified = False
         self.lock_modified_change = False
 
@@ -1474,7 +1474,7 @@ class MasternodeConfig:
         self.dmn_owner_address = src_mn.dmn_owner_address
         self.dmn_operator_public_key = src_mn.dmn_operator_public_key
         self.dmn_voting_address = src_mn.dmn_voting_address
-        self.new = True
+        self.is_new = src_mn.is_new
         self.modified = True
         self.lock_modified_change = False
 

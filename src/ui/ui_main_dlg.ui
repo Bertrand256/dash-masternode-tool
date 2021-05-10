@@ -158,7 +158,10 @@ QLineEdit:read-only {
      <string>Masternode</string>
     </property>
     <addaction name="action_show_masternode_details"/>
+    <addaction name="separator"/>
     <addaction name="action_new_masternode_entry"/>
+    <addaction name="action_clone_masternode_entry"/>
+    <addaction name="action_delete_masternode_entry"/>
     <addaction name="separator"/>
     <addaction name="action_register_masternode"/>
     <addaction name="action_update_masternode_payout_address"/>
@@ -476,10 +479,26 @@ QLineEdit:read-only {
   </action>
   <action name="action_show_masternode_details">
    <property name="text">
-    <string>Show Details</string>
+    <string>Go to Masternode Details</string>
    </property>
    <property name="toolTip">
     <string>Show masternode configuration details</string>
+   </property>
+  </action>
+  <action name="action_delete_masternode_entry">
+   <property name="text">
+    <string>Delete Masternode Entry</string>
+   </property>
+   <property name="toolTip">
+    <string>Delete seleted masternode entry</string>
+   </property>
+  </action>
+  <action name="action_clone_masternode_entry">
+   <property name="text">
+    <string>Clone Masternode Entry</string>
+   </property>
+   <property name="toolTip">
+    <string>Clone masternode configuration entry</string>
    </property>
   </action>
  </widget>

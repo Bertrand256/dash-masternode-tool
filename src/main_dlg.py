@@ -142,6 +142,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         WndUtils.set_icon(self, self.action_disconnect_hw, "hw-disconnect.png")
         WndUtils.set_icon(self, self.action_hw_wallet, "wallet.png")
         WndUtils.set_icon(self, self.action_wallet_tools, "tools@32px.png")
+        WndUtils.set_icon(self, self.action_show_masternode_details, "view-list@16px.png")
+        WndUtils.set_icon(self, self.action_new_masternode_entry, "add@16px.png")
+        WndUtils.set_icon(self, self.action_new_masternode_entry, "add@16px.png")
+        WndUtils.set_icon(self, self.action_clone_masternode_entry, "content-copy@16px.png")
+        WndUtils.set_icon(self, self.action_delete_masternode_entry, "delete@16px.png")
 
         # icons will not be visible in menu
         self.action_save_config_file.setIconVisibleInMenu(False)
@@ -161,7 +166,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         l = self.gbMain.layout()
         self.main_view = WdgAppMainView(self, self.app_config, self.dashd_intf, self.hw_session)
         l.insertWidget(0, self.main_view)
-        self.main_view.masternode_data_changed.connect(self.update_edit_controls_state)
+        self.main_view.masternode_data_changed.connect(self.on_masternode_data_changed)
         self.main_view.cur_masternode_changed.connect(self.on_cur_masternode_changed)
 
         self.inside_setup_ui = False
@@ -922,6 +927,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def on_cur_masternode_changed(self, cur_masternode: Optional[MasternodeConfig]):
         self.update_edit_controls_state()
 
+    def on_masternode_data_changed(self):
+        self.update_edit_controls_state()
+
     def update_edit_controls_state(self):
         def update_fun():
             cur_mn = self.main_view.get_cur_masternode()
@@ -936,6 +944,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.action_sign_message_with_voting_key.setEnabled(mn_is_selected)
             self.action_register_masternode.setEnabled(mn_is_selected and cur_mn.dmn_user_roles & DMN_ROLE_OWNER)
             self.action_show_masternode_details.setEnabled(mn_is_selected)
+            self.action_clone_masternode_entry.setEnabled(mn_is_selected)
+            self.action_delete_masternode_entry.setEnabled(mn_is_selected)
             self.action_update_masternode_payout_address.setEnabled(mn_is_selected and
                                                                     cur_mn.dmn_user_roles & DMN_ROLE_OWNER)
             self.action_update_masternode_operator_key.setEnabled(mn_is_selected and
@@ -954,62 +964,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def on_mn_data_changed(self, masternode: MasternodeConfig):
         self.action_save_config_file.setEnabled(self.app_config.is_modified())
-
-    def get_deterministic_tx(self, masternode: MasternodeConfig) -> Optional[Dict]:
-        protx = None
-        protx_state = None
-
-        if masternode.dmn_tx_hash:
-            try:
-                protx = self.dashd_intf.protx('info', masternode.dmn_tx_hash)
-                if protx:
-                    protx_state = protx.get('state')
-            except Exception as e:
-                logging.exception('Cannot read protx info')
-
-            if not protx:
-                try:
-                    # protx transaction is not confirmed yet, so look for it in the mempool
-                    tx = self.dashd_intf.getrawtransaction(masternode.dmn_tx_hash, 1, skip_cache=True)
-                    confirmations = tx.get('confirmations', 0)
-                    if confirmations < 3:
-                        # in this case dmn tx should have been found by the 'protx info' call above;
-                        # it hasn't been, so it is no longer valid a protx transaction
-                        ptx = tx.get('proRegTx')
-                        if ptx:
-                            protx = {
-                                'proTxHash': masternode.dmn_tx_hash,
-                                'collateralHash': ptx.get('collateralHash'),
-                                'collateralIndex': ptx.get('collateralIndex'),
-                                'state': {
-                                    'service': ptx.get('service'),
-                                    'ownerAddress': ptx.get('ownerAddress'),
-                                    'votingAddress': ptx.get('votingAddress'),
-                                    'pubKeyOperator': ptx.get('pubKeyOperator'),
-                                    'payoutAddress': ptx.get('payoutAddress')
-                                }
-                            }
-                        if protx:
-                            protx_state = protx.get('state')
-                except Exception as e:
-                    pass
-
-        if not (protx_state and ((protx_state.get('service') == masternode.ip + ':' + masternode.port) or
-                (protx.get('collateralHash') == masternode.collateral_tx and
-                 str(protx.get('collateralIndex')) == str(masternode.collateral_tx_index)))):
-            try:
-                txes = self.dashd_intf.protx('list', 'registered', True)
-                for protx in txes:
-                    protx_state = protx.get('state')
-                    if (protx_state and ((protx_state.get('service') == masternode.ip + ':' + masternode.port) or
-                            (protx.get('collateralHash') == masternode.collateral_tx and
-                             str(protx.get('collateralIndex')) == str(masternode.collateral_tx_index)))):
-                        return protx
-            except Exception as e:
-                pass
-        else:
-            return protx
-        return None
 
     @pyqtSlot(bool)
     def on_action_hw_wallet_triggered(self):
@@ -1227,7 +1181,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     @pyqtSlot()
     def on_action_show_masternode_details_triggered(self):
         try:
-            self.main_view.goto_cur_masternode_details()
+            self.main_view.goto_masternode_details()
         except Exception as e:
             self.error_msg(str(e), True)
 
@@ -1266,3 +1220,25 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         except Exception as e:
             self.error_msg(str(e), True)
 
+    @pyqtSlot()
+    def on_action_new_masternode_entry_triggered(self):
+        try:
+            self.main_view.add_new_masternode(None)
+        except Exception as e:
+            self.error_msg(str(e), True)
+
+    @pyqtSlot()
+    def on_action_clone_masternode_entry_triggered(self):
+        try:
+            self.main_view.add_new_masternode(self.main_view.get_cur_masternode())
+        except Exception as e:
+            self.error_msg(str(e), True)
+
+    @pyqtSlot()
+    def on_action_delete_masternode_entry_triggered(self):
+        mn = self.main_view.get_cur_masternode()
+        if mn:
+            try:
+                self.main_view.delete_masternode(mn)
+            except Exception as e:
+                self.error_msg(str(e), True)
