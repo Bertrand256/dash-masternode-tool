@@ -442,7 +442,7 @@ padding-right: 0px;</string>
             <item>
              <widget class="QPushButton" name="btnUpdMnService">
               <property name="toolTip">
-               <string>Update the Masternode IP:port and/or the operator reward Zcoin address.</string>
+               <string>Update the Masternode IP:port and/or the operator reward Firo address.</string>
               </property>
               <property name="text">
                <string>Update service</string>
@@ -640,10 +640,10 @@ padding-right: 0px;</string>
   </action>
   <action name="action_check_network_connection">
    <property name="text">
-    <string>Check Zcoin Connection</string>
+    <string>Check Firo Connection</string>
    </property>
    <property name="toolTip">
-    <string>Check Zcoin Connection</string>
+    <string>Check Firo Connection</string>
    </property>
   </action>
   <action name="action_open_settings_window">

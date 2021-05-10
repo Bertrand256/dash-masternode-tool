@@ -252,7 +252,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
     @pyqtSlot(str)
     def on_lblVotingKey_linkHovered(self, link):
         if link == 'address':
-            tt = 'Change input type to Zcoin address'
+            tt = 'Change input type to Firo address'
         else:
             tt = 'Change input type to private key'
         self.lblVotingKey.setToolTip(tt)
@@ -345,12 +345,12 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                     f'"{self.dmn_new_voting_address}" "{self.dmn_new_payout_address}" ' \
                     f'"<span style="color:green">feeSourceAddress</span>"'
                 msg = "<ol>" \
-                      "<li>Start a Zcoin Core wallet with sufficient funds to cover a transaction fee.</li>"
-                msg += "<li>Import the owner private key into the Zcoin Core wallet if you haven't done this " \
-                       "before (<a href=\"https://github.com/firorg/firo-masternode-tool/blob/master/doc/" \
+                      "<li>Start a Firo Core wallet with sufficient funds to cover a transaction fee.</li>"
+                msg += "<li>Import the owner private key into the Firo Core wallet if you haven't done this " \
+                       "before (<a href=\"https://github.com/firoorg/firo-masternode-tool/blob/master/doc/" \
                        "deterministic-mn-migration.md#can-i-modify-the-payout-address-without-resetting-the-" \
                        "place-in-the-payment-queue\">details</a>).</li>"
-                msg += "<li>Execute the following command in the Zcoin Core debug console:<br><br>"
+                msg += "<li>Execute the following command in the Firo Core debug console:<br><br>"
                 msg += "  <code style=\"background-color:#e6e6e6\">" + cmd + '</code></li><br>'
                 msg += 'Replace <span style="color:green">feeSourceAddress</span> with the address being the ' \
                        'source of the transaction fee.'
@@ -382,7 +382,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
         if self.dmn_prev_payout_address == self.dmn_new_payout_address and \
             self.dmn_prev_operator_pubkey == self.dmn_new_operator_pubkey and \
             self.dmn_prev_voting_address == self.dmn_new_voting_address:
-            WndUtils.warnMsg('Nothing is changed compared to the data stored in the Zcoin network.')
+            WndUtils.warnMsg('Nothing is changed compared to the data stored in the Firo network.')
         else:
             self.send_upd_tx()
 
@@ -393,7 +393,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                                                    self.app_config.dash_network)
             if owner_address != self.dmn_owner_address:
                 raise Exception('Inconsistency of the owner key between the app configuration and the data '
-                                'on the Zcoin network.')
+                                'on the Firo network.')
         else:
             raise Exception('To use this feature, you need to have the owner private key in your Masternode '
                             'configuration.')

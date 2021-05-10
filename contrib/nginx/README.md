@@ -13,7 +13,7 @@ cp default /etc/nginx/sites-available/
 
 Restart nginx
 
-zcoin.conf example
+firo.conf example
 ```
 testnet=1
 bind=127.10.10.1

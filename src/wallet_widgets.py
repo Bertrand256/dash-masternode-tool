@@ -162,7 +162,7 @@ class SendFundsDestinationItem(QObject):
                 self.lbl_second_unit_value.setText('')
         elif self.values_unit == OUTPUT_VALUE_UNIT_PERCENT:
             if self.value_amount is not None:
-                self.lbl_second_unit_value.setText(app_utils.to_string(round(self.value_amount, 8)) + ' XZC')
+                self.lbl_second_unit_value.setText(app_utils.to_string(round(self.value_amount, 8)) + ' FIRO')
             else:
                 self.lbl_second_unit_value.setText('')
 
@@ -370,7 +370,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
 
         # the last row of the grid layout is dedicated to 'fee' controls
         self.lbl_fee = QLabel(self.scroll_area_widget)
-        self.lbl_fee.setText('Fee [XZC]')
+        self.lbl_fee.setText('Fee [FIRO]')
         self.lbl_fee.setAlignment(QtCore.Qt.AlignRight|QtCore.Qt.AlignTrailing|QtCore.Qt.AlignVCenter)
         self.lay_addresses.addWidget(self.lbl_fee, 1, 0)
 
@@ -820,7 +820,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
     def display_totals(self):
         recipients = self.get_number_of_recipients()
         bytes = (self.inputs_count * 148) + (recipients * 34) + 10
-        text = f'<span class="label"><b>Total value of the selected inputs:</b>&nbsp;</span><span class="value">&nbsp;{self.inputs_total_amount} XZC&nbsp;</span>'
+        text = f'<span class="label"><b>Total value of the selected inputs:</b>&nbsp;</span><span class="value">&nbsp;{self.inputs_total_amount} FIRO&nbsp;</span>'
         if self.inputs_total_amount > 0:
             text += f'<span class="label">&nbsp;<b>Inputs:</b>&nbsp;</span><span class="value">&nbsp;{self.inputs_count}&nbsp;</span>' \
                     f'<span class="label">&nbsp;<b>Outputs:</b>&nbsp;</span><span class="value">&nbsp;{recipients}&nbsp;</span>' \
@@ -1117,7 +1117,7 @@ class WalletMnItemDelegate(QItemDelegate):
 
             r.setTop(r.top() + fm.height() + WalletMnItemDelegate.CellLinesMargin)
             if mn.address.balance is not None:
-                balance_str = 'Balance: ' + app_utils.to_string(mn.address.balance / 1e8) + ' XZC'
+                balance_str = 'Balance: ' + app_utils.to_string(mn.address.balance / 1e8) + ' FIRO'
             else:
                 balance_str = 'Balance: unknown'
             painter.drawText(r, Qt.AlignLeft, balance_str)
@@ -1187,7 +1187,7 @@ class WalletAccountItemDelegate(QItemDelegate):
 
                 r.setTop(r.top() + fm.height() + WalletMnItemDelegate.CellLinesMargin)
                 if data.balance is not None:
-                    balance_str = 'Balance: ' + app_utils.to_string(data.balance / 1e8) + ' XZC'
+                    balance_str = 'Balance: ' + app_utils.to_string(data.balance / 1e8) + ' FIRO'
                 else:
                     balance_str = 'Balance: unknown'
                 painter.drawText(r, Qt.AlignLeft, balance_str)

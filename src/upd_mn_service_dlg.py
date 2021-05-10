@@ -196,8 +196,8 @@ class UpdMnServiceDlg(QDialog, ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg, WndUtil
                 f'"{self.masternode.dmn_operator_private_key}" "{self.dmn_new_operator_payout_address}" ' \
                 f'"<span style="color:green">feeSourceAddress</span>"'
             msg = '<ol>' \
-                  '<li>Start a Zcoin Core wallet with sufficient funds to cover a transaction fee.</li>'
-            msg += '<li>Execute the following command in the Zcoin Core debug console:<br><br>'
+                  '<li>Start a Firo Core wallet with sufficient funds to cover a transaction fee.</li>'
+            msg += '<li>Execute the following command in the Firo Core debug console:<br><br>'
             msg += '  <code style=\"background-color:#e6e6e6\">' + cmd + '</code></li><br>'
             msg += 'Replace <span style="color:green">feeSourceAddress</span> with the address being the ' \
                    'source of the transaction fee.'

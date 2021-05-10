@@ -305,7 +305,7 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
             self.message(ret, style="white-space: pre-wrap;")
             return True
         else:
-            WndUtils.errorMsg('Not connected to a Zcoin node')
+            WndUtils.errorMsg('Not connected to a Firo node')
             return False
 
     @pyqtSlot()

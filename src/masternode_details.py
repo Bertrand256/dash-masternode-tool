@@ -300,7 +300,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 if not self.edit_mode and not self.act_view_as_owner_private_key.isChecked():
                     style = 'hl2'
             else:
-                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Zcoin address')
+                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Firo address')
                 if not self.edit_mode:
                     style = 'hl1' if self.act_view_as_owner_public_address.isChecked() else 'hl2'
             self.lblOwnerKey.setText(get_label_text('Owner', key_type, tooltip_anchor, self.ag_owner_key, style))
@@ -325,7 +325,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                 if not self.edit_mode and not self.act_view_as_voting_private_key.isChecked():
                     style = 'hl2'
             else:
-                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Zcoin address')
+                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Firo address')
                 if not self.edit_mode:
                     style = 'hl1' if self.act_view_as_voting_public_address.isChecked() else 'hl2'
             self.lblVotingKey.setText(get_label_text('Voting', key_type, tooltip_anchor, self.ag_voting_key, style))
@@ -545,7 +545,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     @pyqtSlot(str)
     def on_lblOwnerKey_linkHovered(self, link):
         if link == 'address':
-            tt = 'Change input type to Zcoin address'
+            tt = 'Change input type to Firo address'
         else:
             tt = 'Change input type to private key'
         self.lblOwnerKey.setToolTip(tt)
@@ -561,7 +561,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
     @pyqtSlot(str)
     def on_lblVotingKey_linkHovered(self, link):
         if link == 'address':
-            tt = 'Change input type to Zcoin address'
+            tt = 'Change input type to Firo address'
         else:
             tt = 'Change input type to private key'
         self.lblVotingKey.setToolTip(tt)
@@ -910,7 +910,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                     apply_utxo(utxo)
         else:
             if utxos is not None:
-                WndUtils.warnMsg('Couldn\'t find any 1000 Zcoin UTXO in your wallet.')
+                WndUtils.warnMsg('Couldn\'t find any 1000 Firo UTXO in your wallet.')
 
     def get_collateral_tx_address_thread(self, ctrl: CtrlObject,
                                          bip44_wallet: Bip44Wallet,
@@ -919,7 +919,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
         utxos = []
         break_scanning = False
         txes_cnt = 0
-        msg = 'Scanning wallet transactions for 1000 Zcoin UTXOs.<br>' \
+        msg = 'Scanning wallet transactions for 1000 Firo UTXOs.<br>' \
               'This may take a while (<a href="break">break</a>)....'
         ctrl.dlg_config_fun(dlg_title="Scanning wallet", show_progress_bar=False)
         ctrl.display_msg_fun(msg)

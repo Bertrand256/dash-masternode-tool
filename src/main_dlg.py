@@ -685,7 +685,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     mnsync = self.dashd_intf.mnsync()
                     self.add_app_message(
                         DispMessage.DASH_NET_CONNECTION,
-                        'Zcoind is synchronizing: AssetID: %s, AssetName: %s' %
+                        'Firod is synchronizing: AssetID: %s, AssetName: %s' %
                         (str(mnsync.get('AssetID', '')), str(mnsync.get('AssetName', ''))), 'warn')
                     cond.wait(mtx, 5000)
                 self.del_app_message(DispMessage.DASH_NET_CONNECTION)
@@ -773,7 +773,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             if self.dashd_connection_ok:
                 self.show_connection_successful()
                 if self.is_dashd_syncing:
-                    self.infoMsg('Connection successful, but Zcoin daemon is synchronizing.')
+                    self.infoMsg('Connection successful, but Firo daemon is synchronizing.')
                 else:
                     self.infoMsg('Connection successful.')
             else:
@@ -940,7 +940,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
                         if not found_testnet_support:
                             url = get_note_url('DMT0002')
-                            msg = f'Your hardware wallet device does not fully support Zcoin TESTNET. ' \
+                            msg = f'Your hardware wallet device does not fully support Firo TESTNET. ' \
                                   f'It will be displaying mainnet addresses instead of testnet ones. ' \
                                   f'(<a href="{url}">See details</a>).'
                             self.errorMsg(msg)
@@ -1602,7 +1602,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                             owner_public_address_mismatch = True
                             logging.warning(
                                 f'The owner public address mismatch for masternode: {masternode.name}, '
-                                f'address from the app configuration: {owner_address_cfg}, address from the Zcoin '
+                                f'address from the app configuration: {owner_address_cfg}, address from the Firo '
                                 f'network: {owner_address_network}')
 
                         voting_address_network = dmn_tx_state.get('votingAddress')
@@ -1611,7 +1611,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                             voting_public_address_mismatch = True
                             logging.warning(
                                 f'The voting public address mismatch for masternode: {masternode.name}. '
-                                f'address from the app configuration: {voting_address_cfg}, address from the Zcoin '
+                                f'address from the app configuration: {voting_address_cfg}, address from the Firo '
                                 f'network: {voting_address_network}')
 
                         if not no_operator_pub_key:
@@ -1622,7 +1622,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 operator_pubkey_mismatch = True
                                 logging.warning(
                                     f'The operator public key mismatch for masternode: {masternode.name}. '
-                                    f'pubkey from the app configuration: {operator_pubkey_cfg}, pubkey from the Zcoin '
+                                    f'pubkey from the app configuration: {operator_pubkey_cfg}, pubkey from the Firo '
                                     f'network: {operator_pubkey_network}')
 
                 if mn_data_modified:
@@ -1745,7 +1745,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     if operator_pubkey_mismatch and not skip_data_mismatch:
                         errors.append('<td class="error" colspan="2">Operator public key mismatch</td>')
                     if voting_public_address_mismatch and not skip_data_mismatch:
-                        errors.append('<td class="error" colspan="2">Voting Zcoin address mismatch</td>')
+                        errors.append('<td class="error" colspan="2">Voting Firo address mismatch</td>')
                     if not dmn_tx:
                         warnings.append('<td class="warning" colspan="2">Couldn\'d read protx info for this masternode'
                                         ' (look into the logfile for details)</td>')
@@ -1831,7 +1831,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         else:
             enable_buttons()
             self.lblMnStatus.setText('')
-            self.errorMsg('Zcoin daemon not connected')
+            self.errorMsg('Firo daemon not connected')
 
     @pyqtSlot(bool)
     def on_action_transfer_funds_for_cur_mn_triggered(self):
@@ -1880,7 +1880,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
           if the value is None, show the default utxo source type
         """
         if not self.dashd_intf.open():
-            self.errorMsg('Zcoin daemon not connected')
+            self.errorMsg('Firo daemon not connected')
         else:
             ui = wallet_dlg.WalletDlg(self, initial_mn_sel=initial_mn)
             ui.exec_()

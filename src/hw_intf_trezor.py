@@ -314,7 +314,7 @@ def json_to_tx(coin, data):
                 data["extraPayload"] = serialize_cbTx(data)
             else:
                 raise NotImplementedError("Only spending of V3 coinbase outputs has been inplemented. "
-                    "Please file an issue at https://github.com/firorg/firo-masternode-tool/issues containing "
+                    "Please file an issue at https://github.com/firoorg/firo-masternode-tool/issues containing "
                     "the tx type=" + str(dip2_type))
             data["extraPayloadSize"] = len(data["extraPayload"]) >> 1
 

@@ -153,12 +153,12 @@ class AppConfig(QObject):
 
         self.dash_network = 'MAINNET'
 
-        self.block_explorer_tx_mainnet = 'https://insight.zcoin.io/tx/%TXID%'
-        self.block_explorer_addr_mainnet = 'https://insight.zcoin.io/address/%ADDRESS%'
-        self.block_explorer_tx_testnet = 'https://testexplorer.zcoin.io/tx/%TXID%'
-        self.block_explorer_addr_testnet = 'https://testexplorer.zcoin.io/address/%ADDRESS%'
-        self.tx_api_url_mainnet = 'https://insight.zcoin.io'
-        self.tx_api_url_testnet = 'https://testexplorer.zcoin.io'
+        self.block_explorer_tx_mainnet = 'https://insight.firo.org/tx/%TXID%'
+        self.block_explorer_addr_mainnet = 'https://insight.firo.org/address/%ADDRESS%'
+        self.block_explorer_tx_testnet = 'https://testexplorer.firo.org/tx/%TXID%'
+        self.block_explorer_addr_testnet = 'https://testexplorer.firo.org/address/%ADDRESS%'
+        self.tx_api_url_mainnet = 'https://insight.firo.org'
+        self.tx_api_url_testnet = 'https://testexplorer.firo.org'
         self.dash_central_proposal_api = 'https://www.dashcentral.org/api/v1/proposal?hash=%HASH%'
         self.dash_nexus_proposal_api = 'https://api.dashnexus.org/proposals/%HASH%'
 

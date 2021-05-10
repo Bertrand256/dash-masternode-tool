@@ -190,7 +190,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 key_type, tooltip_anchor, placeholder_text = ('privkey', 'address', 'Enter the owner private key')
                 style = ''
             else:
-                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Zcoin address')
+                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Firo address')
                 style = 'hl1'
             self.lblOwnerKey.setText(get_label_text('Owner', key_type, tooltip_anchor, style))
             self.edtOwnerKey.setPlaceholderText(placeholder_text)
@@ -208,7 +208,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 key_type, tooltip_anchor, placeholder_text = ('privkey','address', 'Enter the voting private key')
                 style = ''
             else:
-                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Zcoin address')
+                key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Firo address')
                 style = 'hl1'
             self.lblVotingKey.setText(get_label_text('Voting', key_type, tooltip_anchor, style))
             self.edtVotingKey.setPlaceholderText(placeholder_text)
@@ -258,7 +258,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
     @pyqtSlot(str)
     def on_lblOwnerKey_linkHovered(self, link):
         if link == 'address':
-            tt = 'Change input type to Zcoin address'
+            tt = 'Change input type to Firo address'
         else:
             tt = 'Change input type to private key'
         self.lblOwnerKey.setToolTip(tt)
@@ -274,7 +274,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
     @pyqtSlot(str)
     def on_lblVotingKey_linkHovered(self, link):
         if link == 'address':
-            tt = 'Change input type to Zcoin address'
+            tt = 'Change input type to Firo address'
         else:
             tt = 'Change input type to private key'
         self.lblVotingKey.setToolTip(tt)
@@ -456,7 +456,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                     style = 'info'
                 else:
                     msg = 'If don\'t set the IP address and port fields, the masternode operator will ' \
-                          'have to issue a ProUpServTx transaction using Zcoin wallet.'
+                          'have to issue a ProUpServTx transaction using Firo wallet.'
                     style = 'warning'
         self.set_ctrl_message(self.lblIPMsg, msg, style)
 
@@ -468,7 +468,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             style = 'error'
         else:
             if self.show_field_hinds:
-                msg = 'The owner\'s payout address can be set to any valid Zcoin address - it no longer ' \
+                msg = 'The owner\'s payout address can be set to any valid Firo address - it no longer ' \
                       'has to be the same as the collateral address.'
                 style = 'info'
         self.set_ctrl_message(self.lblPayoutMsg, msg, style)
@@ -507,8 +507,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                         msg = 'Enter the owner private key or generate a new one by clicking the button on the right.'
                     style = 'info'
                 else:
-                    msg = 'You can use Zcoin address if the related private key is stored elsewhere, eg in ' \
-                          'the Zcoin Core wallet.<br><span class="warning">Note, that if you provide an address ' \
+                    msg = 'You can use Firo address if the related private key is stored elsewhere, eg in ' \
+                          'the Firo Core wallet.<br><span class="warning">Note, that if you provide an address ' \
                           'instead of a private key, you will not be able to publish ProRegTx ' \
                           'transaction through public RPC nodes in the next steps.</span>'
                     style = 'info'
@@ -558,8 +558,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                                   'the right.'
                         style = 'info'
                     else:
-                        msg = 'You can use Zcoin address if the related private key is stored elsewhere, eg in ' \
-                              'the Zcoin Core wallet.'
+                        msg = 'You can use Firo address if the related private key is stored elsewhere, eg in ' \
+                              'the Firo Core wallet.'
                         style = 'info'
 
         self.set_ctrl_message(self.lblVotingMsg, msg, style)
@@ -585,10 +585,10 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                   '<b>Note 1:</b> this operation will involve signing transaction data with your <span style="color:red">owner key on the remote node</span>, ' \
                   'so use this method only if you trust the operator of that node.<br><br>' \
                   '<b>Note 2:</b> if the operation fails (e.g. due to a lack of funds), choose the manual method ' \
-                  'using your own Zcoin wallet.'
+                  'using your own Firo wallet.'
 
         elif nt == NODE_TYPE_OWN:
-            msg = 'A Zcoin Core wallet with sufficient funds to cover transaction fees is required to ' \
+            msg = 'A Firo Core wallet with sufficient funds to cover transaction fees is required to ' \
                   'complete the next steps.'
         self.lblDashNodeTypeMessage.setText(msg)
 
@@ -717,11 +717,11 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
             if self.dmn_operator_key_type == InputKeyType.PRIVATE:
                 operator_message = '<b><span style="color:red">One more thing... <span></b>copy the following ' \
-                                   'line to the <code>zcoin.conf</code> file on your Znode server ' \
-                                   '(and restart <i>zcoind</i>) or pass it to the Znode operator:'
+                                   'line to the <code>firo.conf</code> file on your Znode server ' \
+                                   '(and restart <i>firod</i>) or pass it to the Znode operator:'
             else:
                 operator_message = '<b><span style="color:red">One more thing... <span></b>copy the following ' \
-                                   'line to the <code>zcoin.conf</code> file on your masternode server, replacing ' \
+                                   'line to the <code>firo.conf</code> file on your masternode server, replacing ' \
                                    '"&lt;your-operator-bls-private-key&gt;" with the appropriate value or ask the operator ' \
                                    'for it:'
             self.lblProtxSummary3.setText(operator_message)
@@ -975,9 +975,9 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                                     f'field.')
                 ads = spk.get('addresses')
                 if not ads or len(ads) < 0:
-                    raise Exception('The collateral transaction output doesn\'t have the Zcoin address assigned.')
+                    raise Exception('The collateral transaction output doesn\'t have the Firo address assigned.')
                 if (vout.get('valueSat') if 'valueSat' in vout else vout['value'] * decimal.Decimal(1e8)) != 1000e8:
-                    raise Exception('The value of the collateral transaction output is not equal to 1000 XZC.')
+                    raise Exception('The value of the collateral transaction output is not equal to 1000 FIRO.')
 
                 self.dmn_collateral_tx_address = ads[0]
             else:
@@ -1008,7 +1008,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                       f'<br>This may take a while (<a href="break">break</a>)...'
                 self.dmn_collateral_tx_address_path = ''
         else:
-            msg = 'Looking for a BIP32 path of the Zcoin address related to the masternode collateral.<br>' \
+            msg = 'Looking for a BIP32 path of the Firo address related to the masternode collateral.<br>' \
                   'This may take a while (<a href="break">break</a>)....'
 
         if not self.dmn_collateral_tx_address_path and not self.finishing:
