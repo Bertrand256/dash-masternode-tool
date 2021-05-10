@@ -336,7 +336,7 @@ class DashdSSH(object):
                     if len(elems) == 2:
                         executable = elems[1].strip()
                         dashd_dir = os.path.dirname(executable)
-                        dash_conf_file = dashd_dir + '/.zcoin/zcoin.conf'
+                        dash_conf_file = dashd_dir + '/.firo/firo.conf'
                         conf_lines = []
                         try:
                             conf_lines = self.remote_command('cat ' + dash_conf_file)
@@ -348,13 +348,13 @@ class DashdSSH(object):
                                 elems = cwd_lines[0].split('->')
                                 if len(elems) >= 2:
                                     cwd = elems[1]
-                                    dash_conf_file = cwd + '/.zcoin/zcoin.conf'
+                                    dash_conf_file = cwd + '/.firo/firo.conf'
                                     try:
                                         conf_lines = self.remote_command('cat ' + dash_conf_file)
                                     except Exception as e:
                                         # second method did not suceed, so assume, that conf file is located
                                         # i /home/<username>/.dashcore directory
-                                        dash_conf_file = '/home/' + self.username + '/.zcoin/zcoin.conf'
+                                        dash_conf_file = '/home/' + self.username + '/.firo/firo.conf'
                                         conf_lines = self.remote_command('cat ' + dash_conf_file)
 
                         for line in conf_lines:
