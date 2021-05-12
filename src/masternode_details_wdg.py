@@ -344,7 +344,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
         self.update_dynamic_labels()
 
-    def masternode_data_to_ui(self):
+    def masternode_data_to_ui(self, reset_key_view_type: bool = False):
         if self.masternode:
             if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
                 self.act_view_as_owner_private_key.setChecked(True)
@@ -360,9 +360,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 self.act_view_as_voting_private_key.setChecked(True)
             else:
                 self.act_view_as_voting_public_address.setChecked(True)
-            self.btnShowOwnerPrivateKey.setChecked(False)
-            self.btnShowOperatorPrivateKey.setChecked(False)
-            self.btnShowVotingPrivateKey.setChecked(False)
+            if reset_key_view_type:
+                self.btnShowOwnerPrivateKey.setChecked(False)
+                self.btnShowOperatorPrivateKey.setChecked(False)
+                self.btnShowVotingPrivateKey.setChecked(False)
 
             self.chbRoleOwner.setChecked(self.masternode.dmn_user_roles & DMN_ROLE_OWNER)
             self.chbRoleOperator.setChecked(self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR)
@@ -603,9 +604,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
     def set_masternode(self, src_masternode: Optional[MasternodeConfig]):
         self.updating_ui = True
-        self.masternode.copy_from(src_masternode)
-        self.masternode.modified = False
-        self.masternode_data_to_ui()
+        if src_masternode:
+            self.masternode.copy_from(src_masternode)
+            self.masternode.modified = False
+            self.masternode_data_to_ui(True)
 
     def get_masternode_data(self, dest_masternode: MasternodeConfig):
         """Copies masternode data from the internal MasternodeConfig object to dest_masternode.
@@ -616,7 +618,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     def set_edit_mode(self, enabled: bool):
         if self.edit_mode != enabled:
             self.edit_mode = enabled
-            self.masternode_data_to_ui()
+            self.masternode_data_to_ui(True if enabled else False)
             if not self.edit_mode:
                 self.lblOwnerKey.setToolTip('')
                 self.lblOperatorKey.setToolTip('')

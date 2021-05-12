@@ -15,7 +15,7 @@ from typing import Callable, Optional, List, Dict, Any
 import bitcoin
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import pyqtSlot, Qt, QTimer, QVariant, QModelIndex, QRect, QPoint
-from PyQt5.QtGui import QTextDocument, QPen, QBrush, QPalette, QImage, QPixmap
+from PyQt5.QtGui import QTextDocument, QPen, QBrush, QPalette, QImage, QPixmap, QColor
 from PyQt5.QtWidgets import QWidget, QLineEdit, QMessageBox, QAction, QApplication, QActionGroup, QTableView, \
     QItemDelegate, QStyleOptionViewItem, QStyle, QAbstractItemView, QLabel, QMenu, QPushButton
 
@@ -24,7 +24,7 @@ import app_utils
 import hw_intf
 from app_config import AppConfig, MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING
 from app_defs import COLOR_ERROR_STR, COLOR_WARNING_STR, COLOR_OK_STR, COLOR_ERROR, COLOR_WARNING, COLOR_OK
-from dashd_intf import DashdInterface
+from dashd_intf import DashdInterface, Masternode
 from ext_item_model import ExtSortFilterItemModel, TableModelColumn, HorizontalAlignment
 from masternode_details_wdg import WdgMasternodeDetails
 from ui import ui_app_main_view_wdg
@@ -32,6 +32,8 @@ from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, IconTe
 
 
 CACHE_ITEM_SHOW_MN_DETAILS_PANEL = 'MainWindow_ShowMNDetailsPanel'
+COLOR_PENDING_PROTX_STR = '#0033cc'
+COLOR_PENDING_PROTX = QColor(COLOR_PENDING_PROTX_STR)
 
 
 class Pages(Enum):
@@ -70,15 +72,19 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.mnu_masternode_actions = QMenu()
         self.finishing = False
         self.mn_view_column_delegates: Dict[int, QItemDelegate] = {}
+        self.mn_info_by_mn_cfg: Dict[MasternodeConfig, Masternode] = {}
         self.setupUi(self)
 
     def setupUi(self, widget: QWidget):
         ui_app_main_view_wdg.Ui_WdgAppMainView.setupUi(self, self)
         self.restore_cache_settings()
         self.lblNoMasternodeMessage.setVisible(False)
-        self.lblNavigation1.linkActivated.connect(self.on_link_activated)
-        self.lblNavigation2.linkActivated.connect(self.on_link_activated)
-        self.lblNoMasternodeMessage.linkActivated.connect(self.on_link_activated)
+        self.lblNavigation1.linkActivated.connect(self.on_cur_tab_link_activated)
+        self.lblNavigation2.linkActivated.connect(self.on_cur_tab_link_activated)
+        self.lblNavigation3.linkActivated.connect(self.on_cur_tab_link_activated)
+        self.lblNoMasternodeMessage.linkActivated.connect(self.on_cur_tab_link_activated)
+        WndUtils.set_icon(self, self.btnMoveMnUp, 'arrow-downward@16px', 180)
+        WndUtils.set_icon(self, self.btnMoveMnDown, 'arrow-downward@16px')
 
         self.wdg_masternode = WdgMasternodeDetails(self, self.app_config, self.dashd_intf, self.hw_session)
         l = self.frmMasternodeDetails.layout()
@@ -90,7 +96,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.loading_data_spinner = SpinnerWidget(self.pnlNavigation, 18,
                                                   'Fetching data from the network, please wait...')
         self.loading_data_spinner.hide()
-        l.insertWidget(l.indexOf(self.btnMnListColumns) + 1, self.loading_data_spinner)
+        l.insertWidget(l.indexOf(self.btnMoveMnDown) + 1, self.loading_data_spinner)
 
         # setup the masternode list view
         self.viewMasternodes.setSortingEnabled(True)
@@ -105,8 +111,6 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.viewMasternodes.setContextMenuPolicy(Qt.CustomContextMenu)
 
         # configure the masternode actions menu:
-        self.mnu_masternode_actions.addAction(self.main_window.action_show_masternode_details)
-        self.mnu_masternode_actions.addSeparator()
         self.mnu_masternode_actions.addAction(self.main_window.action_new_masternode_entry)
         self.mnu_masternode_actions.addAction(self.main_window.action_clone_masternode_entry)
         self.mnu_masternode_actions.addAction(self.main_window.action_delete_masternode_entry)
@@ -196,7 +200,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 self.update_info_page()
 
                 if self.app_config.fetch_network_data_after_start:
-                    self.fetch_network_data()
+                    self.refresh_network_data()
             except Exception as e:
                 logging.exception(str(e))
 
@@ -218,7 +222,10 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         return self.cur_masternode
 
     def set_cur_masternode_modified(self):
-        pass
+        self.refresh_masternodes_view()
+        self.update_mn_preview()
+        self.masternode_data_changed.emit()
+        self.wdg_masternode.masternode_data_to_ui(False)
 
     def update_ui(self):
         if self.current_view.value != self.stackedWidget.currentIndex():
@@ -226,6 +233,8 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
             self.update_navigation_panel()
 
         if self.current_view == Pages.PAGE_MASTERNODE_LIST:
+            self.btnMoveMnUp.setVisible(True)
+            self.btnMoveMnDown.setVisible(True)
             if not self.app_config.masternodes and not self.lblNoMasternodeMessage.isVisible():
                 msg = '<h3>No masternodes in your configuration... <a href="add_mn">add a new one</a></h3>'
                 self.lblNoMasternodeMessage.setVisible(True)
@@ -238,9 +247,26 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 self.viewMasternodes.setVisible(True)
                 self.btnMnListColumns.setVisible(True)
                 self.btnMnActions.setVisible(True)
+        elif self.current_view == Pages.PAGE_SINGLE_MASTERNODE:
+            self.btnMoveMnUp.setVisible(False)
+            self.btnMoveMnDown.setVisible(False)
+            if self.cur_masternode:
+                self.btnMnActions.setVisible(True)
+            self.btnMnListColumns.setVisible(False)
         else:
+            self.btnMoveMnUp.setVisible(False)
+            self.btnMoveMnDown.setVisible(False)
             self.btnMnListColumns.setVisible(False)
             self.btnMnActions.setVisible(False)
+
+        if self.cur_masternode and self.cur_masternode in self.app_config.masternodes:
+            is_first = self.app_config.masternodes.index(self.cur_masternode) == 0
+            is_last = self.app_config.masternodes.index(self.cur_masternode) == len(self.app_config.masternodes) - 1
+            self.btnMoveMnUp.setEnabled(not is_first)
+            self.btnMoveMnDown.setEnabled(not is_last)
+        else:
+            self.btnMoveMnUp.setEnabled(False)
+            self.btnMoveMnDown.setEnabled(False)
 
         self.update_details_panel_controls()
         self.wdg_masternode.masternode_data_to_ui()
@@ -248,7 +274,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
 
     def update_actions_state(self):
         def update_fun():
-            editing = (self.editing_enabled and self.cur_masternode is not None and
+            editing = (self.editing_enabled and self.edited_masternode is not None and
                        self.current_view == Pages.PAGE_SINGLE_MASTERNODE)
             self.btnEditMn.setVisible(not editing)
             self.btnCancelEditingMn.setVisible(editing)
@@ -264,15 +290,25 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
 
     def update_navigation_panel(self):
         if self.current_view == Pages.PAGE_MASTERNODE_LIST:
-            mns_link = '<span style="color:black">\u25B6 <b>Masternodes</b></span>'
+            mns_link = '<span style="color:black">\u25B6 <b>Masternode list</b></span>'
         else:
             if self.current_view == Pages.PAGE_SINGLE_MASTERNODE and self.editing_enabled:
                 # don't allow changing view when in edit mode
-                mns_link = '<span style="color:gray">Masternodes</span>'
+                mns_link = '<span style="color:gray">Masternode list</span>'
             else:
-                mns_link = '<a style="text-decoration:none" href="masternodes">Masternodes</a>'
+                mns_link = '<a style="text-decoration:none" href="masternodes">Masternode list</a>'
         mns_link = '<span>' + mns_link + '</span>'
         self.lblNavigation1.setText(mns_link)
+
+        if self.current_view == Pages.PAGE_SINGLE_MASTERNODE:
+            mn_link = '<span style="color:black">\u25B6 <b>MN details</b></span>'
+        else:
+            if not self.cur_masternode:
+                mn_link = '<span style="color:gray">MN details</span>'
+            else:
+                mn_link = '<a style="text-decoration:none" href="masternode_details">MN details</a>'
+        mn_link = '<span>' + mn_link + '</span>'
+        self.lblNavigation2.setText(mn_link)
 
         if self.current_view == Pages.PAGE_NETWORK_INFO:
             network_info_link = '<span style="color:black">\u25B6 <b>Network info</b></span>'
@@ -282,19 +318,24 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 network_info_link = '<span style="color:gray">Network info</span>'
             else:
                 network_info_link = '<a style="text-decoration:none" href="netinfo">Network info</a>'
-        self.lblNavigation2.setText(network_info_link)
+        self.lblNavigation3.setText(network_info_link)
 
     @pyqtSlot(str)
-    def on_link_activated(self, link):
-        if link == 'netinfo':
-            self.current_view = Pages.PAGE_NETWORK_INFO
-        elif link == 'masternodes':
-            self.current_view = Pages.PAGE_MASTERNODE_LIST
-        elif link == 'add_mn':
-            WndUtils.info_msg('Not implemented')
-            return
-        self.update_navigation_panel()
-        self.update_ui()
+    def on_cur_tab_link_activated(self, link):
+        try:
+            if link == 'netinfo':
+                self.current_view = Pages.PAGE_NETWORK_INFO
+            elif link == 'masternodes':
+                self.current_view = Pages.PAGE_MASTERNODE_LIST
+            elif link == 'masternode_details':
+                self.current_view = Pages.PAGE_SINGLE_MASTERNODE
+            elif link == 'add_mn':
+                self.add_new_masternode(None)
+                return
+            self.update_navigation_panel()
+            self.update_ui()
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     def on_mn_list_column_resized(self, logical_index, old_size, new_size):
         self.mn_list_columns_resized_by_user = True
@@ -327,10 +368,77 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
     def on_btnMnListColumns_clicked(self):
         self.masternodes_table_model.exec_columns_dialog(self)
 
+    @pyqtSlot(bool)
+    def on_btnMoveMnUp_clicked(self):
+        try:
+            mns = self.app_config.masternodes
+            if self.cur_masternode and self.cur_masternode in mns:
+                cur_idx = mns.index(self.cur_masternode)
+                if cur_idx > 0:
+                    mns[cur_idx-1], mns[cur_idx] = mns[cur_idx], mns[cur_idx-1]
+                    self.refresh_masternodes_view()
+                    self.app_config.set_modified()
+                    self.masternode_data_changed.emit()
+                    self.update_ui()
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
+
+    @pyqtSlot(bool)
+    def on_btnMoveMnDown_clicked(self):
+        try:
+            mns = self.app_config.masternodes
+            if self.cur_masternode and self.cur_masternode in mns:
+                cur_idx = mns.index(self.cur_masternode)
+                if cur_idx < len(mns) - 1:
+                    mns[cur_idx+1], mns[cur_idx] = mns[cur_idx], mns[cur_idx+1]
+                    self.refresh_masternodes_view()
+                    self.app_config.set_modified()
+                    self.masternode_data_changed.emit()
+                    self.update_ui()
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
+
     @pyqtSlot(str)
     def on_lblMnStatusLabel_linkActivated(self, link: str):
         self.mn_details_panel_visible = not self.mn_details_panel_visible
         self.update_details_panel_controls()
+
+    @pyqtSlot(str)
+    def on_lblMnStatus_linkActivated(self, link: str):
+        if self.cur_masternode:
+            cl = QApplication.clipboard()
+            if link == 'copy_protx_to_config':
+                mn_info: Masternode = self.mn_info_by_mn_cfg.get(self.cur_masternode)
+                ms = self.mns_status.get(self.cur_masternode)
+                if mn_info and mn_info.protx_hash and ms:
+                    self.cur_masternode.dmn_tx_hash = mn_info.protx_hash
+                    self.cur_masternode.modified = True
+                    ms.check_mismatch(self.cur_masternode, mn_info)
+                    self.set_cur_masternode_modified()
+
+            elif link == 'copy_owner_addr_cfg':
+                cl.setText(self.cur_masternode.get_dmn_owner_public_address(self.app_config.dash_network))
+
+            elif link == 'copy_owner_addr_net':
+                ms = self.mns_status.get(self.cur_masternode)
+                if ms:
+                    cl.setText(ms.network_owner_public_address)
+
+            elif link == 'copy_operator_key_cfg':
+                cl.setText(self.cur_masternode.get_dmn_operator_pubkey())
+
+            elif link == 'copy_operator_key_net':
+                ms = self.mns_status.get(self.cur_masternode)
+                if ms:
+                    cl.setText(ms.network_operator_public_key)
+
+            elif link == 'copy_voting_addr_cfg':
+                cl.setText(self.cur_masternode.get_dmn_voting_public_address(self.app_config.dash_network))
+
+            elif link == 'copy_voting_addr_net':
+                ms = self.mns_status.get(self.cur_masternode)
+                if ms:
+                    cl.setText(ms.network_voting_public_address)
 
     def update_details_panel_controls(self):
         panel_visible = self.cur_masternode is not None and \
@@ -342,7 +450,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.lblMnStatusLabel.setText(t)
         self.lblMnStatus.setVisible(panel_visible)
 
-    def fetch_network_data(self):
+    def refresh_network_data(self):
         def update():
             self.hide_loading_animation()
             self.update_info_page()
@@ -355,7 +463,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
 
     @pyqtSlot(bool)
     def on_btnRefreshMnStatus_clicked(self):
-        self.fetch_network_data()
+        self.refresh_network_data()
 
     @pyqtSlot(QModelIndex)
     def on_viewMasternodes_doubleClicked(self, index):
@@ -424,6 +532,8 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
     def set_edit_mode(self, editing_enabled: bool):
         self.editing_enabled = editing_enabled
         self.wdg_masternode.set_edit_mode(editing_enabled)
+        if not editing_enabled:
+            self.edited_masternode = None
         self.update_navigation_panel()
         self.update_actions_state()
 
@@ -480,7 +590,6 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
             WndUtils.error_msg('Editing already enabled!')
 
     def apply_masternode_changes(self):
-        self.set_edit_mode(False)
         if self.wdg_masternode.is_modified():
             self.wdg_masternode.get_masternode_data(self.edited_masternode)
             is_new = False
@@ -494,6 +603,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
             self.refresh_masternodes_view()
             if is_new:
                 self.goto_masternode_list()
+        self.set_edit_mode(False)
 
     def cancel_masternode_changes(self):
         self.set_edit_mode(False)
@@ -648,28 +758,28 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
             self.show_loading_animation()
             self.update_mn_preview()
 
-        protx_list_registered: List[Dict] = []  # result of the call: protx list registered
-
         try:
             if self.finishing:
                 return
             WndUtils.call_in_main_thread(on_start)
 
-            self.dashd_intf.get_masternodelist('json', data_max_age=30)
-            self.fetch_governance_info()
-            block_height = self.dashd_intf.getblockcount()
+            # check if any of the masternodes from config, had waiting protx transaction; if so, we will minimize
+            # the cache max data age attribute
+            cache_max_age = 60
+            for mn in self.mns_status:
+                ms = self.mns_status[mn]
+                if ms.protx_conf_pending:
+                    cache_max_age = 1
 
-            mempool = self.dashd_intf.getrawmempool()
-            self.network_status.mempool_entries_count = len(mempool)
+            self.dashd_intf.get_masternodelist('json', data_max_age=cache_max_age, protx_data_max_age=cache_max_age)
+            block_height = self.dashd_intf.getblockcount()
 
             mns = list(self.app_config.masternodes)
             for mn in mns:
                 ms = self.mns_status.get(mn)
                 if not ms:
-                    ms = MasternodeStatus()
+                    ms = MasternodeStatus(self.app_config.dash_network)
                     self.mns_status[mn] = ms
-                else:
-                    ms.clear()
 
                 if mn.collateral_tx and str(mn.collateral_tx_index):
                     collateral_id = mn.collateral_tx + '-' + mn.collateral_tx_index
@@ -680,6 +790,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 else:
                     ip_port = None
 
+                ms.not_found = False
                 if not collateral_id and not ip_port:
                     if not mn.collateral_tx:
                         ms.not_found = True
@@ -695,11 +806,15 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 if not mn_info:
                     ms.not_found = True
                     continue
+                self.mn_info_by_mn_cfg[mn] = mn_info
 
                 ms.status = mn_info.status
                 if mn_info.queue_position:
                     ms.next_payment_block = block_height + mn_info.queue_position + 1
                     ms.next_payment_ts = int(time.time()) + (mn_info.queue_position * 2.5 * 60)
+                else:
+                    ms.next_payment_block = None
+                    ms.next_payment_ts = None
 
                 if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
                     ms.status_warning = False
@@ -710,45 +825,43 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                     if mn_info.protx.pose_penalty:
                         ms.pose_penalty = mn_info.protx.pose_penalty
                         ms.status_warning = True
+                    else:
+                        ms.pose_penalty = 0
 
                     if re.match('^0+$', mn_info.protx.pubkey_operator):
                         no_operator_pub_key = True
                     else:
                         no_operator_pub_key = False
 
+                    ms.operator_key_update_required = False
+                    ms.operator_service_update_required = False
                     if mn_info.protx.service == '[0:0:0:0:0:0:0:0]:0':
                         if no_operator_pub_key:
                             ms.operator_key_update_required = True
                         else:
                             ms.operator_service_update_required = True
+                    ms.check_mismatch(mn, mn_info)
+                else:
+                    ms.pose_penalty = 0
+                    ms.no_operator_pub_key = False
+                    ms.operator_service_update_required = True
+                    ms.collateral_address_mismatch = False
+                    ms.owner_public_address_mismatch = False
+                    ms.operator_pubkey_mismatch = False
+                    ms.voting_public_address_mismatch = False
 
-                    if mn.dmn_user_roles & DMN_ROLE_OWNER:
-                        if not mn.collateral_address or mn.collateral_address != mn_info.protx.collateral_address:
-                            ms.collateral_address_mismatch = True
+            WndUtils.call_in_main_thread(self.refresh_masternodes_view)  # in the mn list view show the data that has
+                                                                         # been read so far
 
-                        owner_address_cfg = mn.get_dmn_owner_public_address(self.app_config.dash_network)
-                        if not owner_address_cfg or mn_info.protx.owner_address != owner_address_cfg:
-                            ms.owner_public_address_mismatch = True
-
-                    if mn.dmn_user_roles & DMN_ROLE_OPERATOR:
-                        operator_pubkey_cfg = mn.get_dmn_operator_pubkey()
-                        if not operator_pubkey_cfg or operator_pubkey_cfg != mn_info.protx.pubkey_operator:
-                            ms.operator_pubkey_mismatch = True
-
-                    if mn.dmn_user_roles & DMN_ROLE_VOTING:
-                        voting_address_cfg = mn.get_dmn_voting_public_address(self.app_config.dash_network)
-                        if not voting_address_cfg or voting_address_cfg != mn_info.protx.voting_address:
-                            ms.voting_public_address_mismatch = True
-
-                if not mn.collateral_tx or not mn.collateral_tx_index or \
-                        str(mn.collateral_tx) + '-' + str(mn.collateral_tx_index) != mn_info.ident:
-                    ms.collateral_tx_mismatch = True
-
-                if mn_info.protx and mn.dmn_tx_hash != mn_info.protx_hash:
-                    ms.protx_mismatch = True
-
-                if mn_info.ip != mn.ip + ':' + str(mn.port):
-                    ms.ip_port_mismatch = True
+            # fetch non-cachaed data
+            self.fetch_governance_info()
+            self.dashd_intf.fetch_mempool_txes()
+            self.network_status.mempool_entries_count = len(self.dashd_intf.mempool_txes)
+            for mn in mns:
+                ms = self.mns_status.get(mn)
+                mn_info = self.mn_info_by_mn_cfg.get(mn)
+                if not mn_info:
+                    continue
 
                 if not ms.collateral_address_mismatch:
                     coll_bal = self.dashd_intf.getaddressbalance([mn.collateral_address])
@@ -789,7 +902,10 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                     in_str = app_utils.seconds_to_human(ms.next_payment_in, out_unit_auto_adjust=True)
                     ms.next_payment_in_str = 'in ' + in_str if in_str else ''
 
-                # todo: verify masternodes' confirmations and protx updates pending
+                if self.dashd_intf.is_protx_update_pending(mn_info.protx_hash, mn_info.ip_port):
+                    ms.protx_conf_pending = True
+                else:
+                    ms.protx_conf_pending = False
 
             self.refresh_status_count += 1
         except Exception as e:
@@ -844,6 +960,12 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
             status_lines.append(f'<tr><td class="title">{label}</td><td class="value" colspan="2" '
                                 f'{col}>{value}</td></tr>')
 
+        def short_address_str(addr: str, chars_begin_end: int):
+            if len(addr) <= chars_begin_end:
+                return addr
+            else:
+                return addr[:chars_begin_end] + '..' + addr[-chars_begin_end:]
+
         status = ''
         mn = self.cur_masternode
         if mn:
@@ -852,6 +974,8 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 errors: List[str] = []
                 warnings: List[str] = []
 
+                if st.protx_conf_pending:
+                    add_status_line('', '<b>Protx transaction pending, please wait...</b>', COLOR_PENDING_PROTX_STR)
                 if st.is_error():
                     status_color = COLOR_ERROR_STR
                 elif st.is_warning():
@@ -903,22 +1027,40 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                         np += ' / ' + st.next_payment_in_str
                     add_status_line('Next payment', np)
 
-                if st.operator_service_update_required:
-                    errors.append('Operator service update required')
-                if st.operator_key_update_required:
-                    errors.append('Operator key update required')
-                if st.ip_port_mismatch:
-                    warnings.append('Masternode IP/port mismatch (config)')
-                if st.collateral_tx_mismatch:
-                    warnings.append('Collateral tx mismatch between (config)')
-                if st.collateral_address_mismatch:
-                    warnings.append('Collateral address mismatch (config)')
-                if st.owner_public_address_mismatch:
-                    warnings.append('Owner address mismatch (config)')
-                if st.operator_pubkey_mismatch:
-                    warnings.append('Operator public key mismatch (config)')
-                if st.voting_public_address_mismatch:
-                    warnings.append('Voting address mismatch (config)')
+                if not st.protx_conf_pending:
+                    if st.operator_service_update_required:
+                        errors.append('Operator service update required')
+                    if st.operator_key_update_required:
+                        errors.append('Operator key update required')
+                    if st.ip_port_mismatch:
+                        warnings.append('Masternode IP/port mismatch (config)')
+                    if st.collateral_tx_mismatch:
+                        warnings.append('Collateral tx mismatch between (config)')
+                    if st.collateral_address_mismatch:
+                        warnings.append('Collateral address mismatch (config)')
+                    if st.protx_mismatch:
+                        warnings.append(f'Protx mismatch (<a href="copy_protx_to_config">use the value from the network in '
+                                        f'the configuration</a>)')
+                    if st.owner_public_address_mismatch:
+                        warnings.append(
+                            f'Owner address mismatch (config: '
+                            f'{short_address_str(mn.get_dmn_owner_public_address(self.app_config.dash_network), 6)} '
+                            f'(<a href="copy_owner_addr_cfg">copy</a>), '
+                            f'network: {short_address_str(st.network_owner_public_address, 6)} '
+                            f'(<a href="copy_owner_addr_net">copy</a>)')
+                    if st.operator_pubkey_mismatch:
+                        warnings.append(
+                            f'Operator public key mismatch (config: {short_address_str(mn.get_dmn_operator_pubkey(), 6)} '
+                            f'(<a href="copy_operator_key_cfg">copy</a>), '
+                            f'network: {short_address_str(st.network_operator_public_key, 6)}'
+                            f'(<a href="copy_operator_key_net">copy</a>)')
+                    if st.voting_public_address_mismatch:
+                        warnings.append(
+                            f'Voting address mismatch (config: '
+                            f'{short_address_str(mn.get_dmn_voting_public_address(self.app_config.dash_network), 6)} '
+                            f'(<a href="copy_voting_addr_cfg">copy</a>), '
+                            f'network: {short_address_str(st.network_voting_public_address, 6)}'
+                            f'(<a href="copy_voting_addr_net">copy</a>)')
 
                 for idx, val in enumerate(errors):
                     if idx == 0:
@@ -940,10 +1082,9 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                     '.ago {font-style:normal}' \
                     '.value {color:navy}' \
                     '.error {color:' + COLOR_ERROR_STR + '}' \
-                                                         '.warning {color: ' + COLOR_WARNING_STR + '}' \
-                                                                                                   '</style>' \
-                                                                                                   '<table>' + ''.join(
-                        status_lines) + '</table>'
+                    '.warning {color: ' + COLOR_WARNING_STR + '}' \
+                    '</style>' \
+                    '<table>' + ''.join(status_lines) + '</table>'
             else:
                 if self.refresh_status_count == 0:
                     if self.refresh_status_thread:
@@ -980,24 +1121,24 @@ class MasternodesTableModel(ExtSortFilterItemModel):
                  mns_status: Dict[MasternodeConfig, MasternodeStatus]):
         ExtSortFilterItemModel.__init__(self, parent, [
             TableModelColumn('no', '', True, 20, horizontal_alignment=HorizontalAlignment.RIGHT),
-            TableModelColumn('name', 'Name', True, 100),
-            TableModelColumn('status', 'Status', True, 100),
-            TableModelColumn('ip_port', 'IP/port', True, 140),
+            TableModelColumn('name', 'Name', True, 150),
+            TableModelColumn('status', 'Status', True, 140),
+            TableModelColumn('ip_port', 'IP/port', True, 160),
             TableModelColumn('collateral', 'Collateral address', False, 100),
             TableModelColumn('collateral_tx', 'Collateral tx/index', False, 100),
             TableModelColumn('roles', 'Roles', False, 100),
             TableModelColumn('protx', 'Protx', False, 100),
             TableModelColumn('last_paid_block', 'Last paid (block)', False, 100,
                              horizontal_alignment=HorizontalAlignment.RIGHT),
-            TableModelColumn('last_paid_time', 'Last paid (time)', True, 100),
-            TableModelColumn('last_paid_ago', 'Last paid (ago)', True, 100),
+            TableModelColumn('last_paid_time', 'Last paid (time)', True, 150),
+            TableModelColumn('last_paid_ago', 'Last paid (ago)', True, 150),
             TableModelColumn('next_payment_block', 'Next payment (block)', False, 100,
                              horizontal_alignment=HorizontalAlignment.RIGHT),
-            TableModelColumn('next_payment_time', 'Next payment (time)', True, 100),
-            TableModelColumn('next_payment_in', 'Next payment (in)', True, 100),
-            TableModelColumn('collateral_addr_balance', 'Collateral balance', True, 100,
+            TableModelColumn('next_payment_time', 'Next payment (time)', True, 150),
+            TableModelColumn('next_payment_in', 'Next payment (in)', True, 150),
+            TableModelColumn('collateral_addr_balance', 'Collateral balance', False, 100,
                              horizontal_alignment=HorizontalAlignment.RIGHT),
-            TableModelColumn('payout_addr_balance', 'Payout balance', True, 100,
+            TableModelColumn('payout_addr_balance', 'Payout balance', False, 100,
                              horizontal_alignment=HorizontalAlignment.RIGHT)
         ], True, True)
         self.masternodes = masternodes
@@ -1039,7 +1180,9 @@ class MasternodesTableModel(ExtSortFilterItemModel):
                         if col:
                             if col.name == 'status':
                                 if st:
-                                    if st.is_error():
+                                    if st.protx_conf_pending:
+                                        return COLOR_PENDING_PROTX
+                                    elif st.is_error():
                                         return COLOR_ERROR
                                     elif st.is_warning():
                                         return COLOR_WARNING
@@ -1104,7 +1247,9 @@ class MasternodesTableModel(ExtSortFilterItemModel):
                         ret_val = st.status if st else ''
                     else:
                         if st:
-                            if st.is_error():
+                            if st.protx_conf_pending:
+                                img_file = 'hourglass-full@16px.png'
+                            elif st.is_error():
                                 img_file = 'error@16px.png'
                             elif st.is_warning():
                                 img_file = 'warning@16px.png'
@@ -1223,7 +1368,8 @@ class NetworkStatus:
 
 
 class MasternodeStatus:
-    def __init__(self):
+    def __init__(self, dash_network):
+        self.dash_network = dash_network
         self.not_found = False
         self.status = ''
         self.status_warning = False
@@ -1236,6 +1382,9 @@ class MasternodeStatus:
         self.protx_mismatch = False
         self.collateral_tx_mismatch = False
         self.collateral_address_mismatch = False
+        self.network_owner_public_address = ''
+        self.network_operator_public_key = ''
+        self.network_voting_public_address = ''
         self.owner_public_address_mismatch = False
         self.operator_pubkey_mismatch = False
         self.voting_public_address_mismatch = False
@@ -1283,6 +1432,60 @@ class MasternodeStatus:
         self.next_payment_in = None
         self.next_payment_in_str = None
         self.messages.clear()
+
+    def check_mismatch(self, masternode_cfg: MasternodeConfig, masternode_info: Masternode):
+        if not masternode_cfg.collateral_tx or not masternode_cfg.collateral_tx_index or \
+                str(masternode_cfg.collateral_tx) + '-' + str(masternode_cfg.collateral_tx_index) != \
+                masternode_info.ident:
+            self.collateral_tx_mismatch = True
+        else:
+            self.collateral_tx_mismatch = False
+
+        if masternode_info.protx and masternode_cfg.dmn_tx_hash != masternode_info.protx_hash:
+            self.protx_mismatch = True
+        else:
+            self.protx_mismatch = False
+
+        if masternode_info.ip_port != masternode_cfg.ip + ':' + str(masternode_cfg.port):
+            self.ip_port_mismatch = True
+        else:
+            self.ip_port_mismatch = False
+
+        if masternode_cfg.dmn_user_roles & DMN_ROLE_OWNER:
+            if not masternode_cfg.collateral_address or masternode_cfg.collateral_address != \
+                    masternode_info.protx.collateral_address:
+                self.collateral_address_mismatch = True
+            else:
+                self.collateral_address_mismatch = False
+
+            owner_address_cfg = masternode_cfg.get_dmn_owner_public_address(self.dash_network)
+            self.network_owner_public_address = masternode_info.protx.owner_address
+            if not owner_address_cfg or masternode_info.protx.owner_address != owner_address_cfg:
+                self.owner_public_address_mismatch = True
+            else:
+                self.owner_public_address_mismatch = False
+        else:
+            self.owner_public_address_mismatch = False
+
+        if masternode_cfg.dmn_user_roles & DMN_ROLE_OPERATOR:
+            operator_pubkey_cfg = masternode_cfg.get_dmn_operator_pubkey()
+            self.network_operator_public_key = masternode_info.protx.pubkey_operator
+            if not operator_pubkey_cfg or operator_pubkey_cfg != masternode_info.protx.pubkey_operator:
+                self.operator_pubkey_mismatch = True
+            else:
+                self.operator_pubkey_mismatch = False
+        else:
+            self.operator_pubkey_mismatch = False
+
+        if masternode_cfg.dmn_user_roles & DMN_ROLE_VOTING:
+            voting_address_cfg = masternode_cfg.get_dmn_voting_public_address(self.dash_network)
+            self.network_voting_public_address = masternode_info.protx.voting_address
+            if not voting_address_cfg or voting_address_cfg != masternode_info.protx.voting_address:
+                self.voting_public_address_mismatch = True
+            else:
+                self.voting_public_address_mismatch = False
+        else:
+            self.voting_public_address_mismatch = False
 
     def is_error(self):
         return self.not_found or re.match(r".*BAN.*", self.status, re.IGNORECASE)

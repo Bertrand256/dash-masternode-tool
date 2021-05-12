@@ -35,7 +35,7 @@
       </sizepolicy>
      </property>
      <property name="currentIndex">
-      <number>2</number>
+      <number>1</number>
      </property>
      <widget class="QWidget" name="page0">
       <property name="sizePolicy">
@@ -640,6 +640,9 @@
           </property>
           <item>
            <widget class="QRadioButton" name="rbDMTDashNodeType">
+            <property name="focusPolicy">
+             <enum>Qt::NoFocus</enum>
+            </property>
             <property name="text">
              <string>Remote Dash RPC Node (automatic method)</string>
             </property>
@@ -647,6 +650,9 @@
           </item>
           <item>
            <widget class="QRadioButton" name="rbOwnDashNodeType">
+            <property name="focusPolicy">
+             <enum>Qt::NoFocus</enum>
+            </property>
             <property name="text">
              <string>Your own Dash-Qt wallet (manual method)</string>
             </property>

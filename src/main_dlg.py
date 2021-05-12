@@ -1110,12 +1110,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                         cur_masternode.dmn_voting_address = reg_dlg.dmn_voting_address
                         cur_masternode.dmn_voting_private_key = ''
 
-                    if cur_masternode == masternode:
-                        self.main_view.update_ui()
-                    if self.app_config.is_modified():
-                        self.main_view.set_cur_masternode_modified()
-                    else:
+                    if not self.app_config.is_modified():
                         self.save_configuration()
+                    self.main_view.set_cur_masternode_modified()
+                    self.dashd_intf.reset_masternode_data_cache()
+                    self.main_view.refresh_network_data()
             except Exception as e:
                 logging.exception(str(e))
 
@@ -1132,12 +1131,11 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def update_registrar(self, show_upd_payout: bool, show_upd_operator: bool, show_upd_voting: bool):
         def on_updtx_finished(masternode: MasternodeConfig):
             try:
-                if self.main_view.get_cur_masternode() == masternode:
-                    self.main_view.update_ui()
-                if self.app_config.is_modified():
-                    self.main_view.set_cur_masternode_modified()
-                else:
+                if not self.app_config.is_modified():
                     self.save_configuration()
+                self.main_view.set_cur_masternode_modified()
+                self.dashd_intf.reset_masternode_data_cache()
+                self.main_view.refresh_network_data()
             except Exception as e:
                 logging.exception(str(e))
 
@@ -1153,12 +1151,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     def update_service(self):
         def on_mn_config_updated(masternode: MasternodeConfig):
             try:
-                if self.main_view.get_cur_masternode() == masternode:
-                    self.main_view.update_ui()
-                if self.app_config.is_modified():
-                    self.main_view.set_cur_masternode_modified()
-                else:
+                if not self.app_config.is_modified():
                     self.save_configuration()
+                self.main_view.set_cur_masternode_modified()
             except Exception as e:
                 logging.exception(str(e))
 
@@ -1167,6 +1162,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self, self.app_config, self.dashd_intf, self.main_view.get_cur_masternode(),
                 on_mn_config_updated_callback=on_mn_config_updated)
             upd_dlg.exec_()
+            self.dashd_intf.reset_masternode_data_cache()
+            self.main_view.refresh_network_data()
         else:
             self.error_msg('No masternode selected')
 
@@ -1175,6 +1172,12 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             revoke_dlg = revoke_mn_dlg.RevokeMnDlg(
                 self, self.app_config, self.dashd_intf, self.main_view.get_cur_masternode())
             revoke_dlg.exec_()
+
+            if not self.app_config.is_modified():
+                self.save_configuration()
+            self.main_view.set_cur_masternode_modified()
+            self.dashd_intf.reset_masternode_data_cache()
+            self.main_view.refresh_network_data()
         else:
             self.error_msg('No masternode selected')
 

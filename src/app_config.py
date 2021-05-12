@@ -1386,6 +1386,9 @@ class AppConfig(QObject):
                     break
         return modified
 
+    def set_modified(self):
+        self.modified = True
+
     @property
     def is_testnet(self) -> bool:
         return self.dash_network == 'TESTNET'

@@ -631,7 +631,7 @@ class Masternode(AttrsProtected):
         self.payee: Optional[str] = None
         self.lastpaidtime = None
         self.lastpaidblock = None
-        self.ip = None
+        self.ip_port = None
         self.protx_hash: Optional[str] = None
         self.db_id = None
         self.marker = None
@@ -644,13 +644,13 @@ class Masternode(AttrsProtected):
     def copy_from(self, src: Masternode):
         if self.ident != src.ident or self.status != src.ident or self.payee != src.payee or \
            self.lastpaidtime != src.lastpaidtime or self.lastpaidblock != src.lastpaidblock or \
-           self.ip != src.ip or self.protx_hash != src.protx_hash or self.queue_position != src.queue_position:
+           self.ip_port != src.ip_port or self.protx_hash != src.protx_hash or self.queue_position != src.queue_position:
             self.ident = src.ident
             self.status = src.status
             self.payee = src.payee
             self.lastpaidtime = src.lastpaidtime
             self.lastpaidblock = src.lastpaidblock
-            self.ip = src.ip
+            self.ip_port = src.ip_port
             self.protx_hash = src.protx_hash
             self.queue_position = src.queue_position
             self.modified = True
@@ -671,8 +671,8 @@ class Masternode(AttrsProtected):
         if self.lastpaidblock != mn_json.get('lastpaidblock', 0):
             self.lastpaidblock = mn_json.get('lastpaidblock', 0)
             self.modified = True
-        if self.ip != mn_json.get('address'):
-            self.ip = mn_json.get('address')
+        if self.ip_port != mn_json.get('address'):
+            self.ip_port = mn_json.get('address')
             self.modified = True
         if self.protx_hash != mn_json.get('proTxHash'):
             self.protx_hash = mn_json.get('proTxHash')
@@ -765,7 +765,7 @@ class DashdInterface(WndUtils):
         self.on_connection_successful_callback = on_connection_successful_callback
         self.on_connection_disconnected_callback = on_connection_disconnected_callback
         self.last_error_message = None
-        self.mempool_txes:Dict[str, Dict] = {}
+        self.mempool_txes: Dict[str, Dict] = {}
         self.http_lock = threading.RLock()
 
     def initialize(self, config: AppConfig, connection=None, for_testing_connections_only=False):
@@ -830,12 +830,12 @@ class DashdInterface(WndUtils):
                 mn.payee = row[3]
                 mn.lastpaidtime = row[4]
                 mn.lastpaidblock = row[5]
-                mn.ip = row[6]
+                mn.ip_port = row[6]
                 mn.queue_position = row[7]
                 mn.protx_hash = row[8]
                 self.masternodes.append(mn)
                 self.masternodes_by_ident[mn.ident] = mn
-                self.masternodes_by_ip_port[mn.ip] = mn
+                self.masternodes_by_ip_port[mn.ip_port] = mn
 
             tm_diff = time.time() - tm_start
             log.info('DB read time of %d MASTERNODES: %s s, db fix time: %s' %
@@ -1171,6 +1171,12 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
+    def reset_masternode_data_cache(self):
+        cache_item_name = 'ProtxLastReadTime_' + self.app_config.dash_network
+        app_cache.set_value(cache_item_name, 0)
+        cache_item_name = f'MasternodesLastReadTime_{self.app_config.dash_network}'
+        app_cache.set_value(cache_item_name, 0)
+
     def _read_protx_list(self, data_max_age: int = PROTX_CACHE_VALID_SECONDS):
         cache_item_name = 'ProtxLastReadTime_' + self.app_config.dash_network
         last_read_time = app_cache.get_value(cache_item_name, 0, int)
@@ -1296,7 +1302,7 @@ class DashdInterface(WndUtils):
                             mn.copy_from_json(mn_id, mn_json)
                             self.masternodes.append(mn)
                             self.masternodes_by_ident[mn_id] = mn
-                            self.masternodes_by_ip_port[mn.ip] = mn
+                            self.masternodes_by_ip_port[mn.ip_port] = mn
                         else:
                             mn.copy_from_json(mn_id, mn_json)
                         mn.marker = True
@@ -1324,7 +1330,7 @@ class DashdInterface(WndUtils):
                                         " registered_height, dmt_active, dmt_create_time, queue_position) "
                                         "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                                         (mn.ident, mn.status, mn.payee,
-                                         mn.lastpaidtime, mn.lastpaidblock, mn.ip, mn.protx_hash,
+                                         mn.lastpaidtime, mn.lastpaidblock, mn.ip_port, mn.protx_hash,
                                          mn.registered_height, 1, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                                          mn.queue_position))
                                     mn.db_id = cur.lastrowid
@@ -1336,7 +1342,7 @@ class DashdInterface(WndUtils):
                                         "last_paid_time=?, last_paid_block=?, ip=?, protx_hash=?, "
                                         "registered_height=?, queue_position=? WHERE id=?",
                                         (mn.ident, mn.status, mn.payee,
-                                         mn.lastpaidtime, mn.lastpaidblock, mn.ip, mn.protx_hash, mn.registered_height,
+                                         mn.lastpaidtime, mn.lastpaidblock, mn.ip_port, mn.protx_hash, mn.registered_height,
                                          mn.queue_position, mn.db_id))
                                     db_modified = True
 
@@ -1389,17 +1395,7 @@ class DashdInterface(WndUtils):
     @control_rpc_call
     def getrawmempool(self):
         if self.open():
-            cur_mempool_txes = self.proxy.getrawmempool()
-
-            txes_to_purge = []
-            for tx_hash in self.mempool_txes:
-                if tx_hash not in cur_mempool_txes:
-                    txes_to_purge.append(tx_hash)
-
-            for tx_hash in txes_to_purge:
-                del self.mempool_txes[tx_hash]
-
-            return cur_mempool_txes
+            return self.proxy.getrawmempool()
         else:
             raise Exception('Not connected')
 
@@ -1565,7 +1561,24 @@ class DashdInterface(WndUtils):
             self.block_timestamps[block] = ts
         return ts
 
-    def is_protx_update_pending(self, proregtx_hash:str) -> bool:
+    def fetch_mempool_txes(self):
+        cur_mempool_txes = self.proxy.getrawmempool()
+
+        txes_to_purge = []
+        for tx_hash in self.mempool_txes:
+            if tx_hash not in cur_mempool_txes:
+                txes_to_purge.append(tx_hash)
+
+        for tx_hash in txes_to_purge:
+            del self.mempool_txes[tx_hash]
+
+        for tx_hash in cur_mempool_txes:
+            tx = self.mempool_txes.get(tx_hash)
+            if not tx:
+                tx = self.getrawtransaction(tx_hash, True, skip_cache=True)
+                self.mempool_txes[tx_hash] = tx
+
+    def is_protx_update_pending(self, protx_hash: str, ip_port: str = None) -> bool:
         """
         Check whether a protx transaction related to the proregtx passed as an argument exists in mempool.
         :param protx_hash: Hash of the ProRegTx transaction
@@ -1573,22 +1586,17 @@ class DashdInterface(WndUtils):
         """
 
         try:
-            cur_mempool_txes = self.getrawmempool()
-            if len(cur_mempool_txes) < 200:
-                for tx_hash in cur_mempool_txes:
-                    tx = self.mempool_txes.get(tx_hash)
-                    if not tx:
-                        tx = self.getrawtransaction(tx_hash, True, skip_cache=True)
-                        self.mempool_txes[tx_hash] = tx
-                    protx = tx.get('proUpRegTx')
-                    if not protx:
-                        protx = tx.get('proUpRevTx')
-                    if not protx:
-                        protx = tx.get('proUpServTx')
-                    if protx and protx.get('proTxHash') == proregtx_hash:
-                        return True
-            else:
-                log.warning('Mempool to large to scan for protx transaction. Skipping...')
+            for tx_hash in self.mempool_txes:
+                tx = self.mempool_txes[tx_hash]
+                protx = tx.get('proUpRegTx')
+                if not protx:
+                    protx = tx.get('proUpRevTx')
+                if not protx:
+                    protx = tx.get('proUpServTx')
+                if not protx:
+                    protx = tx.get('proRegTx')
+                if protx and (protx.get('proTxHash') == protx_hash) or (ip_port and protx.get('service') == ip_port):
+                    return True
             return False
         except Exception as e:
             return False
