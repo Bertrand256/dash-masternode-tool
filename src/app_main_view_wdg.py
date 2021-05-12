@@ -855,7 +855,13 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
 
             # fetch non-cachaed data
             self.fetch_governance_info()
-            self.dashd_intf.fetch_mempool_txes()
+            try:
+                self.dashd_intf.fetch_mempool_txes()
+            except Exception as e:
+                # sometimes the `getrawmempool` results in error "'NoneType' object has no attribute 'settimeout'
+                # suppress the error message as it is not as importand;
+                log.exception(str(e))
+
             self.network_status.mempool_entries_count = len(self.dashd_intf.mempool_txes)
             for mn in mns:
                 ms = self.mns_status.get(mn)

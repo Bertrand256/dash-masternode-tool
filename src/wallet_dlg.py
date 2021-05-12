@@ -1104,12 +1104,15 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def connect_hw(self):
         def connect():
-            if self.hw_session.connect_hardware_wallet():
-                return True
-            else:
-                if self.hw_connected():
-                    self.on_hardware_wallet_disconnected()
-                return False
+            try:
+                if self.hw_session.connect_hardware_wallet():
+                    return True
+                else:
+                    if self.hw_connected():
+                        self.on_hardware_wallet_disconnected()
+                    return False
+            except Exception as e:
+                self.error_msg(str(e))
 
         if threading.current_thread() != threading.main_thread():
             if self.enable_synch_with_main_thread:

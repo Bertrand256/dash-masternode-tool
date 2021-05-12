@@ -291,7 +291,7 @@ class Ui_WalletDlg(object):
 
         self.retranslateUi(WalletDlg)
         self.swAddressSource.setCurrentIndex(0)
-        self.detailsTab.setCurrentIndex(1)
+        self.detailsTab.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(WalletDlg)
 
     def retranslateUi(self, WalletDlg):
