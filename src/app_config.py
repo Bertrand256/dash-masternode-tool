@@ -212,6 +212,8 @@ class AppConfig(QObject):
             self.default_rpc_connections = []
             logging.exception('Exception while parsing default RPC connections.')
 
+        self.hw_session_info = None
+
     def init(self, app_dir):
         """ Initialize configuration after openning the application. """
         self.app_dir = app_dir
@@ -1398,12 +1400,34 @@ class AppConfig(QObject):
     def is_mainnet(self) -> bool:
         return self.dash_network == 'MAINNET'
 
-    @property
-    def hw_coin_name(self):
+    def get_zcoin(self):
         if self.is_testnet():
             return 'Zcoin Testnet'
         else:
             return 'Zcoin'
+
+    def get_firo(self):
+        if self.is_testnet():
+            return 'Firo Testnet'
+        else:
+            return 'Firo'
+
+    @property
+    def hw_coin_name(self):
+        if self.hw_session_info is None:
+            return self.get_zcoin()
+        if self.hw_session_info.hw_client is None:
+            return self.get_zcoin()
+        if self.hw_session_info.hw_type != "TREZOR":
+            return self.get_zcoin()
+        if self.hw_session_info.hw_client.version[0] == 1 \
+            and self.hw_session_info.hw_client.version[1] < 10:
+            return self.get_zcoin()
+        if self.hw_session_info.hw_client.version[0] == 2 \
+            and self.hw_session_info.hw_client.version[1] <= 3 \
+            and self.hw_session_info.hw_client.version[2] <= 6:
+            return self.get_zcoin()
+        return self.get_firo()
 
     def get_block_explorer_tx(self):
         if self.dash_network == 'MAINNET':

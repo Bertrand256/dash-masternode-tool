@@ -63,6 +63,7 @@ class HwSessionInfo(QObject):
 
         self.__locks = {}  # key: hw_client, value: EnhRLock
         self.__app_config = app_config
+        app_config.hw_session_info = self
         self.__dashd_intf = dashd_intf
         self.__get_hw_client_function = get_hw_client_function
         self.__hw_connect_function: Callable = hw_connect_function
