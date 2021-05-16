@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import sys
 import threading
 import time
 from datetime import datetime
@@ -13,9 +14,10 @@ from enum import Enum
 from typing import Callable, Optional, List, Dict, Any
 
 import bitcoin
+import requests
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtCore import pyqtSlot, Qt, QTimer, QVariant, QModelIndex, QRect, QPoint
-from PyQt5.QtGui import QTextDocument, QPen, QBrush, QPalette, QImage, QPixmap, QColor
+from PyQt5.QtCore import pyqtSlot, Qt, QTimer, QVariant, QModelIndex, QRect, QPoint, QUrl
+from PyQt5.QtGui import QTextDocument, QPen, QBrush, QPalette, QImage, QPixmap, QColor, QDesktopServices
 from PyQt5.QtWidgets import QWidget, QLineEdit, QMessageBox, QAction, QApplication, QActionGroup, QTableView, \
     QItemDelegate, QStyleOptionViewItem, QStyle, QAbstractItemView, QLabel, QMenu, QPushButton
 
@@ -23,7 +25,9 @@ import app_cache
 import app_utils
 import hw_intf
 from app_config import AppConfig, MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING
-from app_defs import COLOR_ERROR_STR, COLOR_WARNING_STR, COLOR_OK_STR, COLOR_ERROR, COLOR_WARNING, COLOR_OK
+from app_defs import COLOR_ERROR_STR, COLOR_WARNING_STR, COLOR_OK_STR, COLOR_ERROR, COLOR_WARNING, COLOR_OK, \
+    AppTextMessageType
+from common import CancelException
 from dashd_intf import DashdInterface, Masternode
 from ext_item_model import ExtSortFilterItemModel, TableModelColumn, HorizontalAlignment
 from masternode_details_wdg import WdgMasternodeDetails
@@ -34,6 +38,8 @@ from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, IconTe
 CACHE_ITEM_SHOW_MN_DETAILS_PANEL = 'MainWindow_ShowMNDetailsPanel'
 COLOR_PENDING_PROTX_STR = '#0033cc'
 COLOR_PENDING_PROTX = QColor(COLOR_PENDING_PROTX_STR)
+DASH_PRICE_FETCH_INTERVAL_SECONDS = 120
+MN_BALANCE_FETCH_INTERVAL_SECONDS = 240
 
 
 class Pages(Enum):
@@ -49,6 +55,7 @@ SORTING_MAX_VALUE_FOR_NULL = 1e10
 class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
     masternode_data_changed = QtCore.pyqtSignal()
     cur_masternode_changed = QtCore.pyqtSignal(object)
+    app_text_message_sent = QtCore.pyqtSignal(int, str, object)
 
     def __init__(self, parent, app_config: AppConfig, dashd_intf: DashdInterface, hw_session: hw_intf.HwSessionInfo):
         QWidget.__init__(self, parent)
@@ -61,10 +68,12 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.edited_masternode: Optional[MasternodeConfig] = None
         self.editing_enabled = False
         self.mns_status: Dict[MasternodeConfig, MasternodeStatus] = {}
-        self.masternodes_table_model = MasternodesTableModel(self, self.app_config.masternodes, self.mns_status)
+        self.masternodes_table_model = MasternodesTableModel(self, self.app_config.masternodes, self.mns_status,
+                                                             self.get_dash_amount_str)
         self.mn_list_columns_cache_name: str = ''
         self.mn_list_columns_resized_by_user = False
-        self.refresh_status_thread = None
+        self.refresh_status_thread_ref = None
+        self.refresh_price_thread_ref = None
         self.refresh_status_count = 0
         self.network_status: NetworkStatus = NetworkStatus()
         self.loading_data_spinner: Optional[SpinnerWidget] = None
@@ -73,6 +82,9 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.finishing = False
         self.mn_view_column_delegates: Dict[int, QItemDelegate] = {}
         self.mn_info_by_mn_cfg: Dict[MasternodeConfig, Masternode] = {}
+        self.wdg_masternode = WdgMasternodeDetails(self, self.app_config, self.dashd_intf, self.hw_session)
+        self.last_dash_price_usd = None
+        self.last_dash_price_fetch_ts = 0
         self.setupUi(self)
 
     def setupUi(self, widget: QWidget):
@@ -85,8 +97,10 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.lblNoMasternodeMessage.linkActivated.connect(self.on_cur_tab_link_activated)
         WndUtils.set_icon(self, self.btnMoveMnUp, 'arrow-downward@16px', 180)
         WndUtils.set_icon(self, self.btnMoveMnDown, 'arrow-downward@16px')
+        if sys.platform == 'win32':
+            self.pnlNavigation.layout().setSpacing(12)
+            self.layMasternodesControl.layout().setSpacing(12)
 
-        self.wdg_masternode = WdgMasternodeDetails(self, self.app_config, self.dashd_intf, self.hw_session)
         l = self.frmMasternodeDetails.layout()
         l.insertWidget(1, self.wdg_masternode)
         self.wdg_masternode.setVisible(True)
@@ -97,14 +111,14 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                                                   'Fetching data from the network, please wait...')
         self.loading_data_spinner.hide()
         l.insertWidget(l.indexOf(self.btnMoveMnDown) + 1, self.loading_data_spinner)
+        self.wdg_masternode.app_text_message_sent.connect(self.on_app_text_message_sent)
 
         # setup the masternode list view
         self.viewMasternodes.setSortingEnabled(True)
         self.viewMasternodes.setItemDelegate(ReadOnlyTableCellDelegate(self.viewMasternodes))
         self.viewMasternodes.verticalHeader().setDefaultSectionSize(
             self.viewMasternodes.verticalHeader().fontMetrics().height() + 10)
-        self.viewMasternodes.horizontalHeader().setSortIndicator(
-            self.masternodes_table_model.col_index_by_name('no'), Qt.AscendingOrder)
+        self.masternodes_table_model.set_sort_column('no', Qt.AscendingOrder)
         self.masternodes_table_model.set_view(self.viewMasternodes)
         self.viewMasternodes.horizontalHeader().sectionResized.connect(self.on_mn_list_column_resized)
         self.viewMasternodes.selectionModel().selectionChanged.connect(self.on_mn_view_selection_changed)
@@ -134,6 +148,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         """closeEvent is not fired for widgets, so this method will be called from the closeEvent method of the
         containing dialog"""
         self.save_cache_settings()
+        self.stop_threads()
 
     def restore_cache_settings(self):
         ena = app_cache.get_value(CACHE_ITEM_SHOW_MN_DETAILS_PANEL, True, bool)
@@ -178,6 +193,15 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
             self.mn_view_column_delegates[col_idx] = deleg
             self.viewMasternodes.setItemDelegateForColumn(col_idx, deleg)
 
+    def stop_threads(self):
+        self.finishing = True
+        if self.refresh_status_thread_ref:
+            log.info('Waiting for refresh_status_thread to finish...')
+            self.refresh_status_thread_ref.wait(5000)
+        if self.refresh_price_thread_ref:
+            log.info('Waiting for refresh_price_thread to finish...')
+            self.refresh_price_thread_ref.wait(5000)
+
     def configuration_to_ui(self):
         def set_cur_mn():
             try:
@@ -205,6 +229,9 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 logging.exception(str(e))
 
         QTimer.singleShot(10, set_cur_mn)
+
+    def is_editing_enabled(self):
+        return self.editing_enabled
 
     def refresh_masternodes_view(self):
         self.masternodes_table_model.beginResetModel()
@@ -281,7 +308,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
             self.btnApplyMnChanges.setVisible(editing)
             self.btnApplyMnChanges.setEnabled(self.wdg_masternode.is_modified())
             self.btnEditMn.setEnabled(not self.editing_enabled and self.cur_masternode is not None)
-            self.btnCancelEditingMn.setEnabled(self.editing_enabled and self.cur_masternode is not None)
+            self.btnCancelEditingMn.setEnabled(self.editing_enabled)
 
         if threading.current_thread() != threading.main_thread():
             self.call_in_main_thread(update_fun)
@@ -320,6 +347,11 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 network_info_link = '<a style="text-decoration:none" href="netinfo">Network info</a>'
         self.lblNavigation3.setText(network_info_link)
 
+    @pyqtSlot(int, str, object)
+    def on_app_text_message_sent(self, msg_id: int, text: str, type: AppTextMessageType):
+        # forward text message to the caller window (main dialog)
+        self.app_text_message_sent.emit(msg_id, text, type)
+
     @pyqtSlot(str)
     def on_cur_tab_link_activated(self, link):
         try:
@@ -341,6 +373,18 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         self.mn_list_columns_resized_by_user = True
 
     def on_mn_data_changed(self):
+        if self.cur_masternode:
+            try:
+                mn_info = self.mn_info_by_mn_cfg.get(self.cur_masternode)
+                ms = self.mns_status.get(self.cur_masternode)
+                if mn_info and ms:
+                    ms.check_mismatch(self.cur_masternode, mn_info)
+            except Exception:
+                pass
+        self.refresh_masternodes_view()
+        self.update_mn_preview()
+        self.app_config.set_modified()
+        self.masternode_data_changed.emit()
         self.update_actions_state()
 
     @pyqtSlot(bool)
@@ -368,9 +412,23 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
     def on_btnMnListColumns_clicked(self):
         self.masternodes_table_model.exec_columns_dialog(self)
 
+    def verify_sorting_for_mn_reorder(self) -> bool:
+        col = self.masternodes_table_model.get_sort_column()
+        if col and col.name == 'no':
+            order = self.masternodes_table_model.get_sort_order()
+            if order == Qt.AscendingOrder:
+                return True
+        else:
+            return False
+
     @pyqtSlot(bool)
     def on_btnMoveMnUp_clicked(self):
         try:
+            if not self.verify_sorting_for_mn_reorder():
+                WndUtils.error_msg('To reorder masternode entries, you have to sort them by the first column '
+                                   '(order no).')
+                return
+
             mns = self.app_config.masternodes
             if self.cur_masternode and self.cur_masternode in mns:
                 cur_idx = mns.index(self.cur_masternode)
@@ -386,6 +444,11 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
     @pyqtSlot(bool)
     def on_btnMoveMnDown_clicked(self):
         try:
+            if not self.verify_sorting_for_mn_reorder():
+                WndUtils.error_msg('To reorder masternode entries, you have to sort them by the first column '
+                                   '(order no).')
+                return
+
             mns = self.app_config.masternodes
             if self.cur_masternode and self.cur_masternode in mns:
                 cur_idx = mns.index(self.cur_masternode)
@@ -440,6 +503,9 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 if ms:
                     cl.setText(ms.network_voting_public_address)
 
+            elif link.lower().find('http') >= 0:
+                QDesktopServices.openUrl(QUrl(link))
+
     def update_details_panel_controls(self):
         panel_visible = self.cur_masternode is not None and \
                         self.current_view in (Pages.PAGE_SINGLE_MASTERNODE, Pages.PAGE_MASTERNODE_LIST) and \
@@ -449,17 +515,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         t = f'Masternode status details (<a href="{link_text}">{link_text}</a>)'
         self.lblMnStatusLabel.setText(t)
         self.lblMnStatus.setVisible(panel_visible)
-
-    def refresh_network_data(self):
-        def update():
-            self.hide_loading_animation()
-            self.update_info_page()
-            self.update_mn_preview()
-            self.refresh_masternodes_view()
-
-        if not self.refresh_status_thread:
-            self.refresh_status_thread = WndUtils.run_thread(self, self.get_masternode_status_thread, (),
-                                                             on_thread_finish=update)
+        self.lblMnStatusLabel.setVisible(panel_visible)
 
     @pyqtSlot(bool)
     def on_btnRefreshMnStatus_clicked(self):
@@ -599,20 +655,19 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 self.set_cur_masternode(self.edited_masternode)
                 is_new = True
             self.app_config.modified = True
-            self.masternode_data_changed.emit()
-            self.refresh_masternodes_view()
+            self.on_mn_data_changed()
             if is_new:
                 self.goto_masternode_list()
         self.set_edit_mode(False)
 
     def cancel_masternode_changes(self):
-        self.set_edit_mode(False)
         if self.edited_masternode.is_new:
             self.wdg_masternode.set_masternode(self.cur_masternode)
             self.goto_masternode_list()
         else:
             if self.wdg_masternode.is_modified():
                 self.wdg_masternode.set_masternode(self.cur_masternode)  # restore the original (non-modified) data
+        self.set_edit_mode(False)
 
     def delete_masternode(self, masternode: MasternodeConfig):
         if masternode and masternode in self.app_config.masternodes:
@@ -629,9 +684,30 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                             mn = self.app_config.masternodes[-1]
                         else:
                             mn = self.app_config.masternodes[idx]
+                    if self.edited_masternode:
+                        self.set_edit_mode(False)
                     self.set_cur_masternode(mn)
+                    self.goto_masternode_list()
             except Exception as e:
                 WndUtils.error_msg(str(e), True)
+
+    def refresh_network_data(self):
+        def update():
+            if not self.refresh_status_thread_ref and not self.refresh_price_thread_ref:
+                self.hide_loading_animation()
+            self.update_info_page()
+            self.update_mn_preview()
+            self.refresh_masternodes_view()
+
+        if not self.refresh_status_thread_ref:
+            self.refresh_status_thread_ref = WndUtils.run_thread(self, self.refresh_status_thread, (),
+                                                                 on_thread_finish=update)
+
+        if self.app_config.show_dash_value_in_fiat and self.app_config.is_mainnet:
+            if not self.refresh_price_thread_ref and \
+                    int(time.time()) - self.last_dash_price_fetch_ts >= DASH_PRICE_FETCH_INTERVAL_SECONDS:
+                self.refresh_price_thread_ref = WndUtils.run_thread(self, self.refresh_price_thread, (),
+                                                                    on_thread_finish=update)
 
     def fetch_governance_info(self):
         gi = self.network_status
@@ -753,14 +829,17 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
             return protx
         return None
 
-    def get_masternode_status_thread(self, ctrl):
+    def refresh_status_thread(self, ctrl):
         def on_start():
             self.show_loading_animation()
             self.update_mn_preview()
 
-        try:
+        def check_finishing():
             if self.finishing:
-                return
+                raise CancelException()
+
+        try:
+            check_finishing()
             WndUtils.call_in_main_thread(on_start)
 
             # check if any of the masternodes from config, had waiting protx transaction; if so, we will minimize
@@ -771,11 +850,16 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 if ms.protx_conf_pending:
                     cache_max_age = 1
 
-            self.dashd_intf.get_masternodelist('json', data_max_age=cache_max_age, protx_data_max_age=cache_max_age)
+            self.dashd_intf.get_masternodelist('json', data_max_age=cache_max_age, protx_data_max_age=cache_max_age,
+                                               feedback_fun=check_finishing)
+            check_finishing()
+
             block_height = self.dashd_intf.getblockcount()
+            check_finishing()
 
             mns = list(self.app_config.masternodes)
             for mn in mns:
+                check_finishing()
                 ms = self.mns_status.get(mn)
                 if not ms:
                     ms = MasternodeStatus(self.app_config.dash_network)
@@ -850,41 +934,63 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                     ms.operator_pubkey_mismatch = False
                     ms.voting_public_address_mismatch = False
 
+            check_finishing()
             WndUtils.call_in_main_thread(self.refresh_masternodes_view)  # in the mn list view show the data that has
                                                                          # been read so far
 
             # fetch non-cachaed data
+            check_finishing()
             self.fetch_governance_info()
+            check_finishing()
+
             try:
-                self.dashd_intf.fetch_mempool_txes()
+                log.info('fetch_mempool_txes start')
+                self.dashd_intf.fetch_mempool_txes(check_finishing)
+                log.info('fetch_mempool_txes finish')
+            except CancelException:
+                raise
             except Exception as e:
                 # sometimes the `getrawmempool` results in error "'NoneType' object has no attribute 'settimeout'
                 # suppress the error message as it is not as importand;
                 log.exception(str(e))
 
+            check_finishing()
             self.network_status.mempool_entries_count = len(self.dashd_intf.mempool_txes)
+            log.info('get address balances start')
             for mn in mns:
+                check_finishing()
                 ms = self.mns_status.get(mn)
                 mn_info = self.mn_info_by_mn_cfg.get(mn)
                 if not mn_info:
                     continue
 
-                if not ms.collateral_address_mismatch:
-                    coll_bal = self.dashd_intf.getaddressbalance([mn.collateral_address])
-                    ms.collateral_addr_balance = round(coll_bal.get('balance') / 1e8, 5)
+                if int(time.time()) - ms.last_addr_balance_fetch_ts >= MN_BALANCE_FETCH_INTERVAL_SECONDS:
+                    if not ms.collateral_address_mismatch and mn.collateral_address:
+                        try:
+                            coll_bal = self.dashd_intf.getaddressbalance([mn.collateral_address])
+                            ms.collateral_addr_balance = round(coll_bal.get('balance') / 1e8, 5)
+                        except Exception as e:
+                            log.exception(str(e))
 
-                if mn_info.protx and mn_info.protx.payout_address:
-                    ms.payout_address = mn_info.protx.payout_address
-                    payout_bal = self.dashd_intf.getaddressbalance([mn_info.protx.payout_address])
-                    ms.payout_addr_balance = round(payout_bal.get('balance') / 1e8, 5)
+                    if mn_info.protx and mn_info.protx.payout_address:
+                        try:
+                            ms.payout_address = mn_info.protx.payout_address
+                            payout_bal = self.dashd_intf.getaddressbalance([mn_info.protx.payout_address])
+                            ms.payout_addr_balance = round(payout_bal.get('balance') / 1e8, 5)
+                        except Exception as e:
+                            log.exception(str(e))
 
-                if mn_info.protx and mn_info.protx.operator_payout_address:
-                    ms.operator_payout_address = mn_info.protx.operator_payout_address
-                    if mn_info.protx.operator_payout_address != mn_info.protx.payout_address:
-                        payout_bal = self.dashd_intf.getaddressbalance([mn_info.protx.operator_payout_address])
-                        ms.operator_payout_addr_balance = round(payout_bal.get('balance') / 1e8, 5)
-                    else:
-                        ms.operator_payout_addr_balance = ms.payout_addr_balance
+                    if mn_info.protx and mn_info.protx.operator_payout_address:
+                        try:
+                            ms.operator_payout_address = mn_info.protx.operator_payout_address
+                            if mn_info.protx.operator_payout_address != mn_info.protx.payout_address:
+                                payout_bal = self.dashd_intf.getaddressbalance([mn_info.protx.operator_payout_address])
+                                ms.operator_payout_addr_balance = round(payout_bal.get('balance') / 1e8, 5)
+                            else:
+                                ms.operator_payout_addr_balance = ms.payout_addr_balance
+                        except Exception as e:
+                            log.exception(str(e))
+                    ms.last_addr_balance_fetch_ts = int(time.time())
 
                 ms.last_paid_ts = 0
                 if mn_info.lastpaidtime > time.time() - 3600 * 24 * 365:
@@ -892,9 +998,11 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                     ms.last_paid_ts = mn_info.lastpaidtime
 
                 if mn_info.protx and mn_info.protx.last_paid_height and mn_info.protx.last_paid_height > 0:
-                    ms.last_paid_block = mn_info.protx.last_paid_height
-                    if not ms.last_paid_ts:
-                        ms.last_paid_ts = self.dashd_intf.get_block_timestamp(ms.last_paid_block)
+                    prev_last_paid_block = ms.last_paid_block
+                    if not prev_last_paid_block or prev_last_paid_block != mn_info.protx.last_paid_height:
+                        ms.last_paid_block = mn_info.protx.last_paid_height
+                        if not ms.last_paid_ts:
+                            ms.last_paid_ts = self.dashd_intf.get_block_timestamp(ms.last_paid_block)
 
                 if ms.last_paid_ts:
                     ms.last_paid_dt = datetime.fromtimestamp(float(ms.last_paid_ts))
@@ -912,15 +1020,60 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                     ms.protx_conf_pending = True
                 else:
                     ms.protx_conf_pending = False
+            log.info('get address balances finish')
 
             self.refresh_status_count += 1
+
+        except CancelException:
+            log.info('Stopping the fetch data thread...')
+
         except Exception as e:
             if not self.finishing:
                 log.exception(str(e))
                 WndUtils.call_in_main_thread(WndUtils.error_msg, str(e))
 
         finally:
-            self.refresh_status_thread = None
+            self.refresh_status_thread_ref = None
+
+    def refresh_price_thread(self, ctrl):
+        try:
+            if self.app_config.show_dash_value_in_fiat and self.app_config.is_mainnet:
+                resp = requests.get('https://api.kraken.com/0/public/Ticker?pair=DASHUSD')
+                j = resp.json()
+                r = j.get('result')
+                if r:
+                    r = r.get('DASHUSD')
+                    if r:
+                        c = r.get('c')
+                        if c:
+                            v = float(c[0])
+                            self.last_dash_price_usd = v
+
+            self.last_dash_price_fetch_ts = int(time.time())
+        except Exception as e:
+            log.info('Error when fetching Dash price: ' + str(e))
+
+        finally:
+            self.refresh_price_thread_ref = None
+
+    def get_dash_amount_str(self, amount: float, show_dash_part: bool, show_fiat_part: bool,
+                            show_dash_lbl: bool = False, show_fiat_lbl: bool = False) -> str:
+        if amount is not None:
+            ret_str = ''
+            if show_dash_part:
+                ret_str = app_utils.to_string(amount)
+                if show_dash_lbl:
+                    ret_str += ' DASH'
+
+            if self.app_config.is_mainnet and self.app_config.show_dash_value_in_fiat and show_fiat_part:
+                if ret_str:
+                    ret_str += ' / '
+                ret_str += app_utils.to_string(round(amount * self.last_dash_price_usd, 2))
+                if show_fiat_lbl:
+                    ret_str += ' USD'
+        else:
+            ret_str = ''
+        return ret_str
 
     def update_info_page(self):
         gi = self.network_status
@@ -953,6 +1106,11 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
 
             status += f'<tr><td class="title">Transactions in mempool</td><td class="value">{str(gi.mempool_entries_count) if gi.loaded else "?"}</td></tr>'
 
+            if self.app_config.is_mainnet and self.app_config.show_dash_value_in_fiat:
+                price_str = app_utils.to_string(self.last_dash_price_usd) if self.last_dash_price_usd is not None \
+                    else '?'
+                status += f'<tr><td class="title">Dash price (Kraken)</td><td class="value">{price_str} USD</td></tr>'
+
             status += '</table>'
             self.lblNetworkInfo.setText(status)
         except Exception as e:
@@ -966,11 +1124,14 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
             status_lines.append(f'<tr><td class="title">{label}</td><td class="value" colspan="2" '
                                 f'{col}>{value}</td></tr>')
 
-        def short_address_str(addr: str, chars_begin_end: int):
-            if len(addr) <= chars_begin_end:
-                return addr
+        def short_address_str(addr: str, chars_begin_end: int) -> str:
+            if not addr:
+                return 'empty'
             else:
-                return addr[:chars_begin_end] + '..' + addr[-chars_begin_end:]
+                if len(addr) <= chars_begin_end:
+                    return addr
+                else:
+                    return addr[:chars_begin_end] + '..' + addr[-chars_begin_end:]
 
         status = ''
         mn = self.cur_masternode
@@ -1001,7 +1162,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 add_status_line('Payout address', link)
 
                 add_status_line('Payout addr. balance',
-                                app_utils.to_string(st.payout_addr_balance) if st.payout_addr_balance else '')
+                                self.get_dash_amount_str(st.payout_addr_balance, True, True, True, True))
 
                 if mn.collateral_address.strip() and mn.collateral_address.strip() != st.payout_address:
                     url = self.app_config.get_block_explorer_addr().replace('%ADDRESS%', mn.collateral_address.strip())
@@ -1009,8 +1170,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                     add_status_line('Collateral address', link)
 
                     add_status_line('Collateral addr. balance',
-                                    app_utils.to_string(st.collateral_addr_balance) if st.collateral_addr_balance
-                                    else '')
+                                    self.get_dash_amount_str(st.collateral_addr_balance, True, True, True, True))
 
                 if st.operator_payout_address:
                     url = self.app_config.get_block_explorer_addr().replace('%ADDRESS%', st.operator_payout_address)
@@ -1093,7 +1253,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                     '<table>' + ''.join(status_lines) + '</table>'
             else:
                 if self.refresh_status_count == 0:
-                    if self.refresh_status_thread:
+                    if self.refresh_status_thread_ref:
                         status = 'Fetching data from the network, please wait...'
                     else:
                         status = 'Status data will be available after fetching data from the network'
@@ -1124,9 +1284,10 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
 
 class MasternodesTableModel(ExtSortFilterItemModel):
     def __init__(self, parent, masternodes: List[MasternodeConfig],
-                 mns_status: Dict[MasternodeConfig, MasternodeStatus]):
+                 mns_status: Dict[MasternodeConfig, MasternodeStatus],
+                 get_dash_amount_str_fun: Callable[[float, bool, bool, Optional[bool], Optional[bool]], str]):
         ExtSortFilterItemModel.__init__(self, parent, [
-            TableModelColumn('no', '', True, 20, horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('no', '', True, 25, horizontal_alignment=HorizontalAlignment.RIGHT),
             TableModelColumn('name', 'Name', True, 150),
             TableModelColumn('status', 'Status', True, 140),
             TableModelColumn('ip_port', 'IP/port', True, 160),
@@ -1142,14 +1303,19 @@ class MasternodesTableModel(ExtSortFilterItemModel):
                              horizontal_alignment=HorizontalAlignment.RIGHT),
             TableModelColumn('next_payment_time', 'Next payment (time)', True, 150),
             TableModelColumn('next_payment_in', 'Next payment (in)', True, 150),
-            TableModelColumn('collateral_addr_balance', 'Collateral balance', False, 100,
+            TableModelColumn('collateral_addr_balance_dash', 'Collateral balance [DASH]', False, 100,
                              horizontal_alignment=HorizontalAlignment.RIGHT),
-            TableModelColumn('payout_addr_balance', 'Payout balance', False, 100,
+            TableModelColumn('collateral_addr_balance_fiat', 'Collateral balance [USD]', False, 100,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('payout_addr_balance_dash', 'Payout balance [DASH]', False, 100,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('payout_addr_balance_fiat', 'Payout balance [USD]', False, 100,
                              horizontal_alignment=HorizontalAlignment.RIGHT)
         ], True, True)
         self.masternodes = masternodes
         self.mns_status = mns_status
         self.background_color = QtGui.QColor('lightgray')
+        self.get_dash_amount_str = get_dash_amount_str_fun
         self.set_attr_protection()
 
     def set_masternodes(self, mns: List[MasternodeConfig], mns_status: Dict[MasternodeConfig, MasternodeStatus]):
@@ -1307,22 +1473,38 @@ class MasternodesTableModel(ExtSortFilterItemModel):
                                 ret_val = SORTING_MAX_VALUE_FOR_NULL
                         else:
                             ret_val = st.next_payment_in_str
-                elif col_name == 'collateral_addr_balance':
+                elif col_name == 'collateral_addr_balance_dash':
                     if st:
                         if for_sorting:
                             ret_val = st.collateral_addr_balance
                             if ret_val is None:
                                 ret_val = 0
                         else:
-                            ret_val = app_utils.to_string(st.collateral_addr_balance)
-                elif col_name == 'payout_addr_balance':
+                            ret_val = self.get_dash_amount_str(st.collateral_addr_balance, True, False, False, False)
+                elif col_name == 'collateral_addr_balance_fiat':
+                    if st:
+                        if for_sorting:
+                            ret_val = st.collateral_addr_balance
+                            if ret_val is None:
+                                ret_val = 0
+                        else:
+                            ret_val = self.get_dash_amount_str(st.collateral_addr_balance, False, True, False, False)
+                elif col_name == 'payout_addr_balance_dash':
                     if st:
                         if for_sorting:
                             ret_val = st.payout_addr_balance
                             if ret_val is None:
                                 ret_val = 0
                         else:
-                            ret_val = app_utils.to_string(st.payout_addr_balance)
+                            ret_val = self.get_dash_amount_str(st.payout_addr_balance, True, False, False, False)
+                elif col_name == 'payout_addr_balance_fiat':
+                    if st:
+                        if for_sorting:
+                            ret_val = st.payout_addr_balance
+                            if ret_val is None:
+                                ret_val = 0
+                        else:
+                            ret_val = self.get_dash_amount_str(st.payout_addr_balance, False, True, False, False)
         return ret_val
 
     def lessThan(self, col_index, left_row_index, right_row_index):
@@ -1409,6 +1591,7 @@ class MasternodeStatus:
         self.next_payment_dt: Optional[datetime] = None
         self.next_payment_in: Optional[int] = None  # used for sorting
         self.next_payment_in_str: Optional[str] = None  # used for displaying
+        self.last_addr_balance_fetch_ts = 0
         self.messages: List[str] = []
 
     def clear(self):
@@ -1437,6 +1620,7 @@ class MasternodeStatus:
         self.next_payment_dt = None
         self.next_payment_in = None
         self.next_payment_in_str = None
+        self.last_addr_balance_fetch_ts = 0
         self.messages.clear()
 
     def check_mismatch(self, masternode_cfg: MasternodeConfig, masternode_info: Masternode):

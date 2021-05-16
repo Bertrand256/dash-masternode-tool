@@ -4,6 +4,7 @@
 # Created on: 2018-03
 import collections
 import logging
+from enum import Enum
 from typing import List
 
 from PyQt5.QtGui import QColor
@@ -29,6 +30,28 @@ COLOR_ERROR_STR = 'red'
 COLOR_ERROR = QColor(COLOR_ERROR_STR)
 COLOR_OK_STR = '#00cc00'
 COLOR_OK = QColor(COLOR_OK_STR)
+
+
+class AppTextMessageType(Enum):
+    INFO = 'info'
+    WARN = 'warn'
+    ERROR = 'error'
+
+
+class DispMessage(object):
+    NEW_VERSION = 1
+    DASH_NET_CONNECTION = 2
+    OTHER_1 = 3
+    OTHER_2 = 4
+
+    def __init__(self, message: str, type: AppTextMessageType):
+        """
+        :param type: 'warn'|'error'|'info'
+        :param message: a message
+        """
+        self.message = message
+        self.type: AppTextMessageType = type
+        self.hidden = False
 
 
 def get_note_url(note_symbol):

@@ -400,7 +400,14 @@
        <item>
         <widget class="QCheckBox" name="chbFetchDataAfterStart">
          <property name="text">
-          <string>Automatically fetch data from the network after starting the app</string>
+          <string>Automatically fetch network data after starting the app</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="chbShowDashFIATValue">
+         <property name="text">
+          <string>Show DASH value in FIAT</string>
          </property>
         </widget>
        </item>

@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import QWidget, QLineEdit, QMessageBox, QAction, QApplicati
 import dash_utils
 import hw_intf
 from app_config import MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING, InputKeyType, AppConfig
+from app_defs import DispMessage, AppTextMessageType
 from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException
 from common import CancelException
 from dashd_intf import DashdInterface
@@ -23,6 +24,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     data_changed = QtCore.pyqtSignal(object)
     role_modified = QtCore.pyqtSignal()
     label_width_changed = QtCore.pyqtSignal(int)
+    app_text_message_sent = QtCore.pyqtSignal(int, str, object)
 
     def __init__(self, parent, app_config: AppConfig, dashd_intf: DashdInterface, hw_session: hw_intf.HwSessionInfo):
         QWidget.__init__(self, parent)
@@ -32,9 +34,12 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.dashd_intf = dashd_intf
         self.hw_session = hw_session
         self.masternode = MasternodeConfig()  # temporary object to avoid changing attributes of the global
-                                              # mn object, since user has the ability to cancel edition
+        # mn object, since user has the ability to cancel edition
         self.updating_ui = False
         self.edit_mode = False
+        self.owner_key_invalid = False
+        self.operator_key_invalid = False
+        self.voting_key_invalid = False
         self.setupUi(self)
 
     def setupUi(self, widget: QWidget):
@@ -111,7 +116,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.act_view_as_operator_private_key.setActionGroup(self.ag_operator_key)
         self.act_view_as_operator_public_key.setActionGroup(self.ag_operator_key)
         self.btnShowOperatorPrivateKey.addActions((self.act_view_as_operator_private_key,
-                                          self.act_view_as_operator_public_key))
+                                                   self.act_view_as_operator_public_key))
 
         self.update_ui_controls_state()
 
@@ -120,6 +125,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.update_key_controls_state()
             self.lblOwnerKey.fontMetrics()
             self.set_buttons_height()
+
         QTimer.singleShot(100, apply)
 
     def set_buttons_height(self):
@@ -137,7 +143,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.btnGenerateVotingPrivateKey.setFixedHeight(h)
         self.btnCopyProtxHash.setFixedHeight(h)
 
-        self.btnFindDMNTxHash.setFixedHeight(h)
+        self.btnGetMNDataByIP.setFixedHeight(h)
         self.btnShowCollateralPathAddress.setFixedHeight(h)
         self.btnBip32PathToAddress.setFixedHeight(h)
         self.btnLocateCollateral.setFixedHeight(h)
@@ -147,7 +153,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         """
         self.lblDMNTxHash.setVisible(self.masternode is not None)
         self.edtDMNTxHash.setVisible(self.masternode is not None)
-        self.btnFindDMNTxHash.setVisible(self.masternode is not None and self.edit_mode)
+        self.btnGetMNDataByIP.setVisible(self.masternode is not None and self.edit_mode)
 
         self.lblCollateral.setVisible(self.masternode is not None and
                                       (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
@@ -156,7 +162,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.btnBip32PathToAddress.setVisible(self.masternode is not None and self.edit_mode and
                                               (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
         self.btnShowCollateralPathAddress.setVisible(self.masternode is not None and
-                                                    (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
+                                                     (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
         self.edtCollateralAddress.setVisible(self.masternode is not None and
                                              (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
         self.lblCollateralPath.setVisible(self.masternode is not None and
@@ -271,7 +277,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 color = ''
             return color
 
-        def get_label_text(prefix:str, cur_key_type: str, tooltip_anchor: str, group: QActionGroup, style: str):
+        def get_label_text(prefix: str, cur_key_type: str, tooltip_anchor: str, group: QActionGroup, style: str,
+                           error_msg: Optional[str] = None):
             lbl = '???'
             if self.edit_mode:
                 change_mode = f'<td>(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)</td>'
@@ -290,7 +297,11 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             elif cur_key_type == 'pubkeyhash':
                 lbl = prefix + ' public key hash'
 
-            return f'<table style="float:right;{style_to_color(style)}"><tr><td>{lbl}</td>{change_mode}</tr></table>'
+            if error_msg:
+                err = '<td style="color:red">' + error_msg + '</td>'
+            else:
+                err = ''
+            return f'<table style="float:right;{style_to_color(style)}"><tr><td>{lbl}</td>{change_mode}{err}</tr></table>'
 
         if self.masternode:
             style = ''
@@ -302,7 +313,9 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Dash address')
                 if not self.edit_mode:
                     style = 'hl1' if self.act_view_as_owner_public_address.isChecked() else 'hl2'
-            self.lblOwnerKey.setText(get_label_text('Owner', key_type, tooltip_anchor, self.ag_owner_key, style))
+            self.lblOwnerKey.setText(get_label_text(
+                'Owner', key_type, tooltip_anchor, self.ag_owner_key, style,
+                '[invalid key format]' if self.owner_key_invalid else ''))
             self.edtOwnerKey.setPlaceholderText(placeholder_text)
 
             style = ''
@@ -314,20 +327,23 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 key_type, tooltip_anchor, placeholder_text = ('pubkey', 'privkey', 'Enter the operator public key')
                 if not self.edit_mode:
                     style = 'hl1' if self.act_view_as_operator_public_key.isChecked() else 'hl2'
-            self.lblOperatorKey.setText(get_label_text('Operator', key_type, tooltip_anchor, self.ag_operator_key,
-                                                       style))
+            self.lblOperatorKey.setText(get_label_text(
+                'Operator', key_type, tooltip_anchor, self.ag_operator_key,
+                style, '[invalid key format]' if self.operator_key_invalid else ''))
             self.edtOperatorKey.setPlaceholderText(placeholder_text)
 
             style = ''
             if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-                key_type, tooltip_anchor, placeholder_text = ('privkey','address', 'Enter the voting private key')
+                key_type, tooltip_anchor, placeholder_text = ('privkey', 'address', 'Enter the voting private key')
                 if not self.edit_mode and not self.act_view_as_voting_private_key.isChecked():
                     style = 'hl2'
             else:
                 key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Dash address')
                 if not self.edit_mode:
                     style = 'hl1' if self.act_view_as_voting_public_address.isChecked() else 'hl2'
-            self.lblVotingKey.setText(get_label_text('Voting', key_type, tooltip_anchor, self.ag_voting_key, style))
+            self.lblVotingKey.setText(get_label_text(
+                'Voting', key_type, tooltip_anchor, self.ag_voting_key, style,
+                '[invalid key format]' if self.voting_key_invalid else ''))
             self.edtVotingKey.setPlaceholderText(placeholder_text)
 
             self.set_left_label_width(self.get_max_left_label_width())
@@ -337,10 +353,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                                                          self.edit_mode else QLineEdit.Password)
 
         self.edtOperatorKey.setEchoMode(QLineEdit.Normal if self.btnShowOperatorPrivateKey.isChecked() or
-                                        self.edit_mode else QLineEdit.Password)
+                                                            self.edit_mode else QLineEdit.Password)
 
         self.edtVotingKey.setEchoMode(QLineEdit.Normal if self.btnShowVotingPrivateKey.isChecked() or
-                                      self.edit_mode else QLineEdit.Password)
+                                                          self.edit_mode else QLineEdit.Password)
 
         self.update_dynamic_labels()
 
@@ -607,6 +623,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         if src_masternode:
             self.masternode.copy_from(src_masternode)
             self.masternode.modified = False
+            self.validate_keys()
             self.masternode_data_to_ui(True)
 
     def get_masternode_data(self, dest_masternode: MasternodeConfig):
@@ -724,45 +741,93 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.masternode.dmn_tx_hash = text.strip()
 
     @pyqtSlot(bool)
-    def on_btnFindDMNTxHash_clicked(self, checked):
+    def on_btnGetMNDataByIP_clicked(self, _):
         if self.masternode and not self.updating_ui:
-            found_protx = None
-            if not ((self.masternode.ip and self.masternode.port) or
-                    (self.masternode.collateral_tx and self.masternode.collateral_tx_index)):
-                WndUtils.error_msg('To be able to locate the deterministic masternode transaction you need to '
-                                  'provide the masternode ip + port or collateral tx + tx index.')
+            if not (self.masternode.ip and self.masternode.port):
+                WndUtils.error_msg('Enter the masternode IP address and TCP port number.')
                 return
 
-            try:
-                txes = self.dashd_intf.protx('list', 'registered', True)
-                for protx in txes:
-                    state = protx.get('state')
-                    if state:
-                        if (state.get('service') == self.masternode.ip + ':' + self.masternode.port) or \
-                           (protx.get('collateralHash') == self.masternode.collateral_tx and
-                            str(protx.get('collateralIndex', '')) == self.masternode.collateral_tx_index):
-                            found_protx = protx
-                            break
-            except Exception as e:
-                pass
+            cache_max_age = 500
+            self.dashd_intf.get_masternodelist('json', data_max_age=cache_max_age, protx_data_max_age=cache_max_age)
+            mn = self.masternode
+            updated_fields = []
 
-            if found_protx:
-                if self.masternode.dmn_tx_hash == protx.get('proTxHash'):
-                    WndUtils.info_msg('You have te correct DMN TX hash in the masternode configuration.')
-                else:
-                    self.edtDMNTxHash.setText(protx.get('proTxHash'))
-                    self.masternode.dmn_tx_hash = protx.get('proTxHash')
+            ip_port = mn.ip + ':' + mn.port
+            mn_info = self.dashd_intf.masternodes_by_ip_port.get(ip_port)
+            modified = False
+            keys_modified = []
+            if mn_info:
+                if mn_info.protx:
+                    protx = mn_info.protx
+                    if mn.collateral_address != protx.collateral_address:
+                        updated_fields.append('collateral address')
+                        # self.edtCollateralAddress.setText(protx.collateral_address)
+                        mn.collateral_address = protx.collateral_address
+                        modified = True
+
+                    if mn.dmn_tx_hash != protx.protx_hash:
+                        updated_fields.append('protx hash')
+                        # self.edtDMNTxHash.setText(protx.protx_hash)
+                        self.masternode.dmn_tx_hash = protx.protx_hash
+                        modified = True
+
+                    if mn.collateral_tx != protx.collateral_hash or str(mn.collateral_tx_index) != \
+                            str(protx.collateral_index):
+                        updated_fields.append('collateral hash/index')
+                        # self.edtCollateralTxHash.setVisible(protx.collateral_hash)
+                        mn.collateral_tx = protx.collateral_hash
+                        # self.edtCollateralTxIndex.setText(str(protx.collateral_index))
+                        mn.collateral_tx_index = str(protx.collateral_index)
+                        modified = True
+
+                    if mn.dmn_user_roles & DMN_ROLE_OWNER > 0 and \
+                            ((not mn.dmn_owner_private_key and mn.dmn_owner_key_type == InputKeyType.PRIVATE) or
+                             (not mn.dmn_owner_address and mn.dmn_owner_key_type == InputKeyType.PUBLIC)):
+                        mn.dmn_owner_key_type = InputKeyType.PUBLIC
+                        mn.dmn_owner_address = protx.owner_address
+                        modified = True
+                        keys_modified.append('owner')
+
+                    if mn.dmn_user_roles & DMN_ROLE_OPERATOR > 0 and \
+                        ((not mn.dmn_operator_private_key and mn.dmn_operator_key_type == InputKeyType.PRIVATE) or
+                         (not mn.dmn_operator_public_key and mn.dmn_operator_key_type == InputKeyType.PUBLIC)):
+                        mn.dmn_operator_key_type = InputKeyType.PUBLIC
+                        mn.dmn_operator_public_key = protx.pubkey_operator
+                        modified = True
+                        keys_modified.append('operator')
+
+                    if mn.dmn_user_roles & DMN_ROLE_VOTING > 0 and \
+                        ((not mn.dmn_voting_private_key and mn.dmn_voting_key_type == InputKeyType.PRIVATE) or
+                         (not mn.dmn_voting_address and mn.dmn_voting_key_type == InputKeyType.PUBLIC)):
+                        mn.dmn_voting_key_type = InputKeyType.PUBLIC
+                        mn.dmn_voting_address = protx.voting_address
+                        modified = True
+                        keys_modified.append('voting')
+
+                if modified:
+                    self.masternode_data_to_ui()
                     self.on_mn_data_modified()
+                    self.app_text_message_sent.emit(
+                        DispMessage.OTHER_1, 'The following mn data has been set: ' + ', '.join(updated_fields),
+                        AppTextMessageType.INFO)
+
+                    if keys_modified:
+                        self.app_text_message_sent.emit(
+                            DispMessage.OTHER_2,
+                            'We\'ve set <b>public</b> keys for ' + ', '.join(keys_modified) +
+                            '. You need to enter <b>private</b> keys instead, to have access to some of the features.',
+                            AppTextMessageType.WARN)
             else:
-                WndUtils.warn_msg('Couldn\'t find this masternode in the list of registered deterministic masternodes.')
-            self.on_mn_data_modified()
+                WndUtils.warn_msg(
+                    'Couldn\'t find this masternode in the list of registered deterministic masternodes.')
 
     @pyqtSlot(bool)
     def on_btnBip32PathToAddress_clicked(self, checked):
         if self.masternode.collateral_bip32_path:
             if self.hw_session.connect_hardware_wallet():
                 try:
-                    addr = hw_intf.get_address(self.hw_session, self.masternode.collateral_bip32_path, show_display=True)
+                    addr = hw_intf.get_address(self.hw_session, self.masternode.collateral_bip32_path,
+                                               show_display=True)
                     if addr:
                         self.masternode.collateral_address = addr.strip()
                         self.edtCollateralAddress.setText(addr.strip())
@@ -790,6 +855,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 self.masternode.dmn_owner_private_key = text.strip()
             else:
                 self.masternode.dmn_owner_address = text.strip()
+            self.validate_keys()
+            self.update_dynamic_labels()
             self.on_mn_data_modified()
 
     @pyqtSlot(str)
@@ -799,6 +866,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 self.masternode.dmn_operator_private_key = text.strip()
             else:
                 self.masternode.dmn_operator_public_key = text.strip()
+            self.validate_keys()
+            self.update_dynamic_labels()
             self.on_mn_data_modified()
 
     @pyqtSlot(str)
@@ -808,14 +877,49 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 self.masternode.dmn_voting_private_key = text.strip()
             else:
                 self.masternode.dmn_voting_address = text.strip()
+            self.validate_keys()
+            self.update_dynamic_labels()
             self.on_mn_data_modified()
 
-    def generate_priv_key(self, pk_type:str, edit_control: QLineEdit, compressed: bool):
+    def validate_keys(self):
+        self.owner_key_invalid = False
+        self.operator_key_invalid = False
+        self.voting_key_invalid = False
+
+        if self.masternode:
+            if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+                if self.masternode.dmn_owner_private_key:
+                    self.owner_key_invalid = not dash_utils.validate_wif_privkey(self.masternode.dmn_owner_private_key,
+                                                                                 self.app_config.dash_network)
+            else:
+                if self.masternode.dmn_owner_address:
+                    self.owner_key_invalid = not dash_utils.validate_address(self.masternode.dmn_owner_address,
+                                                                             self.app_config.dash_network)
+
+            if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
+                if self.masternode.dmn_operator_private_key:
+                    self.operator_key_invalid = not dash_utils.validate_bls_privkey(
+                        self.masternode.dmn_operator_private_key)
+            else:
+                if self.masternode.dmn_operator_public_key:
+                    self.operator_key_invalid = not dash_utils.validate_bls_pubkey(
+                        self.masternode.dmn_operator_public_key)
+
+            if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
+                if self.masternode.dmn_voting_private_key:
+                    self.voting_key_invalid = not dash_utils.validate_wif_privkey(self.masternode.dmn_voting_private_key,
+                                                                                  self.app_config.dash_network)
+            else:
+                if self.masternode.dmn_voting_address:
+                    self.voting_key_invalid = not dash_utils.validate_address(self.masternode.dmn_voting_address,
+                                                                              self.app_config.dash_network)
+
+    def generate_priv_key(self, pk_type: str, edit_control: QLineEdit, compressed: bool):
         if edit_control.text():
             if WndUtils.query_dlg(
                     f'This will overwrite the current {pk_type} private key value. Do you really want to proceed?',
-                     buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                     default_button=QMessageBox.Yes, icon=QMessageBox.Warning) != QMessageBox.Yes:
+                    buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                    default_button=QMessageBox.Yes, icon=QMessageBox.Warning) != QMessageBox.Yes:
                 return None
 
         if pk_type == 'operator':
@@ -1020,4 +1124,3 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     def on_btnCopyProtxHash_clicked(self):
         cl = QApplication.clipboard()
         cl.setText(self.edtDMNTxHash.text())
-

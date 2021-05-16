@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>741</width>
-    <height>280</height>
+    <height>281</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -184,7 +184,7 @@
        </layout>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="horizontalLayout_3" stretch="0,1,0,0,0">
+       <layout class="QHBoxLayout" name="horizontalLayout_3" stretch="0,1,0,0,0,0">
         <item>
          <widget class="QLabel" name="lblIP">
           <property name="minimumSize">
@@ -240,12 +240,25 @@
           </property>
           <property name="maximumSize">
            <size>
-            <width>100</width>
+            <width>150</width>
             <height>16777215</height>
            </size>
           </property>
           <property name="clearButtonEnabled">
            <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnGetMNDataByIP">
+          <property name="toolTip">
+           <string>Fetch public masternode data from network</string>
+          </property>
+          <property name="text">
+           <string>Fetch MN data</string>
+          </property>
+          <property name="toolButtonStyle">
+           <enum>Qt::ToolButtonTextOnly</enum>
           </property>
          </widget>
         </item>
@@ -265,7 +278,7 @@
        </layout>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="horizontalLayout_5" stretch="0,0,2,0,0,1,0">
+       <layout class="QHBoxLayout" name="horizontalLayout_5" stretch="0,2,0,0,0,1,0">
         <item>
          <widget class="QLabel" name="lblCollateral">
           <property name="minimumSize">
@@ -283,16 +296,19 @@
          </widget>
         </item>
         <item>
-         <widget class="QToolButton" name="btnLocateCollateral">
-          <property name="text">
-           <string>Locate collateral</string>
+         <widget class="QLineEdit" name="edtCollateralAddress">
+          <property name="clearButtonEnabled">
+           <bool>true</bool>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="edtCollateralAddress">
-          <property name="clearButtonEnabled">
-           <bool>true</bool>
+         <widget class="QToolButton" name="btnLocateCollateral">
+          <property name="toolTip">
+           <string>Search collateral address in your hardware wallet</string>
+          </property>
+          <property name="text">
+           <string>Locate collateral</string>
           </property>
          </widget>
         </item>
@@ -420,16 +436,6 @@
           </property>
           <property name="text">
            <string/>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QToolButton" name="btnFindDMNTxHash">
-          <property name="toolTip">
-           <string>Find DMN TX hash based on the ip/port or collateral tx</string>
-          </property>
-          <property name="text">
-           <string>Find</string>
           </property>
          </widget>
         </item>

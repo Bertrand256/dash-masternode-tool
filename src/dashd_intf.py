@@ -1177,7 +1177,7 @@ class DashdInterface(WndUtils):
         cache_item_name = f'MasternodesLastReadTime_{self.app_config.dash_network}'
         app_cache.set_value(cache_item_name, 0)
 
-    def _read_protx_list(self, data_max_age: int = PROTX_CACHE_VALID_SECONDS):
+    def _read_protx_list(self, data_max_age: int = PROTX_CACHE_VALID_SECONDS, feedback_fun: Optional[Callable] = None):
         cache_item_name = 'ProtxLastReadTime_' + self.app_config.dash_network
         last_read_time = app_cache.get_value(cache_item_name, 0, int)
 
@@ -1194,6 +1194,8 @@ class DashdInterface(WndUtils):
 
             # update local cache in RAM
             for protx_json in protx_list:
+                if feedback_fun:
+                    feedback_fun()
                 protx_hash = protx_json.get('proTxHash')
                 if protx_hash:
                     protx = self.protx_by_hash.get(protx_hash)
@@ -1268,7 +1270,8 @@ class DashdInterface(WndUtils):
 
     @control_rpc_call
     def get_masternodelist(self, *args, data_max_age=MASTERNODES_CACHE_VALID_SECONDS,
-                           protx_data_max_age=PROTX_CACHE_VALID_SECONDS) -> List[Masternode]:
+                           protx_data_max_age=PROTX_CACHE_VALID_SECONDS,
+                           feedback_fun: Optional[Callable] = None) -> List[Masternode]:
         """
         Returns masternode list, read from the Dash network or from the internal cache.
         :param args: arguments passed to the 'masternodelist' RPC call
@@ -1284,7 +1287,7 @@ class DashdInterface(WndUtils):
                 if self.masternodes and data_max_age > 0 and int(time.time()) - last_read_time < data_max_age:
                     return self.masternodes
                 else:
-                    self._read_protx_list(protx_data_max_age)
+                    self._read_protx_list(protx_data_max_age, feedback_fun=feedback_fun)
 
                     for mn in self.masternodes:
                         mn.marker = False  # mark to delete masternode existing in cache but no longer
@@ -1295,6 +1298,8 @@ class DashdInterface(WndUtils):
                     app_cache.set_value(f'MasternodesLastReadTime_{self.app_config.dash_network}', int(time.time()))
 
                     for mn_id in mns_json.keys():
+                        if feedback_fun:
+                            feedback_fun()
                         mn_json = mns_json.get(mn_id)
                         mn = self.masternodes_by_ident.get(mn_id)
                         if not mn:
@@ -1321,6 +1326,9 @@ class DashdInterface(WndUtils):
                             cur = self.db_intf.get_cursor()
 
                         for mn in self.masternodes:
+                            if feedback_fun:
+                                feedback_fun()
+
                             if mn.db_id is None:
                                 # Masternode entry not in db cache yet
                                 if self.db_intf.db_active:
@@ -1348,6 +1356,8 @@ class DashdInterface(WndUtils):
 
                         # remove non existing masternodes from cache
                         for mn_index in reversed(range(len(self.masternodes))):
+                            if feedback_fun:
+                                feedback_fun()
                             mn = self.masternodes[mn_index]
 
                             if not mn.marker:
@@ -1561,7 +1571,7 @@ class DashdInterface(WndUtils):
             self.block_timestamps[block] = ts
         return ts
 
-    def fetch_mempool_txes(self):
+    def fetch_mempool_txes(self, feedback_fun: Optional[Callable] = None):
         cur_mempool_txes = self.proxy.getrawmempool()
 
         txes_to_purge = []
@@ -1573,6 +1583,9 @@ class DashdInterface(WndUtils):
             del self.mempool_txes[tx_hash]
 
         for tx_hash in cur_mempool_txes:
+            if feedback_fun:
+                feedback_fun()
+
             tx = self.mempool_txes.get(tx_hash)
             if not tx:
                 tx = self.getrawtransaction(tx_hash, True, skip_cache=True)

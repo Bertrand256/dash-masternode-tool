@@ -103,7 +103,7 @@ class AppFeatureStatus(QObject):
 
 
 class AppConfig(QObject):
-    sig_display_message = QtCore.pyqtSignal(int, str, str)  # message id, message text, message type ('info'|'warn'|'error'
+    display_app_message = QtCore.pyqtSignal(int, str, object)
 
     def __init__(self):
         QObject.__init__(self)
@@ -147,14 +147,14 @@ class AppConfig(QObject):
 
         self.dash_network = 'MAINNET'
 
-        self.block_explorer_tx_mainnet = 'https://insight.dash.org/insight/tx/%TXID%'
-        self.block_explorer_addr_mainnet = 'https://insight.dash.org/insight/address/%ADDRESS%'
-        self.block_explorer_tx_testnet = 'https://testnet-insight.dashevo.org/insight/tx/%TXID%'
-        self.block_explorer_addr_testnet = 'https://testnet-insight.dashevo.org/insight/address/%ADDRESS%'
-        self.tx_api_url_mainnet = 'https://insight.dash.org/insight'
-        self.tx_api_url_testnet = 'https://testnet-insight.dashevo.org/insight'
-        self.dash_central_proposal_api = 'https://www.dashcentral.org/api/v1/proposal?hash=%HASH%'
-        self.dash_nexus_proposal_api = 'https://api.dashnexus.org/proposals/%HASH%'
+        self.block_explorer_tx_mainnet: str = ''
+        self.block_explorer_addr_mainnet: str = ''
+        self.block_explorer_tx_testnet: str = ''
+        self.block_explorer_addr_testnet: str = ''
+        self.tx_api_url_mainnet: str = ''
+        self.tx_api_url_testnet: str = ''
+        self.dash_central_proposal_api: str = ''
+        self.dash_nexus_proposal_api: str = ''
 
         # public RPC connection configurations
         self.public_conns_mainnet: Dict[str, DashNetworkConnectionCfg] = {}
@@ -167,8 +167,8 @@ class AppConfig(QObject):
         self.dont_use_file_dialogs = False
         self.confirm_when_voting = True
         self.add_random_offset_to_vote_time = True  # To avoid identifying one user's masternodes by vote time
-        self.sig_time_offset_min = -1800
-        self.sig_time_offset_max = 1800
+        self.sig_time_offset_min: int = 0
+        self.sig_time_offset_max: int = 0
         self.csv_delimiter = ';'
         self.masternodes = []
         self.last_bip32_base_path = ''
@@ -188,6 +188,7 @@ class AppConfig(QObject):
         self.encrypt_config_file = False
         self.config_file_encrypted = False
         self.fetch_network_data_after_start = True
+        self.show_dash_value_in_fiat = True
 
         # attributes related to encryption cache data with hardware wallet:
         self.hw_generated_key = b"\xab\x0fs}\x8b\t\xb4\xc3\xb8\x05\xba\xd1\x96\x9bq`I\xed(8w\xbf\x95\xf0-\x1a\x14\xcb\x1c\x1d+\xcd"
@@ -200,6 +201,7 @@ class AppConfig(QObject):
         self.trezor_bridge = True
         self.trezor_udp = True
         self.trezor_hid = True
+        self.reset_configuration()
 
         try:
             self.default_rpc_connections = self.decode_connections(default_config.dashd_default_connections)
@@ -477,6 +479,7 @@ class AppConfig(QObject):
         self.confirm_when_voting = src_config.confirm_when_voting
         self.add_random_offset_to_vote_time = src_config.add_random_offset_to_vote_time
         self.fetch_network_data_after_start = src_config.fetch_network_data_after_start
+        self.show_dash_value_in_fiat = src_config.show_dash_value_in_fiat
         self.csv_delimiter = src_config.csv_delimiter
         if self.initialized:
             # if this object is the main AppConfig object (it's initialized)
@@ -531,10 +534,11 @@ class AppConfig(QObject):
                     cur.execute('delete from LIVE_CONFIG')
                     cur.execute('update proposals set dmt_voting_last_read_time=0')
                     self.db_intf.commit()
-                    self.sig_display_message.emit(1000,
+                    self.display_app_message.emit(1000,
                                                   'Some of your voting results on proposals have been reset in '
                                                   'relation to the activation of Spork 15. Verify this in the '
-                                                  'voting window and vote again if needed.', 'warn')
+                                                  'voting window and vote again if needed.',
+                                                  app_defs.AppTextMessageType.WARN)
 
             # check and clean the wallet addresses inconsistency
             cur.execute('select parent_id, address_index, count(*) from address where parent_id is not null '
@@ -549,8 +553,8 @@ class AppConfig(QObject):
                 cur.execute('delete from tx')
                 self.db_intf.commit()
                 logging.warning('Cleared the wallet address cache because of inconsistencies found.')
-                self.sig_display_message.emit(1001, 'The wallet cache has been cleared because of '
-                                                    'inconsistencies found.', 'warn')
+                self.display_app_message.emit(1001, 'The wallet cache has been cleared because of '
+                                                    'inconsistencies found.', app_defs.AppTextMessageType.WARN)
         except Exception as e:
             logging.error('Error while clearing voting results. Details: ' + str(e))
         finally:
@@ -558,7 +562,7 @@ class AppConfig(QObject):
 
         self.restore_cache_settings()
 
-    def clear_configuration(self):
+    def reset_configuration(self):
         """
         Clears all the data structures that are loaded during the reading of the
         configuration file. This method is called before the reading new configuration
@@ -569,6 +573,40 @@ class AppConfig(QObject):
         self.active_dash_net_configs.clear()
         self.defective_net_configs.clear()
         self.masternodes.clear()
+        self.random_dash_net_config = True
+        self._remote_app_params.clear()
+        self._dash_blockchain_info.clear()
+        self.public_conns_mainnet.clear()
+        self.public_conns_testnet.clear()
+        self.hw_keepkey_psw_encoding = 'NFC'
+        self.dash_network = 'MAINNET'
+        self.block_explorer_tx_mainnet = 'https://insight.dash.org/insight/tx/%TXID%'
+        self.block_explorer_addr_mainnet = 'https://insight.dash.org/insight/address/%ADDRESS%'
+        self.block_explorer_tx_testnet = 'https://testnet-insight.dashevo.org/insight/tx/%TXID%'
+        self.block_explorer_addr_testnet = 'https://testnet-insight.dashevo.org/insight/address/%ADDRESS%'
+        self.tx_api_url_mainnet = 'https://insight.dash.org/insight'
+        self.tx_api_url_testnet = 'https://testnet-insight.dashevo.org/insight'
+        self.dash_central_proposal_api = 'https://www.dashcentral.org/api/v1/proposal?hash=%HASH%'
+        self.dash_nexus_proposal_api = 'https://api.dashnexus.org/proposals/%HASH%'
+        self.check_for_updates = True
+        self.backup_config_file = True
+        self.read_proposals_external_attributes = True
+        self.dont_use_file_dialogs = False
+        self.confirm_when_voting = True
+        self.add_random_offset_to_vote_time = True
+        self.sig_time_offset_min = -1800
+        self.sig_time_offset_max = 1800
+        self.csv_delimiter = ';'
+        self.modified = False
+        self.app_config_file_name = ''
+        self.encrypt_config_file = False
+        self.config_file_encrypted = False
+        self.fetch_network_data_after_start = True
+        self.show_dash_value_in_fiat = True
+        self.trezor_webusb = True
+        self.trezor_bridge = True
+        self.trezor_udp = True
+        self.trezor_hid = True
 
     def simple_decrypt(self, str_to_decrypt: str, string_can_be_unencrypted: bool, validator: Callable = None) -> str:
         """"
@@ -642,7 +680,7 @@ class AppConfig(QObject):
                 config_file_encrypted = ret_info.get('encrypted', False)
 
                 config.read_string(mem_file)
-                self.clear_configuration()
+                self.reset_configuration()
 
                 section = 'CONFIG'
                 ini_version = config.get(section, 'CFG_VERSION', fallback=CURRENT_CFG_FILE_VERSION)
@@ -652,9 +690,11 @@ class AppConfig(QObject):
                     ini_version = CURRENT_CFG_FILE_VERSION
 
                 if ini_version > CURRENT_CFG_FILE_VERSION:
-                    self.sig_display_message.emit(1002, 'The configuration file is created by a newer app version. '
-                                                        'If you save any changes, you may lose some settings '
-                                                        'that are not supported in this version.', 'warn')
+                    self.display_app_message.emit(1002,
+                                                  'The configuration file is created by a newer app version. '
+                                                  'If you save any changes, you may lose some settings '
+                                                  'that are not supported in this version.',
+                                                  app_defs.AppTextMessageType.WARN)
 
                 log_level_str = config.get(section, 'log_level', fallback='WARNING')
                 if log_level_str not in ('CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'):
@@ -703,6 +743,9 @@ class AppConfig(QObject):
 
                 self.fetch_network_data_after_start = self.value_to_bool(
                     config.get(section, 'fetch_network_data_after_start', fallback='1'))
+
+                self.show_dash_value_in_fiat = self.value_to_bool(
+                    config.get(section, 'show_dash_value_in_fiat', fallback='1'))
 
                 # with ini ver 3 we changed the connection password encryption scheme, so connections in new ini
                 # file will be saved under different section names - with this we want to disallow the old app
@@ -882,38 +925,25 @@ class AppConfig(QObject):
                 raise Exception(f'The configuration file \'{file_name}\' does not exist.')
             else:
                 self.modified = True
-            # else: file will be created while saving
 
+        self.load_default_connections()
+        self.configure_cache()
+
+    def load_default_connections(self):
         try:
             if self.default_rpc_connections:
-                # force import default connections if there is no any in the configuration
-                force_import = (self.app_last_version == '0.9.15')
-
-                added, updated = self.import_connections(self.default_rpc_connections, force_import=force_import,
+                added, updated = self.import_connections(self.default_rpc_connections, force_import=False,
                                                          limit_to_network=None)
                 if added or updated:
-                    configuration_corrected = True
+                    self.modified = True
 
                 for c in self.default_rpc_connections:
                     if c.mainnet:
                         self.public_conns_mainnet[c.get_conn_id()] = c
                     else:
                         self.public_conns_testnet[c.get_conn_id()] = c
-
-            if not errors_while_reading and update_current_file_name:
-                # if there were errors while reading configuration, don't save the file automatically but
-                # let the user change the new file name instead
-                if configuration_corrected:
-                    # we are migrating settings from old configuration file - save config file in a new format
-                    self.save_to_file(hw_session=hw_session)
-                else:
-                    if ini_version < CURRENT_CFG_FILE_VERSION:
-                        self.save_to_file(hw_session=hw_session)
-
         except Exception:
             logging.exception('An exception occurred while loading default connection configuration.')
-
-        self.configure_cache()
 
     def save_to_file(self, hw_session: 'HwSessionInfo', file_name: Optional[str] = None,
                      update_current_file_name = True):
@@ -933,7 +963,6 @@ class AppConfig(QObject):
 
             file_name = WndUtils.save_config_file_query(dir, None, None)
             if not file_name:
-                WndUtils.warn_msg('File not saved.')
                 return
 
         # backup old ini file
@@ -964,6 +993,7 @@ class AppConfig(QObject):
                    '1' if self.read_proposals_external_attributes else '0')
         config.set(section, 'confirm_when_voting', '1' if self.confirm_when_voting else '0')
         config.set(section, 'fetch_network_data_after_start', '1' if self.fetch_network_data_after_start else '0')
+        config.set(section, 'show_dash_value_in_fiat', '1' if self.show_dash_value_in_fiat else '0')
         config.set(section, 'add_random_offset_to_vote_time', '1' if self.add_random_offset_to_vote_time else '0')
         config.set(section, 'encrypt_config_file', '1' if self.encrypt_config_file else '0')
 
@@ -1044,6 +1074,12 @@ class AppConfig(QObject):
             self.modified = False
             self.app_config_file_name = file_name
             app_cache.set_value('AppConfig_ConfigFileName', self.app_config_file_name)
+
+    def new_configuration(self):
+        """ Creates a new configuration with defaults """
+        self.reset_configuration()
+        self.load_default_connections()
+        self.configure_cache()
 
     def reset_network_dependent_dyn_params(self):
         self.apply_remote_app_params()
@@ -1428,26 +1464,26 @@ class AppConfig(QObject):
 
 class MasternodeConfig:
     def __init__(self):
-        self.name = ''
-        self.__ip = ''
-        self.__port = '9999'
-        self.__collateral_bip32_path = ''
-        self.__collateral_address = ''
-        self.__collateral_tx = ''
-        self.__collateral_tx_index = ''
+        self.name: str = ''
+        self.__ip: str = ''
+        self.__port: str = '9999'
+        self.__collateral_bip32_path: str = ''
+        self.__collateral_address: str = ''
+        self.__collateral_tx: str = ''
+        self.__collateral_tx_index: str = ''
         self.use_default_protocol_version = True
-        self.__protocol_version = ''
+        self.__protocol_version: str = ''
         self.__dmn_user_roles = DMN_ROLE_OWNER | DMN_ROLE_OPERATOR | DMN_ROLE_VOTING
-        self.__dmn_tx_hash = ''
-        self.__dmn_owner_key_type = InputKeyType.PRIVATE
-        self.__dmn_operator_key_type = InputKeyType.PRIVATE
-        self.__dmn_voting_key_type = InputKeyType.PRIVATE
-        self.__dmn_owner_private_key = ''
-        self.__dmn_operator_private_key = ''
-        self.__dmn_voting_private_key = ''
-        self.__dmn_owner_address = ''
-        self.__dmn_operator_public_key = ''
-        self.__dmn_voting_address = ''
+        self.__dmn_tx_hash: str = ''
+        self.__dmn_owner_key_type: int = InputKeyType.PRIVATE
+        self.__dmn_operator_key_type: int = InputKeyType.PRIVATE
+        self.__dmn_voting_key_type: int = InputKeyType.PRIVATE
+        self.__dmn_owner_private_key: str = ''
+        self.__dmn_operator_private_key: str = ''
+        self.__dmn_voting_private_key: str = ''
+        self.__dmn_owner_address: str = ''
+        self.__dmn_operator_public_key: str = ''
+        self.__dmn_voting_address: str = ''
         self.is_new = False  # True if this mn configuration entry isn't included in the app configuration yet
         self.modified = False
         self.lock_modified_change = False
@@ -1482,98 +1518,98 @@ class MasternodeConfig:
         self.lock_modified_change = False
 
     @property
-    def ip(self):
+    def ip(self) -> str:
         if self.__ip:
             return self.__ip.strip()
         else:
             return self.__ip
 
     @ip.setter
-    def ip(self, new_ip):
+    def ip(self, new_ip: str):
         if new_ip:
             self.__ip = new_ip.strip()
         else:
             self.__ip = new_ip
 
     @property
-    def port(self):
+    def port(self) -> str:
         if self.__port:
             return self.__port.strip()
         else:
             return self.__port
 
     @port.setter
-    def port(self, new_port):
+    def port(self, new_port: str):
         if new_port:
             self.__port = new_port.strip()
         else:
             self.__port = new_port
 
     @property
-    def collateral_bip32_path(self):
+    def collateral_bip32_path(self) -> str:
         if self.__collateral_bip32_path:
             return self.__collateral_bip32_path.strip()
         else:
             return self.__collateral_bip32_path
 
     @collateral_bip32_path.setter
-    def collateral_bip32_path(self, new_collateral_bip32_path):
+    def collateral_bip32_path(self, new_collateral_bip32_path: str):
         if new_collateral_bip32_path:
             self.__collateral_bip32_path = new_collateral_bip32_path.strip()
         else:
             self.__collateral_bip32_path = new_collateral_bip32_path
 
     @property
-    def collateral_address(self):
+    def collateral_address(self) -> str:
         if self.__collateral_address:
             return self.__collateral_address.strip()
         else:
             return self.__collateral_address
 
     @collateral_address.setter
-    def collateral_address(self, new_collateral_address):
+    def collateral_address(self, new_collateral_address: str):
         if new_collateral_address:
             self.__collateral_address = new_collateral_address.strip()
         else:
             self.__collateral_address = new_collateral_address
 
     @property
-    def collateral_tx(self):
+    def collateral_tx(self) -> str:
         if self.__collateral_tx:
             return self.__collateral_tx.strip()
         else:
             return self.__collateral_tx
 
     @collateral_tx.setter
-    def collateral_tx(self, new_collateral_tx):
+    def collateral_tx(self, new_collateral_tx: str):
         if new_collateral_tx:
             self.__collateral_tx = new_collateral_tx.strip()
         else:
             self.__collateral_tx = new_collateral_tx
 
     @property
-    def collateral_tx_index(self):
+    def collateral_tx_index(self) -> str:
         if self.__collateral_tx_index:
             return self.__collateral_tx_index.strip()
         else:
             return self.__collateral_tx_index
 
     @collateral_tx_index.setter
-    def collateral_tx_index(self, new_collateral_tx_index):
+    def collateral_tx_index(self, new_collateral_tx_index: str):
         if new_collateral_tx_index:
             self.__collateral_tx_index = new_collateral_tx_index.strip()
         else:
             self.__collateral_tx_index = new_collateral_tx_index
 
     @property
-    def protocol_version(self):
+    def protocol_version(self) -> str:
         if self.__protocol_version:
             return self.__protocol_version.strip()
         else:
             return self.__protocol_version
 
     @protocol_version.setter
-    def protocol_version(self, new_protocol_version):
+    def protocol_version(self, new_protocol_version: str):
         if new_protocol_version:
             self.__protocol_version = new_protocol_version.strip()
         else:
@@ -1588,7 +1624,7 @@ class MasternodeConfig:
         self.__dmn_user_roles = roles
 
     @property
-    def dmn_tx_hash(self):
+    def dmn_tx_hash(self) -> str:
         return self.__dmn_tx_hash
 
     @dmn_tx_hash.setter
@@ -1598,7 +1634,7 @@ class MasternodeConfig:
         self.__dmn_tx_hash = tx_hash.strip()
 
     @property
-    def dmn_owner_private_key(self):
+    def dmn_owner_private_key(self) -> str:
         return self.__dmn_owner_private_key
 
     @dmn_owner_private_key.setter
@@ -1608,15 +1644,15 @@ class MasternodeConfig:
         self.__dmn_owner_private_key = dmn_owner_private_key.strip()
 
     @property
-    def dmn_owner_address(self):
+    def dmn_owner_address(self) -> str:
         return self.__dmn_owner_address
 
     @dmn_owner_address.setter
-    def dmn_owner_address(self, address):
+    def dmn_owner_address(self, address: str):
         self.__dmn_owner_address = address
 
     @property
-    def dmn_operator_private_key(self):
+    def dmn_operator_private_key(self) -> str:
         return self.__dmn_operator_private_key
 
     @dmn_operator_private_key.setter
@@ -1626,15 +1662,15 @@ class MasternodeConfig:
         self.__dmn_operator_private_key = dmn_operator_private_key.strip()
 
     @property
-    def dmn_operator_public_key(self):
+    def dmn_operator_public_key(self) -> str:
         return self.__dmn_operator_public_key
 
     @dmn_operator_public_key.setter
-    def dmn_operator_public_key(self, key):
+    def dmn_operator_public_key(self, key: str):
         self.__dmn_operator_public_key = key
 
     @property
-    def dmn_voting_private_key(self):
+    def dmn_voting_private_key(self) -> str:
         return self.__dmn_voting_private_key
 
     @dmn_voting_private_key.setter
@@ -1644,50 +1680,54 @@ class MasternodeConfig:
         self.__dmn_voting_private_key = dmn_voting_private_key.strip()
 
     @property
-    def dmn_voting_address(self):
+    def dmn_voting_address(self) -> str:
         return self.__dmn_voting_address
 
     @dmn_voting_address.setter
-    def dmn_voting_address(self, address):
+    def dmn_voting_address(self, address: str):
         self.__dmn_voting_address = address
 
     @property
-    def dmn_owner_key_type(self):
+    def dmn_owner_key_type(self) -> int:
         return self.__dmn_owner_key_type
 
     @dmn_owner_key_type.setter
-    def dmn_owner_key_type(self, type: InputKeyType):
+    def dmn_owner_key_type(self, type: int):
         if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
             raise Exception('Invalid owner key type')
         self.__dmn_owner_key_type = type
 
     @property
-    def dmn_operator_key_type(self):
+    def dmn_operator_key_type(self) -> int:
         return self.__dmn_operator_key_type
 
     @dmn_operator_key_type.setter
-    def dmn_operator_key_type(self, type: InputKeyType):
+    def dmn_operator_key_type(self, type: int):
         if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
             raise Exception('Invalid operator key type')
         self.__dmn_operator_key_type = type
 
     @property
-    def dmn_voting_key_type(self):
+    def dmn_voting_key_type(self) -> int:
         return self.__dmn_voting_key_type
 
     @dmn_voting_key_type.setter
-    def dmn_voting_key_type(self, type: InputKeyType):
+    def dmn_voting_key_type(self, type: int):
         if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
             raise Exception('Invalid voting key type')
         self.__dmn_voting_key_type = type
 
-    def get_current_key_for_voting(self, app_config: AppConfig, dashd_intf):
+    def get_current_key_for_voting(self, app_config: AppConfig, dashd_intf) -> str:
         return self.dmn_voting_private_key
 
     def get_dmn_owner_public_address(self, dash_network) -> Optional[str]:
         if self.__dmn_owner_key_type == InputKeyType.PRIVATE:
             if self.__dmn_owner_private_key:
-                address = dash_utils.wif_privkey_to_address(self.__dmn_owner_private_key, dash_network)
+                try:
+                    address = dash_utils.wif_privkey_to_address(self.__dmn_owner_private_key, dash_network)
+                except Exception as e:
+                    logging.exception(str(e))
+                    address = ''
                 return address
         else:
             if self.__dmn_owner_address:
@@ -1697,10 +1737,15 @@ class MasternodeConfig:
     def get_dmn_owner_pubkey_hash(self) -> Optional[str]:
         if self.dmn_owner_key_type == InputKeyType.PRIVATE:
             if self.__dmn_owner_private_key:
-                pubkey = dash_utils.wif_privkey_to_pubkey(self.__dmn_owner_private_key)
-                pubkey_bin = bytes.fromhex(pubkey)
-                pub_hash = bitcoin.bin_hash160(pubkey_bin)
-                return pub_hash.hex()
+                try:
+                    pubkey = dash_utils.wif_privkey_to_pubkey(self.__dmn_owner_private_key)
+                    pubkey_bin = bytes.fromhex(pubkey)
+                    pub_hash = bitcoin.bin_hash160(pubkey_bin)
+                    pub_hash = pub_hash.hex()
+                except Exception as e:
+                    logging.exception(str(e))
+                    pub_hash = ''
+                return pub_hash
         else:
             if self.__dmn_owner_address:
                 ret = dash_utils.address_to_pubkey_hash(self.__dmn_owner_address)
@@ -1711,7 +1756,11 @@ class MasternodeConfig:
     def get_dmn_voting_public_address(self, dash_network) -> Optional[str]:
         if self.__dmn_voting_key_type == InputKeyType.PRIVATE:
             if self.__dmn_voting_private_key:
-                address = dash_utils.wif_privkey_to_address(self.__dmn_voting_private_key, dash_network)
+                try:
+                    address = dash_utils.wif_privkey_to_address(self.__dmn_voting_private_key, dash_network)
+                except Exception as e:
+                    logging.exception(str(e))
+                    address = ''
                 return address
         else:
             if self.__dmn_voting_address:
@@ -1721,10 +1770,15 @@ class MasternodeConfig:
     def get_dmn_voting_pubkey_hash(self) -> Optional[str]:
         if self.__dmn_voting_key_type == InputKeyType.PRIVATE:
             if self.__dmn_voting_private_key:
-                pubkey = dash_utils.wif_privkey_to_pubkey(self.__dmn_voting_private_key)
-                pubkey_bin = bytes.fromhex(pubkey)
-                pub_hash = bitcoin.bin_hash160(pubkey_bin)
-                return pub_hash.hex()
+                try:
+                    pubkey = dash_utils.wif_privkey_to_pubkey(self.__dmn_voting_private_key)
+                    pubkey_bin = bytes.fromhex(pubkey)
+                    pub_hash = bitcoin.bin_hash160(pubkey_bin)
+                    pub_hash = pub_hash.hex()
+                except Exception as e:
+                    logging.exception(str(e))
+                    pub_hash = ''
+                return pub_hash
         else:
             if self.__dmn_voting_address:
                 ret = dash_utils.address_to_pubkey_hash(self.__dmn_voting_address)
@@ -1735,7 +1789,11 @@ class MasternodeConfig:
     def get_dmn_operator_pubkey(self) -> Optional[str]:
         if self.__dmn_operator_key_type == InputKeyType.PRIVATE:
             if self.__dmn_operator_private_key:
-                pubkey = dash_utils.bls_privkey_to_pubkey(self.__dmn_operator_private_key)
+                try:
+                    pubkey = dash_utils.bls_privkey_to_pubkey(self.__dmn_operator_private_key)
+                except Exception as e:
+                    logging.exception(str(e))
+                    pubkey = ''
                 return pubkey
         else:
             return self.__dmn_operator_public_key

@@ -82,8 +82,8 @@ class ExtSortFilterItemModel(QAbstractItemModel, AttrsProtected):
         self._rebuild_column_index()
         self.view: Optional[QAbstractItemView] = None
         self.columns_movable = columns_movable
-        self.sorting_column_name = ''
-        self.sorting_order = Qt.AscendingOrder
+        self.initial_sorting_column_name = ''
+        self.initial_sorting_order = Qt.AscendingOrder
         self.proxy_model: Optional[ColumnedSortFilterProxyModel] = None
         self.data_lock = thread_utils.EnhRLock()
         if filtering_sorting:
@@ -100,6 +100,61 @@ class ExtSortFilterItemModel(QAbstractItemModel, AttrsProtected):
 
     def __exit__(self, type, value, traceback):
         self.release_lock()
+
+    def set_sort_column(self, col_name: str, sort_order: Qt.SortOrder):
+        if self.proxy_model:
+            idx = self.col_index_by_name(col_name)
+            if idx >= 0:
+                self.proxy_model.sort(idx, sort_order)
+                if self.view:
+                    self.view.horizontalHeader().setSortIndicator(idx, sort_order)
+                else:
+                    self.initial_sorting_order = col_name
+                    self.initial_sorting_order = sort_order
+            else:
+                raise Exception(f'Column {col_name} not in column list' )
+
+    def set_view(self, view: QAbstractItemView):
+        self.view = view
+        self.get_view_horizontal_header().sectionMoved.connect(self.on_view_column_moved)
+        if self.proxy_model:
+            self.view.setModel(self.proxy_model)
+        else:
+            self.view.setModel(self)
+        self._apply_columns_to_ui()
+
+        if self.initial_sorting_column_name:
+            self.set_sort_column(self.initial_sorting_column_name, self.initial_sorting_order)
+        else:
+            col_idx = self.get_sort_column_index()
+            sort_order = self.get_sort_order()
+            if 0 <= col_idx < len(self._columns):
+                self.view.horizontalHeader().setSortIndicator(col_idx, sort_order)
+
+        if self.columns_movable:
+            self.get_view_horizontal_header().setSectionsMovable(True)
+        for idx, col in enumerate(self._columns):
+            if col.initial_width:
+                self.get_view_horizontal_header().resizeSection(idx, col.initial_width)
+
+    def get_sort_column_index(self) -> int:
+        if self.proxy_model:
+            return self.proxy_model.sortColumn()
+        else:
+            return -1
+
+    def get_sort_column(self) -> Optional[TableModelColumn]:
+        if self.proxy_model:
+            col_idx = self.proxy_model.sortColumn()
+            if 0 <= col_idx < len(self._columns):
+                return self._columns[col_idx]
+        return None
+
+    def get_sort_order(self) -> Optional[Qt.SortOrder]:
+        if self.proxy_model:
+            return self.proxy_model.sortOrder()
+        else:
+            return None
 
     def index(self, row, column, parent=None, *args, **kwargs):
         return self.createIndex(row, column)
@@ -262,24 +317,6 @@ class ExtSortFilterItemModel(QAbstractItemModel, AttrsProtected):
             return self.view.header()
         else:
             raise Exception('Unsupported view type: %s', str(type(self.view)))
-
-    def set_view(self, view: QAbstractItemView):
-        self.view = view
-        self.get_view_horizontal_header().sectionMoved.connect(self.on_view_column_moved)
-        if self.proxy_model:
-            self.view.setModel(self.proxy_model)
-        else:
-            self.view.setModel(self)
-        self._apply_columns_to_ui()
-        if self.sorting_column_name:
-            idx = self.col_index_by_name(self.sorting_column_name)
-            if idx is not None:
-                self.view.sortByColumn(idx, self.sorting_order)
-        if self.columns_movable:
-            self.get_view_horizontal_header().setSectionsMovable(True)
-        for idx, col in enumerate(self._columns):
-            if col.initial_width:
-                self.get_view_horizontal_header().resizeSection(idx, col.initial_width)
 
     def _apply_columns_to_ui(self):
         hdr = self.get_view_horizontal_header()

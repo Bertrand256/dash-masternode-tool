@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+from enum import Enum
+
 import simplejson
 import datetime
 import os
@@ -41,7 +43,7 @@ import app_utils
 from masternode_details_wdg import WdgMasternodeDetails
 from proposals_dlg import ProposalsDlg
 from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
-from app_defs import PROJECT_URL
+from app_defs import PROJECT_URL, DispMessage, AppTextMessageType
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_common import HWPinException, HWType, HWDevice, HWNotConnectedException
 import hw_intf
@@ -56,20 +58,6 @@ from ui import ui_main_dlg
 log = logging.getLogger('dmt.main')
 
 
-class DispMessage(object):
-    NEW_VERSION = 1
-    DASH_NET_CONNECTION = 2
-
-    def __init__(self, message: str, type: str):
-        """
-        :param type: 'warn'|'error'|'info'
-        :param message: a message
-        """
-        self.message = message
-        self.type = type
-        self.hidden = False
-
-
 class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
     update_status_signal = QtCore.pyqtSignal(str, str)  # signal for updating status text from inside thread
 
@@ -82,7 +70,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.app_messages: Dict[int, DispMessage] = {}
         self.app_config = AppConfig()
         self.app_config.init(app_dir)
-        self.app_config.sig_display_message.connect(self.add_app_message)
+        self.app_config.display_app_message.connect(self.add_app_message)
         WndUtils.set_app_config(self, self.app_config)
 
         self.dashd_intf = DashdInterface(window=None,
@@ -168,6 +156,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         l.insertWidget(0, self.main_view)
         self.main_view.masternode_data_changed.connect(self.on_masternode_data_changed)
         self.main_view.cur_masternode_changed.connect(self.on_cur_masternode_changed)
+        self.main_view.app_text_message_sent.connect(self.add_app_message)
 
         self.inside_setup_ui = False
         self.display_app_messages()
@@ -235,7 +224,6 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 return
 
         try:
-            self.disconnect_hardware_wallet()
             dash_network_sav = self.app_config.dash_network
             self.app_config.read_from_file(hw_session=self.hw_session, file_name=file_name,
                                            update_current_file_name=update_current_file_name,
@@ -246,6 +234,36 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.configuration_to_ui()
             self.dashd_intf.reload_configuration()
             self.app_config.modified = False
+            file_name = self.app_config.app_config_file_name
+            if file_name:
+                self.add_item_to_config_files_mru_list(file_name)
+                self.update_config_files_mru_menu_items()
+                if dash_network_sav != self.app_config.dash_network:
+                    self.app_config.reset_network_dependent_dyn_params()
+            self.display_window_title()
+        except CancelException:
+            self.update_config_files_mru_menu_items()
+
+    def new_configuration_file(self) -> None:
+        if self.app_config.is_modified():
+            ret = self.query_dlg('Current configuration has been modified. Save?',
+                                 buttons=QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+                                 default_button=QMessageBox.Yes, icon=QMessageBox.Warning)
+            if ret == QMessageBox.Yes:
+                self.save_configuration()
+            elif ret == QMessageBox.Cancel:
+                self.update_config_files_mru_menu_items()
+                return
+
+        try:
+            dash_network_sav = self.app_config.dash_network
+            self.app_config.new_configuration()
+
+            if not self.dashd_intf.initialized:
+                self.dashd_intf.initialize(self.app_config)
+            self.editing_enabled = False
+            self.configuration_to_ui()
+            self.dashd_intf.reload_configuration()
             file_name = self.app_config.app_config_file_name
             if file_name:
                 self.add_item_to_config_files_mru_list(file_name)
@@ -325,7 +343,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     cfg_file_name = cfg_file_name
             cfg_file_name_part = ' - ' + cfg_file_name if cfg_file_name else ''
         else:
-            cfg_file_name_part = '  <UNNAMED>'
+            cfg_file_name_part = '  (new file)'
 
         if self.app_config.config_file_encrypted:
             encrypted_part = ' (Encrypted)'
@@ -335,6 +353,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         title = f'{APP_NAME_SHORT}{app_version_part}{testnet_part}{cfg_file_name_part}{encrypted_part}'
 
         self.setWindowTitle(title)
+
+    @pyqtSlot(bool)
+    def on_action_new_configuration_triggered(self, _):
+        try:
+            self.new_configuration_file()
+        except Exception as e:
+            self.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_load_config_file_triggered(self, checked):
@@ -354,6 +379,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.error_msg(str(e), True)
 
     def save_configuration(self, file_name: str = None):
+        if self.main_view.is_editing_enabled():
+            self.main_view.apply_masternode_changes()
         self.app_config.save_to_file(hw_session=self.hw_session, file_name=file_name)
         file_name = self.app_config.app_config_file_name
         if file_name:
@@ -579,14 +606,14 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                                 msg = "New version (" + remote_version_str + ') available. Go to the project website: <a href="' + \
                                       PROJECT_URL + '">open</a>.'
 
-                            self.add_app_message(DispMessage.NEW_VERSION, msg, 'info')
+                            self.add_app_message(DispMessage.NEW_VERSION, msg, AppTextMessageType.INFO)
                         else:
                             if force_check:
                                 self.add_app_message(DispMessage.NEW_VERSION, "You have the latest version of %s."
-                                                     % APP_NAME_SHORT, 'info')
+                                                     % APP_NAME_SHORT, AppTextMessageType.INFO)
                     elif force_check:
                         self.add_app_message(DispMessage.NEW_VERSION, "Could not read the remote version number.",
-                                              'warn')
+                                              AppTextMessageType.WARN)
 
         except Exception:
             logging.exception('Exception occurred while loading/processing the project remote configuration')
@@ -669,13 +696,13 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                     self.add_app_message(
                         DispMessage.DASH_NET_CONNECTION,
                         'Dashd is synchronizing: AssetID: %s, AssetName: %s' %
-                        (str(mnsync.get('AssetID', '')), str(mnsync.get('AssetName', ''))), 'warn')
+                        (str(mnsync.get('AssetID', '')), str(mnsync.get('AssetName', ''))), AppTextMessageType.WARN)
                     cond.wait(mtx, 5000)
                 self.del_app_message(DispMessage.DASH_NET_CONNECTION)
             except Exception as e:
                 self.is_dashd_syncing = False
                 self.dashd_connection_ok = False
-                self.add_app_message(DispMessage.DASH_NET_CONNECTION, str(e), 'error')
+                self.add_app_message(DispMessage.DASH_NET_CONNECTION, str(e), AppTextMessageType.ERROR)
             finally:
                 mtx.unlock()
                 self.wait_for_dashd_synced_thread = None
@@ -706,7 +733,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 self.is_dashd_syncing = False
                 self.dashd_connection_ok = False
                 self.show_connection_failed()
-                self.add_app_message(DispMessage.DASH_NET_CONNECTION, err, 'error')
+                self.add_app_message(DispMessage.DASH_NET_CONNECTION, err, AppTextMessageType.ERROR)
 
         def connect_finished():
             """
@@ -803,9 +830,9 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         for m_id in self.app_messages:
             m = self.app_messages[m_id]
             if not m.hidden:
-                if m.type == 'info':
+                if m.type == AppTextMessageType.INFO:
                     s = 'color:green'
-                elif m.type == 'warn':
+                elif m.type == AppTextMessageType.WARN:
                     s = 'background-color:rgb(255,128,0);color:white;'
                 else:
                     s = 'background-color:red;color:white;'
@@ -823,11 +850,10 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             self.lblMessage.setText(t)
             self.layMessage.setContentsMargins(left, top, right, 4)
 
-    def add_app_message(self, msg_id: int, text: str, type: str):
+    @pyqtSlot(int, str, object)
+    def add_app_message(self, msg_id: int, text: str, type: AppTextMessageType):
         """
         Display message in the app message area.
-        :param text: Text to be displayed. If Text is empty, message area will be hidden. 
-        :param color: Color of text.
         """
         def set_message(msg_id: int, text, type):
             m = self.app_messages.get(msg_id)

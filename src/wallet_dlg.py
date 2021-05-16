@@ -499,6 +499,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.connect_hw()
         elif index == 1:
             self.utxo_src_mode = MAIN_VIEW_MASTERNODE_LIST
+            self.update_hw_info()
         else:
             raise Exception('Invalid index.')
         self.on_utxo_src_hash_changed()

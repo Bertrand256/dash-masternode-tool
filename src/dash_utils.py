@@ -161,7 +161,7 @@ def generate_wif_privkey(dash_network: str, compressed: bool = False):
     return base58.b58encode(data + checksum)
 
 
-def validate_wif_privkey(privkey: str, dash_network: str):
+def validate_wif_privkey(privkey: str, dash_network: str) -> bool:
     try:
         data = base58.b58decode(privkey)
         if len(data) not in (37, 38):
@@ -233,10 +233,29 @@ def bls_privkey_to_pubkey(privkey: str) -> str:
     :param privkey: BLS privkey as a hex string
     :return: BLS pubkey as a hex string.
     """
-    pk = bls.PrivateKey.from_bytes(bytes.fromhex(privkey))
+    pk_bin = bytes.fromhex(privkey)
+    if len(pk_bin) != 32:
+        raise Exception(f'Invalid private key length: {len(pk_bin)} (should be 32)')
+    pk = bls.PrivateKey.from_bytes(pk_bin)
     pubkey = pk.get_public_key()
     pubkey_bin = pubkey.serialize()
     return pubkey_bin.hex()
+
+
+def validate_bls_privkey(privkey: str) -> bool:
+    try:
+        pub = bls_privkey_to_pubkey(privkey)
+        return True if pub else False
+    except Exception:
+        return False
+
+
+def validate_bls_pubkey(pubkey: str) -> bool:
+    try:
+        bls.PublicKey.from_bytes(bytes.fromhex(pubkey))
+        return True
+    except Exception:
+        return False
 
 
 def num_to_varint(n):
