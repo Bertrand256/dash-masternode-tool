@@ -82,6 +82,13 @@
            </widget>
           </item>
           <item>
+           <widget class="QCommandLinkButton" name="actCreateRpcauth">
+            <property name="text">
+             <string>Create 'rpcauth' string</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <spacer name="verticalSpacer">
             <property name="orientation">
              <enum>Qt::Vertical</enum>

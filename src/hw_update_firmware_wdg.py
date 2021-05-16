@@ -1,24 +1,22 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Author: Bertrand256
+# Created on: 2021-04
+
 import binascii
 import logging
 import os
 import re
-import ssl
-import threading
-import time
 import urllib, urllib.request, urllib.parse
 from enum import Enum
 from io import BytesIO
 from typing import Callable, Optional, List, Dict, Tuple
 
-import simplejson
-from PyQt5 import QtGui, QtCore
 from PyQt5.QtCore import pyqtSlot, QItemSelection, QItemSelectionModel, Qt
 from PyQt5.QtWidgets import QWidget, QMessageBox, QTableWidgetItem
 
 import app_defs
 import hw_intf
-from app_config import AppConfig
-from app_defs import get_note_url
 from common import CancelException
 from hw_common import HWDevice, HWType, HWFirmwareWebLocation, HWModel
 from method_call_tracker import MethodCallLimit, method_call_tracker

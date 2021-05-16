@@ -2683,7 +2683,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     vote_key = mn_info.masternode_config.get_current_key_for_voting(self.app_config, self.dashd_intf)
 
                     if self.app_config.is_testnet:
-                        # todo: support for testnet voting
                         vote_sig = dash_utils.ecdsa_sign(serialize_for_sig, vote_key, self.app_config.dash_network)
                     else:
                         vote_sig = dash_utils.ecdsa_sign(serialize_for_sig, vote_key, self.app_config.dash_network)
