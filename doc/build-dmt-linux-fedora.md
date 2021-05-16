@@ -13,7 +13,7 @@ Execute the following commands from the terminal:
 [dmt@fedora /]# cd ~
 [dmt@fedora /]# mkdir dmt && cd dmt
 [dmt@fedora /]# virtualenv -p python3 venv
-[dmt@fedora /]# . venv/bin/activate
+[dmt@fedora /]# source venv/bin/activate
 [dmt@fedora /]# pip install --upgrade setuptools
 [dmt@fedora /]# git clone https://github.com/Bertrand256/dash-masternode-tool
 [dmt@fedora /]# cd dash-masternode-tool/

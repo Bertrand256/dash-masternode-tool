@@ -2,7 +2,8 @@
 
 ### Method based on physical or virtual linux machine
 
-An Ubuntu distribution with Python 3.6 is required to build DMT. This example uses Ubuntu 17.10, which comes with an appropriate version installed by default. You can verify the Python version by typing:
+An Ubuntu distribution with Python 3.8 is required to build DMT. This example uses Ubuntu 18.04, which comes with an 
+appropriate version installed by default. You can verify the Python version by typing:
 
 ```
 python3 --version
@@ -10,20 +11,20 @@ python3 --version
 
 You should see a response similar to the following:
 
-  `Python 3.6.4`
+  `Python 3.8.x`
 
 After making sure that you have the correct Python version, execute the following commands from the terminal:
 
 ```
 [dmt@ubuntu /]# sudo apt-get update
 [dmt@ubuntu /]# sudo apt-get -y upgrade
-[dmt@ubuntu /]# sudo apt-get -y install libudev-dev libusb-1.0-0-dev libfox-1.6-dev autotools-dev autoconf automake libtool libpython3-all-dev python3.6-dev python3-pip git cmake
+[dmt@ubuntu /]# sudo apt-get -y install libudev-dev libusb-1.0-0-dev libfox-1.6-dev autotools-dev autoconf automake libtool libpython3-all-dev python3.8-dev python3-pip git cmake
 [dmt@ubuntu /]# sudo pip3 install virtualenv
 [dmt@ubuntu /]# sudo pip3 install --upgrade pip
 [dmt@ubuntu /]# cd ~
 [dmt@ubuntu /]# mkdir dmt && cd dmt
-[dmt@ubuntu /]# virtualenv -p python3.6 venv
-[dmt@ubuntu /]# . venv/bin/activate
+[dmt@ubuntu /]# virtualenv -p python3.8 venv
+[dmt@ubuntu /]# source venv/bin/activate
 [dmt@ubuntu /]# pip install --upgrade setuptools
 [dmt@ubuntu /]# git clone https://github.com/Bertrand256/dash-masternode-tool
 [dmt@ubuntu /]# cd dash-masternode-tool/
