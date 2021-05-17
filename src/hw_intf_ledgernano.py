@@ -185,6 +185,7 @@ def get_device_list(allow_bootloader_mode: bool = False) -> List[hw_common.HWDev
                 in_bootloader_mode = False
                 initialized = True
                 version = None
+                dev = None
                 try:
                     dev = HidDevice(bytes(d.__getattribute__('hidDevicePath'), 'ascii'))
                     client = LedgerClient(device=dev)
@@ -192,10 +193,12 @@ def get_device_list(allow_bootloader_mode: bool = False) -> List[hw_common.HWDev
                     in_bootloader_mode = version_info.flags.recovery_mode is True
                     initialized = version_info.flags.is_onboarded is True
                     version = version_info.se_version
-                    dev.close()
-                    del client
                 except Exception as e:
-                    pass
+                    logging.exception(str(e))
+                finally:
+                    if dev:
+                        dev.close()
+                        del client
 
                 # device_transport_id = hashlib.sha256(str(d.hidDevicePath).encode('ascii')).hexdigest()
 

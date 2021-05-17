@@ -552,12 +552,15 @@ def change_pin(hw_client, remove=False):
 
 
 def enable_passphrase(hw_client, passphrase_enabled):
-    hw_client.apply_settings(use_passphrase=passphrase_enabled)
-
-
-def apply_settings(hw_client, label=None, language=None, use_passphrase=None, homescreen=None):
     if hw_client:
-        hw_client.apply_settings()
+        hw_client.apply_settings(use_passphrase=passphrase_enabled)
+    else:
+        raise Exception('HW client not set.')
+
+
+def set_label(hw_client, label: str):
+    if hw_client:
+        hw_client.apply_settings(label=label)
     else:
         raise Exception('HW client not set.')
 

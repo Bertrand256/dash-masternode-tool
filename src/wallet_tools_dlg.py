@@ -20,6 +20,7 @@ from create_rpcauth_wdg import WdgCreateRpcauth
 from hw_common import HWDevice
 from hw_initialize_wdg import WdgInitializeHw
 from hw_settings_wdg import WdgHwSettings
+from hw_udev_info_wdg import WdgHwUdevRules
 from hw_update_firmware_wdg import WdgHwUpdateFirmware
 from hw_wipe_device_wdg import WdgWipeHwDevice
 from hw_recovery_wdg import WdgRecoverHw
@@ -35,7 +36,8 @@ ACTION_INITIALIZE_HW = 3
 ACTION_WIPE_HW = 4
 ACTION_UPDATE_HW_FIRMWARE = 5
 ACTION_CREATE_RPCAUTH = 6
-ACTION_SPLIT_MERGE_SEED = 7
+ACTION_UDEV_RULES = 7
+ACTION_SPLIT_MERGE_SEED = 8
 
 
 log = logging.getLogger('dmt.wallet_tools_dlg')
@@ -72,7 +74,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         self.setWindowTitle("Wallet tools")
         WndUtils.change_widget_font_attrs(self.lblMessage, point_size_diff=3, bold=True)
         for action in (self.actHwSettings, self.actRecoverHw, self.actInitializeHw, self.actWipeHw,
-                  self.actUpdateHwFirmware, self.actCreateRpcauth):
+                  self.actUpdateHwFirmware, self.actCreateRpcauth, self.actUdevRulesInfo):
             WndUtils.change_widget_font_attrs(action, point_size_diff=1, bold=False)
         self.activate_menu_page()
 
@@ -178,6 +180,13 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         except Exception as e:
             self.error_msg(str(e), True)
 
+    @pyqtSlot(bool)
+    def on_actUdevRulesInfo_clicked(self):
+        try:
+            self.setup_action_widget(ACTION_UDEV_RULES)
+        except Exception as e:
+            self.error_msg(str(e), True)
+
     def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
         self.wdg_select_hw_device.update()
 
@@ -270,6 +279,8 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
                 return ACTION_UPDATE_HW_FIRMWARE
             elif isinstance(self.action_widget, WdgCreateRpcauth):
                 return ACTION_CREATE_RPCAUTH
+            elif isinstance(self.action_widget, WdgHwUdevRules):
+                return ACTION_UDEV_RULES
             else:
                 raise Exception('Internal error: not supported type of the action widget')
         else:
@@ -303,6 +314,9 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
                     self.action_layout.addWidget(self.action_widget)
                 elif action == ACTION_CREATE_RPCAUTH:
                     self.action_widget = WdgCreateRpcauth(self, self.hw_devices)
+                    self.action_layout.addWidget(self.action_widget)
+                elif action == ACTION_UDEV_RULES:
+                    self.action_widget = WdgHwUdevRules(self, self.hw_devices)
                     self.action_layout.addWidget(self.action_widget)
                 else:
                     raise Exception('Internal error: not supported action type')

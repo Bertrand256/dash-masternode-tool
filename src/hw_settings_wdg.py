@@ -4,13 +4,11 @@ from enum import Enum
 from typing import Callable, Optional, Dict, Tuple
 
 from PyQt5 import QtGui, QtCore
-from PyQt5.QtCore import pyqtSlot
-from PyQt5.QtWidgets import QWidget, QMessageBox
+from PyQt5.QtWidgets import QWidget, QMessageBox, QInputDialog
 
 import app_utils
 import hw_intf
 from app_defs import get_note_url
-from common import CancelException
 from hw_common import HWDevice, HWType, HWModel, HWFirmwareWebLocation
 from method_call_tracker import method_call_tracker, MethodCallTracker, MethodCallLimit
 from thread_fun_dlg import CtrlObject
@@ -62,6 +60,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
         self.btnEnDisWipeCode.clicked.connect(self.on_wipe_code_enable_disable)
         self.btnEnDisSDCardProtection.clicked.connect(self.on_sd_card_protection_enable_disable)
         self.btnRefreshSDCardProtection.clicked.connect(self.on_sd_card_protection_refresh)
+        self.btnChangeLabel.clicked.connect(self.on_change_label)
 
     def initialize(self):
         ActionPageBase.initialize(self)
@@ -255,6 +254,11 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
                         self.btnEnDisSDCardProtection.setText('Enable')
                         self.btnEnDisSDCardProtection.setDisabled(True)
                         self.btnRefreshSDCardProtection.setDisabled(True)
+
+                    if self.cur_hw_device.device_label:
+                        self.lblLabelValue.setText(self.cur_hw_device.device_label)
+                    else:
+                        self.lblLabelValue.setText('not set')
             else:
                 self.show_message_page('Connect Trezor/Keepkey hardware wallet')
         except Exception as e:
@@ -281,6 +285,13 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
     def on_pin_change(self, _):
         if self.cur_hw_device and self.cur_hw_device.hw_client:
             self.hw_devices.change_pin(self.cur_hw_device, remove=False)
+            self.update_ui()
+
+    @handle_hw_exceptions
+    def on_change_label(self, _):
+        new_label, ok = QInputDialog.getText(self, 'HW label', 'Enter a new label for your device')
+        if ok:
+            self.hw_devices.set_label(self.cur_hw_device, new_label)
             self.update_ui()
 
     @handle_hw_exceptions

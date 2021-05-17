@@ -26,7 +26,7 @@ import app_utils
 import hw_intf
 from app_config import AppConfig, MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING
 from app_defs import COLOR_ERROR_STR, COLOR_WARNING_STR, COLOR_OK_STR, COLOR_ERROR, COLOR_WARNING, COLOR_OK, \
-    AppTextMessageType
+    AppTextMessageType, SCREENSHOT_MODE
 from common import CancelException
 from dashd_intf import DashdInterface, Masternode
 from ext_item_model import ExtSortFilterItemModel, TableModelColumn, HorizontalAlignment
@@ -703,7 +703,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
             self.refresh_status_thread_ref = WndUtils.run_thread(self, self.refresh_status_thread, (),
                                                                  on_thread_finish=update)
 
-        if self.app_config.show_dash_value_in_fiat and self.app_config.is_mainnet:
+        if self.app_config.show_dash_value_in_fiat and (self.app_config.is_mainnet or SCREENSHOT_MODE):
             if not self.refresh_price_thread_ref and \
                     int(time.time()) - self.last_dash_price_fetch_ts >= DASH_PRICE_FETCH_INTERVAL_SECONDS:
                 self.refresh_price_thread_ref = WndUtils.run_thread(self, self.refresh_price_thread, (),
@@ -1037,7 +1037,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
 
     def refresh_price_thread(self, ctrl):
         try:
-            if self.app_config.show_dash_value_in_fiat and self.app_config.is_mainnet:
+            if self.app_config.show_dash_value_in_fiat and (self.app_config.is_mainnet or SCREENSHOT_MODE):
                 resp = requests.get('https://api.kraken.com/0/public/Ticker?pair=DASHUSD')
                 j = resp.json()
                 r = j.get('result')
@@ -1065,7 +1065,8 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 if show_dash_lbl:
                     ret_str += ' DASH'
 
-            if self.app_config.is_mainnet and self.app_config.show_dash_value_in_fiat and show_fiat_part:
+            if (self.app_config.is_mainnet or SCREENSHOT_MODE) and self.app_config.show_dash_value_in_fiat and \
+                    show_fiat_part:
                 if ret_str:
                     ret_str += ' / '
                 ret_str += app_utils.to_string(round(amount * self.last_dash_price_usd, 2))
@@ -1106,7 +1107,7 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
 
             status += f'<tr><td class="title">Transactions in mempool</td><td class="value">{str(gi.mempool_entries_count) if gi.loaded else "?"}</td></tr>'
 
-            if self.app_config.is_mainnet and self.app_config.show_dash_value_in_fiat:
+            if (self.app_config.is_mainnet or SCREENSHOT_MODE) and self.app_config.show_dash_value_in_fiat:
                 price_str = app_utils.to_string(self.last_dash_price_usd) if self.last_dash_price_usd is not None \
                     else '?'
                 status += f'<tr><td class="title">Dash price (Kraken)</td><td class="value">{price_str} USD</td></tr>'

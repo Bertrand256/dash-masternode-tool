@@ -89,6 +89,13 @@
            </widget>
           </item>
           <item>
+           <widget class="QCommandLinkButton" name="actUdevRulesInfo">
+            <property name="text">
+             <string>Linux udev rules</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <spacer name="verticalSpacer">
             <property name="orientation">
              <enum>Qt::Vertical</enum>

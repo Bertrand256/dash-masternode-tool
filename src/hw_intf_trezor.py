@@ -558,6 +558,21 @@ def set_wipe_code(hw_client, remove=False):
         raise Exception('HW client not set.')
 
 
+def set_label(hw_client, label: str):
+    if hw_client:
+        try:
+            device.apply_settings(hw_client, label=label)
+        except exceptions.Cancelled:
+            pass
+        except exceptions.TrezorFailure as e:
+            if e.failure.message == 'Device not initialized':
+                raise HwNotInitialized(e.failure.message)
+            else:
+                raise
+    else:
+        raise Exception('HW client not set.')
+
+
 def sd_protect(hw_client, operation: Literal["enable", "disable", "refresh"]):
     if hw_client:
         op_code = {

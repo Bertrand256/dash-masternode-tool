@@ -16,3 +16,4 @@ more-itertools
 btchip-python
 ledgerwallet
 python-bls
+construct==2.10.60

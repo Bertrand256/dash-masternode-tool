@@ -123,7 +123,8 @@ def get_hw_device_state_str(hw_device: HWDevice):
     dev_state_str = ''
     if hw_device:
         dev_state_str = hw_device.device_id + '|' + ('B' if hw_device.bootloader_mode else 'NB') + '|' + \
-                   ('I' if hw_device.initialized else 'NI') + '|' + ('L' if hw_device.locked else 'U')
+                   ('I' if hw_device.initialized else 'NI') + '|' + ('L' if hw_device.locked else 'U') + '|' + \
+                   str(hw_device.device_label)
     return dev_state_str
 
 
@@ -133,17 +134,26 @@ def get_device_list(hw_types: Tuple[HWType, ...], allow_bootloader_mode: bool = 
     dev_list = []
 
     if HWType.trezor in hw_types:
-        devs = trezor.get_device_list(allow_bootloader_mode=allow_bootloader_mode,
-                                      use_webusb=use_webusb, use_bridge=use_bridge, use_udp=use_udp, use_hid=use_hid)
-        dev_list.extend(devs)
+        try:
+            devs = trezor.get_device_list(allow_bootloader_mode=allow_bootloader_mode,
+                                          use_webusb=use_webusb, use_bridge=use_bridge, use_udp=use_udp, use_hid=use_hid)
+            dev_list.extend(devs)
+        except Exception as e:
+            log.exception('Exception while connecting Trezor device: ' + str(e))
 
     if HWType.keepkey in hw_types:
-        devs = keepkey.get_device_list(passphrase_encoding, allow_bootloader_mode=allow_bootloader_mode)
-        dev_list.extend(devs)
+        try:
+            devs = keepkey.get_device_list(passphrase_encoding, allow_bootloader_mode=allow_bootloader_mode)
+            dev_list.extend(devs)
+        except Exception as e:
+            log.exception('Exception while connecting Keepkey device: ' + str(e))
 
     if HWType.ledger_nano in hw_types:
-        devs = ledger.get_device_list(allow_bootloader_mode=allow_bootloader_mode)
-        dev_list.extend(devs)
+        try:
+            devs = ledger.get_device_list(allow_bootloader_mode=allow_bootloader_mode)
+            dev_list.extend(devs)
+        except Exception as e:
+            log.exception('Exception while connecting Ledger Nano device: ' + str(e))
 
     return dev_list
 
@@ -288,6 +298,19 @@ def set_passphrase_option(hw_device: HWDevice, enabled: bool):
         raise Exception('Ledger Nano is not supported.')
     else:
         logging.error('Invalid HW type: ' + str(hw_device.hw_type))
+
+
+@action_on_device_message()
+def set_label(hw_device: HWDevice, label: str):
+    if hw_device and hw_device.hw_client:
+        if hw_device.hw_type == HWType.trezor:
+            return trezor.set_label(hw_device.hw_client, label)
+        elif hw_device.hw_type == HWType.keepkey:
+            return keepkey.set_label(hw_device.hw_client, label)
+        elif hw_device.hw_type == HWType.ledger_nano:
+            raise Exception('Ledger Nano S is not supported.')
+        else:
+            logging.error('Invalid HW type: ' + str(hw_device.hw_type))
 
 
 @action_on_device_message()
@@ -819,6 +842,13 @@ class HWDevices(QObject):
     def set_sd_protect(hw_device: HWDevice, operation: Literal["enable", "disable", "refresh"]):
         if hw_device and hw_device.hw_client:
             set_sd_protect(hw_device, operation)
+
+    @hw_connection_tracker
+    def set_label(self, hw_device: HWDevice, label: str):
+        if hw_device and hw_device.hw_client:
+            set_label(hw_device, label)
+            if hw_device.hw_type in (HWType.trezor, HWType.keepkey) and hw_device.hw_client:
+                trezor.apply_device_attributes(hw_device, hw_device.hw_client)
 
     @staticmethod
     def hw_encrypt_value(hw_device: HWDevice, bip32_path_n: List[int], label: str,
