@@ -81,7 +81,7 @@ masternode collateral is controlled by a hardware wallet such as Trezor, KeepKey
 - [x] Ledger Nano S
 
 Most of the application features are accessible from the main program window:  
-![Main window](doc/img/dmt-main-window.png)
+![Main window](doc/img/dmt-main-window-mn-list.png)
 
 # Configuration
 
