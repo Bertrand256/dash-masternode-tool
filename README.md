@@ -1,6 +1,6 @@
-## OUTDATED
-Please note that currently the documentation lags behind the development of the program, in particular in the area 
-related to starting masternodes. It will be improved according to the resources available. 
+
+Please note that currently the documentation lags behind the development of the program. It will be 
+improved over time. 
 
 # Dash Masternode Tool (DMT)
 
@@ -40,19 +40,33 @@ related to starting masternodes. It will be improved according to the resources 
 
 ## Masternodes
 
-Dash masternodes are full nodes which are incentivized by receiving a share of the block reward as payment in return for the tasks they perform for the network, of which the most important include participation in *InstantSend* and *PrivateSend* transactions. In order to run a masternode, apart from setting up a server which runs the software, you must dedicate 1000 Dash as *collateral*, which is *"tied up"* in your node as long as you want it to be considered a masternode by the network. It is worth mentioning that the private key controlling the funds can (and for security reasons, should) be kept separately from the masternode server itself.
+Dash masternodes are full nodes which are incentivized by receiving a share of the block reward as payment in return 
+for the tasks they perform for the network, of which the most important include participation in *InstantSend* 
+and *PrivateSend* transactions. In order to run a masternode, apart from setting up a server which runs the 
+software, you must dedicate 1000 Dash as *collateral*, which is *"tied up"* in your node as long as you want 
+it to be considered a masternode by the network. It is worth mentioning that the private key controlling the 
+funds can (and for security reasons, should) be kept separately from the masternode server itself.
 
-A server with the Dash daemon software installed will operate as a Dash full node, but before the rest of the network accepts it as a legitimate masternode, one more thing must happen: the person controlling the node must prove that they are also in control of the private key to the node's 1000 Dash *collateral*. This is achieved by sending a special message to the network (`start masternode` message), signed by this private key.
+A server with the Dash daemon software installed will operate as a Dash full node, but before the rest of the 
+network accepts it as a legitimate masternode, one more thing must happen: the person controlling the node 
+must prove that they are also in control of the private key to the node's 1000 Dash *collateral*. 
+This is achieved by sending a special transaction to the network (ProRegTx), signed by this private key.
 
-This action can be carried out using the *Dash Core* reference software client. As can be expected, this requires sending 1000 Dash to an address controlled by the *Dash Core* wallet. After the recent increase in the value of Dash and a burst in the amount of malware distributed over the Internet, you do not have to be paranoid to conclude that keeping large amounts of funds in a software wallet is not the most secure option. For these reasons, it is highly recommended to use a **hardware wallet** for this purpose.
+This action can be carried out using the *Dash Core* reference software client. As can be expected, this 
+requires sending 1000 Dash to an address controlled by the *Dash Core* wallet. After the recent increase 
+in the value of Dash and a burst in the amount of malware distributed over the Internet, you do not have 
+to be paranoid to conclude that keeping large amounts of funds in a software wallet is not the most secure option. 
+For these reasons, it is highly recommended to use a **hardware wallet** for this purpose.
 
 # Dash Masternode Tool
 
-The main purpose of the application is to give masternode operators (MNOs) the ability to send the `start masternode` command through an easy to use a graphical user interface if the masternode collateral is controlled by a hardware wallet such as Trezor, KeepKey or Ledger.
+The main purpose of the application is to give masternode operators (MNOs) the ability to 
+send the ProRegTx with an easy to use a graphical user interface if the 
+masternode collateral is controlled by a hardware wallet such as Trezor, KeepKey or Ledger.
 
 ## Feature list
 
-* Sending the `start masternode` command if the collateral is controlled by a hardware wallet
+* Sending the `ProRegTx` transaction if the collateral is controlled by a hardware wallet
 * Transferring masternode earnings safely, without touching the 1000 Dash funding transaction
 * Signing messages with a hardware wallet
 * Voting on proposals

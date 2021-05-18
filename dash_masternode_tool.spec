@@ -2,6 +2,8 @@
 import sys
 import os.path
 import platform
+from PyInstaller.utils.hooks import (collect_data_files, collect_submodules,
+                                     collect_dynamic_libs)
 
 block_cipher = None
 
@@ -24,6 +26,17 @@ data_files = [
  ('version.txt', '.')
 ]
 
+# source: https://github.com/akhavr/electrum-dash/blob/master/contrib/osx/osx.spec
+hiddenimports = []
+# hiddenimports += collect_submodules('pkg_resources')  # workaround for https://github.com/pypa/setuptools/issues/1963
+hiddenimports += collect_submodules('trezorlib')
+hiddenimports += collect_submodules('btchip')
+hiddenimports += collect_submodules('keepkeylib')
+hiddenimports += collect_submodules('websocket')
+hiddenimports += [
+    'PyQt5.sip',
+    'usb1'
+]
 
 def add_data_file(file: str, dest_dir: str):
     global data_files
@@ -47,8 +60,53 @@ lib_path = next(p for p in sys.path if 'site-packages' in p)
 
 add_data_file(os.path.join(lib_path, 'bitcoin/english.txt'), '/bitcoin')
 add_data_file(os.path.join(lib_path, 'mnemonic/wordlist/english.txt'), '/mnemonic/wordlist')
-add_data_file(os.path.join(lib_path, 'trezorlib/coins.json'), '/trezorlib')
 add_data_file(os.path.join(lib_path, 'trezorlib/transport'), 'trezorlib/transport')
+
+
+excludes = [
+    'PyQt5.QtBluetooth',
+    'PyQt5.QtCLucene',
+    'PyQt5.QtDBus',
+    'PyQt5.Qt5CLucene',
+    'PyQt5.QtDesigner',
+    'PyQt5.QtDesignerComponents',
+    'PyQt5.QtHelp',
+    'PyQt5.QtLocation',
+    'PyQt5.QtMultimedia',
+    'PyQt5.QtMultimediaQuick_p',
+    'PyQt5.QtMultimediaWidgets',
+    'PyQt5.QtNetwork',
+    'PyQt5.QtNetworkAuth',
+    'PyQt5.QtNfc',
+    'PyQt5.QtOpenGL',
+    'PyQt5.QtPositioning',
+    'PyQt5.QtQml',
+    'PyQt5.QtQuick',
+    'PyQt5.QtQuickParticles',
+    'PyQt5.QtQuickWidgets',
+    'PyQt5.QtSensors',
+    'PyQt5.QtSerialPort',
+    'PyQt5.QtSql',
+    'PyQt5.Qt5Sql',
+    'PyQt5.Qt5Svg',
+    'PyQt5.QtTest',
+    'PyQt5.QtWebChannel',
+    'PyQt5.QtWebEngine',
+    'PyQt5.QtWebEngineCore',
+    'PyQt5.QtWebEngineWidgets',
+    'PyQt5.QtWebKit',
+    'PyQt5.QtWebKitWidgets',
+    'PyQt5.QtWebSockets',
+    'PyQt5.QtXml',
+    'PyQt5.QtXmlPatterns',
+    'PyQt5.QtWebProcess',
+    'PyQt5.QtWinExtras',
+]
+
+data_files += collect_data_files('trezorlib')
+data_files += collect_data_files('btchip')
+data_files += collect_data_files('keepkeylib')
+
 
 if os_type == 'darwin':
     add_binary_file('/usr/local/lib/libusb-1.0.dylib', '.')
@@ -62,13 +120,24 @@ a = Analysis(['src/dash_masternode_tool.py'],
              pathex=[base_dir],
              binaries=binary_files,
              datas=data_files,
-             hiddenimports=['usb1'],
+             hiddenimports=hiddenimports,
              hookspath=[],
              runtime_hooks=[],
-             excludes=[],
+             excludes=excludes,
              win_no_prefer_redirects=False,
              win_private_assemblies=False,
              cipher=block_cipher)
+
+# source: https://github.com/akhavr/electrum-dash/blob/master/contrib/osx/osx.spec
+# Strip out parts of Qt that we never use. Reduces binary size by tens of MBs. see #4815
+qt_bins2remove = ('qtweb', 'qt3d', 'qtgame', 'qtdesigner', 'qtquick', 'qtlocation', 'qttest', 'qtxml')
+print("Removing Qt binaries:", *qt_bins2remove)
+for x in a.binaries.copy():
+    for r in qt_bins2remove:
+        if x[0].lower().startswith(r):
+            a.binaries.remove(x)
+            print('----> Removed x =', x)
+
 
 pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)

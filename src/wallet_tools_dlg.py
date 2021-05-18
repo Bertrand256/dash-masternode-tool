@@ -71,7 +71,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
 
     def setupUi(self, dlg):
         ui_wallet_tools_dlg.Ui_WalletToolsDlg.setupUi(self, self)
-        self.setWindowTitle("Wallet tools")
+        self.setWindowTitle("Toolbox")
         WndUtils.change_widget_font_attrs(self.lblMessage, point_size_diff=3, bold=True)
         for action in (self.actHwSettings, self.actRecoverHw, self.actInitializeHw, self.actWipeHw,
                   self.actUpdateHwFirmware, self.actCreateRpcauth, self.actUdevRulesInfo):
