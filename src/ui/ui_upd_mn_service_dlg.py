@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_upd_mn_service_dlg.ui'
+# Form implementation generated from reading ui file ui_upd_mn_service_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -171,13 +171,3 @@ class Ui_UpdMnServiceDlg(object):
         self.btnCancel.setText(_translate("UpdMnServiceDlg", "Cancel"))
         self.btnSendUpdateTx.setText(_translate("UpdMnServiceDlg", "Send Update Transaction"))
         self.btnClose.setText(_translate("UpdMnServiceDlg", "Close"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    UpdMnServiceDlg = QtWidgets.QDialog()
-    ui = Ui_UpdMnServiceDlg()
-    ui.setupUi(UpdMnServiceDlg)
-    UpdMnServiceDlg.show()
-    sys.exit(app.exec_())

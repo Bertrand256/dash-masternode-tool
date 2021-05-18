@@ -9,7 +9,7 @@ import time
 from collections import namedtuple
 from enum import Enum
 from functools import partial
-from typing import List, Union, Callable
+from typing import List, Union, Callable, Optional
 import ipaddress
 
 from PyQt5 import QtWidgets, QtGui
@@ -59,31 +59,32 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.main_dlg = main_dlg
         self.masternode = masternode
         self.app_config = config
-        self.dashd_intf:DashdInterface = dashd_intf
+        self.dashd_intf: DashdInterface = dashd_intf
+        self.v016_network: bool = False
         self.on_proregtx_success_callback = on_proregtx_success_callback
         self.style = '<style>.info{color:darkblue} .warning{color:#ff6600} .error{background-color:red;color:white}</style>'
         self.operator_reward_saved = None
-        self.owner_pkey_generated: str = None
-        self.operator_pkey_generated: str = None
-        self.voting_pkey_generated: str = None
+        self.owner_pkey_generated: Optional[str] = None
+        self.operator_pkey_generated: Optional[str] = None
+        self.voting_pkey_generated: Optional[str] = None
         self.current_step = STEP_MN_DATA
         self.step_stack: List[int] = []
         self.proregtx_prepare_thread_ref = None
         self.deterministic_mns_spork_active = True
-        self.dmn_collateral_tx: str = None
-        self.dmn_collateral_tx_index: int = None
-        self.dmn_collateral_tx_address: str = None
-        self.dmn_collateral_tx_address_path: str = None
-        self.dmn_ip: str = None
-        self.dmn_tcp_port: int = None
-        self.dmn_owner_payout_addr: str = None
+        self.dmn_collateral_tx: Optional[str] = None
+        self.dmn_collateral_tx_index: Optional[int] = None
+        self.dmn_collateral_tx_address: Optional[str] = None
+        self.dmn_collateral_tx_address_path: Optional[str] = None
+        self.dmn_ip: Optional[str] = None
+        self.dmn_tcp_port: Optional[int] = None
+        self.dmn_owner_payout_addr: Optional[str] = None
         self.dmn_operator_reward: int = 0
-        self.dmn_owner_privkey: str = None
-        self.dmn_owner_address: str = None
-        self.dmn_operator_privkey: str = None
-        self.dmn_operator_pubkey: str = None
-        self.dmn_voting_privkey: str = None
-        self.dmn_voting_address: str = None
+        self.dmn_owner_privkey: Optional[str] = None
+        self.dmn_owner_address: Optional[str] = None
+        self.dmn_operator_privkey: Optional[str] = None
+        self.dmn_operator_pubkey: Optional[str] = None
+        self.dmn_voting_privkey: Optional[str] = None
+        self.dmn_voting_address: Optional[str] = None
         self.dmn_owner_key_type = InputKeyType.PRIVATE
         self.dmn_operator_key_type = InputKeyType.PRIVATE
         self.dmn_voting_key_type = InputKeyType.PRIVATE
@@ -98,40 +99,40 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
         self.dmn_reg_tx_hash = ''
         self.manual_signed_message = False
-        self.last_manual_prepare_string: str = None
+        self.last_manual_prepare_string: Optional[str] = None
         self.wait_for_confirmation_timer_id = None
         self.show_field_hinds = True
         self.summary_info = []
         if self.masternode:
-            self.dmn_collateral_tx_address_path = self.masternode.collateralBip32Path
+            self.dmn_collateral_tx_address_path = self.masternode.collateral_bip32_path
         self.bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.main_dlg.hw_session,
                                         self.app_config.db_intf, self.dashd_intf, self.app_config.dash_network)
         self.finishing = False
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_reg_masternode_dlg.Ui_RegMasternodeDlg.setupUi(self, self)
-        self.closeEvent = self.closeEvent
         self.restore_cache_settings()
-        self.edtCollateralTx.setText(self.masternode.collateralTx)
-        if self.masternode.collateralTx:
-            sz = self.edtCollateralTx.fontMetrics().size(0, self.masternode.collateralTx + '000')
+        self.edtCollateralTx.setText(self.masternode.collateral_tx)
+        if self.masternode.collateral_tx:
+            sz = self.edtCollateralTx.fontMetrics().size(0, self.masternode.collateral_tx + '000')
             self.edtCollateralTx.setMinimumWidth(sz.width())
-        self.edtCollateralIndex.setText(self.masternode.collateralTxIndex)
+        self.edtCollateralIndex.setText(self.masternode.collateral_tx_index)
         self.edtIP.setText(self.masternode.ip)
         self.edtPort.setText(self.masternode.port)
-        self.edtPayoutAddress.setText(self.masternode.collateralAddress)
+        self.edtPayoutAddress.setText(self.masternode.collateral_address)
         self.chbWholeMNReward.setChecked(True)
         self.lblProtxSummary2.linkActivated.connect(self.save_summary_info)
         self.lblCollateralTxMsg.sizePolicy().setHeightForWidth(True)
+        self.get_network_info()
         self.prepare_keys()
         self.btnClose.hide()
-        self.setIcon(self.btnManualFundingAddressPaste, 'content-paste@16px.png')
-        self.setIcon(self.btnManualProtxPrepareCopy, 'content-copy@16px.png')
-        self.setIcon(self.btnManualProtxPrepareResultPaste, 'content-paste@16px.png')
-        self.setIcon(self.btnManualProtxSubmitCopy, 'content-copy@16px.png')
-        self.setIcon(self.btnManualTxHashPaste, 'content-paste@16px.png')
-        self.setIcon(self.btnSummaryDMNOperatorKeyCopy, 'content-copy@16px.png')
+        WndUtils.set_icon(self, self.btnManualFundingAddressPaste, 'content-paste@16px.png')
+        WndUtils.set_icon(self, self.btnManualProtxPrepareCopy, 'content-copy@16px.png')
+        WndUtils.set_icon(self, self.btnManualProtxPrepareResultPaste, 'content-paste@16px.png')
+        WndUtils.set_icon(self, self.btnManualProtxSubmitCopy, 'content-copy@16px.png')
+        WndUtils.set_icon(self, self.btnManualTxHashPaste, 'content-paste@16px.png')
+        WndUtils.set_icon(self, self.btnSummaryDMNOperatorKeyCopy, 'content-copy@16px.png')
         self.edtSummaryDMNOperatorKey.setStyleSheet("QLineEdit{background-color: white} "
                                                     "QLineEdit:read-only{background-color: white}")
         doc_url = app_defs.get_doc_url('deterministic-mn-migration.md')
@@ -277,6 +278,18 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             tt = 'Change input type to private key'
         self.lblVotingKey.setToolTip(tt)
 
+    def get_network_info(self):
+        try:
+            info = self.dashd_intf.getnetworkinfo()
+            ver = info.get('version', 0)
+            if ver < 170000:
+                self.v016_network = True
+            else:
+                self.v016_network = False
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
+            QTimer.singleShot(100, self.close)
+
     def prepare_keys(self):
         gen_owner = False
         gen_operator = False
@@ -290,8 +303,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             for protx in self.dashd_intf.protx('list', 'registered', True):
                 protx_state = protx.get('state')
                 if (protx_state and protx_state.get('service') == self.masternode.ip + ':' + self.masternode.port) or \
-                        (protx.get('collateralHash') == self.masternode.collateralTx and
-                         str(protx.get('collateralIndex')) == str(self.masternode.collateralTxIndex)):
+                        (protx.get('collateralHash') == self.masternode.collateral_tx and
+                         str(protx.get('collateralIndex')) == str(self.masternode.collateral_tx_index)):
                     found_protx = True
                     break
         except Exception as e:
@@ -342,7 +355,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 self.operator_pkey_generated = generate_bls_privkey()
                 self.edtOperatorKey.setText(self.operator_pkey_generated)
             except Exception as e:
-                self.errorMsg(str(e))
+                self.error_msg(str(e), True)
         else:
             if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
                 self.edtOperatorKey.setText(self.masternode.dmn_operator_private_key)
@@ -934,8 +947,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         txes_cnt = 0
         msg = ''
         break_scanning = False
-        ctrl.dlg_config_fun(dlg_title="Validating collateral transaction.", show_progress_bar=False)
-        ctrl.display_msg_fun('Verifying collateral transaction...')
+        ctrl.dlg_config(dlg_title="Validating collateral transaction.", show_progress_bar=False)
+        ctrl.display_msg('Verifying collateral transaction...')
 
         def check_break_scanning():
             nonlocal break_scanning
@@ -945,10 +958,10 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             if check_break_scanning_ext is not None and check_break_scanning_ext():
                 raise BreakFetchTransactionsException()
 
-        def fetch_txes_feeback(tx_cnt: int):
+        def fetch_txes_feedback(tx_cnt: int):
             nonlocal msg, txes_cnt
             txes_cnt += tx_cnt
-            ctrl.display_msg_fun(msg + '<br><br>' + 'Number of transactions fetched so far: ' + str(txes_cnt))
+            ctrl.display_msg(msg + '<br><br>' + 'Number of transactions fetched so far: ' + str(txes_cnt))
 
         def on_msg_link_activated(link: str):
             nonlocal break_scanning
@@ -958,7 +971,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         try:
             tx = self.dashd_intf.getrawtransaction(self.dmn_collateral_tx, 1, skip_cache=True)
         except Exception as e:
-            raise Exception('Cannot get the collateral transaction due to the following errror: ' + str(e))
+            raise Exception('Cannot get the collateral transaction due to the following error: ' + str(e))
 
         vouts = tx.get('vout')
         if vouts:
@@ -982,7 +995,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         else:
             raise Exception('Invalid collateral transaction')
 
-        ctrl.display_msg_fun('Verifying the collateral transaction address on your hardware wallet.')
+        ctrl.display_msg('Verifying the collateral transaction address on your hardware wallet.')
         if not self.main_dlg.connect_hardware_wallet():
             return False
 
@@ -999,7 +1012,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                     f'{self.dmn_collateral_tx_address_path} differs from the address stored the mn configuration '
                     f'(self.dmn_collateral_tx_address). Need to scan wallet for a correct BIP32 path.')
 
-                msg = '<span style="color:red">The BIP32 path of the collateral address from your mn config is incorret.<br></span>' \
+                msg = '<span style="color:red">The BIP32 path of the collateral address from your mn config is incorrect.<br></span>' \
                       f'Trying to find the BIP32 path of the address {self.dmn_collateral_tx_address} in your wallet.' \
                       f'<br>This may take a while (<a href="break">break</a>)...'
                 self.dmn_collateral_tx_address_path = ''
@@ -1017,15 +1030,15 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                     lbl.repaint()
                 WndUtils.call_in_main_thread(set)
 
-            ctrl.display_msg_fun(msg)
+            ctrl.display_msg(msg)
 
             # fetch the transactions that involved the addresses stored in the wallet - during this
             # all the used addresses are revealed
             addr = self.bip44_wallet.scan_wallet_for_address(self.dmn_collateral_tx_address, check_break_scanning,
-                                                             fetch_txes_feeback)
+                                                             fetch_txes_feedback)
             if not addr:
                 if not break_scanning:
-                    WndUtils.errorMsg(f'Couldn\'t find a BIP32 path of the collateral address ({self.dmn_collateral_tx_address}).')
+                    WndUtils.error_msg(f'Couldn\'t find a BIP32 path of the collateral address ({self.dmn_collateral_tx_address}).')
                 return False
             else:
                 self.dmn_collateral_tx_address_path = addr.bip32_path
@@ -1047,7 +1060,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             elif self.get_dash_node_type() == NODE_TYPE_OWN:
                 cs = STEP_MANUAL_OWN_NODE
             else:
-                self.errorMsg('You have to choose one of the two options.')
+                self.error_msg('You have to choose one of the two options.')
                 return
             self.step_stack.append(self.current_step)
 
@@ -1058,24 +1071,24 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         elif self.current_step == STEP_MANUAL_OWN_NODE:
             # check if the user passed tge protx transaction hash
             if not self.manual_signed_message:
-                self.errorMsg('It looks like you have not signed a "protx register_prepare" result.')
+                self.error_msg('It looks like you have not signed a "protx register_prepare" result.')
                 return
 
             self.dmn_reg_tx_hash = self.edtManualTxHash.text().strip()
             if not self.dmn_reg_tx_hash:
                 self.edtManualTxHash.setFocus()
-                self.errorMsg('Invalid transaction hash.')
+                self.error_msg('Invalid transaction hash.')
                 return
             try:
                 bytes.fromhex(self.dmn_reg_tx_hash)
             except Exception:
                 log.warning('Invalid transaction hash.')
                 self.edtManualTxHash.setFocus()
-                self.errorMsg('Invalid transaction hash.')
+                self.error_msg('Invalid transaction hash.')
                 return
             cs = STEP_SUMMARY
         else:
-            self.errorMsg('Invalid step')
+            self.error_msg('Invalid step')
             return
 
         prev_step = self.current_step
@@ -1088,7 +1101,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             elif self.current_step == STEP_MANUAL_OWN_NODE:
                 self.start_manual_process()
             elif self.current_step == STEP_SUMMARY:
-                self.lblProtxSummary1.setText('<b><span style="color:green">Congratultions! The transaction for your DIP-3 '
+                self.lblProtxSummary1.setText('<b><span style="color:green">Congratulations! The transaction for your DIP-3 '
                                               'masternode has been submitted and is currently awaiting confirmations.'
                                               '</b></span>')
                 if self.on_proregtx_success_callback:
@@ -1109,26 +1122,39 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
     @pyqtSlot(bool)
     def on_btnContinue_clicked(self, active):
-        self.next_step()
+        try:
+            self.next_step()
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnBack_clicked(self, active):
-        self.previous_step()
+        try:
+            self.previous_step()
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_rbDMTDashNodeType_toggled(self, active):
-        if active:
-            self.upd_node_type_info()
+        try:
+            if active:
+                self.upd_node_type_info()
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_rbOwnDashNodeType_toggled(self, active):
-        if active:
-            self.upd_node_type_info()
+        try:
+            if active:
+                self.upd_node_type_info()
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     def sign_protx_message_with_hw(self, msg_to_sign) -> str:
         sig = WndUtils.call_in_main_thread(
-            hw_intf.hw_sign_message, self.main_dlg.hw_session, self.dmn_collateral_tx_address_path,
-            msg_to_sign, 'Click the confirmation button on your hardware wallet to sign the ProTx payload message.')
+            hw_intf.hw_sign_message, self.main_dlg.hw_session, self.main_dlg.app_rt_data.hw_coin_name,
+            self.dmn_collateral_tx_address_path, msg_to_sign,
+            'Click the confirmation button on your hardware wallet to sign the ProTx payload message.')
 
         if sig.address != self.dmn_collateral_tx_address:
             log.error(f'Protx payload signature address mismatch. Is: {sig.address}, should be: '
@@ -1167,7 +1193,6 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             def call():
                 self.next_step()
             WndUtils.call_in_main_thread(call)
-
 
         try:
             try:
@@ -1218,7 +1243,10 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 set_text(self.lblProtxTransaction1, '<b>1. Preparing a ProRegTx transaction on a remote node...</b>')
 
                 if self.dmn_owner_key_type == InputKeyType.PRIVATE:
-                    owner_key = self.dmn_owner_privkey
+                    if self.v016_network:
+                        owner_key = self.dmn_owner_privkey
+                    else:
+                        owner_key = wif_privkey_to_address(self.dmn_owner_privkey, self.app_config.dash_network)
                 else:
                     owner_key = self.dmn_owner_address
 
@@ -1244,6 +1272,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                     self.lblProtxTransaction1,
                     '<b>1. Preparing a ProRegTx transaction on a remote node.</b> <span style="color:red">Failed '
                     f'with the following error: {str(e)}</span>')
+                log.exception(str(e))
                 return
 
             set_text(self.lblProtxTransaction2, '<b>Message to be signed:</b><br><code>' + msg_to_sign + '</code>')
@@ -1291,7 +1320,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
     def on_btnManualSignProtx_clicked(self):
         prepare_result = self.edtManualProtxPrepareResult.toPlainText().strip()
         if not prepare_result:
-            self.errorMsg('You need to enter a result of the "protx register_prepare" command.')
+            self.error_msg('You need to enter a result of the "protx register_prepare" command.')
             self.edtManualProtxPrepareResult.setFocus()
             return
 
@@ -1311,11 +1340,11 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 return
             except Exception as e:
                 log.exception('Signature failed.')
-                self.errorMsg(str(e))
+                self.error_msg(str(e))
                 return
 
         except Exception as e:
-            self.errorMsg('Invalid "protx register_prepare" result. Note that the text must be copied along '
+            self.error_msg('Invalid "protx register_prepare" result. Note that the text must be copied along '
                           'with curly braces.')
             return
 
@@ -1329,7 +1358,10 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             valid = validate_address(addr, self.app_config.dash_network)
             if valid:
                 if self.dmn_owner_key_type == InputKeyType.PRIVATE:
-                    owner_key = self.dmn_owner_privkey
+                    if self.v016_network:
+                        owner_key = self.dmn_owner_privkey
+                    else:
+                        owner_key = wif_privkey_to_address(self.dmn_owner_privkey, self.app_config.dash_network)
                 else:
                     owner_key = self.dmn_owner_address
 
@@ -1363,7 +1395,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             if conf:
                 h = tx.get('height')
                 self.lblProtxSummary1.setText(
-                    '<b><span style="color:green">Congratultions! The transaction for your DIP-3 masternode has been '
+                    '<b><span style="color:green">Congratulations! The transaction for your DIP-3 masternode has been '
                     f'confirmed in block {h}.</b></span> ')
                 return True
         except Exception:

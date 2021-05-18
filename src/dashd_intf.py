@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+from __future__ import annotations
 import decimal
 import functools
 import json
@@ -43,7 +44,7 @@ except ImportError:
 # how many seconds cached masternodes data are valid; cached masternode data is used only for non-critical
 # features
 MASTERNODES_CACHE_VALID_SECONDS = 60 * 60  # 60 minutes
-PROTX_CACHE_VALID_SECONDS = 3 * 60 * 60  # 60 minutes
+PROTX_CACHE_VALID_SECONDS = 60 * 60
 
 
 class ForwardServer (socketserver.ThreadingTCPServer):
@@ -123,7 +124,7 @@ class SSHTunnelThread(QThread):
             log.exception('Exception while shutting down forward server.')
 
     def run(self):
-        class SubHander(Handler):
+        class SubHandler(Handler):
             chain_host = self.remote_ip
             chain_port = self.remote_port
             ssh_transport = self.transport
@@ -133,7 +134,7 @@ class SSHTunnelThread(QThread):
             self.ready_event.set()
             log.debug('Started SSHTunnelThread, local port forwarding 127.0.0.1:%s -> %s:%s' %
                           (str(self.local_port), self.remote_ip, str(self.remote_port)))
-            self.forward_server = ForwardServer(('127.0.0.1', self.local_port), SubHander)
+            self.forward_server = ForwardServer(('127.0.0.1', self.local_port), SubHandler)
             self.forward_server.serve_forever()
             log.debug('Stopped local port forwarding 127.0.0.1:%s -> %s:%s' %
                           (str(self.local_port), self.remote_ip, str(self.remote_port)))
@@ -247,19 +248,19 @@ class DashdSSH(object):
 
             except AuthenticationException as e:
                 # This exception will be raised in the following cases:
-                #  1. a private key with password protectection is used but the user enters incorrect password
+                #  1. a private key with password protection is used but the user enters incorrect password
                 #  2. a private key exists but user's public key is not added to the server's allowed keys
                 #  3. normal login to server is performed but the user enters bad password
                 # So, in the first case, the second query for password will ask for normal password to server, not
                 #  for a private key.
 
                 if self.auth_method == 'key_pair':
-                    WndUtils.errorMsg(message=f'Authentication failed for private key: {self.private_key_path} '
+                    WndUtils.error_msg(message=f'Authentication failed for private key: {self.private_key_path} '
                     f'(username {self.username}).')
                     break
                 else:
                     if password is not None:
-                        WndUtils.errorMsg(message='Incorrect password, try again...')
+                        WndUtils.error_msg(message='Incorrect password, try again...')
 
                 while True:
                     password = SshPassCache.get_password(self.username, self.host, message=pass_message)
@@ -304,10 +305,10 @@ class DashdSSH(object):
 
     def find_dashd_config(self):
         """
-        Try to read configuration of remote dash daemon. In particular we need parameters concering rpc
+        Try to read configuration of remote dash daemon. In particular we need parameters concerning rpc
         configuration.
         :return: tuple (dashd_running, dashd_config_found, dashd config file contents as dict)
-                or error string in error occured
+                or error string in error occurred.
         """
         dashd_running = False
         dashd_config_found = False
@@ -499,25 +500,188 @@ def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching
         return control_rpc_call_inner(_func)
 
 
+class MasternodeProtx:
+    def __init__(self):
+        self.marker = False
+        self.modified = False
+        self.db_id: Optional[int] = None
+        self.protx_hash: str = ''
+        self.collateral_hash: str = ''
+        self.collateral_index: int = -1
+        self.collateral_address: str = ''
+        self.operator_reward: float = 0.0
+        self.service: str = ''
+        self.registered_height: int = -1
+        self.last_paid_height: int = -1
+        self.pose_penalty: int = 0
+        self.pose_revived_height: int = -1
+        self.pose_ban_height: int = -1
+        self.owner_address: str = ''
+        self.voting_address: str = ''
+        self.payout_address: str = ''
+        self.pubkey_operator: str = ''
+        self.operator_payout_address: str = ''
+
+    def clear(self):
+        self.db_id = None
+        self.protx_hash = ''
+        self.collateral_hash = ''
+        self.collateral_index = -1
+        self.collateral_address = ''
+        self.operator_reward = 0.0
+        self.service = ''
+        self.registered_height = -1
+        self.last_paid_height = -1
+        self.pose_penalty = 0
+        self.pose_revived_height = -1
+        self.pose_ban_height = -1
+        self.owner_address = ''
+        self.voting_address = ''
+        self.payout_address = ''
+        self.pubkey_operator = ''
+        self.operator_payout_address = ''
+
+    def copy_from(self, src: MasternodeProtx):
+        self.protx_hash = src.protx_hash
+        self.collateral_hash = src.collateral_hash
+        self.collateral_index = src.collateral_index
+        self.collateral_address = src.collateral_address
+        self.operator_reward = src.operator_reward
+        self.service = src.service
+        self.registered_height = src.registered_height
+        self.last_paid_height = src.last_paid_height
+        self.pose_penalty = src.pose_penalty
+        self.pose_revived_height = src.pose_revived_height
+        self.pose_ban_height = src.pose_ban_height
+        self.owner_address = src.owner_address
+        self.voting_address = src.voting_address
+        self.payout_address = src.payout_address
+        self.pubkey_operator = src.pubkey_operator
+        self.operator_payout_address = src.operator_payout_address
+
+    def copy_from_json(self, protx: Dict):
+        self.protx_hash = protx.get('proTxHash')
+        self.collateral_hash = protx.get('collateralHash')
+        self.collateral_index = protx.get('collateralIndex', 0)
+        self.collateral_address = protx.get('collateralAddress')
+        self.operator_reward = protx.get('operatorReward')
+        s = protx.get('state')
+        if s and isinstance(s, dict):
+            self.service = s.get('service')
+            self.registered_height = s.get('registeredHeight')
+            self.last_paid_height = s.get('lastPaidHeight')
+            self.pose_penalty = s.get('PoSePenalty')
+            self.pose_revived_height = s.get('PoSeRevivedHeight')
+            self.pose_ban_height = s.get('PoSeBanHeight')
+            self.owner_address = s.get('ownerAddress')
+            self.voting_address = s.get('votingAddress')
+            self.payout_address = s.get('payoutAddress')
+            self.pubkey_operator = s.get('pubKeyOperator')
+            self.operator_payout_address = s.get('operatorPayoutAddress')
+
+    def __setattr__(self, name, value):
+        if hasattr(self, name) and name not in ('modified', 'marker', 'db_id', '_AttrsProtected__allow_attr_definition'):
+            if isinstance(value, decimal.Decimal):
+                value = float(value)
+            if getattr(self, name) != value:
+                self.modified = True
+        super().__setattr__(name, value)
+
+    def update_in_db(self, cursor):
+        try:
+            if self.db_id is None:
+                cursor.execute(
+                    "INSERT INTO protx(protx_hash, collateral_hash, collateral_index, collateral_address,"
+                    "operator_reward, service, registered_height, last_paid_height, pose_penalty, "
+                    "pose_revived_height, pose_ban_height, owner_address, voting_address, payout_address,"
+                    "pubkey_operator, operator_payout_address) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (self.protx_hash, self.collateral_hash, self.collateral_index,
+                     self.collateral_address, self.operator_reward, self.service,
+                     self.registered_height, self.last_paid_height, self.pose_penalty,
+                     self.pose_revived_height, self.pose_ban_height, self.owner_address,
+                     self.voting_address, self.payout_address, self.pubkey_operator,
+                     self.operator_payout_address))
+                self.db_id = cursor.lastrowid
+            else:
+                cursor.execute(
+                    "update protx set protx_hash=?, collateral_hash=?, collateral_index=?, collateral_address=?,"
+                    "operator_reward=?, service=?, registered_height=?, last_paid_height=?, pose_penalty=?, "
+                    "pose_revived_height=?, pose_ban_height=?, owner_address=?, voting_address=?, payout_address=?,"
+                    "pubkey_operator=?, operator_payout_address=? where id=?",
+                    (self.protx_hash, self.collateral_hash, self.collateral_index,
+                     self.collateral_address, self.operator_reward, self.service,
+                     self.registered_height, self.last_paid_height, self.pose_penalty,
+                     self.pose_revived_height, self.pose_ban_height, self.owner_address,
+                     self.voting_address, self.payout_address, self.pubkey_operator,
+                     self.operator_payout_address, self.db_id))
+        except Exception as e:
+            log.exception(str(e))
+
+    def delete_from_db(self, cursor):
+        if self.db_id is not None:
+            cursor.execute("delete from protx where id=?", (self.db_id,))
+
+
 class Masternode(AttrsProtected):
     def __init__(self):
         AttrsProtected.__init__(self)
-        self.ident = None
-        self.status = None
-        self.payee = None
-        self.lastseen = None
-        self.activeseconds = None
+        self.ident: Optional[str] = None
+        self.status: Optional[str] = None
+        self.payee: Optional[str] = None
         self.lastpaidtime = None
         self.lastpaidblock = None
-        self.ip = None
+        self.ip_port = None
         self.protx_hash: Optional[str] = None
-        self.registered_height: Optional[int] = None
         self.db_id = None
         self.marker = None
         self.modified = False
         self.monitor_changes = False
         self.queue_position = None
+        self.protx = MasternodeProtx()
         self.set_attr_protection()
+
+    def copy_from(self, src: Masternode):
+        if self.ident != src.ident or self.status != src.ident or self.payee != src.payee or \
+           self.lastpaidtime != src.lastpaidtime or self.lastpaidblock != src.lastpaidblock or \
+           self.ip_port != src.ip_port or self.protx_hash != src.protx_hash or self.queue_position != src.queue_position:
+            self.ident = src.ident
+            self.status = src.status
+            self.payee = src.payee
+            self.lastpaidtime = src.lastpaidtime
+            self.lastpaidblock = src.lastpaidblock
+            self.ip_port = src.ip_port
+            self.protx_hash = src.protx_hash
+            self.queue_position = src.queue_position
+            self.modified = True
+
+    def copy_from_json(self, mn_ident: str, mn_json: Dict):
+        if self.ident != mn_ident:
+            self.ident = mn_ident
+            self.modified = True
+        if self.status != mn_json.get('status'):
+            self.status = mn_json.get('status')
+            self.modified = True
+        if self.payee != mn_json.get('payee'):
+            self.payee = mn_json.get('payee')
+            self.modified = True
+        if self.lastpaidtime != mn_json.get('lastpaidtime', 0):
+            self.lastpaidtime = mn_json.get('lastpaidtime', 0)
+            self.modified = True
+        if self.lastpaidblock != mn_json.get('lastpaidblock', 0):
+            self.lastpaidblock = mn_json.get('lastpaidblock', 0)
+            self.modified = True
+        if self.ip_port != mn_json.get('address'):
+            self.ip_port = mn_json.get('address')
+            self.modified = True
+        if self.protx_hash != mn_json.get('proTxHash'):
+            self.protx_hash = mn_json.get('proTxHash')
+            self.modified = True
+
+    @property
+    def registered_height(self):
+        if self.protx:
+            return self.protx.registered_height
 
     def __setattr__(self, name, value):
         if hasattr(self, name) and name not in ('modified', 'marker', 'monitor_changes', '_AttrsProtected__allow_attr_definition'):
@@ -537,7 +701,7 @@ def json_cache_wrapper(func, intf, cache_file_ident, skip_cache=False,
         nonlocal skip_cache, cache_file_ident, intf, func
 
         fname = '/insight_dash_'
-        if intf.app_config.is_testnet():
+        if intf.app_config.is_testnet:
             fname += 'testnet_'
 
         cache_file = intf.app_config.tx_cache_dir + fname + cache_file_ident + '.json'
@@ -545,7 +709,6 @@ def json_cache_wrapper(func, intf, cache_file_ident, skip_cache=False,
             try:  # looking into cache first
                 with open(cache_file) as fp:
                     j = json.load(fp, parse_float=decimal.Decimal)
-                log.debug('Loaded data from existing cache file: ' + cache_file)
 
                 if accept_cache_data_fun is None or accept_cache_data_fun(j):
                     return j
@@ -574,20 +737,22 @@ class DashdInterface(WndUtils):
                  on_connection_disconnected_callback=None):
         WndUtils.__init__(self, app_config=None)
 
+        self.initialized = False
         self.app_config = None
         self.db_intf = None
         self.connections = []
         self.cur_conn_index = 0
         self.cur_conn_def: Optional['DashNetworkConnectionCfg'] = None
+        self.block_timestamps: Dict[int, int] = {}
 
         # below is the connection with which particular RPC call has started; if connection is switched because of
         # problems with some nodes, switching stops if we close round and return to the starting connection
         self.starting_conn = None
 
-        self.masternodes = []  # cached list of all masternodes (Masternode object)
-        self.masternodes_by_ident = {}
-        self.masternodes_by_ip_port = {}
-        self.protx_by_mn_ident: Dict[str, Dict] = {}
+        self.masternodes: List[Masternode] = []
+        self.masternodes_by_ident: Dict[str, Masternode] = {}
+        self.masternodes_by_ip_port: Dict[str, Masternode] = {}
+        self.protx_by_hash: Dict[str, MasternodeProtx] = {}
 
         self.ssh = None
         self.window = window
@@ -600,7 +765,7 @@ class DashdInterface(WndUtils):
         self.on_connection_successful_callback = on_connection_successful_callback
         self.on_connection_disconnected_callback = on_connection_disconnected_callback
         self.last_error_message = None
-        self.mempool_txes:Dict[str, Dict] = {}
+        self.mempool_txes: Dict[str, Dict] = {}
         self.http_lock = threading.RLock()
 
     def initialize(self, config: AppConfig, connection=None, for_testing_connections_only=False):
@@ -625,20 +790,23 @@ class DashdInterface(WndUtils):
 
         if not for_testing_connections_only:
             self.load_data_from_db_cache()
+        self.initialized = True
 
     def load_data_from_db_cache(self):
         self.masternodes.clear()
+        self.protx_by_hash.clear()
         self.masternodes_by_ident.clear()
         self.masternodes_by_ip_port.clear()
+        self.block_timestamps.clear()
         cur = self.db_intf.get_cursor()
         cur2 = self.db_intf.get_cursor()
         db_modified = False
         try:
             tm_start = time.time()
             db_correction_duration = 0.0
-            log.debug("Reading masternodes' data from DB")
-            cur.execute("SELECT id, ident, status, payee, last_seen, active_seconds,"
-                        " last_paid_time, last_paid_block, IP, queue_position from MASTERNODES where dmt_active=1")
+            log.debug("Reading masternode data from DB")
+            cur.execute("SELECT id, ident, status, payee, last_paid_time, last_paid_block, IP, queue_position, "
+                        "protx_hash from MASTERNODES where dmt_active=1")
             for row in cur.fetchall():
                 db_id = row[0]
                 ident = row[1]
@@ -660,19 +828,53 @@ class DashdInterface(WndUtils):
                 mn.ident = ident
                 mn.status = row[2]
                 mn.payee = row[3]
-                mn.lastseen = row[4]
-                mn.activeseconds = row[5]
-                mn.lastpaidtime = row[6]
-                mn.lastpaidblock = row[7]
-                mn.ip = row[8]
-                mn.queue_position = row[9]
+                mn.lastpaidtime = row[4]
+                mn.lastpaidblock = row[5]
+                mn.ip_port = row[6]
+                mn.queue_position = row[7]
+                mn.protx_hash = row[8]
                 self.masternodes.append(mn)
                 self.masternodes_by_ident[mn.ident] = mn
-                self.masternodes_by_ip_port[mn.ip] = mn
+                self.masternodes_by_ip_port[mn.ip_port] = mn
 
             tm_diff = time.time() - tm_start
             log.info('DB read time of %d MASTERNODES: %s s, db fix time: %s' %
                          (len(self.masternodes), str(tm_diff), str(db_correction_duration)))
+
+            log.debug("Reading protx data from DB")
+            cur.execute("SELECT id, protx_hash, collateral_hash, collateral_index, collateral_address,"
+                        "operator_reward, service, registered_height, last_paid_height, pose_penalty,"
+                        "pose_revived_height, pose_ban_height, owner_address, voting_address, payout_address,"
+                        "pubkey_operator, operator_payout_address from protx")
+            for row in cur.fetchall():
+                protx = MasternodeProtx()
+                protx.db_id = row[0]
+                protx.protx_hash = row[1]
+                protx.collateral_hash = row[2]
+                protx.collateral_index = row[3]
+                protx.collateral_address = row[4]
+                protx.operator_reward = row[5]
+                protx.service = row[6]
+                protx.registered_height = row[7]
+                protx.last_paid_height = row[8]
+                protx.pose_penalty = row[9]
+                protx.pose_revived_height = row[10]
+                protx.pose_ban_height = row[11]
+                protx.owner_address = row[12]
+                protx.voting_address = row[13]
+                protx.payout_address = row[14]
+                protx.pubkey_operator = row[15]
+                protx.operator_payout_address = row[16]
+                protx.modified = False
+                self.protx_by_hash[protx.protx_hash] = protx
+
+            # assign protx objects to masternodes
+            for mn in self.masternodes:
+                protx = self.protx_by_hash.get(mn.protx_hash)
+                if protx and mn.protx != protx:
+                    mn.protx = protx
+            log.debug("Finished reading protx data from DB")
+
         except Exception as e:
             log.exception('SQLite initialization error')
         finally:
@@ -918,12 +1120,20 @@ class DashdInterface(WndUtils):
             info = self.proxy.getblockchaininfo()
             if verify_node:
                 node_under_testnet = (info.get('chain') == 'test')
-                if self.app_config.is_testnet() and not node_under_testnet:
+                if self.app_config.is_testnet and not node_under_testnet:
                     raise Exception('This RPC node works under Dash MAINNET, but your current configuration is '
                                     'for TESTNET.')
-                elif self.app_config.is_mainnet() and node_under_testnet:
+                elif self.app_config.is_mainnet and node_under_testnet:
                     raise Exception('This RPC node works under Dash TESTNET, but your current configuration is '
                                     'for MAINNET.')
+            return info
+        else:
+            raise Exception('Not connected')
+
+    @control_rpc_call
+    def getnetworkinfo(self):
+        if self.open():
+            info = self.proxy.getnetworkinfo()
             return info
         else:
             raise Exception('Not connected')
@@ -961,28 +1171,73 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
-    def read_protx_list(self):
-        last_read_time = app_cache.get_value(f'ProtxLastReadTime_{self.app_config.dash_network}', 0, int)
+    def reset_masternode_data_cache(self):
+        cache_item_name = 'ProtxLastReadTime_' + self.app_config.dash_network
+        app_cache.set_value(cache_item_name, 0)
+        cache_item_name = f'MasternodesLastReadTime_{self.app_config.dash_network}'
+        app_cache.set_value(cache_item_name, 0)
 
-        if not self.protx_by_mn_ident or (int(time.time()) - last_read_time) >= PROTX_CACHE_VALID_SECONDS:
+    def _read_protx_list(self, data_max_age: int = PROTX_CACHE_VALID_SECONDS, feedback_fun: Optional[Callable] = None):
+        cache_item_name = 'ProtxLastReadTime_' + self.app_config.dash_network
+        last_read_time = app_cache.get_value(cache_item_name, 0, int)
 
-            self.protx_by_mn_ident.clear()
+        if not self.protx_by_hash or data_max_age == 0 or (int(time.time()) - last_read_time) >= data_max_age:
+            log.info('Fetching protx data from network')
+            for protx_hash in self.protx_by_hash.keys():
+                protx = self.protx_by_hash[protx_hash]
+                protx.marker = False
+                protx.modified = False
+
+            # read protx list from the network:
             protx_list = self.proxy.protx('list', 'registered', True)
-            for protx in protx_list:
-                ident = protx.get('collateralHash') + '-' + str(protx.get('collateralIndex'))
-                s = protx.get('state',{})
-                p = {
-                    'protx_hash': protx.get('proTxHash'),
-                    'registered_height': s.get('registeredHeight'),
-                    'pose_pelanlty': s.get('PoSePenalty'),
-                    'pose_received_height': s.get('PoSeRevivedHeight'),
-                    'pose_ban_height': s.get('PoSeBanHeight'),
-                    'pose_revived_height': s.get('PoSeRevivedHeight', 0)
-                }
-                self.protx_by_mn_ident[ident] = p
-        return self.protx_by_mn_ident
+            app_cache.set_value(cache_item_name, int(time.time()))
 
-    def update_mn_queue_values(self, masternodes: List[Masternode]):
+            # update local cache in RAM
+            for protx_json in protx_list:
+                if feedback_fun:
+                    feedback_fun()
+                protx_hash = protx_json.get('proTxHash')
+                if protx_hash:
+                    protx = self.protx_by_hash.get(protx_hash)
+                    if not protx:
+                        protx = MasternodeProtx()
+                        self.protx_by_hash[protx_hash] = protx
+                    protx.copy_from_json(protx_json)
+                    protx.marker = True
+
+            # update db cache:
+            db_modified = False
+            cur = None
+            try:
+                if self.db_intf.db_active:
+                    cur = self.db_intf.get_cursor()
+
+                for protx_hash in self.protx_by_hash.keys():
+                    protx = self.protx_by_hash[protx_hash]
+                    if protx.db_id is None or protx.modified:
+                        protx.update_in_db(cur)
+                        db_modified = True
+
+                # remove non existing protx entries
+                protx_to_remove = []
+                for protx_hash in self.protx_by_hash.keys():
+                    protx = self.protx_by_hash[protx_hash]
+                    if not protx.marker:
+                        protx_to_remove.append(protx)
+
+                for protx in protx_to_remove:
+                    protx.delete_from_db(cur)
+                    del self.protx_by_hash[protx.protx_hash]
+            finally:
+                if db_modified:
+                    self.db_intf.commit()
+                if cur is not None:
+                    self.db_intf.release_cursor()
+            log.info('Finished fetching protx data from network')
+
+        return self.protx_by_hash
+
+    def _update_mn_queue_values(self, masternodes: List[Masternode]):
         """
         Updates masternode payment queue order values.
         """
@@ -990,25 +1245,23 @@ class DashdInterface(WndUtils):
         payment_queue = []
         for mn in masternodes:
             if mn.status == 'ENABLED':
-                protx = self.protx_by_mn_ident.get(mn.ident)
-
+                protx = mn.protx
                 if mn.lastpaidblock > 0:
                     mn.queue_position = mn.lastpaidblock
                 else:
                     if protx:
-                        mn.queue_position = protx.get('registered_height')
+                        mn.queue_position = protx.registered_height
                     else:
                         mn.queue_position = None
 
                 if protx:
-                    pose_revived_height = protx.get('pose_revived_height', 0)
+                    pose_revived_height = protx.pose_revived_height
                     if pose_revived_height > 0 and pose_revived_height > mn.lastpaidblock:
                         mn.queue_position = pose_revived_height
 
                 payment_queue.append(mn)
             else:
                 mn.queue_position = None
-
         payment_queue.sort(key=lambda x: x.queue_position, reverse=False)
 
         for mn in masternodes:
@@ -1017,7 +1270,8 @@ class DashdInterface(WndUtils):
 
     @control_rpc_call
     def get_masternodelist(self, *args, data_max_age=MASTERNODES_CACHE_VALID_SECONDS,
-                           protx_data_max_age=PROTX_CACHE_VALID_SECONDS) -> List[Masternode]:
+                           protx_data_max_age=PROTX_CACHE_VALID_SECONDS,
+                           feedback_fun: Optional[Callable] = None) -> List[Masternode]:
         """
         Returns masternode list, read from the Dash network or from the internal cache.
         :param args: arguments passed to the 'masternodelist' RPC call
@@ -1026,50 +1280,43 @@ class DashdInterface(WndUtils):
             value of 0 forces reading of the new data from the network
         :return: list of Masternode objects, matching the 'args' arguments
         """
-        def parse_mns(mns: Dict[str, Dict]) -> List[Masternode]:
-            """
-            Parses dictionary of strings returned from the RPC to Masternode object list.
-            :param mns: Dict of masternodes in format of RPC masternodelist command
-            :return: list of Masternode object
-            """
-            self.read_protx_list()
-            ret_list = []
-            for mn_id in mns.keys():
-                mn_json = mns.get(mn_id)
-                mn = Masternode()
-                mn.status = mn_json.get('status')
-                mn.payee = mn_json.get('payee')
-                mn.lastseen = mn_json.get('lastseen', 0)
-                mn.activeseconds = mn_json.get('activeseconds', 0)
-                mn.lastpaidtime = mn_json.get('lastpaidtime', 0)
-                mn.lastpaidblock = mn_json.get('lastpaidblock', 0)
-                mn.ip = mn_json.get('address')
-                mn.ident = mn_id
-
-                protx = self.protx_by_mn_ident.get(mn.ident)
-                if protx:
-                    mn.protx_hash = protx.get('protx_hash')
-                    mn.registered_height = protx.get('registered_height')
-
-                ret_list.append(mn)
-            return ret_list
 
         if self.open():
-
             if len(args) == 1 and args[0] == 'json':
                 last_read_time = app_cache.get_value(f'MasternodesLastReadTime_{self.app_config.dash_network}', 0, int)
-
-                if self.masternodes and data_max_age > 0 and \
-                   int(time.time()) - last_read_time < data_max_age:
+                if self.masternodes and data_max_age > 0 and int(time.time()) - last_read_time < data_max_age:
                     return self.masternodes
                 else:
-                    mns = self.proxy.masternodelist(*args)
-                    mns = parse_mns(mns)
-                    self.update_mn_queue_values(mns)
+                    self._read_protx_list(protx_data_max_age, feedback_fun=feedback_fun)
 
-                    # mark already cached masternodes to identify those to delete
                     for mn in self.masternodes:
-                        mn.marker = False
+                        mn.marker = False  # mark to delete masternode existing in cache but no longer
+                                           # existing on the network
+                        mn.modified = False
+
+                    mns_json = self.proxy.masternodelist(*args)
+                    app_cache.set_value(f'MasternodesLastReadTime_{self.app_config.dash_network}', int(time.time()))
+
+                    for mn_id in mns_json.keys():
+                        if feedback_fun:
+                            feedback_fun()
+                        mn_json = mns_json.get(mn_id)
+                        mn = self.masternodes_by_ident.get(mn_id)
+                        if not mn:
+                            mn = Masternode()
+                            mn.copy_from_json(mn_id, mn_json)
+                            self.masternodes.append(mn)
+                            self.masternodes_by_ident[mn_id] = mn
+                            self.masternodes_by_ip_port[mn.ip_port] = mn
+                        else:
+                            mn.copy_from_json(mn_id, mn_json)
+                        mn.marker = True
+
+                        protx = self.protx_by_hash.get(mn.protx_hash)
+                        if protx and mn.protx != protx:
+                            mn.protx = protx
+
+                    self._update_mn_queue_values(self.masternodes)
 
                     # save masternodes to the db cache
                     db_modified = False
@@ -1078,56 +1325,39 @@ class DashdInterface(WndUtils):
                         if self.db_intf.db_active:
                             cur = self.db_intf.get_cursor()
 
-                        for mn in mns:
-                            # check if newly-read masternode already exists in the cache
-                            existing_mn = self.masternodes_by_ident.get(mn.ident)
-                            if not existing_mn:
-                                mn.marker = True
-                                self.masternodes.append(mn)
-                                self.masternodes_by_ident[mn.ident] = mn
-                                self.masternodes_by_ip_port[mn.ip] = mn
+                        for mn in self.masternodes:
+                            if feedback_fun:
+                                feedback_fun()
 
+                            if mn.db_id is None:
+                                # Masternode entry not in db cache yet
                                 if self.db_intf.db_active:
                                     cur.execute(
-                                        "INSERT INTO MASTERNODES(ident, status, payee, last_seen,"
-                                        " active_seconds, last_paid_time, last_paid_block, ip, protx_hash, "
+                                        "INSERT INTO MASTERNODES(ident, status, payee, "
+                                        " last_paid_time, last_paid_block, ip, protx_hash, "
                                         " registered_height, dmt_active, dmt_create_time, queue_position) "
-                                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                                        (mn.ident, mn.status, mn.payee, mn.lastseen,
-                                         mn.activeseconds, mn.lastpaidtime, mn.lastpaidblock, mn.ip, mn.protx_hash,
+                                        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                                        (mn.ident, mn.status, mn.payee,
+                                         mn.lastpaidtime, mn.lastpaidblock, mn.ip_port, mn.protx_hash,
                                          mn.registered_height, 1, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                                          mn.queue_position))
                                     mn.db_id = cur.lastrowid
                                     db_modified = True
                             else:
-                                existing_mn.marker = True
-                                existing_mn.modified = False
-                                existing_mn.monitor_changes = True
-                                existing_mn.ident = mn.ident
-                                existing_mn.status = mn.status
-                                existing_mn.payee = mn.payee
-                                existing_mn.lastseen = mn.lastseen
-                                existing_mn.activeseconds = mn.activeseconds
-                                existing_mn.lastpaidtime = mn.lastpaidtime
-                                existing_mn.lastpaidblock = mn.lastpaidblock
-                                existing_mn.ip = mn.ip
-                                existing_mn.protx_hash = mn.protx_hash
-                                existing_mn.registered_height = mn.registered_height
-                                existing_mn.queue_position = mn.queue_position
-
-                                # ... and finally update MN db record
-                                if existing_mn.modified:
+                                if mn.modified:
                                     cur.execute(
-                                        "UPDATE MASTERNODES set ident=?, status=?, payee=?, last_seen=?, "
-                                        "active_seconds=?, last_paid_time=?, last_paid_block=?, ip=?, protx_hash=?, "
+                                        "UPDATE MASTERNODES set ident=?, status=?, payee=?, "
+                                        "last_paid_time=?, last_paid_block=?, ip=?, protx_hash=?, "
                                         "registered_height=?, queue_position=? WHERE id=?",
-                                        (mn.ident, mn.status, mn.payee, mn.lastseen, mn.activeseconds,
-                                         mn.lastpaidtime, mn.lastpaidblock, mn.ip, mn.protx_hash, mn.registered_height,
-                                         existing_mn.queue_position, existing_mn.db_id))
+                                        (mn.ident, mn.status, mn.payee,
+                                         mn.lastpaidtime, mn.lastpaidblock, mn.ip_port, mn.protx_hash, mn.registered_height,
+                                         mn.queue_position, mn.db_id))
                                     db_modified = True
 
-                        # remove from the cache masternodes that no longer exist
+                        # remove non existing masternodes from cache
                         for mn_index in reversed(range(len(self.masternodes))):
+                            if feedback_fun:
+                                feedback_fun()
                             mn = self.masternodes[mn_index]
 
                             if not mn.marker:
@@ -1138,9 +1368,6 @@ class DashdInterface(WndUtils):
                                     db_modified = True
                                 self.masternodes_by_ident.pop(mn.ident,0)
                                 del self.masternodes[mn_index]
-
-                        app_cache.set_value(f'MasternodesLastReadTime_{self.app_config.dash_network}', int(time.time()))
-
                     finally:
                         if db_modified:
                             self.db_intf.commit()
@@ -1178,17 +1405,7 @@ class DashdInterface(WndUtils):
     @control_rpc_call
     def getrawmempool(self):
         if self.open():
-            cur_mempool_txes = self.proxy.getrawmempool()
-
-            txes_to_purge = []
-            for tx_hash in self.mempool_txes:
-                if tx_hash not in cur_mempool_txes:
-                    txes_to_purge.append(tx_hash)
-
-            for tx_hash in txes_to_purge:
-                del self.mempool_txes[tx_hash]
-
-            return cur_mempool_txes
+            return self.proxy.getrawmempool()
         else:
             raise Exception('Not connected')
 
@@ -1345,7 +1562,36 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
-    def is_protx_update_pending(self, proregtx_hash:str) -> bool:
+    def get_block_timestamp(self, block: int):
+        ts = self.block_timestamps.get(block)
+        if ts is None:
+            bhash = self.getblockhash(block)
+            bh = self.getblockheader(bhash)
+            ts = bh['time']
+            self.block_timestamps[block] = ts
+        return ts
+
+    def fetch_mempool_txes(self, feedback_fun: Optional[Callable] = None):
+        cur_mempool_txes = self.proxy.getrawmempool()
+
+        txes_to_purge = []
+        for tx_hash in self.mempool_txes:
+            if tx_hash not in cur_mempool_txes:
+                txes_to_purge.append(tx_hash)
+
+        for tx_hash in txes_to_purge:
+            del self.mempool_txes[tx_hash]
+
+        for tx_hash in cur_mempool_txes:
+            if feedback_fun:
+                feedback_fun()
+
+            tx = self.mempool_txes.get(tx_hash)
+            if not tx:
+                tx = self.getrawtransaction(tx_hash, True, skip_cache=True)
+                self.mempool_txes[tx_hash] = tx
+
+    def is_protx_update_pending(self, protx_hash: str, ip_port: str = None) -> bool:
         """
         Check whether a protx transaction related to the proregtx passed as an argument exists in mempool.
         :param protx_hash: Hash of the ProRegTx transaction
@@ -1353,22 +1599,17 @@ class DashdInterface(WndUtils):
         """
 
         try:
-            cur_mempool_txes = self.getrawmempool()
-            if len(cur_mempool_txes) < 200:
-                for tx_hash in cur_mempool_txes:
-                    tx = self.mempool_txes.get(tx_hash)
-                    if not tx:
-                        tx = self.getrawtransaction(tx_hash, True, skip_cache=True)
-                        self.mempool_txes[tx_hash] = tx
-                    protx = tx.get('proUpRegTx')
-                    if not protx:
-                        protx = tx.get('proUpRevTx')
-                    if not protx:
-                        protx = tx.get('proUpServTx')
-                    if protx and protx.get('proTxHash') == proregtx_hash:
-                        return True
-            else:
-                log.warning('Mempool to large to scan for protx transaction. Skipping...')
+            for tx_hash in self.mempool_txes:
+                tx = self.mempool_txes[tx_hash]
+                protx = tx.get('proUpRegTx')
+                if not protx:
+                    protx = tx.get('proUpRevTx')
+                if not protx:
+                    protx = tx.get('proUpServTx')
+                if not protx:
+                    protx = tx.get('proRegTx')
+                if protx and (protx.get('proTxHash') == protx_hash) or (ip_port and protx.get('service') == ip_port):
+                    return True
             return False
         except Exception as e:
             return False

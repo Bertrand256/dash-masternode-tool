@@ -20,9 +20,9 @@ from bitcoinrpc.authproxy import JSONRPCException
 import app_cache
 import app_utils
 from app_config import AppConfig
-from app_defs import HWType
+from hw_common import HWType
 from dashd_intf import DashdInterface
-from hw_common import HwSessionInfo
+from hw_intf import HwSessionInfo
 from ui.ui_transaction_dlg import Ui_TransactionDlg
 from wallet_common import UtxoType, TxOutputType, Bip44AddressType
 from wnd_utils import WndUtils, ProxyStyleNoFocusRect
@@ -64,9 +64,9 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
         self.dependent_transactions = dependent_transactions  # key: txid, value: transaction dict
         self.after_send_tx_callback: Callable[[Dict], None] = after_send_tx_callback
         self.fn_show_address_on_hw = fn_show_address_on_hw
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         Ui_TransactionDlg.setupUi(self, self)
         self.setWindowTitle('Transaction')
         self.chb_word_wrap.setChecked(app_cache.get_value(CACHE_ITEM_DETAILS_WORD_WRAP, False, bool))
@@ -318,7 +318,7 @@ td.lbl{{text-align: right;vertical-align: top;}} p.lbl{{margin: 0 5px 0 0; font-
         except Exception as e:
             log.exception(f'Exception occurred while broadcasting transaction. '
                               f'Transaction size: {self.tx_size} bytes.')
-            self.errorMsg('An error occurred while sending transation: '+ str(e))
+            self.error_msg('An error occurred while sending transation: ' + str(e))
 
     @pyqtSlot(bool)
     def on_btn_close_clicked(self, enabled):
@@ -326,4 +326,4 @@ td.lbl{{text-align: right;vertical-align: top;}} p.lbl{{margin: 0 5px 0 0; font-
             self.accept()
         else:
             self.reject()
-        self.closeEvent(None)
+        self.close()

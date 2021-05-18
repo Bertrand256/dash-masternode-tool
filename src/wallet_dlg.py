@@ -23,11 +23,12 @@ from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox, QSpli
     QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout, QAction, QAbstractItemView, QStatusBar, QCheckBox, \
     QApplication
 from cryptography.fernet import Fernet
+
 import app_cache
 import app_utils
 import dash_utils
 import hw_intf
-from app_defs import HWType, DEBUG_MODE
+from app_runtime_data import AppRuntimeData
 from bip44_wallet import Bip44Wallet, Bip44Entry, BreakFetchTransactionsException, SwitchedHDIdentityException
 from common import CancelException
 from sign_message_dlg import SignMessageDlg
@@ -36,7 +37,8 @@ from ui.ui_wdg_wallet_txes_filter import Ui_WdgWalletTxesFilter
 from wallet_common import UtxoType, Bip44AccountType, Bip44AddressType, TxOutputType, TxType
 from dashd_intf import DashdInterface, DashdIndexException
 from db_intf import DBCache
-from hw_common import HwSessionInfo, HWNotConnectedException
+from hw_common import HWNotConnectedException, HWType
+from hw_intf import HwSessionInfo
 from thread_fun_dlg import WorkerThread, CtrlObject
 from wallet_data_models import UtxoTableModel, MnAddressTableModel, AccountListModel, MnAddressItem, \
     TransactionTableModel, FILTER_AND, FILTER_OR, FILTER_OPER_EQ, FILTER_OPER_GTEQ, FILTER_OPER_LTEQ
@@ -73,7 +75,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     error_signal = QtCore.pyqtSignal(str)
     thread_finished = QtCore.pyqtSignal()
 
-    def __init__(self, main_ui, initial_mn_sel: int):
+    def __init__(self, main_ui, hw_session: HwSessionInfo, initial_mn_sel: int):
         """
         :param initial_mn_sel:
           if the value is from 0 to len(masternodes), show utxos for the masternode
@@ -85,13 +87,14 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         WndUtils.__init__(self, main_ui.app_config)
 
         self.main_ui = main_ui
-        self.hw_session: HwSessionInfo = self.main_ui.hw_session
+        self.hw_session: HwSessionInfo = hw_session
+        self.rt_data: AppRuntimeData = AppRuntimeData.get_instance()
         self.hw_connection_established = False
         self.masternodes = main_ui.app_config.masternodes
         self.masternode_addresses: List[Tuple[str, str]] = []  #  Tuple: address, bip32 path
         for idx, mn in enumerate(self.masternodes):
-            self.masternode_addresses.append((mn.collateralAddress.strip(), mn.collateralBip32Path.strip()))
-            log.debug(f'WalletDlg initial_mn_sel({idx}) addr - path: {mn.collateralAddress}-{mn.collateralBip32Path}')
+            self.masternode_addresses.append((mn.collateral_address.strip(), mn.collateral_bip32_path.strip()))
+            log.debug(f'WalletDlg initial_mn_sel({idx}) addr - path: {mn.collateral_address}-{mn.collateral_bip32_path}')
 
         self.dashd_intf: DashdInterface = main_ui.dashd_intf
         self.db_intf: DBCache = main_ui.app_config.db_intf
@@ -147,25 +150,29 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.accounts_view_show_individual_addresses = False
         self.accounts_view_show_zero_balance_addesses = False
         self.accounts_view_show_not_used_addresses = False
-        self.wdg_loading_txs_animation = None
+        self.loading_data_spinner: Optional[SpinnerWidget] = None
 
         # display thread data:
         self.dt_last_addr_selection_hash_for_utxo = ''
         self.dt_last_addr_selection_hash_for_txes = ''
         self.dt_last_hd_tree_id = None
 
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_wallet_dlg.Ui_WalletDlg.setupUi(self, self)
         self.setWindowTitle('Transfer funds')
-        self.closeEvent = self.closeEvent
         self.chbHideCollateralTx.setChecked(True)
-        self.setIcon(self.btnCheckAll, 'check.png')
-        self.setIcon(self.btnUncheckAll, 'uncheck.png')
+        WndUtils.set_icon(self.main_ui, self.btnCheckAll, 'check.png')
+        WndUtils.set_icon(self.main_ui, self.btnUncheckAll, 'uncheck.png')
         self.restore_cache_settings()
         self.splitterMain.setStretchFactor(0, 0)
         self.splitterMain.setStretchFactor(1, 1)
+
+        # setup the "loading" spinner
+        self.loading_data_spinner = SpinnerWidget(self.pnl_input, 22, message='Fetching transactions')
+        self.loading_data_spinner.hide()
+        self.lay_input.insertWidget(self.lay_input.indexOf(self.btnFetchTransactions) + 1, self.loading_data_spinner)
 
         self.utxo_table_model.set_hide_collateral_utxos(True)
         self.utxoTableView.setSortingEnabled(True)
@@ -212,9 +219,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             log.warning(f'Invalid value of self.utxo_src_mode: {self.utxo_src_mode}')
         self.cboAddressSourceMode.blockSignals(False)
 
-        self.set_message("")
         self.wdg_dest_adresses = SendFundsDestination(self.dest_widget, self, self.main_ui.app_config,
-                                                      self.main_ui.hw_session)
+                                                      self.hw_session)
         self.wdg_dest_adresses.resized_signal.connect(self.on_dest_addresses_resized)
 
         if isinstance(self.recipient_list_from_cache, list) and self.recipient_list_from_cache:
@@ -252,32 +258,32 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         l.insertWidget(1, self.wdg_txes_filter)
         self.ui_txes_filter.btnApply.clicked.connect(self.apply_txes_filter)
 
-        self.setIcon(self.btnSetHwIdentityLabel, 'label@16px.png')
-        self.setIcon(self.btnPurgeHwIdentity, 'delete@16px.png')
-        self.setIcon(self.btnFetchTransactions, 'autorenew@16px.png')
-        self.setIcon(self.btnViewModeOptions, 'settings@16px.png')
-        self.setIcon(self.btnTxesTabFilter, 'filter@16px.png')
+        WndUtils.set_icon(self.main_ui, self.btnSetHwIdentityLabel, 'label@16px.png')
+        WndUtils.set_icon(self.main_ui, self.btnPurgeHwIdentity, 'delete@16px.png')
+        WndUtils.set_icon(self.main_ui, self.btnFetchTransactions, 'autorenew@16px.png')
+        WndUtils.set_icon(self.main_ui, self.btnViewModeOptions, 'settings@16px.png')
+        WndUtils.set_icon(self.main_ui, self.btnTxesTabFilter, 'filter@16px.png')
 
         # context menu actions:
         # show address on hardware wallet
         self.act_show_address_on_hw = QAction('Show address', self)
         self.act_show_address_on_hw.triggered.connect(self.on_show_address_on_hw_triggered)
-        self.main_ui.setIcon(self.act_show_address_on_hw, 'eye@16px.png')
+        WndUtils.set_icon(self.main_ui, self.act_show_address_on_hw, 'eye@16px.png')
         self.accountsListView.addAction(self.act_show_address_on_hw)
         # copy address to clipboard
         self.act_copy_address = QAction('Copy address', self)
         self.act_copy_address.triggered.connect(self.on_act_copy_address_triggered)
-        self.main_ui.setIcon(self.act_copy_address, 'content-copy@16px.png')
+        WndUtils.set_icon(self.main_ui, self.act_copy_address, 'content-copy@16px.png')
         self.accountsListView.addAction(self.act_copy_address)
         # sign message
         self.act_sign_message_for_address = QAction('Sign message', self)
         self.act_sign_message_for_address.triggered.connect(self.on_act_sign_message_for_address_triggered)
-        self.main_ui.setIcon(self.act_sign_message_for_address, 'sign.png')
+        WndUtils.set_icon(self.main_ui, self.act_sign_message_for_address, 'sign.png')
         self.accountsListView.addAction(self.act_sign_message_for_address)
         # set label for address/account:
         self.act_set_entry_label = QAction('Set label', self)
         self.act_set_entry_label.triggered.connect(self.on_act_set_entry_label_triggered)
-        self.main_ui.setIcon(self.act_set_entry_label, 'label@16px.png')
+        WndUtils.set_icon(self.main_ui, self.act_set_entry_label, 'label@16px.png')
         self.accountsListView.addAction(self.act_set_entry_label)
         # show next fresh(unused) address
         self.act_show_account_next_fresh_address = QAction('Reveal next fresh address', self)
@@ -286,12 +292,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         # show account
         self.act_show_account = QAction('Add account', self)
         self.act_show_account.triggered.connect(self.on_act_show_account_triggered)
-        self.main_ui.setIcon(self.act_show_account, 'eye@16px.png', force_color_change='#0066cc')
+        WndUtils.set_icon(self.main_ui, self.act_show_account, 'eye@16px.png', force_color_change='#0066cc')
         self.accountsListView.addAction(self.act_show_account)
         # show account
         self.act_hide_account = QAction('Hide account', self)
         self.act_hide_account.triggered.connect(self.on_act_hide_account_triggered)
-        self.main_ui.setIcon(self.act_hide_account, 'eye-crossed-out@16px.png', force_color_change='#0066cc')
+        WndUtils.set_icon(self.main_ui, self.act_hide_account, 'eye-crossed-out@16px.png', force_color_change='#0066cc')
         self.accountsListView.addAction(self.act_hide_account)
 
         # for testing:
@@ -315,11 +321,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.show_hide_txes_filter()
         self.update_context_actions()
 
-        self.hw_session.sig_hw_connected.connect(self.on_connect_hw)
-        self.hw_session.sig_hw_disconnected.connect(self.on_disconnect_hw)
-        if self.hw_session.hw_type is not None and self.hw_session.hw_client is not None:
-            # hw is initially connected
-            self.on_connect_hw()
+        self.hw_session.sig_hw_connected.connect(self.on_hardware_wallet_connected)
+        self.hw_session.sig_hw_disconnected.connect(self.on_hardware_wallet_disconnected)
+        if self.hw_session.hw_client is not None:
+            self.on_hardware_wallet_connected()
 
         self.start_threads()
 
@@ -469,7 +474,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             try:
                 ret = func(*args, **kwargs)
             except HWNotConnectedException:
-                self.on_disconnect_hw()
+                self.on_hardware_wallet_disconnected()
                 raise
             return ret
 
@@ -494,6 +499,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.connect_hw()
         elif index == 1:
             self.utxo_src_mode = MAIN_VIEW_MASTERNODE_LIST
+            self.update_hw_info()
         else:
             raise Exception('Invalid index.')
         self.on_utxo_src_hash_changed()
@@ -503,20 +509,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def on_dest_addresses_resized(self):
         self.splitter.setSizes([1, self.wdg_dest_adresses.sizeHint().height()])
-
-    def set_message(self, message):
-        def set_msg(message):
-            if not message:
-                self.lbl_message.setVisible(False)
-            else:
-                self.lbl_message.setVisible(True)
-                self.lbl_message.setText(message)
-
-        if threading.current_thread() != threading.main_thread():
-            if self.enable_synch_with_main_thread:
-                self.call_in_main_thread(set_msg, message)
-        else:
-            set_msg(message)
 
     @pyqtSlot(bool)
     def chbHideCollateralTxToggled(self, checked):
@@ -578,7 +570,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     total_satoshis_inputs += utxo.satoshis
                     log.info(f'UTXO satosis: {utxo.satoshis}')
                     if utxo.is_collateral:
-                        if self.queryDlg(
+                        if self.query_dlg(
                                 "Warning: you are going to transfer masternode's collateral (1000 Dash) transaction "
                                 "output. Proceeding will result in broken masternode.\n\n"
                                 "Do you really want to continue?",
@@ -590,16 +582,16 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                     bip32_path = utxo.bip32_path
                     if not bip32_path:
-                        self.errorMsg(f'No BIP32 path for UTXO: {utxo.txid}. Cannot continue.')
+                        self.error_msg(f'No BIP32 path for UTXO: {utxo.txid}. Cannot continue.')
                         return
 
                     addr_hw = bip32_to_address.get(bip32_path, None)
                     if not addr_hw:
-                        addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.main_ui.hw_session, bip32_path)
+                        addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, bip32_path)
                         bip32_to_address[bip32_path] = addr_hw
 
                     if addr_hw != utxo.address:
-                        self.errorMsg("<html style=\"font-weight:normal\">Dash address inconsistency between UTXO "
+                        self.error_msg("<html style=\"font-weight:normal\">Dash address inconsistency between UTXO "
                                       f"({utxo_idx+1}) and HW path: {bip32_path}.<br><br>"
                                       f"<b>HW address</b>: {addr_hw}<br>"
                                       f"<b>UTXO address</b>: {utxo.address}<br><br>"
@@ -607,12 +599,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         return
 
                 if coinbase_locked_exist:
-                    if self.queryDlg("Warning: you have selected at least one coinbase transaction without the "
+                    if self.query_dlg("Warning: you have selected at least one coinbase transaction without the "
                                      "required number of confirmations (100). Your transaction will be "
                                      "rejected by the network.\n\n"
                                      "Do you really want to continue?",
-                            buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                            default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
+                                      buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                      default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
                         return
                 try:
                     tx_outputs = self.wdg_dest_adresses.get_tx_destination_data()
@@ -652,7 +644,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                         try:
                             serialized_tx, amount_to_send = self.hw_call_wrapper(hw_intf.sign_tx)\
-                                (self.main_ui.hw_session, tx_inputs, tx_outputs, fee)
+                                (self.hw_session, tx_inputs, tx_outputs, fee)
                         except HWNotConnectedException:
                             raise
                         except CancelException:
@@ -665,7 +657,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         tx_hex = serialized_tx.hex()
                         log.info('Raw signed transaction: ' + tx_hex)
                         if len(tx_hex) > 90000:
-                            self.errorMsg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
+                            self.error_msg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
                         else:
                             after_send_tx_fun = partial(self.process_after_sending_transaction, tx_inputs, tx_outputs)
                             tx_dlg = TransactionDlg(self, self.main_ui.app_config, self.dashd_intf, tx_hex,
@@ -673,10 +665,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                                     after_send_tx_fun, fn_show_address_on_hw=self.show_address_on_hw)
                             tx_dlg.exec_()
                 except Exception as e:
-                    log.exception('Unknown error occurred.')
-                    self.errorMsg(str(e))
+                    self.error_msg(str(e), True)
             else:
-                self.errorMsg('No UTXO to send.')
+                self.error_msg('No UTXO to send.')
         finally:
             self.allow_fetch_transactions = True
             self.enable_synch_with_main_thread = True
@@ -814,13 +805,13 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     # read from db cache
                     addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, addr.bip32_path, False)
                     if addr_hw != addr.address:
-                        self.errorMsg('Inconsistency between the wallet cache and the hardware wallet data occurred. '
+                        self.error_msg('Inconsistency between the wallet cache and the hardware wallet data occurred. '
                                       'Please clear the wallet cache.')
                         return
                     clipboard = QApplication.clipboard()
                     clipboard.setText(addr.address)
         if not addr:
-            WndUtils.warnMsg('Couldn\'t copy the selected address.')
+            WndUtils.warn_msg('Couldn\'t copy the selected address.')
 
     def on_act_sign_message_for_address_triggered(self):
         addr = None
@@ -829,10 +820,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             if acc:
                 addr = acc.address_by_id(self.hw_selected_address_id)
                 if addr and addr.bip32_path and addr.address:
-                    ui = SignMessageDlg(self.main_ui, self.hw_session, addr.bip32_path, addr.address)
+                    ui = SignMessageDlg(self.main_ui, self.hw_session, self.rt_data, addr.bip32_path, addr.address)
                     ui.exec_()
         if not addr:
-            WndUtils.warnMsg('Couldn\'t copy the selected address.')
+            WndUtils.warn_msg('Couldn\'t copy the selected address.')
 
     def on_delete_account_triggered(self):
         if self.hw_selected_account_id is not None:
@@ -847,9 +838,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 else:
                     raise Exception('No account selected.')
 
-                if WndUtils.queryDlg(f"Do you really want to remove account '{acc.get_account_name()}' from cache?",
-                                    buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                                    default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
+                if WndUtils.query_dlg(f"Do you really want to remove account '{acc.get_account_name()}' from cache?",
+                                      buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                      default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
                     return
 
                 fx_state = self.allow_fetch_transactions
@@ -879,9 +870,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                             acc = acc_index.internalPointer()
 
                     if acc and acc_index:
-                        if WndUtils.queryDlg(f"Do you really want to clear address '{addr.address}' data in cache?",
-                                            buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                                            default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
+                        if WndUtils.query_dlg(f"Do you really want to clear address '{addr.address}' data in cache?",
+                                              buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                              default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
                             return
 
                         ftx_state = self.allow_fetch_transactions
@@ -896,9 +887,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
             if self.selected_mns:
                 mns_str = ','.join([mn.masternode.name for mn in self.selected_mns])
-                if WndUtils.queryDlg(f"Do you really want to clear transactions cache data for masternodes: '{mns_str}'?",
-                                    buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                                    default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
+                if WndUtils.query_dlg(f"Do you really want to clear transactions cache data for masternodes: '{mns_str}'?",
+                                      buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                      default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
                     return
                 for mn in self.selected_mns:
                     self.bip44_wallet.remove_address(mn.address.id)
@@ -993,8 +984,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.fetch_transactions()
         elif link == 'hw-alter-identity':
             if self.hw_connected():
-                self.main_ui.disconnect_hardware_wallet()
-                self.main_ui.connect_hardware_wallet()
+                self.hw_session.disconnect_hardware_wallet()
+                self.hw_session.connect_hardware_wallet()
         self.update_hw_info()
 
     @pyqtSlot(bool)
@@ -1019,9 +1010,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.update_hw_info()
 
     def delete_hd_identity(self):
-        if WndUtils.queryDlg(f"Do you really want to purge the current identity from cache?",
-                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                             default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
+        if WndUtils.query_dlg(f"Do you really want to purge the current identity from cache?",
+                              buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                              default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
             return
         id, _ = self.bip44_wallet.get_hd_identity_info()
         if id:
@@ -1035,7 +1026,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         else:
             return False
 
-    def on_connect_hw(self):
+    def on_hardware_wallet_connected(self):
         if self.hw_session.hw_type is not None and self.hw_session.hw_client:
             aft_saved = self.allow_fetch_transactions
             esmt_saved = self.enable_synch_with_main_thread
@@ -1046,7 +1037,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 tree_ident = self.hw_session.get_hd_tree_ident(self.app_config.hw_coin_name)
                 if self.cur_hd_tree_ident != tree_ident:
                     if self.cur_hd_tree_ident:
-                        self.on_disconnect_hw()  #hw identity has been changed
+                        self.on_hardware_wallet_disconnected()  #hw identity has been changed
 
                     self.cur_hd_tree_ident = tree_ident
                     self.cur_hd_tree_id, _ = self.bip44_wallet.get_hd_identity_info()
@@ -1065,7 +1056,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.allow_fetch_transactions = aft_saved
                 self.enable_synch_with_main_thread = esmt_saved
 
-    def on_disconnect_hw(self):
+            self.display_thread_event.set()
+            self.fetch_transactions()
+
+    def on_hardware_wallet_disconnected(self):
         aft_saved = self.allow_fetch_transactions
         self.allow_fetch_transactions = False
         esmt_saved = self.enable_synch_with_main_thread
@@ -1105,32 +1099,21 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 self.update_context_actions()
                 self.update_details_tab()
                 self.update_hw_info()
-                self.set_message('')
         finally:
             self.allow_fetch_transactions = aft_saved
             self.enable_synch_with_main_thread = esmt_saved
 
     def connect_hw(self):
         def connect():
-            if self.main_ui.connect_hardware_wallet():
-                aft_saved = self.allow_fetch_transactions
-                esmt_saved = self.enable_synch_with_main_thread
-                self.allow_fetch_transactions = False
-                self.enable_synch_with_main_thread = False
-
-                try:
-                    self.on_connect_hw()
-                finally:
-                    self.allow_fetch_transactions = aft_saved
-                    self.enable_synch_with_main_thread = esmt_saved
-
-                self.display_thread_event.set()
-                self.fetch_transactions()
-                return True
-            else:
-                if self.hw_connected():
-                    self.on_disconnect_hw()
-                return False
+            try:
+                if self.hw_session.connect_hardware_wallet():
+                    return True
+                else:
+                    if self.hw_connected():
+                        self.on_hardware_wallet_disconnected()
+                    return False
+            except Exception as e:
+                self.error_msg(str(e))
 
         if threading.current_thread() != threading.main_thread():
             if self.enable_synch_with_main_thread:
@@ -1141,17 +1124,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             return connect()
 
     def disconnect_hw(self):
-        aft_saved = self.allow_fetch_transactions
-        self.allow_fetch_transactions = False
-        esmt_saved = self.enable_synch_with_main_thread
-        self.enable_synch_with_main_thread = False
-
-        try:
-            self.on_disconnect_hw()
-            self.main_ui.disconnect_hardware_wallet()
-        finally:
-            self.allow_fetch_transactions = aft_saved
-            self.enable_synch_with_main_thread = esmt_saved
+        self.hw_session.disconnect_hardware_wallet()
 
     def get_utxo_list_generator(self, only_new) -> Generator[UtxoType, None, None]:
         list_utxos = None
@@ -1327,7 +1300,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         except Exception as e:
             log.exception('Exception occurred')
-            WndUtils.errorMsg('An unknown error occurred, please close and reopen the window. Details: ' + str(e))
+            WndUtils.error_msg('An unknown error occurred, please close and reopen the window. Details: ' + str(e))
         finally:
             self.display_thread_ref = None
         log.debug('Finishing display_thread')
@@ -1359,7 +1332,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                     if self.last_txs_fetch_time == 0 or (time.time() - self.last_txs_fetch_time > FETCH_DATA_INTERVAL_SECONDS):
                         if self.allow_fetch_transactions:
-                            self.set_message('Fetching transactions...')
                             self.show_loading_tx_animation()
 
                             if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
@@ -1385,7 +1357,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                                 if not ctrl.finish and not self.finishing:
                                     self.hide_loading_tx_animation()
-                                    self.set_message('')
 
                 self.data_thread_event.wait(1)
                 if self.data_thread_event.is_set():
@@ -1393,7 +1364,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         except Exception as e:
             log.exception('Exception occurred')
-            WndUtils.errorMsg('An unknown error occurred, please close and reopen the window. Details: ' + str(e))
+            WndUtils.error_msg('An unknown error occurred, please close and reopen the window. Details: ' + str(e))
         finally:
             self.data_thread_ref = None
         log.debug('Finishing data_thread')
@@ -1443,15 +1414,15 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             log.error('Hardware wallet has been disconnected.')
             if not self.finishing:
                 WndUtils.call_in_main_thread(self.disconnect_hw)
-                WndUtils.warnMsg(str(e))
+                WndUtils.warn_msg(str(e))
         except SwitchedHDIdentityException:
             if self.hw_connection_established and not self.finishing:
                 # reconnect if the hw was connected before and the hd identity has changed in the meantime
-                WndUtils.warnMsg('The window data will be reloaded because the hardware wallet identity has changed.')
+                WndUtils.warn_msg('The window data will be reloaded because the hardware wallet identity has changed.')
                 WndUtils.call_in_main_thread(self.connect_hw)
         except Exception as e:
             log.exception('Exception occurred')
-            WndUtils.errorMsg(str(e))
+            WndUtils.error_msg(str(e))
         finally:
             log.debug('Finished calling %s', str(function_to_call))
 
@@ -1544,34 +1515,26 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.update_recipient_area_utxos()
 
     def show_loading_tx_animation(self):
-        if not self.wdg_loading_txs_animation:
-            def show():
-                size = min(self.wdgSpinner.height(), self.wdgSpinner.width())
-                g = self.wdgSpinner.geometry()
-                g.setWidth(size)
-                g.setHeight(size)
-                self.wdgSpinner.setGeometry(g)
-                self.wdg_loading_txs_animation = SpinnerWidget(self.wdgSpinner, size, '', 11)
-                self.wdg_loading_txs_animation.show()
+        def show():
+            self.loading_data_spinner.show()
+            self.loading_data_spinner.set_spinner_active(True)
 
-            if threading.current_thread() != threading.main_thread():
-                if self.enable_synch_with_main_thread:
-                    WndUtils.call_in_main_thread_ext(show, skip_if_main_thread_locked=True)
-            else:
-                show()
+        if threading.current_thread() != threading.main_thread():
+            if self.enable_synch_with_main_thread:
+                WndUtils.call_in_main_thread_ext(show, skip_if_main_thread_locked=True)
+        else:
+            show()
 
     def hide_loading_tx_animation(self):
-        if self.wdg_loading_txs_animation:
-            def hide():
-                self.wdg_loading_txs_animation.hide()
-                del self.wdg_loading_txs_animation
-                self.wdg_loading_txs_animation = None
+        def hide():
+            self.loading_data_spinner.set_spinner_active(False)
+            self.loading_data_spinner.hide()
 
-            if threading.current_thread() != threading.main_thread():
-                if self.enable_synch_with_main_thread:
-                    WndUtils.call_in_main_thread_ext(hide, skip_if_main_thread_locked=True)
-            else:
-                hide()
+        if threading.current_thread() != threading.main_thread():
+            if self.enable_synch_with_main_thread:
+                WndUtils.call_in_main_thread_ext(hide, skip_if_main_thread_locked=True)
+        else:
+            hide()
 
     def update_details_tab(self):
         def set_text(text):
@@ -1706,9 +1669,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             acc = self.account_list_model.account_by_id(self.hw_selected_account_id)
 
             if acc:
-                if WndUtils.queryDlg(f"Do you really want to hide account '{acc.get_account_name()}'?",
-                                    buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                                    default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
+                if WndUtils.query_dlg(f"Do you really want to hide account '{acc.get_account_name()}'?",
+                                      buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                      default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
                     return
 
                 fx_state = self.allow_fetch_transactions
@@ -1814,7 +1777,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 m.filter_amount_value = int(float(ui.edtAmountValue.text()) * 1e8)
                 m.filter_amount_oper = text_to_oper(ui.cboAmountOper.currentText())
             except Exception as e:
-                self.errorMsg('Invalid amount value')
+                self.error_msg('Invalid amount value')
                 ui.edtAmountValue.setFocus()
                 return
 
@@ -1824,7 +1787,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 m.filter_date_value = int(datetime.datetime(*dt.getDate()).timestamp())
                 m.filter_date_oper = text_to_oper(ui.cboDateOper.currentText())
             except Exception as e:
-                self.errorMsg('Invalid amount value')
+                self.error_msg('Invalid amount value')
                 ui.edtAmountValue.setFocus()
                 return
 

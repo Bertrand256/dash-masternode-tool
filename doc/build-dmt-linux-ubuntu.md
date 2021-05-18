@@ -2,7 +2,8 @@
 
 ### Method based on physical or virtual linux machine
 
-An Ubuntu distribution with Python 3.6 is required to build DMT. This example uses Ubuntu 17.10, which comes with an appropriate version installed by default. You can verify the Python version by typing:
+An Ubuntu distribution with Python 3.8 is required to build DMT. This example uses Ubuntu 18.04, which comes with an 
+appropriate version installed by default. You can verify the Python version by typing:
 
 ```
 python3 --version
@@ -10,20 +11,20 @@ python3 --version
 
 You should see a response similar to the following:
 
-  `Python 3.6.4`
+  `Python 3.8.x`
 
 After making sure that you have the correct Python version, execute the following commands from the terminal:
 
 ```
 [dmt@ubuntu /]# sudo apt-get update
 [dmt@ubuntu /]# sudo apt-get -y upgrade
-[dmt@ubuntu /]# sudo apt-get -y install libudev-dev libusb-1.0-0-dev libfox-1.6-dev autotools-dev autoconf automake libtool libpython3-all-dev python3.6-dev python3-pip git cmake
+[dmt@ubuntu /]# sudo apt-get -y install libudev-dev libusb-1.0-0-dev libfox-1.6-dev autotools-dev autoconf automake libtool libpython3-all-dev python3.8-dev python3-pip git cmake
 [dmt@ubuntu /]# sudo pip3 install virtualenv
 [dmt@ubuntu /]# sudo pip3 install --upgrade pip
 [dmt@ubuntu /]# cd ~
 [dmt@ubuntu /]# mkdir dmt && cd dmt
-[dmt@ubuntu /]# virtualenv -p python3.6 venv
-[dmt@ubuntu /]# . venv/bin/activate
+[dmt@ubuntu /]# virtualenv -p python3.8 venv
+[dmt@ubuntu /]# source venv/bin/activate
 [dmt@ubuntu /]# pip install --upgrade setuptools
 [dmt@ubuntu /]# git clone https://github.com/Bertrand256/dash-masternode-tool
 [dmt@ubuntu /]# cd dash-masternode-tool/
@@ -39,7 +40,7 @@ The following files will be created once the build has completed successfully:
 
 ### Method based on Docker
 
-This method uses a dedicated **docker image** configured to carry out an automated build process for *Dash Masternode Tool*. The advantage of this method is its simplicity and the fact that it does not make any changes in the list of installed apps/libraries on your physical/virtual machine. All necessary dependencies are installed inside the Docker container. The second important advantage is that compilation can also be carried out on Windows or macOS (if Docker is installed), but keep in mind that the result of the build will be a Linux executable.
+This method uses a dedicated **docker image** configured to carry out an automated build process for *Dash Masternode Tool*. The advantage of this method is its simplicity, and the fact that it does not make any changes in the list of installed apps/libraries on your physical/virtual machine. All necessary dependencies are installed inside the Docker container. The second important advantage is that compilation can also be carried out on Windows or macOS (if Docker is installed), but keep in mind that the result of the build will be a Linux executable.
 
 > **Note: Skip steps 3 and 4 if you are not performing this procedure for the first time (building a newer version of DMT, for example)**
 
@@ -80,7 +81,7 @@ docker build -t bertrand256/build-dmt:ubuntu .
 
 #### 4. Create a Docker container
 
-A Docker container is an instance of an image (similar to how an object is an instance of a class in the software development world), and it exists until you delete it. You can therefore skip this step if you have created the container before. To easily identify the container, we give it a specific name (dmtbuild) when it is created so you can easily check if it exists in your system.
+A Docker container is an instance of an image (similar to how an object is an instance of a class in the software development world), and it exists until you delete it. You can therefore skip this step if you have created the container before. To easily identify the container, we give it a specific name (dmtbuild) when it is created, so you can easily check if it exists in your system.
 
 ```
 docker ps -a --filter name=dmtbuild --filter ancestor=bertrand256/build-dmt:ubuntu

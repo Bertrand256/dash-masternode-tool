@@ -90,7 +90,7 @@ ones:
 
 >  Note: if you use the external operator, it usually depends on him
 >  which scenario you will need fulfill to perform the process. Most
->  operators impose the second approch and actually it is the most
+>  operators impose the second approach and actually it is the most
 >  convenient (for them) and the most secure (for both parties) method.
 
 
@@ -142,7 +142,7 @@ operator), choose another method.
 
 
 >  **Note 2**. What would happen if the operator's key fell into the
->  wrong hands? Taking into possesion of this key does not allow
+>  wrong hands? Taking into possession of this key does not allow
 >  collateral theft (which is controlled by hardware wallet), but may
 >  have some financial aspect. Namely, it allows sending a
 >  [ProUpRegTx](https://github.com/dashpay/dips/blob/master/dip-0003.md#updating-registrar-of-masternode-proupregtx)
@@ -309,7 +309,7 @@ See:
 #### Step 4. Verify and update the data if necessary
 See: [Verify and update the data if necessary](#step-3-verify-and-update-the-data-if-necessary)
 
-#### Step 5. Select the registratin method 
+#### Step 5. Select the registration method 
 Click the option **Your own Dash-Qt wallet (manual method)**
  
 ![Config - deterministic](img/dmn/wizard-page2-manual.png)  
@@ -341,7 +341,7 @@ Select and copy the output text, including braces but nothing more.
 #### Step 10. Paste the command output into field "3" (DMT) and click _Sign message with hardware wallet_  
 ![Sign message](img/dmn/wizard-page3-manual-d.png)
 
-Hint: you can use the **Paste** button on the rigth. 
+Hint: you can use the **Paste** button on the right. 
 
 Confirm the operation on your hardware wallet.
 
@@ -363,7 +363,7 @@ This string will from now on identify your deterministic masternode.
 #### Step 14. Paste the copied transaction number into field "5" in DMT.
 ![Protx tx hash](img/dmn/wizard-page3-manual-g.png)
 
-Wcisnij przycisk `Continue`.
+Press the `Continue` button.
 
 #### Step 15. Summary - final actions
 Follow the step: [Summary - final actions](#step-6-summary-final-actions)
@@ -451,7 +451,7 @@ transaction.
     2.2. Get the following information from your masternode
     configuration:
     - `proTxHash`: copy the value from the **DMN TX hash** edit box
-    - `ipAndPort`: the IP addres and TCP port in the format *IP:Port*
+    - `ipAndPort`: the IP address and TCP port in the format *IP:Port*
     - `operatorKey`: copy the value from **Operator private key** edit 
     box
 

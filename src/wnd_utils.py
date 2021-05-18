@@ -15,34 +15,32 @@ import app_defs
 import app_utils
 import thread_utils
 import time
-from PyQt5 import QtWidgets, QtCore
+from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEvent, QPointF, QSize, QModelIndex, QRect, \
     QRectF
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap, QTextDocument, QCursor, \
-    QAbstractTextDocumentLayout, QFontMetrics, QTransform, QKeySequence
+    QAbstractTextDocumentLayout, QFontMetrics, QTransform, QKeySequence, QFont
 from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit, \
     QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView, QAction, QMenu, QApplication, \
-    QProxyStyle
+    QProxyStyle, QWidgetItem, QLayout, QSpacerItem, QLabel
 import math
 import message_dlg
+from common import CancelException
 from thread_fun_dlg import ThreadFunDlg, WorkerThread, CtrlObject
 
 
+# noinspection PyTypeChecker
 class WndUtils:
 
     def __init__(self, app_config=None):
         self.app_config = app_config
         self.debounce_timers: Dict[str, QTimer] = {}
 
-    def messageDlg(self, message):
-        ui = message_dlg.MessageDlg(self, message)
-        ui.exec_()
-
     def set_app_config(self, app_config):
         self.app_config = app_config
 
     @staticmethod
-    def displayMessage(type, message):
+    def display_message(type, message):
         msg = QMessageBox()
         msg.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard | Qt.LinksAccessibleByMouse)
         msg.setIcon(type)
@@ -56,29 +54,32 @@ class WndUtils:
         return msg.exec_()
 
     @staticmethod
-    def errorMsg(message):
+    def error_msg(message: str, log_as_exception: bool = False):
+        if log_as_exception:
+            logging.exception(str(message))
+
         if threading.current_thread() != threading.main_thread():
-            return WndUtils.call_in_main_thread(WndUtils.displayMessage, QMessageBox.Critical, message)
+            return WndUtils.call_in_main_thread(WndUtils.display_message, QMessageBox.Critical, message)
         else:
-            return WndUtils.displayMessage(QMessageBox.Critical, message)
+            return WndUtils.display_message(QMessageBox.Critical, message)
 
     @staticmethod
-    def warnMsg(message):
+    def warn_msg(message):
         if threading.current_thread() != threading.main_thread():
-            return WndUtils.call_in_main_thread(WndUtils.displayMessage, QMessageBox.Warning, message)
+            return WndUtils.call_in_main_thread(WndUtils.display_message, QMessageBox.Warning, message)
         else:
-            return WndUtils.displayMessage(QMessageBox.Warning, message)
+            return WndUtils.display_message(QMessageBox.Warning, message)
 
     @staticmethod
-    def infoMsg(message):
+    def info_msg(message):
         if threading.current_thread() != threading.main_thread():
-            return WndUtils.call_in_main_thread(WndUtils.displayMessage, QMessageBox.Information, message)
+            return WndUtils.call_in_main_thread(WndUtils.display_message, QMessageBox.Information, message)
         else:
-            return WndUtils.displayMessage(QMessageBox.Information, message)
+            return WndUtils.display_message(QMessageBox.Information, message)
 
     @staticmethod
-    def queryDlg(message, buttons=QMessageBox.Ok | QMessageBox.Cancel, default_button=QMessageBox.Ok,
-            icon=QMessageBox.Information):
+    def query_dlg(message, buttons=QMessageBox.Ok | QMessageBox.Cancel, default_button=QMessageBox.Ok,
+                  icon=QMessageBox.Information):
 
         def dlg(message, buttons, default_button, icon):
             msg = QMessageBox()
@@ -101,7 +102,7 @@ class WndUtils:
         else:
             return dlg(message, buttons, default_button, icon)
 
-    def centerByWindow(self, parent):
+    def center_by_widget(self, parent):
         """
         Centers this window by window given by attribute 'center_by_window'
         :param center_by_window: Reference to (parent) window by wich this window will be centered.
@@ -130,7 +131,7 @@ class WndUtils:
                               force_close_dlg_callback=force_close_dlg_callback,
                               show_window_delay_ms=show_window_delay_ms)
             ui.wait_for_worker_completion()
-            ret = ui.getResult()
+            ret = ui.get_result()
             ret_exception = ui.worker_exception
             del ui
             QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)  # wait until dialog hides
@@ -207,7 +208,36 @@ class WndUtils:
         return thread_wnd_utils.call_in_main_thread_ext(fun_to_call, skip_if_main_thread_locked,
                                                         callback_if_main_thread_locked, *args, **kwargs)
 
-    def getIcon(self, ico, rotate=0, force_color_change: str=None):
+    @staticmethod
+    def get_pixmap(parent, name: str, rotate=0, force_color_change: str = None) -> Optional[QPixmap]:
+        pixmap = None
+        if app_defs.APP_IMAGE_DIR:
+            path = app_defs.APP_IMAGE_DIR
+        else:
+            path = 'img'
+
+        path = os.path.join(path, name)
+        if not os.path.isfile(path):
+            logging.warning(f'File {path} does not exist or is not a file')
+        else:
+            pixmap = QPixmap(path)
+            if rotate:
+                transf = QTransform().rotate(rotate)
+                pixmap = QPixmap(pixmap.transformed(transf))
+
+            if force_color_change:
+                tmp = pixmap.toImage()
+                color = QColor(force_color_change)
+                for y in range(0, tmp.height()):
+                    for x in range(0, tmp.width()):
+                        color.setAlpha(tmp.pixelColor(x,y).alpha())
+                        tmp.setPixelColor(x, y, color)
+
+                pixmap = QPixmap.fromImage(tmp)
+        return pixmap
+
+    @staticmethod
+    def get_icon(parent, ico, rotate=0, force_color_change: str = None):
         if isinstance(ico, str):
             icon = QIcon()
             if app_defs.APP_IMAGE_DIR:
@@ -236,12 +266,13 @@ class WndUtils:
 
             icon.addPixmap(pixmap)
         else:
-            icon = self.style().standardIcon(ico)
+            icon = parent.style().standardIcon(ico)
 
         return icon
 
-    def setIcon(self, widget, ico, rotate=0, force_color_change: str=None):
-        widget.setIcon(self.getIcon(ico, rotate, force_color_change))
+    @staticmethod
+    def set_icon(parent, widget, ico, rotate=0, force_color_change: Optional[str] = None):
+        widget.setIcon(WndUtils.get_icon(parent, ico, rotate, force_color_change))
 
     @staticmethod
     def open_file_query(parent_wnd, app_config, message, directory='', filter='', initial_filter=''):
@@ -341,6 +372,41 @@ class WndUtils:
             tm = self.debounce_timers[name]
         tm.start(delay_ms)
 
+    @staticmethod
+    def remove_item_from_layout(layout: QLayout, item):
+        if item:
+            if isinstance(item, QWidgetItem):
+                w = item.widget()
+                layout.removeWidget(w)
+                w.setParent(None)
+                del w
+            elif isinstance(item, QLayout):
+                for subitem_idx in reversed(range(item.count())):
+                    subitem = item.itemAt(subitem_idx)
+                    WndUtils.remove_item_from_layout(item, subitem)
+                layout.removeItem(item)
+                # noinspection PyTypeChecker
+                item.setParent(None)
+                del item
+            elif isinstance(item, QSpacerItem):
+                del item
+            else:
+                raise Exception('Invalid item type')
+
+    @staticmethod
+    def change_widget_font_attrs(control: QWidget, point_size_diff: Optional[int] = None, bold: Optional[bool] = None,
+                                 weight: Optional[int] = None):
+        font = QtGui.QFont()
+        font = control.font()
+        font.setFamily(control.font().family())
+        if point_size_diff is not None:
+            font.setPointSize(control.font().pointSize() + point_size_diff)
+        if bold is not None:
+            font.setBold(bold)
+        if weight is not None:
+            font.setWeight(weight)
+        control.setFont(font)
+
 
 class DeadlockException(Exception):
     pass
@@ -367,7 +433,7 @@ class ThreadWndUtils(QObject):
 
     def fun_call_signalled(self, fun_to_call, args, kwargs, mutex):
         """
-        Function-event executed in the main thread as a result of emiting signal fun_call_signal from BG threads.
+        Function-event executed in the main thread as a result of emitting signal fun_call_signal from BG threads.
         :param fun_to_call: ref to a function which is to be called
         :param args: args passed to the function fun_to_call
         :param mutex: mutex object (QMutex) which is used in the calling thread to wait until
@@ -502,8 +568,9 @@ class ThreadWndUtils(QObject):
                 return fun_to_call(*args, **kwargs)
         except DeadlockException:
             raise
+        except CancelException:
+            raise
         except Exception as e:
-            logging.exception('ThreadWndUtils.call_in_main_thread error: %s' % str(e))
             raise
 
         if exception_to_rethrow:
@@ -515,44 +582,66 @@ thread_wnd_utils = ThreadWndUtils()
 
 
 class SpinnerWidget(QWidget):
-    def __init__(self, parent: QWidget, spinner_size, message: str = '', font_size=None):
+    SPINNER_TO_TEXT_DISTANCE = 5
 
+    def __init__(self, parent: QWidget, spinner_size: Optional[int] = None, message: Optional[str] = None,
+                 font_size = None):
         QWidget.__init__(self, parent)
         self.spinner_size = spinner_size
         self.message = message
         self.font_size = font_size
+        self._spinner_active = False
+        self.vertical_align = Qt.AlignVCenter
         self.timer_id = None
 
-    def sizeHint(self):
-        return self.parent().size()
+    def set_spinner_active(self, active: bool):
+        if not active and self.timer_id:
+            self.killTimer(self.timer_id)
+            self.timer_id = None
+            self.updateGeometry()
+        elif active and not self.timer_id:
+            self.timer_id = self.startTimer(200)
+            self.counter = 0
+            self.updateGeometry()
 
     def paintEvent(self, event):
-        par = self.parent()
-        size = min(self.spinner_size, par.width(), par.height())
+        content_rect = self.contentsRect()
+        if self.spinner_size:
+            size = min(self.spinner_size, content_rect.width(), content_rect.height())
+        else:
+            size = min(content_rect.width(), content_rect.height())
         dot_count = 5
         dot_size = int(size / dot_count) * 1.5
 
-        r = par.rect()
-        spinner_rect = QRect(r.width()/2 - size/2, r.height()/2 - size/2, size, size)
+        spinner_rect = QRect(content_rect.left(), content_rect.top(), size, size)
 
-        painter = QPainter()
-        painter.begin(self)
-        painter.setPen(QPen(Qt.NoPen))
+        painter = QPainter(self)
+        painter.setClipRect(content_rect)
 
-        for i in range(dot_count):
-            if self.counter % dot_count == i:
-                painter.setBrush(QBrush(QColor(0, 0, 0)))
-                d_size = dot_size * 1.1
-            else:
-                painter.setBrush(QBrush(QColor(200, 200, 200)))
-                d_size = dot_size
+        if self.timer_id:
+            diff_height = content_rect.height() - size
+            offs_y = 0
+            if diff_height > 0:
+                if self.vertical_align == Qt.AlignVCenter:
+                    offs_y = diff_height / 2
+                elif self.vertical_align == Qt.AlignBottom:
+                    offs_y = diff_height
 
-            r = size / 2 - dot_size / 2
-            x = r * math.cos(2 * math.pi * i / dot_count)
-            y = r * math.sin(2 * math.pi * i / dot_count)
             x_center = spinner_rect.left() + spinner_rect.width() / 2 - dot_size / 2
-            y_center = spinner_rect.top() + spinner_rect.height() / 2 - dot_size / 2
-            painter.drawEllipse(x_center + x, y_center + y, d_size, d_size)
+            y_center = spinner_rect.top() + offs_y + spinner_rect.height() / 2 - dot_size / 2
+
+            for i in range(dot_count):
+                if self.counter % dot_count == i:
+                    painter.setBrush(QBrush(QColor(0, 0, 0)))
+                    d_size = dot_size * 1.1
+                else:
+                    painter.setBrush(QBrush(QColor(200, 200, 200)))
+                    d_size = dot_size
+
+                r = size / 2 - dot_size / 2
+                x = r * math.cos(2 * math.pi * i / dot_count)
+                y = r * math.sin(2 * math.pi * i / dot_count)
+                painter.drawEllipse(x_center + x, y_center + y, d_size, d_size)
 
         if self.message:
             painter.setPen(QPen(Qt.black))
@@ -560,21 +649,24 @@ class SpinnerWidget(QWidget):
                 f = painter.font()
                 f.setPointSize(self.font_size)
                 painter.setFont(f)
-            spinner_rect.setTop(spinner_rect.bottom() + 3)
-            spinner_rect.setHeight(painter.fontMetrics().height() * 1.5)
-            r = painter.boundingRect(spinner_rect, Qt.AlignHCenter | Qt.AlignTop, self.message)
-            painter.drawText(r.bottomLeft(), self.message)
 
+            text_rect = QRect(content_rect)
+            text_rect.translate(spinner_rect.width() + SpinnerWidget.SPINNER_TO_TEXT_DISTANCE if self.timer_id else 0, 0)
+            painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, self.message)
         painter.end()
 
-    def showEvent(self, event):
-        self.timer_id = self.startTimer(200)
-        self.counter = 0
+    def sizeHint(self):
+        sh: QSize = self.size()
+        if self.message:
+            fm = self.fontMetrics()
+            w = fm.width(self.message)
+            if self.timer_id:
+                cr = self.contentsRect()
+                w += (min(self.spinner_size, cr.width(), cr.height()) + SpinnerWidget.SPINNER_TO_TEXT_DISTANCE)
+            sh.setWidth(w)
+        return sh
 
     def timerEvent(self, event):
-        target_geom = QRect(0, 0, self.parent().width(), self.parent().height())
-        if self.geometry() != target_geom:
-            self.setGeometry(target_geom)
         self.counter += 1
         self.update()
 
@@ -752,6 +844,103 @@ class HyperlinkItemDelegate(QStyledItemDelegate):
     def on_action_copy_text_triggered(self):
         clipboard = QApplication.clipboard()
         clipboard.setText(self.last_text)
+
+
+class IconTextItemDelegate(QItemDelegate):
+    """
+    This deledate is used to display text values with icon on the left of the text in QTableView cells.
+    For this delegate, the `data` method of the model associated should return:
+      - a tuple; the first element is of type QPixmap and the second is str - the text to display
+      - a single value (str) - the text to display
+    """
+    CellVerticalMargin = 2
+    CellHorizontalMargin = 2
+    CellLinesMargin = 2
+    IconRightMargin = 4
+
+    def __init__(self, parent: QTableView):
+        QItemDelegate.__init__(self, parent)
+        self.view = parent
+
+    def createEditor(self, parent, option, index):
+        return None
+
+    def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
+        if index.isValid():
+            text_alignment = index.data(Qt.TextAlignmentRole)
+            if not text_alignment:
+                text_alignment = Qt.AlignLeft
+            fg_color = index.data(Qt.ForegroundRole)
+            if not fg_color:
+                fg_color = Qt.black
+            data = index.data()
+
+            if isinstance(self.view, QTableView):
+                view_has_focus = self.view.hasFocus()
+                select_whole_row = self.view.selectionBehavior() == QAbstractItemView.SelectRows
+            else:
+                view_has_focus = False
+                select_whole_row = False
+
+            painter.save()
+
+            painter.setPen(QPen(Qt.NoPen))
+            if option.state & QStyle.State_Selected:
+                if (option.state & QStyle.State_HasFocus) or (view_has_focus and select_whole_row):
+                    fg_color = Qt.white
+                    painter.setBrush(QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
+                else:
+                    fg_color = Qt.black
+                    painter.setBrush(QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
+            else:
+                painter.setBrush(QBrush(Qt.white))
+            painter.drawRect(option.rect)
+
+            r = option.rect
+            r.translate(IconTextItemDelegate.CellHorizontalMargin, IconTextItemDelegate.CellVerticalMargin)
+
+            offs = 0
+            if isinstance(data, tuple) and len(data) > 0 and isinstance(data[0], QPixmap):
+                offs += 1
+                pix = data[0]
+                if pix:
+                    rp = QRect(r)
+                    rp.setWidth(pix.width())
+                    rp.setHeight(pix.height())
+                    painter.drawImage(rp, pix.toImage())
+                    r.translate(rp.width() + IconTextItemDelegate.IconRightMargin, 0)
+                    r.setWidth(r.width() - rp.width() - IconTextItemDelegate.IconRightMargin)
+
+            if isinstance(data, tuple) and len(data) > offs and isinstance(data[offs], str):
+                text = data[offs]
+            elif isinstance(data, str):
+                text = data
+            else:
+                text = ''
+
+            if text:
+                painter.setPen(QPen(fg_color))
+                painter.setFont(option.font)
+                painter.drawText(r, text_alignment, text)
+                painter.restore()
+
+    def sizeHint(self, option, index):
+        sh = QItemDelegate.sizeHint(self, option, index)
+        if index.isValid():
+            data = index.data()
+            h = 0
+            offs = 0
+            if isinstance(data, tuple) and len(data) > 0 and isinstance(data[0], QPixmap):
+                pix: QPixmap = data[0]
+                h = pix.height()
+                offs += 1
+
+            fm = option.fontMetrics
+            h1 = IconTextItemDelegate.CellVerticalMargin * 2 + IconTextItemDelegate.CellLinesMargin
+            h1 += (fm.height() * 2) - 2
+            h = max(h, h1)
+            sh.setHeight(h)
+        return sh
 
 
 class ProxyStyleNoFocusRect(QProxyStyle):

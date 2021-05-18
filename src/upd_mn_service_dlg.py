@@ -43,9 +43,9 @@ class UpdMnServiceDlg(QDialog, ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg, WndUtil
         self.dmn_new_port = ''
         self.upd_payout_active = False
         self.show_manual_commands = False
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg.setupUi(self, self)
         self.btnClose.hide()
         self.edtManualCommands.setStyle(ProxyStyleNoFocusRect())
@@ -97,8 +97,8 @@ class UpdMnServiceDlg(QDialog, ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg, WndUtil
                     protx_state = protx.get('state')
                     if (protx_state and protx_state.get(
                             'service') == self.masternode.ip + ':' + self.masternode.port) or \
-                            (protx.get('collateralHash') == self.masternode.collateralTx and
-                             str(protx.get('collateralIndex')) == str(self.masternode.collateralTxIndex)):
+                            (protx.get('collateralHash') == self.masternode.collateral_tx and
+                             str(protx.get('collateralIndex')) == str(self.masternode.collateral_tx_index)):
                         self.dmn_protx_hash = protx.get("proTxHash")
                         break
                 if not self.dmn_protx_hash:
@@ -300,20 +300,20 @@ class UpdMnServiceDlg(QDialog, ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg, WndUtil
                     msg += '\n\nYou have changed the masternode IP/port. Do you want to automatically update ' \
                            'this in the app configuration?'
 
-                    if self.queryDlg(msg, buttons=QMessageBox.Yes | QMessageBox.No, default_button=QMessageBox.Yes,
-                                     icon=QMessageBox.Information) == QMessageBox.Yes:
+                    if self.query_dlg(msg, buttons=QMessageBox.Yes | QMessageBox.No, default_button=QMessageBox.Yes,
+                                      icon=QMessageBox.Information) == QMessageBox.Yes:
                         self.masternode.ip = self.dmn_new_ip
                         self.masternode.port = str(self.dmn_new_port)
 
                         if self.on_mn_config_updated_callback:
                             self.on_mn_config_updated_callback(self.masternode)
                 else:
-                    WndUtils.infoMsg(msg)
+                    WndUtils.info_msg(msg)
 
         except Exception as e:
             if str(e).find('protx-dup') >= 0:
-                WndUtils.errorMsg('The previous protx transaction has not been confirmed yet. Wait until it is '
+                WndUtils.error_msg('The previous protx transaction has not been confirmed yet. Wait until it is '
                          'confirmed before sending a new transaction.')
             else:
                 logging.error('Exception occurred while sending protx update_service: ' + str(e))
-                WndUtils.errorMsg(str(e))
+                WndUtils.error_msg(str(e))

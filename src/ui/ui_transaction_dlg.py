@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_transaction_dlg.ui'
+# Form implementation generated from reading ui file ui_transaction_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -107,13 +107,3 @@ class Ui_TransactionDlg(object):
         self.btn_details.setText(_translate("TransactionDlg", "Show Details"))
         self.btn_close.setText(_translate("TransactionDlg", "Close"))
         self.btn_broadcast.setText(_translate("TransactionDlg", "Send Transaction"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    TransactionDlg = QtWidgets.QDialog()
-    ui = Ui_TransactionDlg()
-    ui.setupUi(TransactionDlg)
-    TransactionDlg.show()
-    sys.exit(app.exec_())

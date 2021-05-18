@@ -5,23 +5,24 @@
 import logging
 import math
 import re
-from PyQt5.QtGui import QPen, QBrush, QTextDocument, QFont, QFontMetrics, QPalette
-from functools import partial
-from typing import List, Callable, Optional, Tuple
-import sys
 import os
+from functools import partial
+from typing import List, Optional, Tuple
+
+from PyQt5.QtGui import QPen, QBrush, QTextDocument, QFont, QFontMetrics, QPalette
 from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import QSize, QEventLoop, QObject, QTimer, QVariant, pyqtSlot, QModelIndex, Qt, QRect, QPoint, \
     QMargins
 from PyQt5.QtWidgets import QPushButton, QToolButton, QWidgetItem, QSpacerItem, QLayout, QHBoxLayout, QLineEdit, \
     QLabel, QComboBox, QMenu, QMessageBox, QVBoxLayout, QCheckBox, QItemDelegate, QStyleOptionViewItem, QStyle
+
 import app_cache
 import app_utils
 import dash_utils
 from app_defs import FEE_DUFF_PER_BYTE, MIN_TX_FEE
 from common import CancelException
 from encrypted_files import write_file_encrypted, read_file_encrypted
-from hw_common import HwSessionInfo
+from hw_intf import HwSessionInfo
 from wallet_common import TxOutputType, Bip44AccountType, Bip44AddressType, TxType
 from wnd_utils import WndUtils
 
@@ -271,7 +272,6 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.change_amount = 0.0
         self.values_unit = OUTPUT_VALUE_UNIT_AMOUNT
         self.tm_calculate_change_value = QTimer(self)
-        self.tm_debounce__ = QTimer(self)
         self.current_file_name = ''
         self.current_file_encrypted = False
         self.recent_data_files = []  # recent used data files
@@ -487,31 +487,12 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.show_hide_remove_buttons()
         self.update_change_and_fee()
 
-    def remove_item_from_layout(self, item):
-        if item:
-            if isinstance(item, QWidgetItem):
-                w = item.widget()
-                self.lay_addresses.removeWidget(w)
-                w.setParent(None)
-                del w
-            elif isinstance(item, QLayout):
-                for subitem_idx in reversed(range(item.count())):
-                    subitem = item.itemAt(subitem_idx)
-                    self.remove_item_from_layout(subitem)
-                self.lay_addresses.removeItem(item)
-                item.setParent(None)
-                del item
-            elif isinstance(item, QSpacerItem):
-                del item
-            else:
-                raise Exception('Invalid item type')
-
     def remove_dest_address(self, address_item):
         row_idx = self.recipients.index(address_item)
         # remove all widgets related to the 'send to' address that is being removed
         for col_idx in range(self.lay_addresses.columnCount()):
             item = self.lay_addresses.itemAtPosition(row_idx, col_idx)
-            self.remove_item_from_layout(item)
+            WndUtils.remove_item_from_layout(self.lay_addresses, item)
 
         # move up all rows greater than the row being removed
         for row in range(row_idx + 1, len(self.recipients)):
@@ -592,7 +573,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         if change_amount > 0.0:
             recipients_count += 1
 
-        if self.app_config.is_testnet():
+        if self.app_config.is_testnet:
             fee_multiplier = 10  # in testnet large transactions tend to get stuck if the fee is "normal"
         else:
             fee_multiplier = 1
@@ -831,8 +812,8 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
             self.lbl_data_file_badge.setVisible(False)
 
     def clear_outputs(self):
-        if WndUtils.queryDlg("Do you really want to clear all outputs?", default_button=QMessageBox.Cancel,
-                             icon=QMessageBox.Warning) == QMessageBox.Ok:
+        if WndUtils.query_dlg("Do you really want to clear all outputs?", default_button=QMessageBox.Cancel,
+                              icon=QMessageBox.Warning) == QMessageBox.Ok:
             self.set_dest_addresses([('', '')])
             self.use_all_funds_for_address(self.recipients[0])
             self.current_file_name = ''
@@ -910,7 +891,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
             if file_name:
                 self.read_from_file(file_name)
         except Exception as e:
-            self.parent_dialog.errorMsg(str(e))
+            self.parent_dialog.error_msg(str(e))
 
     def read_from_file(self, file_name):
         try:
@@ -981,7 +962,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         except Exception as e:
             self.update_mru_menu_items()
             logging.exception('Exception while reading file with recipients data.')
-            self.parent_dialog.errorMsg(str(e))
+            self.parent_dialog.error_msg(str(e))
 
     def add_menu_item_to_mru(self, file_name: str) -> None:
         if file_name:

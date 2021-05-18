@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_doc_dlg.ui'
+# Form implementation generated from reading ui file ui_doc_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -44,13 +44,3 @@ class Ui_DocDlg(object):
 "p, li { white-space: pre-wrap; }\n"
 "</style></head><body style=\" font-family:\'.SF NS Text\'; font-size:13pt; font-weight:400; font-style:normal;\">\n"
 "<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><br /></p></body></html>"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    DocDlg = QtWidgets.QDialog()
-    ui = Ui_DocDlg()
-    ui.setupUi(DocDlg)
-    DocDlg.show()
-    sys.exit(app.exec_())

@@ -15,13 +15,13 @@ To automatically download firmware and install it in the device, you can use the
 2. Select the `Upload firmware` option  
   ![Select upload firmware action](img/hwri/rec-upload-firmware.png)
 
-3. On the third page of the wizard, select your Trezor model (if selected Trezor hardware wallet in the first step), firmware localtion (local file, Internet) and whether you'd like to clear your device data memory before uploading firmware. I strongly recommend this if you are installing unofficial firmware - this step will remove your previous seed from your device.  
+3. On the third page of the wizard, select your Trezor model (if selected Trezor hardware wallet in the first step), firmware location (local file, Internet) and whether you'd like to clear your device data memory before uploading firmware. I strongly recommend this if you are installing unofficial firmware - this step will remove your previous seed from your device.  
   ![Upload firmware options](img/hwri/rec-firmware-source-1.png)  
 
     Get firmware from Internet - here we have list of official firmwares for Trezor One:  
     ![Upload firmware options](img/hwri/rec-firmware-source-2.png)  
 
-    Get firmware from nternet - here we have an unofficial firmware with TESTNET support for Keepkey device:  
+    Get firmware from Internet - here we have an unofficial firmware with TESTNET support for Keepkey device:  
     ![Upload firmware options](img/hwri/rec-firmware-source-3.png)
 
 4. In the last step, reconnect your device entering into bootloader mode, taking steps according to the information displayed on the form. Click `Continue` to initiate the last step - firmware installation:  

@@ -1,14 +1,16 @@
-import logging
+import hashlib
 
 from bitcoin import compress, bin_hash160
 from btchip.btchip import *
 from btchip.btchipComm import getDongle
 from btchip.btchipUtils import compress_public_key
-from typing import List
+from typing import List, Optional
 
 import dash_utils
+import hw_common
+from app_runtime_data import AppRuntimeData
 from common import CancelException
-from hw_common import clean_bip32_path, HwSessionInfo
+from hw_common import clean_bip32_path, HWSessionBase, HWType
 import wallet_common
 from wnd_utils import WndUtils
 from dash_utils import *
@@ -17,12 +19,14 @@ import unicodedata
 from bip32utils import Base58
 
 
-class btchip_dmt(btchip):
+class btchipDMT(btchip):
     def __init__(self, dongle):
         btchip.__init__(self, dongle)
 
-
     def getTrustedInput(self, transaction, index):
+        """This is an original method from btchip.btchip class adapted to support Dash DIP2 extra data.
+        Non-pythonic naming convention is preserved.
+        """
         result = {}
         # Header
         apdu = [self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x00, 0x00]
@@ -64,7 +68,7 @@ class btchip_dmt(btchip):
         apdu.extend(params)
         self.dongle.exchange(bytearray(apdu))
         # Each output
-        indexOutput = 0
+        # indexOutput = 0
         for troutput in transaction.outputs:
             apdu = [self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00]
             params = bytearray(troutput.amount)
@@ -111,6 +115,7 @@ def process_ledger_exceptions(func):
     Catch exceptions for known user errors and expand the exception message with some suggestions.
     :param func: function decorated.
     """
+
     def process_ledger_exceptions_int(*args, **kwargs):
         try:
             return func(*args, **kwargs)
@@ -121,23 +126,139 @@ def process_ledger_exceptions(func):
             elif (e.sw == 0x6982):
                 e.message += '\n\nMake sure you have entered the PIN on your Ledger device.'
             raise
+
     return process_ledger_exceptions_int
 
 
-@process_ledger_exceptions
-def connect_ledgernano():
-    dongle = getDongle()
-    app = btchip(dongle)
-    try:
-        ver = app.getFirmwareVersion()
-        logging.info('Ledger Nano S connected. Firmware version: %s, specialVersion: %s, compressedKeys: %s' %
-                     (str(ver.get('version')), str(ver.get('specialVersion')), ver.get('compressedKeys')))
+def get_dongles() -> List[HIDDongleHIDAPI]:
+    """
+    Modified btchipCommon.getDongle function to allow the use of multiple Ledger Nano devices connected
+    to a computer at the same time.
+    """
+    devices: List[HIDDongleHIDAPI] = []
+    hidDevicePath = None
+    ledger = False
+    if HID:
+        for hidDevice in hid.enumerate(0, 0):
+            if hidDevice['vendor_id'] == 0x2581 and hidDevice['product_id'] == 0x2b7c:
+                hidDevicePath = hidDevice['path']
+            if hidDevice['vendor_id'] == 0x2581 and hidDevice['product_id'] == 0x3b7c:
+                hidDevicePath = hidDevice['path']
+                ledger = True
+            if hidDevice['vendor_id'] == 0x2581 and hidDevice['product_id'] == 0x4b7c:
+                hidDevicePath = hidDevice['path']
+                ledger = True
+            if hidDevice['vendor_id'] == 0x2c97:
+                if ('interface_number' in hidDevice and hidDevice['interface_number'] == 0) or (
+                        'usage_page' in hidDevice and hidDevice['usage_page'] == 0xffa0):
+                    hidDevicePath = hidDevice['path']
+                    ledger = True
+            if hidDevice['vendor_id'] == 0x2581 and hidDevice['product_id'] == 0x1807:
+                hidDevicePath = hidDevice['path']
 
-        client = btchip_dmt(dongle)
+            if hidDevicePath is not None:
+                dev = hid.device()
+                dev.open_path(hidDevicePath)
+                dev.set_nonblocking(True)
+                hdev = HIDDongleHIDAPI(dev, ledger, False)
+                hdev.hidDevicePath = hidDevicePath.decode('ascii')  # we need this to distinguish particular devices
+                devices.append(hdev)
+                hidDevicePath = None
+                ledger = False
+    return devices
+
+
+@process_ledger_exceptions
+def get_device_list(allow_bootloader_mode: bool = False) -> List[hw_common.HWDevice]:
+    from ledgerwallet.client import LedgerClient
+    from ledgerwallet.transport.hid import HidDevice
+
+    ret_list = []
+    exception: Optional[Exception] = None
+
+    try:
+        dongles = get_dongles()
+        if dongles:
+            for d in dongles:
+                model_symbol = d.device.get_manufacturer_string() + ' ' + d.device.get_product_string()
+                d.close()
+                in_bootloader_mode = False
+                initialized = True
+                version = None
+                dev = None
+                try:
+                    dev = HidDevice(bytes(d.__getattribute__('hidDevicePath'), 'ascii'))
+                    client = LedgerClient(device=dev)
+                    version_info = client.get_version_info()
+                    in_bootloader_mode = version_info.flags.recovery_mode is True
+                    initialized = version_info.flags.is_onboarded is True
+                    version = version_info.se_version
+                except Exception as e:
+                    logging.exception(str(e))
+                finally:
+                    if dev:
+                        dev.close()
+                        del client
+
+                # device_transport_id = hashlib.sha256(str(d.hidDevicePath).encode('ascii')).hexdigest()
+
+                if allow_bootloader_mode or in_bootloader_mode is False:
+                    ret_list.append(
+                        hw_common.HWDevice(
+                            hw_type=HWType.ledger_nano,
+                            device_id=d.__getattribute__('hidDevicePath'),
+                            model_symbol=model_symbol,
+                            device_label=None,
+                            firmware_version=version,
+                            hw_client=None,
+                            bootloader_mode=in_bootloader_mode,
+                            transport_id=d,
+                            initialized=initialized
+                        ))
+
+    except BTChipException as e:
+        if e.message != 'No dongle found':
+            logging.exception(str(e))
+            exception = e
+
+    if not ret_list and exception:
+        raise exception
+    ret_list = sorted(ret_list, key=lambda x: x.get_description())
+    return ret_list
+
+
+def open_dongle(dongle: HIDDongleHIDAPI):
+    if not dongle.opened:
+        dev = hid.device()
+        dev.open_path(bytes(dongle.__getattribute__('hidDevicePath'), 'ascii'))
+        dev.set_nonblocking(True)
+        dongle.device = dev
+        dongle.opened = True
+
+
+def is_dongle_open(dongle: HIDDongleHIDAPI) -> bool:
+    return dongle.opened
+
+
+@process_ledger_exceptions
+def open_session(dongle: HIDDongleHIDAPI):
+    open_dongle(dongle)
+
+    try:
+        client = btchipDMT(dongle)
+        ver = client.getFirmwareVersion()
+        logging.info('Ledger Nano connected. Firmware version: %s, specialVersion: %s, compressedKeys: %s' %
+                     (str(ver.get('version')), str(ver.get('specialVersion')), ver.get('compressedKeys')))
         return client
-    except:
+    except BTChipException as e:
+        # exception would occur if the user haven't run the Dash app on the device
         dongle.close()
         raise
+
+
+@process_ledger_exceptions
+def close_session(dongle: HIDDongleHIDAPI):
+    dongle.close()
 
 
 class MessageSignature:
@@ -146,34 +267,44 @@ class MessageSignature:
         self.signature = signature
 
 
-@process_ledger_exceptions
-def sign_message(hw_session: HwSessionInfo, bip32_path, message):
+def _ledger_extract_address(addr: str) -> str:
+    match = re.search('bytearray\(b?["\']([a-zA-Z0-9]+)["\']\)', addr)
+    if match and len(match.groups()) == 1:
+        addr = match.group(1)
+    elif not dash_utils.validate_address(addr):
+        raise Exception("Invalid Dash address format returned from getWalletPublicKey: " + addr)
+    return addr
 
-    client = hw_session.hw_client
+
+@process_ledger_exceptions
+def sign_message(hw_client, bip32_path: str, message: str, hw_session: Optional[HWSessionBase]):
     # Ledger doesn't accept characters other that ascii printable:
     # https://ledgerhq.github.io/btchip-doc/bitcoin-technical.html#_sign_message
     message = message.encode('ascii', 'ignore')
     bip32_path = clean_bip32_path(bip32_path)
 
     ok = False
-    for i in range(1,4):
-        info = client.signMessagePrepare(bip32_path, message)
+    for i in range(1, 4):
+        info = hw_client.signMessagePrepare(bip32_path, message)
         if info['confirmationNeeded'] and info['confirmationType'] == 34:
             if i == 1 or \
-                WndUtils.queryDlg('Another application (such as Ledger Wallet Bitcoin app) has probably taken over '
-                     'the communication with the Ledger device.'
-                     '\n\nTo continue, close that application and click the <b>Retry</b> button.'
-                     '\nTo cancel, click the <b>Abort</b> button',
-                 buttons=QMessageBox.Retry | QMessageBox.Abort,
-                 default_button=QMessageBox.Retry, icon=QMessageBox.Warning) == QMessageBox.Retry:
+                    WndUtils.query_dlg('Another application (such as Ledger Wallet Bitcoin app) has probably taken over '
+                                      'the communication with the Ledger device.'
+                                      '\n\nTo continue, close that application and click the <b>Retry</b> button.'
+                                      '\nTo cancel, click the <b>Abort</b> button',
+                                       buttons=QMessageBox.Retry | QMessageBox.Abort,
+                                       default_button=QMessageBox.Retry, icon=QMessageBox.Warning) == QMessageBox.Retry:
 
-                # we need to reconnect the device; first, we'll try to reconnect to HW without closing the intefering
+                # we need to reconnect the device; first, we'll try to reconnect to HW without closing the interfering
                 # application; it it doesn't help we'll display a message requesting the user to close the app
-                hw_session.hw_disconnect()
-                if hw_session.hw_connect():
-                    client = hw_session.hw_client
+                if hw_session:
+                    hw_session.disconnect_hardware_wallet()
+                    if hw_session.connect_hardware_wallet():
+                        hw_client = hw_session.hw_client
+                    else:
+                        raise Exception('Hardware wallet reconnect error.')
                 else:
-                    raise Exception('Hardware wallet reconnect error.')
+                    raise Exception('Cannot reconnect Ledger device')
             else:
                 break
         else:
@@ -184,13 +315,18 @@ def sign_message(hw_session: HwSessionInfo, bip32_path, message):
         raise CancelException('Cancelled')
 
     try:
-        signature = client.signMessageSign()
+        signature = hw_client.signMessageSign()
+    except BTChipException as e:
+        if e.args and len(e.args) >= 2 and e.args[0] == 'Invalid status 6985':
+            raise CancelException('Cancelled')
+        else:
+            raise
     except Exception as e:
         logging.exception('Exception while signing message with Ledger Nano S')
         raise Exception('Exception while signing message with Ledger Nano S. Details: ' + str(e))
 
     try:
-        pubkey = client.getWalletPublicKey(bip32_path)
+        pubkey = hw_client.getWalletPublicKey(bip32_path)
     except Exception as e:
         logging.exception('Could not get public key for BIP32 path from Ledger Nano S')
         raise Exception('Could not get public key for BIP32 path from Ledger Nano S. Details: ' + str(e))
@@ -216,22 +352,25 @@ def sign_message(hw_session: HwSessionInfo, bip32_path, message):
         logging.error('client.signMessageSign() returned invalid response (code 1): ' + signature.hex())
         raise Exception('Invalid signature returned (code 1).')
 
+    addr = _ledger_extract_address(pubkey.get('address'))
     return MessageSignature(
-        pubkey.get('address').decode('ascii'),
+        addr,
         bytes(chr(27 + 4 + (signature[0] & 0x01)), "utf-8") + r + s
     )
 
 
 @process_ledger_exceptions
-def get_address_and_pubkey(client, bip32_path, show_display=False):
+def get_address_and_pubkey(hw_session: HWSessionBase, bip32_path, show_display=False):
     bip32_path = clean_bip32_path(bip32_path)
     bip32_path.strip()
     if bip32_path.lower().find('m/') >= 0:
         bip32_path = bip32_path[2:]
 
-    nodedata = client.getWalletPublicKey(bip32_path, showOnScreen=show_display)
+    nodedata = hw_session.hw_client.getWalletPublicKey(bip32_path, showOnScreen=show_display)
+    addr = _ledger_extract_address(nodedata.get('address'))
+
     return {
-        'address': nodedata.get('address').decode('utf-8'),
+        'address': addr,
         'publicKey': compress_public_key(nodedata.get('publicKey'))
     }
 
@@ -256,26 +395,25 @@ def get_xpub(client, bip32_path):
     parent_fingerprint = bin_hash160(parent_pubkey)[:4]
 
     xpub_raw = bytes.fromhex('0488b21e') + depth.to_bytes(1, 'big') + parent_fingerprint + index.to_bytes(4, 'big') + \
-           chaincode + pubkey
+               chaincode + pubkey
     xpub = Base58.check_encode(xpub_raw)
 
     return xpub
 
 
-def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, secondary_pin: str):
+def recover_device_with_seed_input(dongle: HIDDongleHIDAPI, mnemonic_words: str, pin: str, passphrase: str,
+                                   secondary_pin: str):
     """
-    Initialise Ledger Nano S device with a list of mnemonic words.
+    Initialize Ledger Nano S device with a list of mnemonic words.
     :param mnemonic_words: 12, 18 or 24 mnemonic words separated with spaces to initialise device.
     :param pin: PIN to be set in the device (4- or 8-character string)
     :param passphrase: Passphrase to be set in the device or empty.
-    :param secondary_pin: Secondary PIN to activate passphrase. It's required if 'passphrase' is set.
+    :param secondary_pin: Secondary PIN to activate passph. It's required if 'passph' is set.
     """
 
-    def process(ctrl, mnemonic_words, pin, passphrase, secondary_pin):
-        ctrl.dlg_config_fun(dlg_title="Please confirm", show_progress_bar=False)
-        ctrl.display_msg_fun('<b>Please wait while initializing device...</b>')
-
-        dongle = getDongle()
+    def process(ctrl):
+        ctrl.dlg_config(dlg_title="Please confirm", show_progress_bar=False)
+        ctrl.display_msg('<b>Please wait while initializing device...</b>')
 
         # stage 1: initialize the hardware wallet with mnemonic words
         apdudata = bytearray()
@@ -287,7 +425,7 @@ def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, seco
         # empty prefix
         apdudata += bytearray([0])
 
-        # empty passphrase in this phase
+        # empty passph in this phase
         apdudata += bytearray([0])
 
         if mnemonic_words:
@@ -298,9 +436,9 @@ def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, seco
         apdu = bytearray([0xE0, 0xD0, 0x00, 0x00, len(apdudata)]) + apdudata
         dongle.exchange(apdu, timeout=3000)
 
-        # stage 2: setup the secondary pin and the passphrase if provided
+        # stage 2: setup the secondary pin and the passph if provided
         if passphrase and secondary_pin:
-            ctrl.display_msg_fun('<b>Configuring the passphrase, enter the primary PIN on your <br>'
+            ctrl.display_msg('<b>Configuring passphrase, enter the primary PIN on your <br>'
                                  'hardware wallet when asked...</b>')
 
             apdudata = bytearray()
@@ -313,8 +451,8 @@ def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, seco
             apdudata += bytearray([0])
 
             if passphrase:
-                passphrase = unicodedata.normalize('NFKD', passphrase)
-                apdudata += bytearray([len(passphrase)]) + bytearray(passphrase, 'utf8')
+                _passph = unicodedata.normalize('NFKD', passphrase)
+                apdudata += bytearray([len(_passph)]) + bytearray(_passph, 'utf8')
             else:
                 apdudata += bytearray([0])
 
@@ -324,22 +462,26 @@ def load_device_by_mnemonic(mnemonic_words: str, pin: str, passphrase: str, seco
             apdu = bytearray([0xE0, 0xD0, 0x01, 0x00, len(apdudata)]) + apdudata
             dongle.exchange(apdu, timeout=3000)
 
-        dongle.close()
-        del dongle
+            device_id = dongle.__getattribute__('hidDevicePath')
+            return device_id
+
+    was_open = is_dongle_open(dongle)
     try:
-        return WndUtils.run_thread_dialog(process, (mnemonic_words, pin, passphrase, secondary_pin), True)
+        open_dongle(dongle)
+        return WndUtils.run_thread_dialog(process, (), True)
     except BTChipException as e:
-        if e.message == 'Invalid status 6982':
+        if e.message in ('Invalid status 6982', 'Invalid status 6d00'):
             raise Exception('Operation failed with the following error: %s. \n\nMake sure you have reset the device '
                             'and started it in recovery mode.' % e.message)
         else:
             raise
-    except Exception as e:
-        raise
+    finally:
+        if not was_open and is_dongle_open(dongle):
+            dongle.close()
 
 
 @process_ledger_exceptions
-def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoType],
+def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: List[wallet_common.UtxoType],
             tx_outputs: List[wallet_common.TxOutputType], tx_fee):
     client = hw_session.hw_client
     rawtransactions = {}
@@ -353,8 +495,8 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
     #  {
     #    'locking_script': <Locking script of the UTXO used as an input. Used in the process of signing
     #                       transaction.>,
-    #    'outputIndex': <index of the UTXO within the previus transaction>,
-    #    'txid': <hash of the previus transaction>,
+    #    'outputIndex': <index of the UTXO within the previous transaction>,
+    #    'txid': <hash of the previous transaction>,
     #    'bip32_path': <BIP32 path of the HW key controlling UTXO's destination>,
     #    'pubkey': <Public key obtained from the HW using the bip32_path.>
     #    'signature' <Signature obtained as a result of processing the input. It will be used as a part of the
@@ -370,14 +512,14 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
     # reading it multiple times for the same bip32 path
     bip32_to_address = {}
 
-    # read previous transactins
+    # read previous transactions
     for utxo in utxos_to_spend:
         if utxo.txid not in rawtransactions:
-            tx = hw_session.dashd_intf.getrawtransaction(utxo.txid, 1, skip_cache=False)
+            tx = rt_data.dashd_intf.getrawtransaction(utxo.txid, 1, skip_cache=False)
             if tx and tx.get('hex'):
                 tx_raw = tx.get('hex')
             else:
-                tx_raw = hw_session.dashd_intf.getrawtransaction(utxo.txid, 0, skip_cache=False)
+                tx_raw = rt_data.dashd_intf.getrawtransaction(utxo.txid, 0, skip_cache=False)
 
             if tx_raw:
                 rawtransactions[utxo.txid] = tx_raw
@@ -417,7 +559,7 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
 
         utxo_tx_index = utxo.output_index
         if utxo_tx_index < 0 or utxo_tx_index > len(prev_transaction.outputs):
-            raise Exception('Incorrent value of outputIndex for UTXO %s' % str(idx))
+            raise Exception('Incorrect value of outputIndex for UTXO %s' % str(idx))
 
         trusted_input = client.getTrustedInput(prev_transaction, utxo_tx_index)
         trusted_inputs.append(trusted_input)
@@ -437,7 +579,7 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
         if pubkey_hash != pubkey_hash_from_script:
             logging.error("Error: different public key hashes for the BIP32 path %s (UTXO %s) and the UTXO locking "
                           "script. Your signed transaction will not be validated by the network." %
-              (bip32_path, str(idx)))
+                          (bip32_path, str(idx)))
 
         arg_inputs.append({
             'locking_script': prev_transaction.outputs[utxo.output_index].script,
@@ -454,27 +596,26 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
     new_transaction.version = bytearray([0x01, 0x00, 0x00, 0x00])
     for out in tx_outputs:
         output = bitcoinOutput()
-        output.script = compose_tx_locking_script(out.address, hw_session.app_config.dash_network)
+        output.script = compose_tx_locking_script(out.address, rt_data.dash_network)
         output.amount = int.to_bytes(out.satoshis, 8, byteorder='little')
         new_transaction.outputs.append(output)
 
-    # join all outputs - will be used by Ledger for sigining transaction
+    # join all outputs - will be used by Ledger for signing transaction
     all_outputs_raw = new_transaction.serializeOutputs()
 
     # sign all inputs on Ledger and add inputs in the new_transaction object for serialization
     for idx, new_input in enumerate(arg_inputs):
-
         client.startUntrustedTransaction(starting, idx, trusted_inputs, new_input['locking_script'])
         client.finalizeInputFull(all_outputs_raw)
         sig = client.untrustedHashSign(new_input['bip32_path'], lockTime=0)
         new_input['signature'] = sig
 
-        input = bitcoinInput()
-        input.prevOut = bytearray.fromhex(new_input['txid'])[::-1] + \
-                        int.to_bytes(new_input['outputIndex'], 4, byteorder='little')
-        input.script = bytearray([len(sig)]) + sig + bytearray([0x21]) + new_input['pubkey']
-        input.sequence = bytearray([0xFF, 0xFF, 0xFF, 0xFF])
-        new_transaction.inputs.append(input)
+        tx_input = bitcoinInput()
+        tx_input.prevOut = bytearray.fromhex(new_input['txid'])[::-1] + \
+                           int.to_bytes(new_input['outputIndex'], 4, byteorder='little')
+        tx_input.script = bytearray([len(sig)]) + sig + bytearray([0x21]) + new_input['pubkey']
+        tx_input.sequence = bytearray([0xFF, 0xFF, 0xFF, 0xFF])
+        new_transaction.inputs.append(tx_input)
 
         starting = False
 

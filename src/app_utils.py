@@ -85,7 +85,7 @@ def version_str_to_number(version_str):
     return version_nr
 
 
-def is_version_bigger(checked_version: str, ref_version: str) -> bool:
+def is_version_greater(checked_version: str, ref_version: str) -> bool:
     cmp = False
     try:
         version_nrs, ref_suffix = parse_version_str(ref_version)
@@ -208,9 +208,9 @@ def seconds_to_human(number_of_seconds, out_seconds=True, out_minutes=True, out_
                      out_days=True, out_unit_auto_adjust=False):
     """
     Converts number of seconds to string representation.
-    :param out_seconds: False, if seconds part in output is to be trucated
+    :param out_seconds: False, if seconds part in output is to be truncated
     :param number_of_seconds: number of seconds.
-    :param out_unit_auto_adjust: if True, funcion automatically decides what parts of the date-time diff
+    :param out_unit_auto_adjust: if True, function automatically decides what parts of the date-time diff
       passed as an argument will become part of the output string. For example, if number_of_seconds is bigger than
       days, there is no sense to show seconds part.
     :return: string representation of time delta
@@ -273,6 +273,20 @@ def seconds_to_human(number_of_seconds, out_seconds=True, out_minutes=True, out_
     return ' '.join(human_strings)
 
 
+def bytes_to_human(bytes_count: int):
+    if bytes_count >= 1099511627776:
+        ret_str = '{0:.2f} TB'.format(bytes_count / 1099511627776)
+    elif bytes_count >= 1073741824:
+        ret_str = '{0:.2f} GB'.format(bytes_count / 1073741824)
+    elif bytes_count >= 1048576:
+        ret_str = '{0:.2f} MB'.format(bytes_count / 1048576)
+    elif bytes_count >= 1024:
+        ret_str = '{0:.2f} kB'.format(bytes_count / 1024)
+    else:
+        ret_str = f'{bytes_count} {"Byte" if bytes_count == 1 else "Bytes"}'
+    return ret_str
+
+
 def get_default_locale():
     return QLocale.system()
 
@@ -281,7 +295,7 @@ ctx = decimal.Context()
 ctx.prec = 20
 
 
-def to_string(data):
+def to_string(data) -> Optional[str]:
     """ Converts date/datetime or number to string using the current locale.
     """
 
@@ -382,3 +396,18 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+
+
+def url_path_join(url: str, *parts: str) -> str:
+    if url is None:
+        url = ''
+
+    for part in parts:
+        if part:
+            if url and url[-1] == '/' and part[0] == '/':
+                url += part[1:]
+            elif url and url[-1] != '/' and part[0] != '/':
+                url += '/' + part
+            else:
+                url += part
+    return url

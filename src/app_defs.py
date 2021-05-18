@@ -4,7 +4,10 @@
 # Created on: 2018-03
 import collections
 import logging
+from enum import Enum
 from typing import List
+
+from PyQt5.QtGui import QColor
 
 APP_NAME_SHORT = 'DashMasternodeTool'
 APP_NAME_LONG = 'Dash Masternode Tool'
@@ -18,23 +21,37 @@ DEFAULT_LOG_FORMAT = '%(asctime)s %(levelname)s|%(name)s|%(threadName)s|%(filena
 KnownLoggerType = collections.namedtuple('KnownLoggerType', 'name external')
 APP_PATH = ''
 APP_IMAGE_DIR = ''
+BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) ' \
+                     'Chrome/88.0.4324.152 Safari/537.36'
+
+COLOR_WARNING_STR = '#e65c00'
+COLOR_WARNING = QColor(COLOR_WARNING_STR)
+COLOR_ERROR_STR = 'red'
+COLOR_ERROR = QColor(COLOR_ERROR_STR)
+COLOR_OK_STR = '#00cc00'
+COLOR_OK = QColor(COLOR_OK_STR)
 
 
-class HWType:
-    trezor = 'TREZOR'
-    keepkey = 'KEEPKEY'
-    ledger_nano_s = 'LEDGERNANOS'
+class AppTextMessageType(Enum):
+    INFO = 'info'
+    WARN = 'warn'
+    ERROR = 'error'
 
-    @staticmethod
-    def get_desc(hw_type):
-        if hw_type == HWType.trezor:
-            return 'Trezor'
-        elif hw_type == HWType.keepkey:
-            return 'KeepKey'
-        elif hw_type == HWType.ledger_nano_s:
-            return 'Ledger Nano S'
-        else:
-            return '???'
+
+class DispMessage(object):
+    NEW_VERSION = 1
+    DASH_NET_CONNECTION = 2
+    OTHER_1 = 3
+    OTHER_2 = 4
+
+    def __init__(self, message: str, type: AppTextMessageType):
+        """
+        :param type: 'warn'|'error'|'info'
+        :param message: a message
+        """
+        self.message = message
+        self.type: AppTextMessageType = type
+        self.hidden = False
 
 
 def get_note_url(note_symbol):
@@ -77,7 +94,7 @@ __KNOWN_LOGGERS = [
 
 def get_known_loggers() -> List[KnownLoggerType]:
     ll = []
-    # add existing loggers which are not known: some new libraries (or new versions) can intruduce new
+    # add existing loggers which are not known: some new libraries (or new versions) can introduce new
     # loggers
     for lname in logging.Logger.manager.loggerDict:
         l = logging.Logger.manager.loggerDict[lname]

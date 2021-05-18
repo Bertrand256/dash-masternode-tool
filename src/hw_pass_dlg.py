@@ -15,9 +15,9 @@ class HardwareWalletPassDlg(QDialog, ui_hw_pass_dlg.Ui_HardwareWalletPassDlg, Wn
         self.passphrase = ''
         self.enter_on_device = False
         self.pass_available_on_device = pass_available_on_device
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_hw_pass_dlg.Ui_HardwareWalletPassDlg.setupUi(self, self)
         self.btnEnterPass.clicked.connect(self.btnEnterClick)
         self.btnEnterOnDevice.clicked.connect(self.btnEnterOnDeviceClick)

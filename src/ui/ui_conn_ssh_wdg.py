@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_conn_ssh_wdg.ui'
+# Form implementation generated from reading ui file ui_conn_ssh_wdg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -94,13 +94,3 @@ class Ui_SshConnection(object):
         self.lblAuthentication.setText(_translate("SshConnection", "Authentication:"))
         self.lblSshHost.setText(_translate("SshConnection", "SSH host:"))
         self.lblPrivateKeyPath.setText(_translate("SshConnection", "Private key path:"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    SshConnection = QtWidgets.QWidget()
-    ui = Ui_SshConnection()
-    ui.setupUi(SshConnection)
-    SshConnection.show()
-    sys.exit(app.exec_())

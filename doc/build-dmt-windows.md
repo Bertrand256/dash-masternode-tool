@@ -4,10 +4,10 @@ The following procedure describes the process of building a 64-bit executable fi
 We assume that the procedure is carried out on a clean installation of the operating system, on which you have not previously installed any program used in the procedure (e.g. Python). To avoid any confusion arising from version incompatibilities, any previously installed software should be uninstalled first.
 
 ### Install *Python*
-Python version 3.6 or above is required to build DMT. Download and install Python first as follows:
+Python version 3.8 or above is required to build DMT. Download and install Python first as follows:
 * Open your preferred web browser and go to https://www.python.org/downloads/
 
-* Scroll to the *Looking for a specific release?* section and click the link corresponding to the latest release of the 3.6 version (3.6.4 at the time of writing):
+* Scroll to the *Looking for a specific release?* section and click the link corresponding to the latest release of the 3.8 version (3.8.10 at the time of writing):
 
   ![Download Python](img/build-dmt/bwin-install-python-1.jpg)
 
@@ -17,7 +17,7 @@ Python version 3.6 or above is required to build DMT. Download and install Pytho
 
 * Run the installer
 
-* Check the *Add Python 3.6 to PATH* option and select *Customize installation* link:
+* Check the *Add Python 3.8 to PATH* option and select *Customize installation* link:
 
   ![Install Python - step 1](img/build-dmt/bwin-install-python-3.jpg)
 
@@ -25,7 +25,7 @@ Python version 3.6 or above is required to build DMT. Download and install Pytho
 
   ![Install Python - step 2](img/build-dmt/bwin-install-python-4.jpg)
 
-* In the *Advanced Options* step, check the *Install for all users* option. It is also recommended to install to a simple installation path such as *C:\Python36-64* for example:
+* In the *Advanced Options* step, check the *Install for all users* option. It is also recommended installing to a simple installation path such as *C:\Python36-64* for example:
 
   ![Install Python - step 3](img/build-dmt/bwin-install-python-5.jpg)
 
@@ -96,15 +96,15 @@ Open the Windows command prompt (*cmd.exe*)  and run the following commands:
 * Create a Python virtual environment for DMT:
 
   ```
-  virtualenv -p c:\Python36-64\python.exe dmt-64
+  virtualenv -p c:\Python38\python.exe dmt
   ```
 
-  The *dmt-64* directory will be created under *C:\projects\virtualenvs*
+  The *dmt* directory will be created under *C:\projects\virtualenvs*
 
 * Activate the new virtual environment:
 
   ```
-  c:\projects\virtualenvs\dmt-64\Scripts\activate.bat
+  c:\projects\virtualenvs\dmt\Scripts\activate.bat
   ```
 
 * Download the DMT source from GitHub:

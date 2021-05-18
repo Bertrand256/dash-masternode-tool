@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_cmd_console_dlg.ui'
+# Form implementation generated from reading ui file ui_cmd_console_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -49,13 +49,3 @@ class Ui_CmdConsoleDlg(object):
         CmdConsoleDlg.setWindowTitle(_translate("CmdConsoleDlg", "Dialog"))
         self.edtCmdLog.setPlaceholderText(_translate("CmdConsoleDlg", "Type \'help\' to display commands description"))
         self.label.setText(_translate("CmdConsoleDlg", "Command:"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    CmdConsoleDlg = QtWidgets.QDialog()
-    ui = Ui_CmdConsoleDlg()
-    ui.setupUi(CmdConsoleDlg)
-    CmdConsoleDlg.show()
-    sys.exit(app.exec_())

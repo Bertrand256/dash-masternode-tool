@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_revoke_mn_dlg.ui'
+# Form implementation generated from reading ui file ui_revoke_mn_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -147,13 +147,3 @@ class Ui_RevokeMnDlg(object):
         self.btnCancel.setText(_translate("RevokeMnDlg", "Cancel"))
         self.btnSendRevokeTx.setText(_translate("RevokeMnDlg", "Send Revoke Transaction"))
         self.btnClose.setText(_translate("RevokeMnDlg", "Close"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    RevokeMnDlg = QtWidgets.QDialog()
-    ui = Ui_RevokeMnDlg()
-    ui.setupUi(RevokeMnDlg)
-    RevokeMnDlg.show()
-    sys.exit(app.exec_())

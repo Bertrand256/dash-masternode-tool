@@ -82,422 +82,20 @@ QLineEdit:read-only {
       </property>
       <layout class="QVBoxLayout" name="verticalLayout_2">
        <property name="spacing">
-        <number>12</number>
+        <number>6</number>
        </property>
-       <item>
-        <layout class="QHBoxLayout" name="layMasternodesControl" stretch="0,3,0,0,0,0,0,0,0,0">
-         <property name="spacing">
-          <number>3</number>
-         </property>
-         <property name="leftMargin">
-          <number>12</number>
-         </property>
-         <property name="topMargin">
-          <number>0</number>
-         </property>
-         <property name="rightMargin">
-          <number>0</number>
-         </property>
-         <property name="bottomMargin">
-          <number>0</number>
-         </property>
-         <item>
-          <widget class="QLabel" name="label_5">
-           <property name="minimumSize">
-            <size>
-             <width>0</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>16777215</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>Masternodes</string>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QComboBox" name="cboMasternodes">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="minimumSize">
-            <size>
-             <width>140</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>250</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="toolTip">
-            <string>List of configured masternodes</string>
-           </property>
-           <property name="editable">
-            <bool>false</bool>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="btnMoveMnUp">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>16777215</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="toolTip">
-            <string>Move up in the masternode list</string>
-           </property>
-           <property name="styleSheet">
-            <string notr="true"/>
-           </property>
-           <property name="text">
-            <string/>
-           </property>
-           <property name="flat">
-            <bool>false</bool>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="btnMoveMnDown">
-           <property name="toolTip">
-            <string>Move down in the masternode list</string>
-           </property>
-           <property name="styleSheet">
-            <string notr="true"/>
-           </property>
-           <property name="text">
-            <string/>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="btnNewMn">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>16777215</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="toolTip">
-            <string>Create a new Masternode configuration</string>
-           </property>
-           <property name="text">
-            <string>New</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="btnDuplicateMn">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="toolTip">
-            <string>Duplicate masternode entry</string>
-           </property>
-           <property name="text">
-            <string>Duplicate</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="btnDeleteMn">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="toolTip">
-            <string>Delete current Masternode configuration</string>
-           </property>
-           <property name="text">
-            <string>Delete</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="btnEditMn">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>16777215</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="toolTip">
-            <string>Enable editing</string>
-           </property>
-           <property name="text">
-            <string>Edit</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="btnCancelEditingMn">
-           <property name="text">
-            <string>Cancel editing</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <spacer name="horizontalSpacer">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>40</width>
-             <height>20</height>
-            </size>
-           </property>
-          </spacer>
-         </item>
-        </layout>
-       </item>
-       <item>
-        <widget class="QFrame" name="frmMasternodeDetails">
-         <property name="frameShape">
-          <enum>QFrame::StyledPanel</enum>
-         </property>
-         <property name="frameShadow">
-          <enum>QFrame::Plain</enum>
-         </property>
-         <layout class="QVBoxLayout" name="verticalLayout_3">
-          <property name="spacing">
-           <number>-1</number>
-          </property>
-          <property name="leftMargin">
-           <number>12</number>
-          </property>
-          <property name="topMargin">
-           <number>12</number>
-          </property>
-          <property name="rightMargin">
-           <number>12</number>
-          </property>
-          <property name="bottomMargin">
-           <number>12</number>
-          </property>
-          <item>
-           <layout class="QHBoxLayout" name="horizontalLayout" stretch="0,1,0">
-            <property name="spacing">
-             <number>-1</number>
-            </property>
-            <item>
-             <widget class="QLabel" name="lblMasternodeStatus">
-              <property name="minimumSize">
-               <size>
-                <width>0</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>16777215</width>
-                <height>16777215</height>
-               </size>
-              </property>
-              <property name="text">
-               <string>Masternode status</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="lblMnStatus">
-              <property name="frameShape">
-               <enum>QFrame::Panel</enum>
-              </property>
-              <property name="frameShadow">
-               <enum>QFrame::Sunken</enum>
-              </property>
-              <property name="text">
-               <string/>
-              </property>
-              <property name="wordWrap">
-               <bool>true</bool>
-              </property>
-              <property name="openExternalLinks">
-               <bool>true</bool>
-              </property>
-              <property name="textInteractionFlags">
-               <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="btnRefreshMnStatus">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="toolTip">
-               <string>Get Masternode's status</string>
-              </property>
-              <property name="text">
-               <string>Get status</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item>
-           <layout class="QHBoxLayout" name="horizontalLayout_2">
-            <property name="spacing">
-             <number>-1</number>
-            </property>
-            <item>
-             <widget class="QPushButton" name="btnRegisterDmn">
-              <property name="toolTip">
-               <string>Register new/update existing masternode by sending a ProRegTx transaction.</string>
-              </property>
-              <property name="text">
-               <string>Register masternode</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="btnUpdMnPayoutAddr">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="minimumSize">
-               <size>
-                <width>0</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>16777215</width>
-                <height>16777215</height>
-               </size>
-              </property>
-              <property name="toolTip">
-               <string>Update the masternode payout address on the network.</string>
-              </property>
-              <property name="styleSheet">
-               <string notr="true"/>
-              </property>
-              <property name="text">
-               <string>Update payout addr.</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="btnUpdMnOperatorKey">
-              <property name="toolTip">
-               <string>Update the masternode operator key on the network.</string>
-              </property>
-              <property name="text">
-               <string>Update operator key</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="btnUpdMnVotingKey">
-              <property name="toolTip">
-               <string>Update the masternode voting key on the network.</string>
-              </property>
-              <property name="text">
-               <string>Update voting key</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="btnUpdMnService">
-              <property name="toolTip">
-               <string>Update the masternode IP:port and/or the operator reward Dash address.</string>
-              </property>
-              <property name="text">
-               <string>Update service</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="btnRevokeMn">
-              <property name="toolTip">
-               <string>Revoke the masternode operator key.</string>
-              </property>
-              <property name="text">
-               <string>Revoke operator</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <spacer name="horizontalSpacer_3">
-              <property name="orientation">
-               <enum>Qt::Horizontal</enum>
-              </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>40</width>
-                <height>20</height>
-               </size>
-              </property>
-             </spacer>
-            </item>
-           </layout>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <spacer name="verticalSpacer">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>40</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
+       <property name="leftMargin">
+        <number>6</number>
+       </property>
+       <property name="topMargin">
+        <number>6</number>
+       </property>
+       <property name="rightMargin">
+        <number>6</number>
+       </property>
+       <property name="bottomMargin">
+        <number>6</number>
+       </property>
       </layout>
      </widget>
     </item>
@@ -525,14 +123,7 @@ QLineEdit:read-only {
      <addaction name="action_clear_proposals_cache"/>
     </widget>
     <addaction name="action_hw_wallet"/>
-    <addaction name="separator"/>
-    <addaction name="action_sign_message_with_collateral_addr"/>
-    <addaction name="action_sign_message_with_owner_key"/>
-    <addaction name="action_sign_message_with_voting_key"/>
-    <addaction name="separator"/>
-    <addaction name="action_hw_tools"/>
-    <addaction name="separator"/>
-    <addaction name="action_import_masternode_conf"/>
+    <addaction name="action_wallet_tools"/>
     <addaction name="separator"/>
     <addaction name="action_check_for_updates"/>
     <addaction name="action_command_console"/>
@@ -549,6 +140,7 @@ QLineEdit:read-only {
       <string>Recent Configuration Files</string>
      </property>
     </widget>
+    <addaction name="action_new_configuration"/>
     <addaction name="action_load_config_file"/>
     <addaction name="action_open_recent_files"/>
     <addaction name="action_restore_config_from_backup"/>
@@ -562,7 +154,29 @@ QLineEdit:read-only {
     <addaction name="action_about_app"/>
     <addaction name="action_about_qt"/>
    </widget>
+   <widget class="QMenu" name="menuMasternode">
+    <property name="title">
+     <string>Masternode</string>
+    </property>
+    <addaction name="action_show_masternode_details"/>
+    <addaction name="separator"/>
+    <addaction name="action_new_masternode_entry"/>
+    <addaction name="action_clone_masternode_entry"/>
+    <addaction name="action_delete_masternode_entry"/>
+    <addaction name="separator"/>
+    <addaction name="action_register_masternode"/>
+    <addaction name="action_update_masternode_payout_address"/>
+    <addaction name="action_update_masternode_operator_key"/>
+    <addaction name="action_update_masternode_voting_key"/>
+    <addaction name="action_update_masternode_service"/>
+    <addaction name="action_revoke_masternode"/>
+    <addaction name="separator"/>
+    <addaction name="action_sign_message_with_collateral_addr"/>
+    <addaction name="action_sign_message_with_owner_key"/>
+    <addaction name="action_sign_message_with_voting_key"/>
+   </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuMasternode"/>
    <addaction name="menuTools"/>
   </widget>
   <widget class="QToolBar" name="toolBar">
@@ -586,16 +200,17 @@ QLineEdit:read-only {
    <addaction name="separator"/>
    <addaction name="action_check_network_connection"/>
    <addaction name="separator"/>
-   <addaction name="action_test_hw_connection"/>
+   <addaction name="action_connect_hw"/>
    <addaction name="action_disconnect_hw"/>
    <addaction name="separator"/>
    <addaction name="action_open_proposals_window"/>
    <addaction name="separator"/>
    <addaction name="action_hw_wallet"/>
+   <addaction name="action_wallet_tools"/>
   </widget>
   <action name="action_hw_wallet">
    <property name="text">
-    <string>Transfer Funds / Wallet</string>
+    <string>Wallet</string>
    </property>
   </action>
   <action name="action_sign_message_with_collateral_addr">
@@ -611,7 +226,7 @@ QLineEdit:read-only {
     <string>Open Configuration File...</string>
    </property>
    <property name="toolTip">
-    <string>Open configuration file</string>
+    <string>Open Configuration File</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+O</string>
@@ -660,9 +275,9 @@ QLineEdit:read-only {
     <string>Proposals</string>
    </property>
   </action>
-  <action name="action_test_hw_connection">
+  <action name="action_connect_hw">
    <property name="text">
-    <string>Test Hardware Wallet Connection</string>
+    <string>Connect Hardware Wallet</string>
    </property>
   </action>
   <action name="action_disconnect_hw">
@@ -805,13 +420,109 @@ QLineEdit:read-only {
     <string>Import Configuration</string>
    </property>
   </action>
+  <action name="action_wallet_tools">
+   <property name="text">
+    <string>Toolbox</string>
+   </property>
+  </action>
+  <action name="action_register_masternode">
+   <property name="text">
+    <string>Register Masternode...</string>
+   </property>
+  </action>
+  <action name="action_update_masternode_payout_address">
+   <property name="text">
+    <string>Update Payout Address...</string>
+   </property>
+   <property name="toolTip">
+    <string>Send a transaction setting up a new payout address</string>
+   </property>
+  </action>
+  <action name="action_update_masternode_operator_key">
+   <property name="text">
+    <string>Update Operator Key...</string>
+   </property>
+   <property name="toolTip">
+    <string>Send a transaction setting up a new operator key</string>
+   </property>
+  </action>
+  <action name="action_update_masternode_voting_key">
+   <property name="text">
+    <string>Update Voting Key...</string>
+   </property>
+   <property name="toolTip">
+    <string>Send a transaction setting up a new voting key</string>
+   </property>
+  </action>
+  <action name="action_revoke_masternode">
+   <property name="text">
+    <string>Revoke Masternode...</string>
+   </property>
+   <property name="toolTip">
+    <string>Send a transaction revoking masternode</string>
+   </property>
+  </action>
+  <action name="action_new_masternode_entry">
+   <property name="text">
+    <string>Add New Masternode Entry...</string>
+   </property>
+   <property name="toolTip">
+    <string>Add a new masternode entry to configuration</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+N</string>
+   </property>
+   <property name="shortcutVisibleInContextMenu">
+    <bool>true</bool>
+   </property>
+  </action>
+  <action name="action_update_masternode_service">
+   <property name="text">
+    <string>Update Service (IP/port/operator payout address)...</string>
+   </property>
+   <property name="toolTip">
+    <string>Update masternode IP address, TCP port or operator payout address</string>
+   </property>
+  </action>
+  <action name="action_show_masternode_details">
+   <property name="text">
+    <string>Go to Masternode Details</string>
+   </property>
+   <property name="toolTip">
+    <string>Show masternode configuration details</string>
+   </property>
+  </action>
+  <action name="action_delete_masternode_entry">
+   <property name="text">
+    <string>Delete Masternode Entry</string>
+   </property>
+   <property name="toolTip">
+    <string>Delete seleted masternode entry</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+D</string>
+   </property>
+   <property name="shortcutVisibleInContextMenu">
+    <bool>true</bool>
+   </property>
+  </action>
+  <action name="action_clone_masternode_entry">
+   <property name="text">
+    <string>Clone Masternode Entry</string>
+   </property>
+   <property name="toolTip">
+    <string>Clone masternode configuration entry</string>
+   </property>
+  </action>
+  <action name="action_new_configuration">
+   <property name="text">
+    <string>New Configuration</string>
+   </property>
+   <property name="toolTip">
+    <string>Creates a new configuration file</string>
+   </property>
+  </action>
  </widget>
- <tabstops>
-  <tabstop>cboMasternodes</tabstop>
-  <tabstop>btnNewMn</tabstop>
-  <tabstop>btnEditMn</tabstop>
-  <tabstop>btnDeleteMn</tabstop>
- </tabstops>
  <resources/>
  <connections/>
 </ui>

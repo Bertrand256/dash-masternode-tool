@@ -35,9 +35,9 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
         self.dmn_actual_operator_pubkey = ""
         self.revocation_reason = 0
         self.show_manual_commands = False
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_revoke_mn_dlg.Ui_RevokeMnDlg.setupUi(self, self)
         self.btnClose.hide()
         self.edtManualCommands.setStyle(ProxyStyleNoFocusRect())
@@ -87,8 +87,8 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
                     protx_state = protx.get('state')
                     if (protx_state and protx_state.get(
                             'service') == self.masternode.ip + ':' + self.masternode.port) or \
-                            (protx.get('collateralHash') == self.masternode.collateralTx and
-                             str(protx.get('collateralIndex')) == str(self.masternode.collateralTxIndex)):
+                            (protx.get('collateralHash') == self.masternode.collateral_tx and
+                             str(protx.get('collateralIndex')) == str(self.masternode.collateral_tx_index)):
                         self.dmn_protx_hash = protx.get("proTxHash")
                         break
                 if not self.dmn_protx_hash:
@@ -236,12 +236,12 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
                      f'The new values ​​will be visible on the network after the transaction is confirmed, i.e. in ' \
                      f'about 2.5 minutes.'
 
-                WndUtils.infoMsg(msg)
+                WndUtils.info_msg(msg)
 
         except Exception as e:
             if str(e).find('protx-dup') >= 0:
-                WndUtils.errorMsg('The previous protx transaction has not been confirmed yet. Wait until it is '
+                WndUtils.error_msg('The previous protx transaction has not been confirmed yet. Wait until it is '
                          'confirmed before sending a new transaction.')
             else:
                 logging.error('Exception occurred while sending protx revoke: ' + str(e))
-                WndUtils.errorMsg(str(e))
+                WndUtils.error_msg(str(e))

@@ -116,7 +116,7 @@ def wif_privkey_to_address(privkey: str, dash_network: str):
     return pubkey_to_address(pubkey, dash_network)
 
 
-def validate_address(address: str, dash_network: typing.Optional[str]) -> bool:
+def validate_address(address: str, dash_network: typing.Optional[str] = None) -> bool:
     """Validates if the 'address' is a valid Dash address.
     :address: address to be validated
     :dash_network: the dash network type against which the address will be validated; if the value is None, then
@@ -161,7 +161,7 @@ def generate_wif_privkey(dash_network: str, compressed: bool = False):
     return base58.b58encode(data + checksum)
 
 
-def validate_wif_privkey(privkey: str, dash_network: str):
+def validate_wif_privkey(privkey: str, dash_network: str) -> bool:
     try:
         data = base58.b58decode(privkey)
         if len(data) not in (37, 38):
@@ -233,10 +233,29 @@ def bls_privkey_to_pubkey(privkey: str) -> str:
     :param privkey: BLS privkey as a hex string
     :return: BLS pubkey as a hex string.
     """
-    pk = bls.PrivateKey.from_bytes(bytes.fromhex(privkey))
+    pk_bin = bytes.fromhex(privkey)
+    if len(pk_bin) != 32:
+        raise Exception(f'Invalid private key length: {len(pk_bin)} (should be 32)')
+    pk = bls.PrivateKey.from_bytes(pk_bin)
     pubkey = pk.get_public_key()
     pubkey_bin = pubkey.serialize()
     return pubkey_bin.hex()
+
+
+def validate_bls_privkey(privkey: str) -> bool:
+    try:
+        pub = bls_privkey_to_pubkey(privkey)
+        return True if pub else False
+    except Exception:
+        return False
+
+
+def validate_bls_pubkey(pubkey: str) -> bool:
+    try:
+        bls.PublicKey.from_bytes(bytes.fromhex(pubkey))
+        return True
+    except Exception:
+        return False
 
 
 def num_to_varint(n):
@@ -378,9 +397,7 @@ def ecdsa_sign_raw(msg_raw: bytes, wif_priv_key: str, dash_network: str):
 
 def serialize_input_str(tx, prevout_n, sequence, script_sig):
     """Based on project: https://github.com/chaeplin/dashmnb."""
-    s = ['CTxIn(']
-    s.append('COutPoint(%s, %s)' % (tx, prevout_n))
-    s.append(', ')
+    s = ['CTxIn(', 'COutPoint(%s, %s)' % (tx, prevout_n), ', ']
     if tx == '00' * 32 and prevout_n == 0xffffffff:
         s.append('coinbase %s' % script_sig)
     else:
@@ -422,7 +439,7 @@ def bip32_path_string_append_elem(path_str: str, elem: int):
     return bip32_path_n_to_string(path_n)
 
 
-def compose_tx_locking_script(dest_address, dash_newtork: str):
+def compose_tx_locking_script(dest_address, dash_network: str):
     """
     Create a Locking script (ScriptPubKey) that will be assigned to a transaction output.
     :param dest_address: destination address in Base58Check format
@@ -433,7 +450,7 @@ def compose_tx_locking_script(dest_address, dash_newtork: str):
     if len(pubkey_hash) != 20:
         raise Exception('Invalid length of the public key hash: ' + str(len(pubkey_hash)))
 
-    if dest_address[0] in get_chain_params(dash_newtork).B58_PREFIXES_PUBKEY_ADDRESS:
+    if dest_address[0] in get_chain_params(dash_network).B58_PREFIXES_PUBKEY_ADDRESS:
         # sequence of opcodes/arguments for p2pkh (pay-to-public-key-hash)
         scr = OP_DUP + \
               OP_HASH160 + \
@@ -441,7 +458,7 @@ def compose_tx_locking_script(dest_address, dash_newtork: str):
               pubkey_hash + \
               OP_EQUALVERIFY + \
               OP_CHECKSIG
-    elif dest_address[0] in get_chain_params(dash_newtork).B58_PREFIXES_SCRIPT_ADDRESS:
+    elif dest_address[0] in get_chain_params(dash_network).B58_PREFIXES_SCRIPT_ADDRESS:
         # sequence of opcodes/arguments for p2sh (pay-to-script-hash)
         scr = OP_HASH160 + \
               int.to_bytes(len(pubkey_hash), 1, byteorder='little') + \

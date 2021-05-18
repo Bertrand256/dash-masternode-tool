@@ -20,15 +20,15 @@ class ColumnsConfigDlg(QDialog, ui_columns_cfg_dlg.Ui_ColumnsConfigDlg, WndUtils
         WndUtils.__init__(self, None)
         self.columns: List = columns
         self.initialized = False
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QtWidgets.QDialog):
         ui_columns_cfg_dlg.Ui_ColumnsConfigDlg.setupUi(self, self)
         self.setWindowTitle("Columns")
-        self.setIcon(self.btnMoveBegin, "first-page@16px.png", rotate=90)
-        self.setIcon(self.btnMoveEnd, "first-page@16px.png", rotate=-90)
-        self.setIcon(self.btnMoveUp, "arrow-downward@16px.png", rotate=-180)
-        self.setIcon(self.btnMoveDown, "arrow-downward@16px.png")
+        WndUtils.set_icon(self, self.btnMoveBegin, "first-page@16px.png", rotate=90)
+        WndUtils.set_icon(self, self.btnMoveEnd, "first-page@16px.png", rotate=-90)
+        WndUtils.set_icon(self, self.btnMoveUp, "arrow-downward@16px.png", rotate=-180)
+        WndUtils.set_icon(self, self.btnMoveDown, "arrow-downward@16px.png")
         self.tableWidget.verticalHeader().setSectionsMovable(True)
 
         self.tableWidget.verticalHeader().setDefaultSectionSize(
@@ -80,7 +80,7 @@ class ColumnsConfigDlg(QDialog, ui_columns_cfg_dlg.Ui_ColumnsConfigDlg, WndUtils
         was_gap = False
         for item in items:
             row = self.tableWidget.visualRow(item.row())
-            if last_row >= 0 and last_row < row - 1:
+            if 0 <= last_row < row - 1:
                 was_gap = True
             if first_selected_row < 0:
                 first_selected_row = row

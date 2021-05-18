@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_hw_word_dlg.ui'
+# Form implementation generated from reading ui file ui_hw_word_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -70,13 +70,3 @@ class Ui_HardwareWalletWordDlg(object):
         HardwareWalletWordDlg.setWindowTitle(_translate("HardwareWalletWordDlg", "Dialog"))
         self.lblWord.setText(_translate("HardwareWalletWordDlg", "Word:"))
         self.btnEnter.setText(_translate("HardwareWalletWordDlg", "Enter"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    HardwareWalletWordDlg = QtWidgets.QDialog()
-    ui = Ui_HardwareWalletWordDlg()
-    ui.setupUi(HardwareWalletWordDlg)
-    HardwareWalletWordDlg.show()
-    sys.exit(app.exec_())

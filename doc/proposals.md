@@ -3,7 +3,7 @@
 Version 0.9.8 of *DMT* introduced functionality for *masternode owners* (MNOs) to review and cast votes on current proposals. In addition to MNOs, this feature is also useful to *proposal owners*, who can use it to track and analyze voting progress on their proposals.
 
 
-To use these features, open the *Proposals* window by clicking the `Proposals` buttom in the main application window or the `Tools->Proposals` menu item. The following window appears:  
+To use these features, open the *Proposals* window by clicking the `Proposals` button in the main application window or the `Tools->Proposals` menu item. The following window appears:  
 ![Proposals window](img/dmt-proposals-window.png)
 
 The first time you open the window, it will take a few minutes for the application to retrieve data on all of the proposals currently maintained by the network, as well as the votes cast on them by masternodes. That data is saved to a cache database, so the opening the window should be faster once the data in in the local cache.
@@ -48,7 +48,7 @@ In the main proposals list, select the proposal(s), you'd like to vote on.
 Open the `Vote` tab in the lower section of the `Proposals` window. You will see one row of voting buttons (*Yes*, *No*, *Abstain*) for each masternode registered in the application, and an additional row of buttons at the top to cast votes using all masternodes registered in the application:  
 ![Vote tab](img/dmt-proposals-vote.png)
 
-Alternatively, you can vote on the `Details` tab, using the links from the topof the tab, but remember, that this option will not allow you to vote with a specific masternode - votes are cast on behalf of all masternodes you have in your configuration:  
+Alternatively, you can vote on the `Details` tab, using the links from the top of the tab, but remember, that this option will not allow you to vote with a specific masternode - votes are cast on behalf of all masternodes you have in your configuration:  
 ![Vote tab](img/dmt-proposals-vote-2.png)
 
 #### Privacy

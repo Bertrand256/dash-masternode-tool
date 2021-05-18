@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_proposals.ui'
+# Form implementation generated from reading ui file ui_proposals.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -294,13 +294,3 @@ class Ui_ProposalsDlg(object):
         self.rbVotesChartFinal.setText(_translate("ProposalsDlg", "Votes summary"))
         self.rbVotesChartChanges.setText(_translate("ProposalsDlg", "Vote changes by date"))
         self.tabsDetails.setTabText(self.tabsDetails.indexOf(self.tabVoteList), _translate("ProposalsDlg", "Voting History"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    ProposalsDlg = QtWidgets.QDialog()
-    ui = Ui_ProposalsDlg()
-    ui.setupUi(ProposalsDlg)
-    ProposalsDlg.show()
-    sys.exit(app.exec_())

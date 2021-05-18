@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/home/blogin/Documents/Projects/dash-masternode-tool/src/ui/ui_columns_cfg_dlg.ui'
+# Form implementation generated from reading ui file ui_columns_cfg_dlg.ui
 #
 # Created by: PyQt5 UI code generator 5.15.1
 #
@@ -75,13 +75,3 @@ class Ui_ColumnsConfigDlg(object):
         self.btnMoveUp.setToolTip(_translate("ColumnsConfigDlg", "Move Up"))
         self.btnMoveDown.setToolTip(_translate("ColumnsConfigDlg", "Move Down"))
         self.btnMoveEnd.setToolTip(_translate("ColumnsConfigDlg", "Move To Bottom"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    ColumnsConfigDlg = QtWidgets.QDialog()
-    ui = Ui_ColumnsConfigDlg()
-    ui.setupUi(ColumnsConfigDlg)
-    ColumnsConfigDlg.show()
-    sys.exit(app.exec_())

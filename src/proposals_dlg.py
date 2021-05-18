@@ -4,6 +4,7 @@
 # Created on: 2017-05
 
 import datetime
+import hashlib
 import json
 import logging
 import sys
@@ -52,7 +53,7 @@ VOTE_CODE_YES = '1'
 VOTE_CODE_NO = '2'
 VOTE_CODE_ABSTAIN = '3'
 
-# definition of symbols' for DB live configuration (tabel LIVE_CONFIG)
+# definition of symbols' for DB live configuration (table LIVE_CONFIG)
 CFG_PROPOSALS_LAST_READ_TIME = 'proposals_last_read_time'
 CFG_PROPOSALS_VOTES_MAX_DATE = 'prop_votes_max_date'  # maximum date of vote(s), read last time
 
@@ -94,7 +95,7 @@ class ProposalColumn(TableModelColumn):
         self.remove_attr_protection()
         self.column_for_vote = column_for_vote
         self.my_masternode = None  # True, if column for masternode vote relates to user's masternode
-        self.initil_order = None  # order by voting-in-progress first, then by payment_start descending
+        self.initial_order = None  # order by voting-in-progress first, then by payment_start descending
         self.set_attr_protection()
 
 
@@ -130,14 +131,12 @@ class Proposal(AttrsProtected):
     def __init__(self, data_model, vote_columns_by_mn_ident, next_superblock_time,
                  user_masternodes: List[VotingMasternode],
                  get_governance_info_fun: Callable,
-                 find_prev_superblock: Callable,
-                 find_next_superblock: Callable):
+                 find_superblocks_for_timestamp: Callable):
         super().__init__()
         self.visible = True
         self.get_governance_info: Callable = get_governance_info_fun
-        self.find_prev_superblock = find_prev_superblock
-        self.find_next_superblock = find_next_superblock
-        self.budget_cycle_hours: int = None
+        self.find_superblocks_for_timestamp = find_superblocks_for_timestamp
+        self.budget_cycle_hours: Optional[int] = None
         self.data_model: ExtSortFilterItemModel = data_model
         self.values: Dict[ProposalColumn, Any] = {}  # dictionary of proposal values (key: ProposalColumn)
         self.db_id = None
@@ -178,7 +177,7 @@ class Proposal(AttrsProtected):
                     return False
         raise AttributeError('Invalid proposal value name: ' + name)
 
-    def get_value(self, column):
+    def get_value(self, column) -> Any:
         """
         Returns value of for a specified column name.
         """
@@ -194,7 +193,7 @@ class Proposal(AttrsProtected):
             raise AttributeError('Invalid proposal column name: ' + column)
         elif isinstance(column, int):
             # column is a column index
-            if column >= 0 and column < self.data_model.col_count():
+            if 0 <= column < self.data_model.col_count():
                 return self.values.get(self.data_model.col_by_index(column))
             raise AttributeError('Invalid proposal column index: ' + str(column))
         raise AttributeError("Invalid 'column' attribute type.")
@@ -218,7 +217,7 @@ class Proposal(AttrsProtected):
             modified = True
 
         if modified and mn_ident in self.vote_columns_by_mn_ident:
-            # this vote shoud be shown in the dynamic column for vote results
+            # this vote should be shown in the dynamic column for vote results
             self.set_value(mn_ident, vote_result)
 
     def remove_vote(self, mn_ident):
@@ -229,75 +228,78 @@ class Proposal(AttrsProtected):
 
     def apply_values(self, masternodes, last_superblock_time, next_superblock_datetime):
         """ Calculate auto-calculated columns (eg. voting_in_progress and voting_status values). """
+        try:
+            gi = self.get_governance_info()
+            cycle_blocks = gi.get('superblockcycle', 16616)
+            last_superblock = gi.get('lastsuperblock', 0)
+            cycle_seconds = cycle_blocks * 2.5 * 60
+            self.budget_cycle_hours = round(cycle_blocks * 2.5)
 
-        gi = self.get_governance_info()
-        cycle_blocks = gi.get('superblockcycle', 16616)
-        last_superblock = gi.get('lastsuperblock', 0)
-        cycle_seconds = cycle_blocks * 2.5 * 60
-        self.budget_cycle_hours = round(cycle_blocks * 2.5)
-
-        payment_start = self.get_value('payment_start')
-        if payment_start:
-            payment_start = payment_start.timestamp()
-        else:
-            payment_start = None
-        payment_end = self.get_value('payment_end')
-        if payment_end:
-            payment_end = payment_end.timestamp()
-        else:
-            payment_end = None
-        funding_enabled = self.get_value('fCachedFunding')
-
-        if payment_start and payment_end and isinstance(last_superblock_time, (int, float)) \
-                and isinstance(next_superblock_datetime, (int, float)):
-            self.voting_in_progress = (payment_start > last_superblock_time) or \
-                                      (payment_end > next_superblock_datetime)
-        else:
-            self.voting_in_progress = False
-
-        start_sb = self.find_next_superblock(payment_start)
-        end_sb = self.find_prev_superblock(payment_end)
-
-        payment_cycles = int((end_sb - start_sb) / cycle_blocks) + 1
-
-        # calculate number of payment-months that passed already for the proposal
-        if start_sb > last_superblock:
-            cur_cycle = 0
-        else:
-            cur_cycle = int(((last_superblock - start_sb) / cycle_blocks)) + 1
-
-        self.set_value('cycles', payment_cycles)
-        self.set_value('current_cycle', cur_cycle)
-        amt = self.get_value('payment_amount')
-        if amt is not None:
-            self.set_value('payment_amount_total', amt * payment_cycles)
-
-        if not self.get_value('title'):
-            # if title value is not set (it's an external attribute, from dashcentral) then copy value from the
-            # name column
-            self.set_value('title', self.get_value('name'))
-
-        abs_yes_count = self.get_value('absolute_yes_count')
-        mns_count = 0
-        for mn in masternodes:
-            if mn.status in ('ENABLED', 'PRE_ENABLED'):
-                mns_count += 1
-        if self.voting_in_progress:
-            if abs_yes_count >= mns_count * 0.1:
-                self.voting_status = 1  # will be funded
-                self.set_value('voting_status_caption', 'Passing +%d (%d of %d needed)' %
-                               (abs_yes_count - int(mns_count * 0.1), abs_yes_count, int(mns_count * 0.1)))
+            payment_start = self.get_value('payment_start')
+            if payment_start:
+                payment_start = payment_start.timestamp()
             else:
-                self.voting_status = 2  # needs additional votes
-                self.set_value('voting_status_caption', 'Needs additional %d votes' % (int(mns_count * 0.1) -
-                                                                                       abs_yes_count))
-        else:
-            if funding_enabled:
-                self.voting_status = 3  # funded
-                self.set_value('voting_status_caption', f'Passed with funding ({abs_yes_count} abs. yes votes)')
+                payment_start = None
+            payment_end = self.get_value('payment_end')
+            if payment_end:
+                payment_end = payment_end.timestamp()
             else:
-                self.voting_status = 4  # not funded
-                self.set_value('voting_status_caption', f'Not funded ({abs_yes_count} abs. yes votes)')
+                payment_end = None
+            funding_enabled = self.get_value('fCachedFunding')
+
+            if payment_start and payment_end and isinstance(last_superblock_time, (int, float)) \
+                    and isinstance(next_superblock_datetime, (int, float)):
+                self.voting_in_progress = (payment_start > last_superblock_time) or \
+                                          (payment_end > next_superblock_datetime)
+            else:
+                self.voting_in_progress = False
+
+            _, start_sb = self.find_superblocks_for_timestamp(payment_start)
+            end_sb, _ = self.find_superblocks_for_timestamp(payment_end)
+
+            payment_cycles = int((end_sb - start_sb) / cycle_blocks) + 1
+
+            # calculate number of payment-months that passed already for the proposal
+            if start_sb > last_superblock:
+                cur_cycle = 0
+            else:
+                cur_cycle = int(((last_superblock - start_sb) / cycle_blocks)) + 1
+
+            self.set_value('cycles', payment_cycles)
+            self.set_value('current_cycle', cur_cycle)
+            amt = self.get_value('payment_amount')
+            if amt is not None:
+                self.set_value('payment_amount_total', amt * payment_cycles)
+
+            if not self.get_value('title'):
+                # if title value is not set (it's an external attribute, from dashcentral) then copy value from the
+                # name column
+                self.set_value('title', self.get_value('name'))
+
+            abs_yes_count = self.get_value('absolute_yes_count')
+            mns_count = 0
+            for mn in masternodes:
+                if mn.status in ('ENABLED', 'PRE_ENABLED'):
+                    mns_count += 1
+            if self.voting_in_progress:
+                if abs_yes_count >= mns_count * 0.1:
+                    self.voting_status = 1  # will be funded
+                    self.set_value('voting_status_caption', 'Passing +%d (%d of %d needed)' %
+                                   (abs_yes_count - int(mns_count * 0.1), abs_yes_count, int(mns_count * 0.1)))
+                else:
+                    self.voting_status = 2  # needs additional votes
+                    self.set_value('voting_status_caption', 'Needs additional %d votes' % (int(mns_count * 0.1) -
+                                                                                           abs_yes_count))
+            else:
+                if funding_enabled:
+                    self.voting_status = 3  # funded
+                    self.set_value('voting_status_caption', f'Passed with funding ({abs_yes_count} abs. yes votes)')
+                else:
+                    self.voting_status = 4  # not funded
+                    self.set_value('voting_status_caption', f'Not funded ({abs_yes_count} abs. yes votes)')
+
+        except Exception as e:
+            log.exception(str(e))
 
     def not_voted_by_user(self):
         for umn in self.user_masternodes:
@@ -330,12 +332,13 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.masternodes: List[Masternode] = []
         self.masternodes_by_ident = {}
         self.initial_messages = []
+        self.block_interval_seconds = 2.5 * 60
 
         self.masternodes_cfg: List[MasternodeConfig] = []
         pkeys = []
         mn_idents = []
         for idx, mn in enumerate(self.app_config.masternodes):
-            mn_ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
+            mn_ident = mn.collateral_tx + '-' + str(mn.collateral_tx_index)
             if mn_ident not in mn_idents:
                 if mn.dmn_voting_key_type == InputKeyType.PRIVATE:
                     voting_key = mn.get_current_key_for_voting(self.app_config, self.dashd_intf)
@@ -365,12 +368,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         self.users_masternodes_by_ident = {}
 
         self.mn_count = None
-        self.block_timestamps: Dict[int, int] = {}
         self.governanceinfo = {}
         self.budget_cycle_days = 28.8
         self.cur_block_height = 0
         self.cur_block_timestamp = 0
-        self.superblock_cycle = None
+        self.superblock_cycle_blocks = None
         self.last_superblock = None
         self.next_superblock = None
         self.last_superblock_time = None
@@ -398,9 +400,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                       #   1: incremental by date, 2: summary, 3: vote change
         self.sending_votes = False
         self.reading_vote_data = False
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         try:
             ui_proposals.Ui_ProposalsDlg.setupUi(self, self)
 
@@ -412,7 +414,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.edtProposalFilter.setVisible(True)
             self.lblProposalFilter.setVisible(True)
 
-            self.on_chart_type_change()  # get the self.current_chart_type value from radiobuttons
+            self.on_chart_type_change()  # get the self.current_chart_type value from radio buttons
             self.setWindowTitle('Proposals')
 
             self.buttonBox.button(QDialogButtonBox.Close).setAutoDefault(False)
@@ -493,7 +495,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
         # define "dynamic" columns showing the user voting results
         for idx, mn in enumerate(self.masternodes_cfg):
-            mn_ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
+            mn_ident = mn.collateral_tx + '-' + str(mn.collateral_tx_index)
             self.add_voting_column(mn_ident, 'Vote (' + mn.name + ')', my_masternode=True,
                                    insert_before_column=self.propsModel.col_index_by_name('absolute_yes_count'))
 
@@ -538,7 +540,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.propsModel.save_col_defs(CACHE_ITEM_PROPOSALS_COLUMNS)
 
             # save voting-results tab configuration
-            # columns' withds
+            # column widths
             cfg = []
             for col_idx in range(0, self.votesModel.columnCount()):
                 width = self.votesView.columnWidth(col_idx)
@@ -634,9 +636,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def special_action_reload_external_attributes(self):
         """ Action invoked by the shortcut: CTRL/CMD-ALT-E: reload proposal external attributes. """
         if self.btnProposalsRefresh.isEnabled():
-            if self.queryDlg('Do you really want to reload proposal external attributes?',
-                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                             default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+            if self.query_dlg('Do you really want to reload proposal external attributes?',
+                              buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                              default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
 
                 def display_data():
                     self.display_proposals_data()
@@ -648,14 +650,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         cur.execute("update PROPOSALS set title=null, owner=null, ext_attributes_loaded=0, "
                                     "ext_attributes_load_time=0")
                         self.db_intf.commit()
-                        if self.read_external_attibutes(self.proposals):
+                        if self.read_external_attributes(self.proposals):
                             WndUtils.call_in_main_thread(display_data)
 
                     except CloseDialogException:
                         pass
                     except Exception as e:
                         log.exception('Exception while reloading proposal external attributes')
-                        self.errorMsg('Error while retrieving proposals data: ' + str(e))
+                        self.error_msg('Error while retrieving proposals data: ' + str(e))
                     finally:
                         self.db_intf.release_cursor()
 
@@ -691,7 +693,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 # check if the specified masternode exists in the user configuration; if so, mark the column
                 # that it can't be removed
                 for mn in enumerate(self.masternodes_cfg):
-                    mn_ident_cfg = mn.collateralTx + '-' + str(mn.collateralTxIndex)
+                    mn_ident_cfg = mn.collateral_tx + '-' + str(mn.collateral_tx_index)
                     if mn_ident_cfg == mn_ident:
                         col.my_masternode = True
                         break
@@ -840,7 +842,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             return None
 
         def clean_float(data_in):
-            # deals with JSON field 'payment_amount' passed as different type for different propsoals  - when it's
+            # deals with JSON field 'payment_amount' passed as different type for different proposals  - when it's
             # a string, then comma (if exists) is replaced wit a dot, otherwise it's converted to a float
             if isinstance(data_in, str):
                 return float(data_in.replace(',', '.'))
@@ -861,7 +863,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             rows_added = False
 
             # reset marker value in all existing Proposal object - we'll use it to check which
-            # of prevoiusly read proposals do not exit anymore
+            # of previously read proposals do not exit anymore
             for prop in self.proposals:
                 prop.marker = False
                 prop.modified = False  # all modified proposals will be saved to DB cache
@@ -884,7 +886,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         is_new = True
                         prop = Proposal(self.propsModel, self.vote_columns_by_mn_ident, self.next_superblock_time,
                                         self.users_masternodes, self.get_governance_info,
-                                        self.find_prev_superblock, self.find_next_superblock)
+                                        self.find_superblocks_for_timestamp)
                     else:
                         is_new = False
                     prop.marker = True
@@ -1056,14 +1058,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         self.display_message('')
 
                     if errors > 0:
-                        self.warnMsg('Problems encountered while processing some of the proposals data. '
+                        self.warn_msg('Problems encountered while processing some of the proposals data. '
                                      'Look into the log file for details.')
                 else:
                     # error count > 10% of the proposals count
                     raise Exception('Errors while processing proposals data. Look into the log file for details.')
             else:
                 # no proposals read from network - skip deactivating records because probably
-                # some network glitch occured
+                # some network glitch occurred
                 log.warning('No proposals returned from dashd.')
             log.info('Finished reading proposals data from network.')
 
@@ -1073,7 +1075,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         except Exception as e:
             log.exception('Exception wile reading proposals from Dash network.')
             self.display_message('')
-            self.errorMsg('Error while reading proposals data from the Dash network: ' + str(e))
+            self.error_msg('Error while reading proposals data from the Dash network: ' + str(e))
             raise
 
     def get_governance_info(self):
@@ -1085,8 +1087,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             # get the date-time of the last superblock and calculate the date-time of the next one
             self.governanceinfo = self.dashd_intf.getgovernanceinfo()
-            self.superblock_cycle = self.governanceinfo.get('superblockcycle', 16616)
-            self.budget_cycle_days = round(self.superblock_cycle * 2.5 / 60 /24, 3)
+            self.superblock_cycle_blocks = self.governanceinfo.get('superblockcycle', 16616)
+            self.budget_cycle_days = round(self.superblock_cycle_blocks * 2.5 / 60 / 24, 3)
             self.propsModel.set_budget_cycle_days(self.budget_cycle_days)
 
             self.last_superblock = self.governanceinfo.get('lastsuperblock')
@@ -1098,10 +1100,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             self.cur_block_height = self.dashd_intf.getblockcount()
             self.cur_block_timestamp = int(time.time())
 
-            self.last_superblock_time = self.get_block_timestamp(self.last_superblock)
+            self.last_superblock_time = self.dashd_intf.get_block_timestamp(self.last_superblock)
             self.next_superblock_time = 0
-            if self.cur_block_height > 0 and self.cur_block_height <= self.next_superblock:
-                self.next_superblock_time = self.get_block_timestamp(self.cur_block_height) + (self.next_superblock - self.cur_block_height) * 2.5 * 60
+            if 0 < self.cur_block_height <= self.next_superblock:
+                self.next_superblock_time = self.dashd_intf.get_block_timestamp(self.cur_block_height) + (self.next_superblock - self.cur_block_height) * 2.5 * 60
 
             if self.next_superblock_time == 0:
                 self.next_superblock_time = self.last_superblock_time + (self.next_superblock - self.last_superblock) * 2.5 * 60
@@ -1114,57 +1116,65 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
         except Exception as e:
             log.exception('Exception while reading governance info.')
-            self.errorMsg("Couldn't read governance info from the Dash network. "
+            self.error_msg("Couldn't read governance info from the Dash network. "
                       "Some features may not work correctly because of this. Details: " + str(e))
 
-    def get_block_timestamp(self, superblock: int):
-        ts = self.block_timestamps.get(superblock)
-        if ts is None:
-            bhash = self.dashd_intf.getblockhash(superblock)
-            bh = self.dashd_intf.getblockheader(bhash)
-            ts = bh['time']
-            self.block_timestamps[superblock] = ts
-        return ts
+    def find_superblocks_for_timestamp(self, timestamp: int) -> Tuple[int, int]:
+        """The method looks for two consecutive superblocks, the first with a smaller timestamp than given in
+        the argument, the second with a greater."""
 
-    def find_prev_superblock(self, timestamp: int):
-        if timestamp < self.last_superblock_time:
-            superblock = self.last_superblock
-            while True:
-                prev_sb_ts = self.get_block_timestamp(superblock - self.superblock_cycle)
-                if timestamp > prev_sb_ts:
-                    return superblock - self.superblock_cycle
-                else:
-                    superblock -= self.superblock_cycle
-        else:
-            superblock = self.last_superblock
-            sb_ts = self.last_superblock_time
-            while True:
-                if sb_ts + (self.superblock_cycle * 2.5 * 60) > timestamp:
-                    return superblock
-                else:
-                    superblock += self.superblock_cycle
-                    sb_ts += (self.superblock_cycle * 2.5 * 60)
+        def get_next_sb_ts(sb_nr: int) -> int:
+            if sb_nr > self.last_superblock:
+                sb_timestamp = sb_before_ts + (self.superblock_cycle_blocks * self.block_interval_seconds)
+            else:
+                sb_timestamp = self.dashd_intf.get_block_timestamp(sb_nr)
+            return sb_timestamp
 
-    def find_next_superblock(self, timestamp: int):
-        if timestamp < self.last_superblock_time:
-            superblock = self.last_superblock
-            while True:
-                if self.finishing:
-                    raise CloseDialogException
-                prev_sb_ts = self.get_block_timestamp(superblock - self.superblock_cycle)
-                if timestamp > prev_sb_ts:
-                    return superblock
-                else:
-                    superblock -= self.superblock_cycle
+        if timestamp >= self.last_superblock_time:
+            # the timestamp checked is in the future relative to the last superblock - estimate what would
+            # be the last superblock before that time
+            sb_cycles_diff = int((timestamp - self.last_superblock_time) /
+                                 (self.block_interval_seconds * self.superblock_cycle_blocks))
+            sb_before = self.last_superblock + (sb_cycles_diff * self.superblock_cycle_blocks)
+            sb_after = sb_before + self.superblock_cycle_blocks
+
         else:
-            superblock = self.last_superblock
-            sb_ts = self.last_superblock_time
+            sb_cycles_diff = int((self.last_superblock_time - timestamp) /
+                                 (self.block_interval_seconds * self.superblock_cycle_blocks)) + 1
+
+            # look for the last superblock before timestamp
+            sb_before = self.last_superblock - (sb_cycles_diff * self.superblock_cycle_blocks)
+            sb_before_ts = self.dashd_intf.get_block_timestamp(sb_before)
+
             while True:
-                if sb_ts + (self.superblock_cycle * 2.5 * 60) > timestamp:
-                    return superblock + self.superblock_cycle
-                else:
-                    superblock += self.superblock_cycle
-                    sb_ts += (self.superblock_cycle * 2.5 * 60)
+                # move with superblocks back in history until the sb timestamp is less than the 'timestamp' value
+                while sb_before_ts > timestamp:
+                    diff_ts = sb_before_ts - timestamp
+                    sb_cycles_diff = int(diff_ts / (self.block_interval_seconds * self.superblock_cycle_blocks))
+                    sb_cycles_diff = int(sb_cycles_diff / 2)
+                    if sb_cycles_diff == 0:
+                        sb_cycles_diff = 1
+
+                    sb_before = sb_before - (sb_cycles_diff * self.superblock_cycle_blocks)
+                    sb_before_ts = self.dashd_intf.get_block_timestamp(sb_before)
+
+                sb_after = sb_before + self.superblock_cycle_blocks
+                sb_after_ts = get_next_sb_ts(sb_after)
+                if sb_before_ts <= timestamp <= sb_after_ts:
+                    break
+
+                # moved too far in history, let's move forward
+                while sb_before_ts < timestamp:
+                    diff_ts = timestamp - sb_before_ts
+                    sb_cycles_diff = int(diff_ts / (self.block_interval_seconds * self.superblock_cycle_blocks))
+                    sb_cycles_diff = int(sb_cycles_diff / 2)
+                    if sb_cycles_diff == 0:
+                        sb_cycles_diff = 1
+
+                    sb_before = sb_before + (sb_cycles_diff * self.superblock_cycle_blocks)
+                    sb_before_ts = self.dashd_intf.get_block_timestamp(sb_before)
+
+        return sb_before, sb_after
 
     def refresh_filter(self):
         self.propsModel.invalidateFilter()
@@ -1179,7 +1189,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         try:
             self.display_message('Connecting to Dash daemon, please wait...')
             if not self.dashd_intf.open():
-                self.errorMsg('Dash daemon not connected')
+                self.error_msg('Dash daemon not connected')
             else:
                 try:
                     self.read_governance_data()
@@ -1191,7 +1201,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     # ident (transaction id-transaction index)
                     users_mn_configs_by_ident = {}
                     for mn_cfg in self.masternodes_cfg:
-                        ident = mn_cfg.collateralTx + '-' + mn_cfg.collateralTxIndex
+                        ident = mn_cfg.collateral_tx + '-' + mn_cfg.collateral_tx_index
                         if not ident in users_mn_configs_by_ident:
                             users_mn_configs_by_ident[ident] = mn_cfg
 
@@ -1256,7 +1266,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                     raise CloseDialogException
 
                                 # fix the problem of duplicated proposals with the same hash, which could be
-                                # deactivated due to some problems with previuos executions
+                                # deactivated due to some problems with previous executions
                                 # select all proposals with the same hash and move their votes to the current one
                                 cur_fix.execute('select id from PROPOSALS where hash=? and id<>?',
                                                 (row[12], row[24]))
@@ -1272,7 +1282,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 prop = Proposal(self.propsModel, self.vote_columns_by_mn_ident,
                                                 self.next_superblock_time, self.users_masternodes,
                                                 self.get_governance_info,
-                                                self.find_prev_superblock, self.find_next_superblock)
+                                                self.find_superblocks_for_timestamp)
                                 prop.set_value('name', row[0])
                                 prop.set_value('payment_start', datetime.datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S'))
                                 prop.set_value('payment_end',  datetime.datetime.strptime(row[2], '%Y-%m-%d %H:%M:%S'))
@@ -1303,7 +1313,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                 ext_attributes_load_time = 0 if not row[29] else row[29]
                                 if prop.ext_attributes_loaded:
                                     if not row[26] and not row[27] and time.time() - ext_attributes_load_time > 86400:
-                                        # reload external attributes is the 'owner' and 'title' are ampty
+                                        # reload external attributes is the 'owner' and 'title' are empty
                                         prop.ext_attributes_loaded = False
                                     elif (time.time() - ext_attributes_load_time > 86400 * 3) and \
                                         (prop.get_value('payment_end') > datetime.datetime.now()):
@@ -1311,10 +1321,6 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                         # the proposal title changed
                                         prop.ext_attributes_loaded = False
 
-                                # todo: optimize; for very old proposals exising in the cache, especially for testnet,
-                                #  apply_values may have to fetch a large number of transactions from the network (to
-                                #  calculate the number of payment cycles that apply to the proposal), which can
-                                #  significantly slowndown the display of the list of proposals
                                 prop.apply_values(self.masternodes, self.last_superblock_time,
                                                   self.next_superblock_time)
                                 self.proposals.append(prop)
@@ -1339,7 +1345,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                             raise
                         except Exception as e:
                             log.exception('Exception while saving proposals to db.')
-                            self.errorMsg('Error while saving proposals data to db. Details: ' + str(e))
+                            self.error_msg('Error while saving proposals data to db. Details: ' + str(e))
                         finally:
                             self.db_intf.release_cursor()
                             self.db_intf.release_cursor()
@@ -1354,11 +1360,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     raise
 
                 except DashdIndexException as e:
-                    self.errorMsg(str(e))
+                    self.error_msg(str(e))
 
                 except Exception as e:
                     log.exception('Exception while retrieving proposals data.')
-                    self.errorMsg('Error while retrieving proposals data: ' + str(e))
+                    self.error_msg('Error while retrieving proposals data: ' + str(e))
 
             if not self.finishing:
                 if int(time.time()) - self.proposals_last_read_time > PROPOSALS_CACHE_VALID_SECONDS or \
@@ -1374,7 +1380,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         if not prop.ext_attributes_loaded:
                             proposals.append(prop)
                 if proposals and not self.finishing:
-                    if self.read_external_attibutes(proposals):
+                    if self.read_external_attributes(proposals):
                         WndUtils.call_in_main_thread(self.display_proposals_data)  # refresh display
 
             if not self.finishing:
@@ -1393,7 +1399,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         except Exception as e:
             log.exception('Exception while reading data.')
             if not self.finishing:
-                self.errorMsg(str(e))
+                self.error_msg(str(e))
 
         finally:
             if not self.finishing:
@@ -1409,7 +1415,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             self.reading_vote_data = old_reading_state
 
-    def read_external_attibutes(self, proposals):
+    def read_external_attributes(self, proposals):
         """Method reads additional proposal attributes from an external source such as DashCentral.org/DashNexus.org
         :return True if proposals' external attributes has been updated.
         """
@@ -1507,7 +1513,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         self.db_intf.release_cursor()
 
                     if exceptions_occurred:
-                        self.errorMsg('Error(s) occurred while retrieving proposals external data from '
+                        self.error_msg('Error(s) occurred while retrieving proposals external data from '
                                       'DashCentral.org.')
 
         except CloseDialogException:
@@ -1569,7 +1575,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def read_voting_from_network(self, force_reload_all, proposals: List[Proposal]):
         """
         Retrieve from a Dash daemon voting results for all defined masternodes, for all visible Proposals.
-        :param force_reload_all: force reloading all votes and makre sure if a db cache contains all of them,
+        :param force_reload_all: force reloading all votes and make sure if a db cache contains all of them,
                if False, read only votes posted after last time when votes were read from the network
         :param proposals: list of proposals, which votes will be retrieved
         :return:
@@ -1599,7 +1605,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 # that has been added (will be saved to the database cache)
 
                 if not self.dashd_intf.open():
-                    self.errorMsg('Dash daemon not connected')
+                    self.error_msg('Dash daemon not connected')
                 else:
                     try:
                         proposals_updated = []  # list of proposals for which votes were loaded
@@ -1629,9 +1635,9 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                             raise CloseDialogException
 
                                         v = votes[v_key]
-                                        match = re.search("CTxIn\(COutPoint\(([A-Fa-f0-9]+)\s*\,\s*(\d+).+\:(\d+)\:(\w+)", v)  # v12.2
+                                        match = re.search("CTxIn\(COutPoint\(([A-Fa-f0-9]+)\s*,\s*(\d+).+:(\d+):(\w+)", v)  # v12.2
                                         if not match or len(match.groups()) != 4:
-                                            match = re.search("([A-Fa-f0-9]+)\-(\d+)\:(\d+)\:(\w+)", v)  # v12.3
+                                            match = re.search("([A-Fa-f0-9]+)-(\d+):(\d+):(\w+)", v)  # v12.3
 
                                         if match and len(match.groups()) == 4:
                                             mn_ident = match.group(1) + '-' + match.group(2)
@@ -1706,7 +1712,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                                 proposals_updated.append(prop)
                             except Exception:
-                                log.exception('Exception while readoing votes for proposal ' + prop.get_value('hash'))
+                                log.exception('Exception while reading votes for proposal ' + prop.get_value('hash'))
                                 errors += 1
 
                         log.info('Network calls duration: %s for %d proposals' %
@@ -1783,7 +1789,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                                 (CFG_PROPOSALS_VOTES_MAX_DATE, cur_vote_max_date))
 
                         if errors:
-                            self.errorMsg('Errors occurred while reading vote data. Look into the log file for '
+                            self.error_msg('Errors occurred while reading vote data. Look into the log file for '
                                           'details.')
 
                     except CloseDialogException:
@@ -1791,11 +1797,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                     except DashdIndexException as e:
                         log.exception('Exception while retrieving voting data.')
-                        self.errorMsg(str(e))
+                        self.error_msg(str(e))
 
                     except Exception as e:
                         log.exception('Exception while retrieving voting data.')
-                        self.errorMsg('Error while retrieving voting data: ' + str(e))
+                        self.error_msg('Error while retrieving voting data: ' + str(e))
 
             except CloseDialogException:
                 log.info('Closing the dialog.')
@@ -1902,7 +1908,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 if not prop.ext_attributes_loaded:
                     proposals.append(prop)
         if proposals and not self.finishing:
-            if self.read_external_attibutes(proposals):
+            if self.read_external_attributes(proposals):
                 WndUtils.call_in_main_thread(self.display_proposals_data) # refresh display
 
         proposals = []  # refresh "live" proposals only
@@ -2235,7 +2241,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
             try:
                 self.vote_on_selected_proposals(vote, mns)
             except Exception as e:
-                self.errorMsg(str(e))
+                self.error_msg(str(e), True)
 
     def draw_chart(self):
         """Draws a voting chart if proposal has changed.
@@ -2622,17 +2628,17 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         successful_proposal_list = []
         successful_votes = 0
         unsuccessful_votes = 0
-        ctrl.dlg_config_fun(dlg_title="Applying votes to the network...", show_progress_bar=False)
+        ctrl.dlg_config(dlg_title="Applying votes to the network...", show_progress_bar=False)
 
         for prop in proposal_list:
             if self.finishing:
                 break
-            prop_hash = prop.get_value('hash')
+            prop_hash = str(prop.get_value('hash'))
 
             for vote_idx, mn_info in enumerate(masternodes):
                 if self.finishing:
                     break
-                ctrl.display_msg_fun(f"Processing <b>{vote.upper()}</b> vote for the proposal <b>'{prop.get_value('name')}"
+                ctrl.display_msg(f"Processing <b>{vote.upper()}</b> vote for the proposal <b>'{prop.get_value('name')}"
                                      f"</b>'<br>on behalf of the masternode: {mn_info.masternode_config.name} "
                                      f"({mn_info.masternode_config.ip})")
 
@@ -2663,29 +2669,28 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
                     if last_vote_ts is not None and sig_time < last_vote_ts:
                         # if the last vote timestamp is still grater than the current vote ts, correct the new one
-                        # The current ts can be less than the previus one when:
+                        # The current ts can be less than the previous one when:
                         #   - user turned off the vote offset in the configuration and the previous offset was > 0
                         #   - last offset drawn was higher than the current one (it's random) and a user
-                        #     is voting a short time after the previus one
+                        #     is voting a short time after the previous one
                         sig_time = last_vote_ts + 10
 
-                    serialize_for_sig = mn_info.masternode.ident + '|' + \
-                                        prop_hash + '|' + \
-                                        '1' + '|' + \
-                                        vote_code + '|' + \
-                                        str(sig_time)
+                    serialize_for_sig = mn_info.masternode.ident + '|' + prop_hash + '|' + '1' + '|' + \
+                                        vote_code + '|' + str(sig_time)
 
                     log.info('Vote message to sign: ' + serialize_for_sig)
                     step = 2
-                    vote_sig = dash_utils.ecdsa_sign(
-                        serialize_for_sig,
-                        mn_info.masternode_config.get_current_key_for_voting(self.app_config, self.dashd_intf),
-                        self.app_config.dash_network)
+                    vote_key = mn_info.masternode_config.get_current_key_for_voting(self.app_config, self.dashd_intf)
+
+                    if self.app_config.is_testnet:
+                        vote_sig = dash_utils.ecdsa_sign(serialize_for_sig, vote_key, self.app_config.dash_network)
+                    else:
+                        vote_sig = dash_utils.ecdsa_sign(serialize_for_sig, vote_key, self.app_config.dash_network)
 
                     step = 3
                     v_res = self.dashd_intf.voteraw(
-                        masternode_tx_hash=mn_info.masternode_config.collateralTx,
-                        masternode_tx_index=int(mn_info.masternode_config.collateralTxIndex),
+                        masternode_tx_hash=mn_info.masternode_config.collateral_tx,
+                        masternode_tx_index=int(mn_info.masternode_config.collateral_tx_index),
                         governance_hash=prop_hash,
                         vote_signal='funding',
                         vote=vote,
@@ -2708,7 +2713,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     if step in (1, 4):
                         msg = 'Error: ' + str(e)
                     elif step == 2:
-                        msg = "Error while signing vote message with masternode's private key: " + str(e)
+                        msg = "Error while signing vote message with masternode private key: " + str(e)
                     else:
                         msg = "Error while broadcasting vote message: " + str(e)
                         # write some info to the log file for analysis in case of problems
@@ -2720,8 +2725,8 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                                      str(dash_utils.pubkey_to_address(dash_utils.wif_privkey_to_pubkey(
                                          mn_info.masternode_config.get_current_key_for_voting(
                                              self.app_config, self.dashd_intf)), self.app_config.dash_network)))
-                        log.info('masternode_tx_hash: %s' % str(mn_info.masternode_config.collateralTx))
-                        log.info('masternode_tx_index: %s' % str(mn_info.masternode_config.collateralTxIndex))
+                        log.info('masternode_tx_hash: %s' % str(mn_info.masternode_config.collateral_tx))
+                        log.info('masternode_tx_index: %s' % str(mn_info.masternode_config.collateral_tx_index))
                         log.info('governance_hash: %s' % prop_hash)
                         log.info('vote_sig: %s' % vote_sig)
                         log.info('sig_time: %s' % str(sig_time))
@@ -2768,16 +2773,16 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 msg = ''
                 for prop, mn, err in vote_errors:
                     msg += err + f" (proposal: '{prop.get_value('name')}', masternode: '{mn.name}')\n\n"
-                self.errorMsg(msg)
+                self.error_msg(msg)
             self.sending_votes = False
             self.display_proposals_data()
             self.refresh_details_tabs()
 
         if self.sending_votes:
-            self.errorMsg('Wait for the previus votes processing finishes.')
+            self.error_msg('Wait for the previous votes processing finishes.')
 
         if not self.dashd_intf.open():
-            self.errorMsg('Dash daemon not connected')
+            self.error_msg('Dash daemon not connected')
         else:
             props = self.get_selected_proposals(active_voting_only=True)
             vote_str = {VOTE_CODE_YES: 'YES', VOTE_CODE_NO: 'NO', VOTE_CODE_ABSTAIN: 'ABSTAIN'}[vote_code]
@@ -2789,7 +2794,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             if masternodes:
                 if not self.app_config.confirm_when_voting or \
-                        self.queryDlg(
+                        self.query_dlg(
                             f'Vote {vote_str} for {len(props)} proposal(s) on behalf of {len(masternodes)} masternode(s)?',
                             buttons=QMessageBox.Yes | QMessageBox.Cancel,
                             default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
@@ -2851,10 +2856,10 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                     for prop in sorted(self.proposals, key = lambda p: p.initial_order_no):
                         elems = [prop.get_value(col.name) for col in self.propsModel.columns()]
                         self.write_csv_row(f_ptr, elems)
-                self.infoMsg('Proposals data successfully saved.')
+                self.info_msg('Proposals data successfully saved.')
             except Exception as e:
                 log.exception("Exception saving proposals' data to a file.")
-                self.errorMsg('Couldn\'t save a CSV file due to the following error: ' + str(e))
+                self.error_msg('Couldn\'t save a CSV file due to the following error: ' + str(e))
 
     @pyqtSlot()
     def on_btnVotesSaveToCSV_clicked(self):
@@ -2872,11 +2877,11 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                         for v in self.votesModel.votes:
                             self.write_csv_row(f_ptr, v)
 
-                    self.infoMsg('Votes of the proposal "%s" successfully saved.' %
-                                 self.current_proposal.get_value('name'))
+                    self.info_msg('Votes of the proposal "%s" successfully saved.' %
+                                  self.current_proposal.get_value('name'))
                 except Exception as e:
                     log.exception("Exception saving proposals votes to a file.")
-                    self.errorMsg('Couldn\'t save a CSV file due to the following error: ' + str(e))
+                    self.error_msg('Couldn\'t save a CSV file due to the following error: ' + str(e))
 
     @pyqtSlot()
     def on_btnProposalsColumns_clicked(self):
@@ -2954,11 +2959,11 @@ class ProposalsModel(ExtSortFilterItemModel):
 
     def set_view(self, table_view: QTableView):
         super().set_view(table_view)
-        link_delagate = wnd_utils.HyperlinkItemDelegate(table_view)
-        link_delagate.linkActivated.connect(self.hyperlink_activated)
-        table_view.setItemDelegateForColumn(self.col_index_by_name('url'), link_delagate)
-        table_view.setItemDelegateForColumn(self.col_index_by_name('name'), link_delagate)
-        table_view.setItemDelegateForColumn(self.col_index_by_name('title'), link_delagate)
+        link_delegate = wnd_utils.HyperlinkItemDelegate(table_view)
+        link_delegate.linkActivated.connect(self.hyperlink_activated)
+        table_view.setItemDelegateForColumn(self.col_index_by_name('url'), link_delegate)
+        table_view.setItemDelegateForColumn(self.col_index_by_name('name'), link_delegate)
+        table_view.setItemDelegateForColumn(self.col_index_by_name('title'), link_delegate)
 
     def rowCount(self, parent=None, *args, **kwargs):
         return len(self.proposals)
@@ -3113,7 +3118,7 @@ class ProposalsModel(ExtSortFilterItemModel):
     def filterAcceptsRow(self, row_index, source_parent):
         will_show = True
         try:
-            if row_index >= 0 and row_index < len(self.proposals):
+            if 0 <= row_index < len(self.proposals):
                 prop: Proposal = self.proposals[row_index]
                 if self.filter_text:
                     filter_text_lower = self.filter_text.lower()
