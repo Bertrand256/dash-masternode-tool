@@ -1,17 +1,18 @@
 # -*- mode: python -*-
+import importlib
 import sys
 import os.path
 import platform
 from PyInstaller.utils.hooks import (collect_data_files, collect_submodules,
                                      collect_dynamic_libs)
 
+
 block_cipher = None
 
 os_type = sys.platform
-no_bits = platform.architecture()[0].replace('bit','')
+no_bits = platform.architecture()[0].replace('bit', '')
 version_str = ''
-base_dir = os.path.dirname(os.path.realpath('__file__'))
-
+base_dir = os.path.dirname(os.path.abspath('__file__'))
 
 # look for version string
 with open(os.path.join(base_dir, 'version.txt')) as fptr:
@@ -110,11 +111,20 @@ data_files += collect_data_files('keepkeylib')
 
 if os_type == 'darwin':
     add_binary_file('/usr/local/lib/libusb-1.0.dylib', '.')
+elif os_type == 'linux':
+    add_binary_file('/usr/lib/x86_64-linux-gnu/libxcb-xinerama.so.0', '.')
 elif os_type == 'win32':
-    import ctypes.util
-    l = ctypes.util.find_library('libusb-1.0.dll')
-    if l:
-        add_binary_file(l, '.')
+    mod = importlib.import_module('usb1')
+    if mod and mod.__path__:
+        l = os.path.join(mod.__path__[0], 'libusb-1.0.dll')
+        if not os.path.isfile(l):
+            import ctypes.util
+            l = ctypes.util.find_library('libusb-1.0.dll')
+        if l:
+            add_binary_file(l, '.')
+            print('found libusb library: ' + l)
+        else:
+            print('WARNING: libusb-1.0.dll not found!!')
 
 a = Analysis(['src/dash_masternode_tool.py'],
              pathex=[base_dir],
@@ -127,17 +137,6 @@ a = Analysis(['src/dash_masternode_tool.py'],
              win_no_prefer_redirects=False,
              win_private_assemblies=False,
              cipher=block_cipher)
-
-# source: https://github.com/akhavr/electrum-dash/blob/master/contrib/osx/osx.spec
-# Strip out parts of Qt that we never use. Reduces binary size by tens of MBs. see #4815
-qt_bins2remove = ('qtweb', 'qt3d', 'qtgame', 'qtdesigner', 'qtquick', 'qtlocation', 'qttest', 'qtxml')
-print("Removing Qt binaries:", *qt_bins2remove)
-for x in a.binaries.copy():
-    for r in qt_bins2remove:
-        if x[0].lower().startswith(r):
-            a.binaries.remove(x)
-            print('----> Removed x =', x)
-
 
 pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)
