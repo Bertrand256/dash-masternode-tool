@@ -200,7 +200,7 @@ def all_transports() -> Iterable[Type[Transport]]:
     from trezorlib.transport.udp import UdpTransport
     from trezorlib.transport.webusb import WebUsbTransport
 
-    return [cls for cls in (WebUsbTransport, BridgeTransport, HidTransport, UdpTransport) if cls.ENABLED]
+    return [cls for cls in (BridgeTransport, WebUsbTransport, HidTransport, UdpTransport) if cls.ENABLED]
 
 
 def enumerate_devices(
