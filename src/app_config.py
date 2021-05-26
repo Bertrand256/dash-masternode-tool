@@ -992,7 +992,7 @@ class AppConfig(QObject):
         config.set(section, 'read_external_proposal_attributes',
                    '1' if self.read_proposals_external_attributes else '0')
         config.set(section, 'confirm_when_voting', '1' if self.confirm_when_voting else '0')
-        config.set(section, 'fetch_network_data_after_start', '1' if self.fetch_network_data_after_start else '0')
+        config.set(section, 'fetch_network_data_after_start', '1' if self. fetch_network_data_after_start else '0')
         config.set(section, 'show_dash_value_in_fiat', '1' if self.show_dash_value_in_fiat else '0')
         config.set(section, 'add_random_offset_to_vote_time', '1' if self.add_random_offset_to_vote_time else '0')
         config.set(section, 'encrypt_config_file', '1' if self.encrypt_config_file else '0')

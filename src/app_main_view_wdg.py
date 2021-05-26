@@ -1065,8 +1065,8 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                 if show_dash_lbl:
                     ret_str += ' DASH'
 
-            if (self.app_config.is_mainnet or SCREENSHOT_MODE) and self.app_config.show_dash_value_in_fiat and \
-                    show_fiat_part:
+            if (self.app_config.is_mainnet or SCREENSHOT_MODE) and self.last_dash_price_usd is not None and \
+                    self.app_config.show_dash_value_in_fiat and show_fiat_part:
                 if ret_str:
                     ret_str += ' / '
                 ret_str += app_utils.to_string(round(amount * self.last_dash_price_usd, 2))
