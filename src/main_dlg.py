@@ -42,8 +42,8 @@ import wallet_dlg
 import app_utils
 from initialize_hw_dlg import HwInitializeDlg
 from masternode_details import WdgMasternodeDetails
-from app_config import AppConfig, MasternodeConfig, APP_NAME_LONG, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
-from app_defs import PROJECT_URL, HWType, get_note_url
+from app_config import AppConfig, MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
+from app_defs import PROJECT_URL, HWType, get_note_url, APP_NAME_LONG
 from dash_utils import bip32_path_n_to_string
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_common import HardwareWalletPinException, HwSessionInfo

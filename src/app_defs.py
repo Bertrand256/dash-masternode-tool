@@ -8,6 +8,7 @@ from typing import List
 
 APP_NAME_SHORT = 'firo-masternode-tool'
 APP_NAME_LONG = 'Firo Masternode Tool'
+APP_NAME_FOR_CRYPTING = 'Znode Tool'
 APP_DATA_DIR_NAME = '.firo-masternode-tool'
 PROJECT_URL = 'https://github.com/firoorg/firo-masternode-tool'
 FEE_DUFF_PER_BYTE = 1

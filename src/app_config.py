@@ -41,7 +41,7 @@ import app_defs
 import base58
 import dash_utils
 import hw_intf
-from app_defs import APP_NAME_SHORT, APP_NAME_LONG, HWType, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT, get_known_loggers
+from app_defs import APP_NAME_SHORT, HWType, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT, get_known_loggers, APP_NAME_FOR_CRYPTING
 from app_utils import encrypt, decrypt
 import app_cache
 import default_config
@@ -584,7 +584,7 @@ class AppConfig(QObject):
         decrypted = ''
         try:
             if str_to_decrypt:
-                decrypted = decrypt(str_to_decrypt, APP_NAME_LONG, iterations=5)
+                decrypted = decrypt(str_to_decrypt, APP_NAME_FOR_CRYPTING, iterations=5)
             else:
                 decrypted = ''
         except Exception as e:
@@ -598,7 +598,7 @@ class AppConfig(QObject):
         return decrypted
 
     def simple_encrypt(self, str_to_encrypt: str) -> str:
-        return encrypt(str_to_encrypt, APP_NAME_LONG, iterations=5)
+        return encrypt(str_to_encrypt, APP_NAME_FOR_CRYPTING, iterations=5)
 
     def read_from_file(self, hw_session: HwSessionInfo, file_name: Optional[str] = None,
                        create_config_file: bool = False, update_current_file_name = True):
@@ -2021,7 +2021,7 @@ class DashNetworkConnectionCfg(object):
 
     def get_password_encrypted(self):
         try:
-            psw = encrypt(self.__password, APP_NAME_LONG, iterations=5)
+            psw = encrypt(self.__password, APP_NAME_FOR_CRYPTING, iterations=5)
             return psw
         except:
             return self.__password
@@ -2037,7 +2037,7 @@ class DashNetworkConnectionCfg(object):
                 iterations = 5
             int(password, 16)
             try:
-                p = decrypt(password, APP_NAME_LONG, iterations=iterations)
+                p = decrypt(password, APP_NAME_FOR_CRYPTING, iterations=iterations)
             except Exception:
                 p = ''
             password = p
