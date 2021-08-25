@@ -53,6 +53,9 @@ def serialize_cbTx(tx):
         res += reverse(tx["cbTx"]["merkleRootQuorums"])
     return bh2u(res)
 
+def serialize_Lelantus(tx):
+    return tx["lelantusData"]
+
 class DashTxType:
     CLASSICAL_TX = 0
     SPEC_PRO_REG_TX = 1
@@ -60,7 +63,4 @@ class DashTxType:
     SPEC_PRO_UP_REG_TX = 3
     SPEC_PRO_UP_REV_TX = 4
     SPEC_CB_TX = 5
-    SPEC_SUB_TX_REGISTER = 8
-    SPEC_SUB_TX_TOPUP = 9
-    SPEC_SUB_TX_RESET_KEY = 10
-    SPEC_SUB_TX_CLOSE_ACCOUNT = 11
+    LELANTUS_JSPLIT = 8

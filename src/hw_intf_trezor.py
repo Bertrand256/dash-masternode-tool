@@ -33,7 +33,7 @@ from hw_common import ask_for_pass_callback, ask_for_pin_callback, \
 import logging
 import wallet_common
 from wnd_utils import WndUtils
-from dash_tx import DashTxType, serialize_cbTx
+from dash_tx import DashTxType, serialize_cbTx, serialize_Lelantus
 
 log = logging.getLogger('dmt.hw_intf_trezor')
 
@@ -287,7 +287,17 @@ def json_to_tx(coin, data):
     if coin["decred"]:
         t.expiry = data["expiry"]
 
-    t.inputs = [_json_to_input(coin, vin) for vin in data["vin"]]
+    t.inputs =[]
+    for vin in data["vin"]:
+        if vin["scriptSig"]["hex"] == "c9":
+            i = messages.TxInputType()
+            i.prev_hash = b"\0" * 32
+            i.prev_index = vin["sequence"]
+            i.script_sig = bytes.fromhex(vin["scriptSig"]["hex"])
+            i.sequence = vin["sequence"]
+            t.inputs.append(i)
+        else:
+            t.inputs.append(_json_to_input(coin, vin))
     t.bin_outputs = [_json_to_bin_output(coin, vout) for vout in data["vout"]]
 
     # zcash extra data
@@ -312,6 +322,8 @@ def json_to_tx(coin, data):
             # It's a DIP2 special TX with payload
             if dip2_type == DashTxType.SPEC_CB_TX:
                 data["extraPayload"] = serialize_cbTx(data)
+            elif dip2_type == DashTxType.LELANTUS_JSPLIT:
+                data["extraPayload"] = serialize_Lelantus(data)
             else:
                 raise NotImplementedError("Only spending of V3 coinbase outputs has been inplemented. "
                     "Please file an issue at https://github.com/firoorg/firo-masternode-tool/issues containing "

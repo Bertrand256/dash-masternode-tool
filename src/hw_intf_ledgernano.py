@@ -15,7 +15,7 @@ from dash_utils import *
 from PyQt5.QtWidgets import QMessageBox
 import unicodedata
 from bip32utils import Base58
-from dash_tx import DashTxType, serialize_cbTx
+from dash_tx import DashTxType, serialize_cbTx, serialize_Lelantus
 
 
 class btchip_dmt(btchip):
@@ -404,6 +404,8 @@ def sign_tx(hw_session: HwSessionInfo, utxos_to_spend: List[wallet_common.UtxoTy
             # It's a DIP2 special TX with payload
             if dip2_type == DashTxType.SPEC_CB_TX:
                 data["extraPayload"] = serialize_cbTx(data)
+            elif dip2_type == DashTxType.LELANTUS_JSPLIT:
+                data["extraPayload"] = serialize_Lelantus(data)
             else:
                 raise NotImplementedError("Only spending of V3 coinbase outputs has been inplemented. "
                     "Please file an issue at https://github.com/firoorg/firo-masternode-tool/issues containing "

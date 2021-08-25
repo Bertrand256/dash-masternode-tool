@@ -23,7 +23,7 @@ import keepkeylib.types_pb2 as proto_types
 import wallet_common
 from wnd_utils import WndUtils
 from hw_common import clean_bip32_path
-from dash_tx import DashTxType, serialize_cbTx
+from dash_tx import DashTxType, serialize_cbTx, serialize_Lelantus
 
 class MyKeepkeyTextUIMixin(keepkey_TextUIMixin):
 
@@ -262,6 +262,8 @@ class MyTxApiInsight(TxApiInsight):
             # It's a DIP2 special TX with payload
             if dip2_type == DashTxType.SPEC_CB_TX:
                 data["extraPayload"] = serialize_cbTx(data)
+            elif dip2_type == DashTxType.LELANTUS_JSPLIT:
+                data["extraPayload"] = serialize_Lelantus(data)
             else:
                 raise NotImplementedError("Only spending of V3 coinbase outputs has been inplemented. "
                     "Please file an issue at https://github.com/firoorg/firo-masternode-tool/issues containing "
