@@ -24,8 +24,7 @@ from common import CancelException
 from encrypted_files import write_file_encrypted, read_file_encrypted
 from hw_intf import HwSessionInfo
 from wallet_common import TxOutputType, Bip44AccountType, Bip44AddressType, TxType
-from wnd_utils import WndUtils
-
+from wnd_utils import WndUtils, is_color_dark
 
 OUTPUT_VALUE_UNIT_AMOUNT = 'AMT'
 OUTPUT_VALUE_UNIT_PERCENT = 'PCT'
@@ -1044,23 +1043,24 @@ class WalletMnItemDelegate(QItemDelegate):
 
     def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
         if index.isValid():
+            has_focus = self.parent().hasFocus()
             mn = index.data()
             painter.save()
 
             painter.setPen(QPen(Qt.NoPen))
             if option.state & QStyle.State_Selected:
-                if option.state & QStyle.State_HasFocus:
-                    primary_color = Qt.white
-                    secondary_color = Qt.white
+                if has_focus:
+                    primary_color = option.palette.color(QPalette.Normal, option.palette.HighlightedText)
+                    secondary_color = primary_color
                     painter.setBrush(QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
                 else:
-                    primary_color = Qt.black
-                    secondary_color = Qt.black
+                    primary_color = option.palette.color(QPalette.Inactive, option.palette.HighlightedText)
+                    secondary_color = primary_color
                     painter.setBrush(QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
             else:
-                painter.setBrush(QBrush(Qt.white))
-                primary_color = Qt.black
-                secondary_color = Qt.darkGray
+                painter.setBrush(QBrush(option.palette.color(QPalette.Normal, option.palette.Base)))
+                primary_color = option.palette.color(QPalette.Normal, option.palette.WindowText)
+                secondary_color = option.palette.color(QPalette.Disabled, option.palette.WindowText)
             painter.drawRect(option.rect)
 
             # draw the masternode description
@@ -1085,7 +1085,6 @@ class WalletMnItemDelegate(QItemDelegate):
             else:
                 balance_str = 'Balance: unknown'
             painter.drawText(r, Qt.AlignLeft, balance_str)
-
             painter.restore()
 
     def sizeHint(self, option, index):
@@ -1114,23 +1113,25 @@ class WalletAccountItemDelegate(QItemDelegate):
 
     def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
         if index.isValid():
+            has_focus = self.parent().hasFocus()
+            is_dark_theme = is_color_dark(option.palette.color(QPalette.Normal, option.palette.Window))
             data = index.data()
             painter.save()
 
             painter.setPen(QPen(Qt.NoPen))
             if option.state & QStyle.State_Selected:
-                if option.state & QStyle.State_HasFocus:
-                    primary_color = Qt.white
-                    secondary_color = Qt.white
-                    painter.setBrush(QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
+                if has_focus:
+                    primary_color = option.palette.color(QPalette.Normal, option.palette.HighlightedText)
+                    secondary_color = primary_color
+                    painter.setBrush(QBrush(option.palette.color(QPalette.Normal, option.palette.Highlight)))
                 else:
-                    primary_color = Qt.black
-                    secondary_color = Qt.black
+                    primary_color = option.palette.color(QPalette.Inactive, option.palette.HighlightedText)
+                    secondary_color = primary_color
                     painter.setBrush(QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
             else:
-                painter.setBrush(QBrush(Qt.white))
-                primary_color = Qt.black
-                secondary_color = Qt.darkGray
+                painter.setBrush(QBrush(option.palette.color(QPalette.Normal, option.palette.Base)))
+                primary_color = option.palette.color(QPalette.Normal, option.palette.WindowText)
+                secondary_color = option.palette.color(QPalette.Disabled, option.palette.WindowText)
             painter.drawRect(option.rect)
 
             r = option.rect
@@ -1160,19 +1161,21 @@ class WalletAccountItemDelegate(QItemDelegate):
                 option.font.setPointSize(option.font.pointSize() - 2)
 
                 if option.state & QStyle.State_Selected:
-                    if option.state & QStyle.State_HasFocus:
-                        color = Qt.white
+                    if has_focus:
+                        color = primary_color
                     else:
-                        color = Qt.black
+                        color = primary_color
                 else:
-                    # if balance is zero use bold font
                     if data.balance > 0:
-                        color = Qt.black
+                        color = primary_color
                     else:
                         if data.received > 0:
-                            color = Qt.darkGray
+                            color = secondary_color
                         else:
-                            color = Qt.darkGreen
+                            if is_dark_theme:
+                                color = Qt.green
+                            else:
+                                color = Qt.darkGreen
 
                 painter.setPen(QPen(color))
                 painter.setFont(option.font)
@@ -1238,6 +1241,8 @@ class TxSenderRecipientItemDelegate(QItemDelegate):
 
     def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
         if index.isValid():
+            has_focus = self.parent().hasFocus()
+            is_dark_theme = is_color_dark(option.palette.color(QPalette.Normal, option.palette.Window))
             tx = index.data()
             if not tx:
                 return
@@ -1249,15 +1254,13 @@ class TxSenderRecipientItemDelegate(QItemDelegate):
             painter.save()
 
             painter.setPen(QPen(Qt.NoPen))
-            selected = False
             if option.state & QStyle.State_Selected:
-                if option.state & QStyle.State_HasFocus:
-                    selected = True
+                if has_focus:
                     painter.setBrush(QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
                 else:
                     painter.setBrush(QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
             else:
-                painter.setBrush(QBrush(Qt.white))
+                painter.setBrush(QBrush(option.palette.color(QPalette.Normal, option.palette.Base)))
             painter.drawRect(option.rect)
 
             r = option.rect
@@ -1269,37 +1272,38 @@ class TxSenderRecipientItemDelegate(QItemDelegate):
                 fm = option.fontMetrics
                 if addr_list:
                     for addr in addr_list:
-                        if isinstance(addr, Bip44AddressType):
-                            if not selected:
-                                painter.setPen(QPen(Qt.darkGreen))
+                        if option.state & QStyle.State_Selected:
+                            if has_focus:
+                                fg_color = option.palette.color(QPalette.Normal, option.palette.HighlightedText)
                             else:
-                                painter.setPen(QPen(Qt.white))
-                            painter.drawText(r, Qt.AlignLeft, addr.address)
-
-                            # in the second line displayy additional info regarding the user's recipient address
-                            # if addr.is_change:
-                            #     s = ' (your own change address, path: ' + addr.bip32_path + ')'
-                            # else:
-                            #     s = ' (your own address, path: ' + addr.bip32_path + ')'
-                            #
-                            # if not selected:
-                            #     painter.setPen(QPen(Qt.darkGray))
-                            # else:
-                            #     painter.setPen(QPen(Qt.white))
-                            # painter.drawText(r - QMargins(fm.width(addr.address), 0, 0, 0), Qt.AlignLeft, s)
+                                fg_color = option.palette.color(QPalette.Inactive, option.palette.HighlightedText)
                         else:
-                            if not selected:
-                                painter.setPen(QPen(Qt.black))
+                            if isinstance(addr, Bip44AddressType):
+                                if is_dark_theme:
+                                    fg_color = Qt.green
+                                else:
+                                    fg_color = Qt.darkGreen
                             else:
-                                painter.setPen(QPen(Qt.white))
-                            painter.drawText(r, Qt.AlignLeft, addr)
+                                fg_color = option.palette.color(QPalette.Normal, option.palette.WindowText)
+
+                        if isinstance(addr, Bip44AddressType):
+                            text = addr.address
+                        else:
+                            text = addr
+
+                        painter.setPen(QPen(fg_color))
+                        painter.drawText(r, Qt.AlignLeft, text)
                         r.setTop(r.top() + fm.height() + WalletMnItemDelegate.CellLinesMargin)
                 else:
                     if self.is_sender and tx.is_coinbase:
-                        if not selected:
-                            painter.setPen(QPen(Qt.darkGray))
+                        if option.state & QStyle.State_Selected:
+                            if has_focus:
+                                fg_color = option.palette.color(QPalette.Normal, option.palette.HighlightedText)
+                            else:
+                                fg_color = option.palette.color(QPalette.Inactive, option.palette.HighlightedText)
                         else:
-                            painter.setPen(QPen(Qt.white))
+                            fg_color = Qt.darkGray
+                        painter.setPen(QPen(fg_color))
                         painter.drawText(r, Qt.AlignLeft, '[New coins]')
 
             painter.restore()

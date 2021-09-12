@@ -20,7 +20,7 @@ import urllib.request
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import QSize, pyqtSlot, QEventLoop, QMutex, QWaitCondition, QUrl, Qt, QTimer
-from PyQt5.QtGui import QFont, QIcon, QDesktopServices
+from PyQt5.QtGui import QFont, QIcon, QDesktopServices, QPalette, QShowEvent
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QFileDialog, QMenu, QMainWindow, QPushButton, QStyle, QInputDialog, QApplication, \
     QHBoxLayout, QAction, QToolButton, QWidgetAction
@@ -51,18 +51,19 @@ from hw_intf import HwSessionInfo
 from psw_cache import SshPassCache
 from sign_message_dlg import SignMessageDlg
 from wallet_tools_dlg import WalletToolsDlg
-from wnd_utils import WndUtils
+from wnd_utils import WndUtils, QDetectThemeChange
 from ui import ui_main_dlg
 
 
 log = logging.getLogger('dmt.main')
 
 
-class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
+class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainWindow):
     update_status_signal = QtCore.pyqtSignal(str, str)  # signal for updating status text from inside thread
 
     def __init__(self, app_dir):
         QMainWindow.__init__(self)
+        QDetectThemeChange.__init__(self)
         WndUtils.__init__(self, None)
         ui_main_dlg.Ui_MainWindow.__init__(self)
 
@@ -120,7 +121,8 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.lblStatus2.setText('')
         self.lblStatus2.setOpenExternalLinks(True)
         self.show_connection_disconnected()
-        self.set_status_text2('<b>HW status:</b> idle', 'black')
+        self.set_status_text2('<b>HW status:</b> idle')
+        self.set_stylesheet()
 
         WndUtils.set_icon(self, self.action_save_config_file, 'save.png')
         WndUtils.set_icon(self, self.action_check_network_connection, "link-check.png")
@@ -162,7 +164,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
         self.display_app_messages()
         logging.info('Finished setup of the main dialog.')
 
-    def showEvent(self, QShowEvent):
+    def showEvent(self, event: QShowEvent):
         def load_initial_config():
             # Initial opening of the configuration file may involve showing some dialog boxes (e.g.
             # related to file encryption), so reading the configuration must be performed only after
@@ -176,6 +178,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
                 WndUtils.error_msg(str(e))
 
         QTimer.singleShot(10, load_initial_config)
+        QDetectThemeChange.showEvent(self, event)
 
     def closeEvent(self, event):
         self.save_cache_settings()
@@ -196,6 +199,19 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def save_cache_settings(self):
         app_cache.save_window_size(self)
+
+    def onThemeChanged(self):
+        self.set_stylesheet()
+
+    def set_stylesheet(self):
+        p = self.palette()
+        bg_color_active = p.color(QPalette.Normal, p.Base).name()
+        bg_color_inactive = p.color(QPalette.Inactive, p.Window).name()
+        self.setStyleSheet("QLineEdit {\n"
+                               f"    background-color: {bg_color_active};\n"
+                               "} QLineEdit:read-only {\n"
+                               f"    background-color: {bg_color_inactive};\n"
+                               "}\n")
 
     def configuration_to_ui(self):
         """
@@ -646,7 +662,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def show_connection_initiated(self):
         """Shows status information related to a initiated process of connection to a dash RPC. """
-        self.set_status_text1('<b>RPC network status:</b> trying %s...' % self.dashd_intf.get_active_conn_description(), 'black')
+        self.set_status_text1('<b>RPC network status:</b> trying %s...' % self.dashd_intf.get_active_conn_description())
 
     def show_connection_failed(self):
         """Shows status information related to a failed connection attempt. There can be more attempts to connect
@@ -659,7 +675,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     def show_connection_disconnected(self):
         """Shows status message related to disconnection from Dash RPC node."""
-        self.set_status_text1('<b>RPC network status:</b> not connected', 'black')
+        self.set_status_text1('<b>RPC network status:</b> not connected')
 
     def connect_dash_network(self, wait_for_check_finish=False, call_on_check_finished=None):
         """
@@ -800,24 +816,26 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
             # configuration not complete: show config window
             self.error_msg("There are no (enabled) connections to an RPC node in your configuration.")
 
-    def set_status_text1(self, text, color):
+    def set_status_text1(self, text, color=None):
         def set_status(text, color):
             self.lblStatus1.setText(text)
             if not color:
-                color = 'black'
-            self.lblStatus1.setStyleSheet('QLabel{color: ' + color + ';margin-right:20px;margin-left:8px}')
+                self.lblStatus1.setStyleSheet('')
+            else:
+                self.lblStatus1.setStyleSheet('QLabel{color: ' + color + ';margin-right:20px;margin-left:8px}')
 
         if threading.current_thread() != threading.main_thread():
             self.call_in_main_thread(set_status, text, color)
         else:
             set_status(text, color)
 
-    def set_status_text2(self, text, color):
+    def set_status_text2(self, text, color=None):
         def set_status(text, color):
             self.lblStatus2.setText(text)
             if not color:
-                color = 'black'
-            self.lblStatus2.setStyleSheet('QLabel{color: ' + color + '}')
+                self.lblStatus2.setStyleSheet('')
+            else:
+                self.lblStatus2.setStyleSheet('QLabel{color: ' + color + '}')
 
         if threading.current_thread() != threading.main_thread():
             self.call_in_main_thread(set_status, text, color)
@@ -933,7 +951,7 @@ class MainWindow(QMainWindow, WndUtils, ui_main_dlg.Ui_MainWindow):
 
     @pyqtSlot()
     def on_hardware_wallet_disconnected(self):
-        self.set_status_text2('<b>HW status:</b> idle', 'black')
+        self.set_status_text2('<b>HW status:</b> idle')
         self.update_edit_controls_state()
 
     @pyqtSlot(str)

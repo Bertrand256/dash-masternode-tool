@@ -26,14 +26,14 @@ import app_utils
 import hw_intf
 from app_config import AppConfig, MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING
 from app_defs import COLOR_ERROR_STR, COLOR_WARNING_STR, COLOR_OK_STR, COLOR_ERROR, COLOR_WARNING, COLOR_OK, \
-    AppTextMessageType, SCREENSHOT_MODE
+    AppTextMessageType, SCREENSHOT_MODE, COLOR_FORM_VALUES_LIGHT_BG, COLOR_FORM_VALUES_DARK_BG
 from common import CancelException
 from dashd_intf import DashdInterface, Masternode
 from ext_item_model import ExtSortFilterItemModel, TableModelColumn, HorizontalAlignment
 from masternode_details_wdg import WdgMasternodeDetails
 from ui import ui_app_main_view_wdg
-from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, IconTextItemDelegate
-
+from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, IconTextItemDelegate, is_color_dark, \
+    QDetectThemeChange
 
 CACHE_ITEM_SHOW_MN_DETAILS_PANEL = 'MainWindow_ShowMNDetailsPanel'
 COLOR_PENDING_PROTX_STR = '#0033cc'
@@ -52,13 +52,14 @@ log = logging.getLogger('dmt.main')
 SORTING_MAX_VALUE_FOR_NULL = 1e10
 
 
-class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
+class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgAppMainView):
     masternode_data_changed = QtCore.pyqtSignal()
     cur_masternode_changed = QtCore.pyqtSignal(object)
     app_text_message_sent = QtCore.pyqtSignal(int, str, object)
 
     def __init__(self, parent, app_config: AppConfig, dashd_intf: DashdInterface, hw_session: hw_intf.HwSessionInfo):
         QWidget.__init__(self, parent)
+        QDetectThemeChange.__init__(self)
         self.current_view = Pages.PAGE_MASTERNODE_LIST
         self.main_window = parent
         self.app_config = app_config
@@ -201,6 +202,10 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
         if self.refresh_price_thread_ref:
             log.info('Waiting for refresh_price_thread to finish...')
             self.refresh_price_thread_ref.wait(5000)
+
+    def onThemeChanged(self):
+        self.update_info_page()
+        self.update_mn_preview()
 
     def configuration_to_ui(self):
         def set_cur_mn():
@@ -1079,10 +1084,17 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
     def update_info_page(self):
         gi = self.network_status
         try:
+            palette = self.palette()
+            bg_color = palette.color(QPalette.Normal, palette.Window)
+            if is_color_dark(bg_color):
+                value_color = COLOR_FORM_VALUES_DARK_BG
+            else:
+                value_color = COLOR_FORM_VALUES_LIGHT_BG
+
             status = (
                 '<style>td {white-space:nowrap;padding-right:8px;padding-top:4px}'
                 '.title {text-align:right;font-weight:normal}'
-                '.value {color:navy}'
+                f'.value {{color:{value_color}}}'
                 '</style>'
                 '<table>'
                 f'<tr><td class="title">Next superblock date</td><td class="value">{app_utils.to_string(gi.next_superblock_date) if gi.loaded else "?"}</td></tr>'
@@ -1133,6 +1145,13 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
                     return addr
                 else:
                     return addr[:chars_begin_end] + '..' + addr[-chars_begin_end:]
+
+        palette = self.palette()
+        bg_color = palette.color(QPalette.Normal, palette.Window)
+        if is_color_dark(bg_color):
+            value_color = COLOR_FORM_VALUES_DARK_BG
+        else:
+            value_color = COLOR_FORM_VALUES_LIGHT_BG
 
         status = ''
         mn = self.cur_masternode
@@ -1245,9 +1264,9 @@ class WdgAppMainView(QWidget, ui_app_main_view_wdg.Ui_WdgAppMainView):
 
                 status = \
                     '<style>td {white-space:nowrap;padding-right:8px}' \
-                    '.title {text-align:right;font-weight:bold}' \
+                    '.title {text-align:right;font-weight:normal}' \
                     '.ago {font-style:normal}' \
-                    '.value {color:navy}' \
+                    f'.value {{color:{value_color}}}' \
                     '.error {color:' + COLOR_ERROR_STR + '}' \
                     '.warning {color: ' + COLOR_WARNING_STR + '}' \
                     '</style>' \

@@ -5,18 +5,25 @@ You can build Dash Masternode Tool for macOS by opening the Terminal app and run
 * Install *Homebrew*:
 
   ```
-  /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+  curl -fsSL -o install.sh https://raw.githubusercontent.com/Homebrew/install/master/install.sh
+  /bin/bash install.sh
   ```
 
   Installation takes about 5 minutes to complete.
 
+* Install *libusb*
+  ```
+  brew install libusb
+  ```
+  
 * Install *Python 3*:
 
   ```
   brew install python3
   ```
 
-* After the installation process completes, make sure that the Python version installed is 3.6 or newer. DMT won't compile on older versions of Python, or even older versions of Python 3:
+* After the installation process completes, make sure that the Python version installed is 3.6 or newer. 
+  DMT won't compile on older versions of Python, or even older versions of Python 3:
 
   ```
   python3 --version
@@ -24,48 +31,43 @@ You can build Dash Masternode Tool for macOS by opening the Terminal app and run
 
   You should see a response similar to the following:
 
-  `Python 3.6.4`
-
-* Install *virtualenv*:
-
-  ```
-  pip3 install virtualenv
-  ```
+  `Python 3.8.x`, where x means the latest build number.
 
 * Create a Python virtual environment for DMT:
 
   ```
-  cd ~
-  mkdir projects
-  mkdir projects/virtualenvs
-  cd projects/virtualenvs
-  virtualenv -p python3 dmt
+  mkdir ~/dmt-build
+  cd ~/dmt-build
+  python3 -m venv venv-dmt
   ```
 
-* Activate the new virtual environment:
+* Activate the newly created virtual environment:
 
   ```
-  source dmt/bin/activate
+  source venv-dmt/bin/activate
   ```
 
-* Download the DMT source from GitHub:
+* Download DMT sources from GitHub:
 
   ```
-  cd ~/projects
   git clone https://github.com/Bertrand256/dash-masternode-tool
   ```
+  > **Note**. At this point, you may be asked to install commandline developer tools, if you don't already 
+  > have them on the computer. By clicking <Install> you will only install the toolset you need, but 
+  > you can also install the entire XCode environment (<Get XCode> button) if you intend to use GUI 
+  > development tools in the future.
 
-* Install the DMT Python requirements:
+* Install the requirements:
 
   ```
   cd dash-masternode-tool
   pip install -r requirements.txt
   ```
 
-* Build the DMT executable:
+* Build the executable:
 
   ```
-  pyinstaller --distpath=../dist/mac --workpath=../build/mac dash_masternode_tool.spec
+  pyinstaller --distpath=../dmt-dist/dist/mac --workpath=../dmt-dist/build/mac dash_masternode_tool.spec
   ```
 
 

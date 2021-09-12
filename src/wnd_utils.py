@@ -19,10 +19,10 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEvent, QPointF, QSize, QModelIndex, QRect, \
     QRectF
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap, QTextDocument, QCursor, \
-    QAbstractTextDocumentLayout, QFontMetrics, QTransform, QKeySequence, QFont
+    QAbstractTextDocumentLayout, QFontMetrics, QTransform, QKeySequence, QFont, QShowEvent
 from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit, \
     QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView, QAction, QMenu, QApplication, \
-    QProxyStyle, QWidgetItem, QLayout, QSpacerItem, QLabel
+    QProxyStyle, QWidgetItem, QLayout, QSpacerItem, QLabel, QMainWindow
 import math
 import message_dlg
 from common import CancelException
@@ -630,6 +630,7 @@ class SpinnerWidget(QWidget):
             x_center = spinner_rect.left() + spinner_rect.width() / 2 - dot_size / 2
             y_center = spinner_rect.top() + offs_y + spinner_rect.height() / 2 - dot_size / 2
 
+            painter.save()
             for i in range(dot_count):
                 if self.counter % dot_count == i:
                     painter.setBrush(QBrush(QColor(0, 0, 0)))
@@ -642,9 +643,10 @@ class SpinnerWidget(QWidget):
                 x = r * math.cos(2 * math.pi * i / dot_count)
                 y = r * math.sin(2 * math.pi * i / dot_count)
                 painter.drawEllipse(x_center + x, y_center + y, d_size, d_size)
+            painter.restore()
 
         if self.message:
-            painter.setPen(QPen(Qt.black))
+            # painter.setPen(QPen(Qt.black))
             if self.font_size:
                 f = painter.font()
                 f.setPointSize(self.font_size)
@@ -780,18 +782,19 @@ class HyperlinkItemDelegate(QStyledItemDelegate):
     def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
 
         self.initStyleOption(option, index)
+        has_focus = self.parent().hasFocus()
         mouse_over = option.state & QStyle.State_MouseOver
         painter.save()
 
         color = ''
         if option.state & QStyle.State_Selected:
-            if option.state & QStyle.State_HasFocus:
+            if has_focus:
                 painter.fillRect(option.rect, QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
                 color = "color: white"
             else:
                 painter.fillRect(option.rect, QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
         else:
-            painter.setBrush(QBrush(Qt.white))
+            painter.setBrush(QBrush(option.palette.color(QPalette.Normal, option.palette.Base)))
 
         if mouse_over:
             doc = self.doc_hovered_item
@@ -861,6 +864,10 @@ class IconTextItemDelegate(QItemDelegate):
     def __init__(self, parent: QTableView):
         QItemDelegate.__init__(self, parent)
         self.view = parent
+        self.background_color = Qt.white
+        p = self.view.palette()
+        if p:
+            self.background_color = p.color(QPalette.Active, p.Background)
 
     def createEditor(self, parent, option, index):
         return None
@@ -888,13 +895,13 @@ class IconTextItemDelegate(QItemDelegate):
             if option.state & QStyle.State_Selected:
                 if (option.state & QStyle.State_HasFocus) or (view_has_focus and select_whole_row):
                     fg_color = Qt.white
-                    painter.setBrush(QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
+                    painter.fillRect(option.rect,
+                                     QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
                 else:
                     fg_color = Qt.black
-                    painter.setBrush(QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
+                    painter.fillRect(option.rect, QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
             else:
-                painter.setBrush(QBrush(Qt.white))
-            painter.drawRect(option.rect)
+                painter.setBrush(QBrush(self.background_color))
 
             r = option.rect
             r.translate(IconTextItemDelegate.CellHorizontalMargin, IconTextItemDelegate.CellVerticalMargin)
@@ -922,7 +929,7 @@ class IconTextItemDelegate(QItemDelegate):
                 painter.setPen(QPen(fg_color))
                 painter.setFont(option.font)
                 painter.drawText(r, text_alignment, text)
-                painter.restore()
+            painter.restore()
 
     def sizeHint(self, option, index):
         sh = QItemDelegate.sizeHint(self, option, index)
@@ -954,3 +961,37 @@ class ProxyStyleNoFocusRect(QProxyStyle):
             return False
         return QProxyStyle.styleHint(self, hint, option, widget, returnData)
 
+
+def is_color_dark(color: QColor) -> bool:
+    """
+    Determines whether the color given in the 'color' attribute is dark or bright.
+    :param color: the color value to be checked
+    :return: true if 'color' is dark, false otherwise
+    """
+
+    if color.red() * 0.2126 + color.green() * 0.7152 + color.blue() * 0.0722 < 128:
+        return True
+    else:
+        return False
+
+
+class QDetectThemeChange:
+    """
+    The purpose of this class is to detect system theme changes by verifying the background color of the widget.
+    It is used to adapt colors used in styles for widgets for which we use the Qt setStyleSheet method call.
+    This class should be used as a parent class for visual widgets only.
+    """
+    def __init__(self):
+        self.background_color = None
+
+    def showEvent(self, event: QShowEvent) -> None:
+        self.background_color = self.palette().color(QPalette.Active, self.palette().Background)
+
+    def onThemeChanged(self):
+        pass
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        bc = self.palette().color(QPalette.Active, self.palette().Background)
+        if self.background_color != bc:
+            self.background_color = bc
+            self.onThemeChanged()

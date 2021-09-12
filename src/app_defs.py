@@ -30,6 +30,8 @@ COLOR_ERROR_STR = 'red'
 COLOR_ERROR = QColor(COLOR_ERROR_STR)
 COLOR_OK_STR = '#00cc00'
 COLOR_OK = QColor(COLOR_OK_STR)
+COLOR_FORM_VALUES_LIGHT_BG = 'navy'
+COLOR_FORM_VALUES_DARK_BG = 'lightblue'
 
 
 class AppTextMessageType(Enum):

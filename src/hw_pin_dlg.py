@@ -6,16 +6,18 @@ from typing import Optional
 
 from PyQt5 import QtCore
 from PyQt5.QtCore import QTimer
+from PyQt5.QtGui import QPalette
 from PyQt5.QtWidgets import QDialog, QLayout, QWidget
 from ui import ui_hw_pin_dlg
-from wnd_utils import WndUtils
+from wnd_utils import WndUtils, QDetectThemeChange
 
 
-class HardwareWalletPinDlg(QDialog, ui_hw_pin_dlg.Ui_HardwareWalletPinDlg, WndUtils):
+class HardwareWalletPinDlg(QDialog, QDetectThemeChange, ui_hw_pin_dlg.Ui_HardwareWalletPinDlg, WndUtils):
     def __init__(self, message, hide_numbers=True, window_title: str = None, max_length=12,
                  button_heights: Optional[int] = None, parent_window: Optional[QWidget] = None,
                  columns: int = 3):
         QDialog.__init__(self)
+        QDetectThemeChange.__init__(self)
         ui_hw_pin_dlg.Ui_HardwareWalletPinDlg.__init__(self)
         WndUtils.__init__(self, app_config=None)
         self.pin = ''
@@ -37,12 +39,7 @@ class HardwareWalletPinDlg(QDialog, ui_hw_pin_dlg.Ui_HardwareWalletPinDlg, WndUt
 
     def setupUi(self, dialog: QDialog):
         ui_hw_pin_dlg.Ui_HardwareWalletPinDlg.setupUi(self, self)
-        styleSheet = """QPushButton {padding: 1px 1px 1 1px; border: 1px solid lightgray;
-                          border-radius:5px}
-                        QPushButton:enabled {background-color: white}
-                        QPushButton:pressed {background-color: rgb(39,123,234); color:white}
-                        QPushButton:default {background-color: rgb(39,123,234); color:white}"""
-        self.wdgPinButtons.setStyleSheet(styleSheet)
+        self.set_style_sheet()
 
         if self.button_heights:
             self.btnPin1.setMinimumSize(QtCore.QSize(90, self.button_heights))
@@ -116,6 +113,7 @@ class HardwareWalletPinDlg(QDialog, ui_hw_pin_dlg.Ui_HardwareWalletPinDlg, WndUt
     def showEvent(self, _):
         def set():
             self.setFixedSize(self.sizeHint())
+
         QTimer.singleShot(100, set)
 
     def btnDeleteClick(self):
@@ -130,3 +128,18 @@ class HardwareWalletPinDlg(QDialog, ui_hw_pin_dlg.Ui_HardwareWalletPinDlg, WndUt
                 self.accept()
         else:
             self.error_msg('Empty PIN!')
+
+    def set_style_sheet(self):
+        palette = self.palette()
+        btn_color = palette.color(QPalette.Active, palette.Button).name()
+        btn_color_pressed = palette.color(QPalette.Active, palette.Highlight).name()
+
+        style_sheet = ("QPushButton {padding: 1px 1px 1 1px; border: 1px solid lightgray;"
+                       "    border-radius:5px}"
+                       f"  QPushButton:enabled {{background-color: {btn_color}}}"
+                       f"  QPushButton:pressed {{background-color: {btn_color_pressed}}}"
+                       f"  QPushButton:default {{background-color: {btn_color_pressed}}}")
+        self.wdgPinButtons.setStyleSheet(style_sheet)
+
+    def onThemeChanged(self):
+        self.set_style_sheet()

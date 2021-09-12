@@ -96,6 +96,7 @@ class Ui_WdgAppMainView(object):
         self.verticalLayout_5.setObjectName("verticalLayout_5")
         self.lblNetworkInfo = QtWidgets.QLabel(self.pageNetworkInfo)
         self.lblNetworkInfo.setText("")
+        self.lblNetworkInfo.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse|QtCore.Qt.TextSelectableByMouse)
         self.lblNetworkInfo.setObjectName("lblNetworkInfo")
         self.verticalLayout_5.addWidget(self.lblNetworkInfo)
         spacerItem2 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
@@ -186,7 +187,7 @@ class Ui_WdgAppMainView(object):
         self.verticalLayout_6.addWidget(self.lblMnStatus)
 
         self.retranslateUi(WdgAppMainView)
-        self.stackedWidget.setCurrentIndex(2)
+        self.stackedWidget.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(WdgAppMainView)
 
     def retranslateUi(self, WdgAppMainView):

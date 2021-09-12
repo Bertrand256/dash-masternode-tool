@@ -11,7 +11,7 @@ import logging
 
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import pyqtSlot
-from PyQt5.QtGui import QTextDocument, QDesktopServices
+from PyQt5.QtGui import QTextDocument, QDesktopServices, QPalette
 from PyQt5.QtWidgets import QDialog, QMessageBox, QProxyStyle, QStyle
 from decimal import Decimal
 
@@ -20,12 +20,13 @@ from bitcoinrpc.authproxy import JSONRPCException
 import app_cache
 import app_utils
 from app_config import AppConfig
+from app_defs import COLOR_FORM_VALUES_DARK_BG, COLOR_FORM_VALUES_LIGHT_BG
 from hw_common import HWType
 from dashd_intf import DashdInterface
 from hw_intf import HwSessionInfo
 from ui.ui_transaction_dlg import Ui_TransactionDlg
 from wallet_common import UtxoType, TxOutputType, Bip44AddressType
-from wnd_utils import WndUtils, ProxyStyleNoFocusRect
+from wnd_utils import WndUtils, ProxyStyleNoFocusRect, QDetectThemeChange, is_color_dark
 
 CACHE_ITEM_DETAILS_WORD_WRAP = 'TransactionDlg_DetailsWordWrap'
 
@@ -33,7 +34,7 @@ CACHE_ITEM_DETAILS_WORD_WRAP = 'TransactionDlg_DetailsWordWrap'
 log = logging.getLogger('dmt.transaction_dlg')
 
 
-class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
+class TransactionDlg(QDialog, QDetectThemeChange, Ui_TransactionDlg, WndUtils):
     def __init__(self, parent: QDialog,
                  app_config: AppConfig,
                  dashd_intf: DashdInterface,
@@ -47,6 +48,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                  dependent_transactions: Optional[dict] = None,
                  fn_show_address_on_hw: Callable[[Bip44AddressType], None] = None):
         QDialog.__init__(self, parent=parent)
+        QDetectThemeChange.__init__(self)
         Ui_TransactionDlg.__init__(self)
         WndUtils.__init__(self, app_config)
         self.app_config = app_config
@@ -96,6 +98,9 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
     def closeEvent(self, event):
         app_cache.save_window_size(self)
 
+    def onThemeChanged(self):
+        self.prepare_tx_view()
+
     def on_chb_word_wrap_toggled(self, checked):
         app_cache.set_value(CACHE_ITEM_DETAILS_WORD_WRAP, checked)
         self.apply_word_wrap(checked)
@@ -112,7 +117,17 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                     val = round(val / 1e8, 8)
             return float(val)
 
+        palette = self.palette()
+        bg_col = palette.color(QPalette.Normal, palette.Base)
+        bg_color = bg_col.name()
+        fg_color = palette.color(QPalette.Active, palette.Text).name()
+        if is_color_dark(bg_col):
+            value_color = COLOR_FORM_VALUES_DARK_BG
+        else:
+            value_color = COLOR_FORM_VALUES_LIGHT_BG
+
         try:
+            tx_size_str = '?'
             if self.hw_session and self.hw_session.hw_type:
                 hw_type_desc = HWType.get_desc(self.hw_session.hw_type)
             else:
@@ -233,7 +248,8 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                                 lbl = f'<p class="lbl">Recipients:</p>'
                             else:
                                 lbl = ''
-                            recipients += f'<tr><td class="lbl">{lbl}</td><td>{address}{address_info}</td><td><p class="val">{app_utils.to_string(val)} Dash</p></td></tr>'
+                            recipients += f'<tr><td class="lbl">{lbl}</td><td>{address}{address_info}</td>' \
+                                          f'<td><p class="val">{app_utils.to_string(val)} Dash</p></td></tr>'
 
                         fee = round(inputs_total - outputs_total, 8)
 
@@ -259,11 +275,18 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                                        'broadcast the transaction.</span></p>'
 
                         summary = f"""<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">
-<html><head><meta name="qrichtext" content="1" /><style type="text/css">
-td.lbl{{text-align: right;vertical-align: top;}} p.lbl{{margin: 0 5px 0 0; font-weight: bold;}} p.val{{margin: 0 0 0 8px; color: navy;}}
-</style></head><body style="font-size:{self.base_font_size}pt; font-weight:400; font-style:normal; margin-left:10px;margin-right:10px;">
-<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:{self.title_font_size}pt; font-weight:600;">{title}</span></p>
-<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:{self.base_font_size}pt;"><br /></p>
+<html><head><meta name="qrichtext" content="1" />
+<style type="text/css">
+td.lbl{{text-align: right;vertical-align: top;}} 
+p.lbl{{margin: 0 5px 0 0; font-weight: bold;}} 
+p.val{{margin: 0 0 0 8px; color: {value_color};}}
+</style></head>
+<body style="font-size:{self.base_font_size}pt; font-weight:400; font-style:normal; margin-left:10px;margin-right:10px;
+  background-color:{bg_color}; color:{fg_color}">
+<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">
+<span style=" font-size:{self.title_font_size}pt; font-weight:600;">{title}</span></p>
+<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; 
+  -qt-block-indent:0; text-indent:0px; font-size:{self.base_font_size}pt;"><br /></p>
 {subtitle}
 <p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">
  <table>
