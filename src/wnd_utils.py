@@ -9,7 +9,7 @@ import os
 import threading
 import traceback
 from functools import partial
-from typing import Callable, Optional, NewType, Any, Tuple, Dict, List
+from typing import Callable, Optional, NewType, Any, Tuple, Dict, List, Union
 
 import app_defs
 import app_utils
@@ -209,61 +209,37 @@ class WndUtils:
                                                         callback_if_main_thread_locked, *args, **kwargs)
 
     @staticmethod
-    def get_pixmap(parent, name: str, rotate=0, force_color_change: str = None) -> Optional[QPixmap]:
-        pixmap = None
+    def get_icon_pixmap(ico_file_name: str, rotate=0, force_color_change: str = None) -> QPixmap:
         if app_defs.APP_IMAGE_DIR:
             path = app_defs.APP_IMAGE_DIR
         else:
             path = 'img'
 
-        path = os.path.join(path, name)
+        path = os.path.join(path, ico_file_name)
         if not os.path.isfile(path):
             logging.warning(f'File {path} does not exist or is not a file')
-        else:
-            pixmap = QPixmap(path)
-            if rotate:
-                transf = QTransform().rotate(rotate)
-                pixmap = QPixmap(pixmap.transformed(transf))
 
-            if force_color_change:
-                tmp = pixmap.toImage()
-                color = QColor(force_color_change)
-                for y in range(0, tmp.height()):
-                    for x in range(0, tmp.width()):
-                        color.setAlpha(tmp.pixelColor(x,y).alpha())
-                        tmp.setPixelColor(x, y, color)
+        pixmap = QPixmap(path)
+        if rotate:
+            transf = QTransform().rotate(rotate)
+            pixmap = QPixmap(pixmap.transformed(transf))
 
-                pixmap = QPixmap.fromImage(tmp)
+        if force_color_change:
+            tmp = pixmap.toImage()
+            color = QColor(force_color_change)
+            for y in range(0, tmp.height()):
+                for x in range(0, tmp.width()):
+                    color.setAlpha(tmp.pixelColor(x,y).alpha())
+                    tmp.setPixelColor(x, y, color)
+
+            pixmap = QPixmap.fromImage(tmp)
         return pixmap
 
     @staticmethod
     def get_icon(parent, ico, rotate=0, force_color_change: str = None):
         if isinstance(ico, str):
             icon = QIcon()
-            if app_defs.APP_IMAGE_DIR:
-                path = app_defs.APP_IMAGE_DIR
-            else:
-                path = 'img'
-
-            path = os.path.join(path, ico)
-            if not os.path.isfile(path):
-                logging.warning(f'File {path} does not exist or is not a file')
-
-            pixmap = QPixmap(path)
-            if rotate:
-                transf = QTransform().rotate(rotate)
-                pixmap = QPixmap(pixmap.transformed(transf))
-
-            if force_color_change:
-                tmp = pixmap.toImage()
-                color = QColor(force_color_change)
-                for y in range(0, tmp.height()):
-                    for x in range(0, tmp.width()):
-                        color.setAlpha(tmp.pixelColor(x,y).alpha())
-                        tmp.setPixelColor(x, y, color)
-
-                pixmap = QPixmap.fromImage(tmp)
-
+            pixmap = WndUtils.get_icon_pixmap(ico, rotate, force_color_change)
             icon.addPixmap(pixmap)
         else:
             icon = parent.style().standardIcon(ico)
@@ -271,8 +247,17 @@ class WndUtils:
         return icon
 
     @staticmethod
-    def set_icon(parent, widget, ico, rotate=0, force_color_change: Optional[str] = None):
-        widget.setIcon(WndUtils.get_icon(parent, ico, rotate, force_color_change))
+    def set_icon(parent, widget, ico: str, rotate=0, force_color_change: Optional[str] = None,
+                 icon_disabled: str = None, icon_active: str = None) -> QIcon:
+        icon = WndUtils.get_icon(parent, ico, rotate, force_color_change)
+        if icon_disabled:
+            p = WndUtils.get_icon_pixmap(icon_disabled, rotate, force_color_change)
+            icon.addPixmap(p, QIcon.Disabled)
+        if icon_active:
+            p = WndUtils.get_icon_pixmap(icon_active, rotate, force_color_change)
+            icon.addPixmap(p, QIcon.Active)
+        widget.setIcon(icon)
+        return icon
 
     @staticmethod
     def open_file_query(parent_wnd, app_config, message, directory='', filter='', initial_filter=''):
@@ -1014,7 +999,7 @@ def get_widget_font_color_blue(wdg: QWidget) -> str:
     if is_color_dark(bg_color):
         return 'lightblue'
     else:
-        return 'navy'
+        return '#1f3d7a'
 
 
 def get_widget_font_color_default(wdg: QWidget) -> str:

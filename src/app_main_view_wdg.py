@@ -94,8 +94,8 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         self.lblNavigation2.linkActivated.connect(self.on_cur_tab_link_activated)
         self.lblNavigation3.linkActivated.connect(self.on_cur_tab_link_activated)
         self.lblNoMasternodeMessage.linkActivated.connect(self.on_cur_tab_link_activated)
-        WndUtils.set_icon(self, self.btnMoveMnUp, 'arrow-downward@16px', 180)
-        WndUtils.set_icon(self, self.btnMoveMnDown, 'arrow-downward@16px')
+        WndUtils.set_icon(self, self.btnMoveMnUp, 'arrow-downward@16px.png', 180)
+        WndUtils.set_icon(self, self.btnMoveMnDown, 'arrow-downward@16px.png')
         if sys.platform == 'win32':
             self.pnlNavigation.layout().setSpacing(12)
             self.layMasternodesControl.layout().setSpacing(12)
@@ -1437,7 +1437,7 @@ class MasternodesTableModel(ExtSortFilterItemModel):
                             else:
                                 img_file = 'check-circle@16px.png'
 
-                            pix = WndUtils.get_pixmap(self, img_file)
+                            pix = WndUtils.get_icon_pixmap(img_file)
                             ret_val = (pix, st.get_status())
 
                 elif col_name == 'last_paid_block':

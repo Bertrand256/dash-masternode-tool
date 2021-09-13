@@ -2806,8 +2806,8 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                 if not self.app_config.confirm_when_voting or \
                         self.query_dlg(
                             f'Vote {vote_str} for {len(props)} proposal(s) on behalf of {len(masternodes)} masternode(s)?',
-                            buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                            default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
+                            buttons=QMessageBox.Ok | QMessageBox.Cancel,
+                            default_button=QMessageBox.Ok, icon=QMessageBox.Information) == QMessageBox.Ok:
 
                     if len(props) > 0:
                         self.sending_votes = True

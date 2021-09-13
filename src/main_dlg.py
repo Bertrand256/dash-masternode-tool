@@ -124,14 +124,20 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
         self.set_status_text2('<b>HW status:</b> idle')
         self.update_styles()
 
-        WndUtils.set_icon(self, self.action_save_config_file, 'save.png')
-        WndUtils.set_icon(self, self.action_check_network_connection, "link-check.png")
-        WndUtils.set_icon(self, self.action_open_settings_window, "gear.png")
-        WndUtils.set_icon(self, self.action_open_proposals_window, "thumbs-up-down.png")
-        WndUtils.set_icon(self, self.action_connect_hw, "hw-test.png")
-        WndUtils.set_icon(self, self.action_disconnect_hw, "hw-disconnect.png")
-        WndUtils.set_icon(self, self.action_hw_wallet, "wallet.png")
-        WndUtils.set_icon(self, self.action_wallet_tools, "tools@32px.png")
+        WndUtils.set_icon(self, self.action_save_config_file, 'action-save.png',
+                          icon_disabled='action-save-disabled.png')
+        WndUtils.set_icon(self, self.action_check_network_connection, "action-connect-network.png",
+                          icon_disabled="action-connect-network-disabled.png")
+        WndUtils.set_icon(self, self.action_open_settings_window, "action-settings.png",
+                          icon_disabled='action-settings-disabled.png')
+        WndUtils.set_icon(self, self.action_open_proposals_window, "action-proposals.png",
+                          icon_disabled="action-proposals-disabled.png")
+        WndUtils.set_icon(self, self.action_connect_hw, "action-connect-hw.png",
+                          icon_disabled="action-connect-hw-disabled.png")
+        WndUtils.set_icon(self, self.action_disconnect_hw, "action-disconnect-hw.png",
+                          icon_disabled="action-disconnect-hw-disabled.png")
+        WndUtils.set_icon(self, self.action_hw_wallet, "action-wallet.png", icon_disabled="action-wallet-disabled.png")
+        WndUtils.set_icon(self, self.action_wallet_tools, "action-tools.png", icon_disabled="action-tools-disabled.png")
         WndUtils.set_icon(self, self.action_show_masternode_details, "view-list@16px.png")
         WndUtils.set_icon(self, self.action_new_masternode_entry, "add@16px.png")
         WndUtils.set_icon(self, self.action_new_masternode_entry, "add@16px.png")
