@@ -311,7 +311,7 @@ class Ui_WalletDlg(object):
         self.btnSelectAllMasternodes.setToolTip(_translate("WalletDlg", "Select all masternode addresses"))
         self.btnSelectAllMasternodes.setText(_translate("WalletDlg", "Select All"))
         self.btnCheckAll.setText(_translate("WalletDlg", "Select All"))
-        self.btnUncheckAll.setText(_translate("WalletDlg", "Unselect All"))
+        self.btnUncheckAll.setText(_translate("WalletDlg", "Deselect All"))
         self.btnUtxoViewColumns.setText(_translate("WalletDlg", "Columns..."))
         self.chbHideCollateralTx.setText(_translate("WalletDlg", "Hide collateral utxos"))
         self.btnSend.setText(_translate("WalletDlg", "Prepare Transaction"))

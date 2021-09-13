@@ -23,7 +23,7 @@ from PyQt5.QtChart import QChart, QChartView, QLineSeries, QDateTimeAxis, QValue
     QBarCategoryAxis
 from PyQt5.QtCore import Qt, pyqtSlot, QVariant, QAbstractTableModel, QSortFilterProxyModel, \
     QDateTime, QLocale, QItemSelection, QItemSelectionModel, QUrl
-from PyQt5.QtGui import QColor, QPainter, QPen, QBrush, QDesktopServices
+from PyQt5.QtGui import QColor, QPainter, QPen, QBrush, QDesktopServices, QPalette
 from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QMessageBox, QTableView, QAbstractItemView, QItemDelegate, \
     QStyledItemDelegate
 from math import floor
@@ -316,7 +316,7 @@ class Proposal(AttrsProtected):
         return False
 
 
-class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
+class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     def __init__(self, parent, dashd_intf):
         QDialog.__init__(self, parent=parent)
         wnd_utils.WndUtils.__init__(self, parent.app_config)
@@ -460,6 +460,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
             self.propsModel.set_view(self.propsView)
             self.propsView.selectionModel().selectionChanged.connect(self.on_propsView_selectionChanged)
+            self.set_styles()
 
             def after_data_load():
                 self.setup_user_voting_controls()
@@ -704,7 +705,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
         def disp(msg):
             if msg:
                 self.lblMessage.setVisible(True)
-                self.lblMessage.setText('<b style="color:#0059b3">' + msg + '<b>')
+                self.lblMessage.setText('<b>' + msg + '<b>')
             else:
                 self.lblMessage.setVisible(False)
                 self.lblMessage.setText('')
@@ -714,6 +715,14 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
                 WndUtils.call_in_main_thread(disp, message)
             else:
                 disp(message)
+
+    def onThemeChanged(self):
+        self.set_styles()
+
+    def set_styles(self):
+        value_color = wnd_utils.get_widget_font_color_blue(self)
+        self.lblMessage.setStyleSheet(f'QLabel {{color:{value_color}}}')
+        self.refresh_details_tabs()
 
     def on_lblMessage_linkActivated(self, link):
         if link == '#close':
@@ -1976,6 +1985,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
 
     def refresh_details_tabs(self):
         try:
+            green_color = wnd_utils.get_widget_font_color_green(self)
             proposals = self.get_selected_proposals(active_voting_only=False)
             active_proposals = []
             for p in proposals:
@@ -2055,7 +2065,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     .status-2{{background-color:{COLOR_ABSTAIN};color:white}}
     .status-3{{color:{COLOR_YES}}}
     .status-4{{color:{COLOR_NO}}}
-    .vo-active{{color:green;font-weight: bold}}
+    .vo-active{{color:{green_color};font-weight: bold}}
     .vo-inactive{{color:gray;font-weight: bold}}
     td.voting{{padding-right:20px;padding-top:5px;padding-bottom:5px;color: red}}
 </style>
@@ -2149,7 +2159,7 @@ class ProposalsDlg(QDialog, ui_proposals.Ui_ProposalsDlg, wnd_utils.WndUtils):
     .status-2{{background-color:{COLOR_ABSTAIN};color:white}}
     .status-3{{color:{COLOR_YES}}}
     .status-4{{color:{COLOR_NO}}}
-    .vo-active{{color:green;font-weight: bold}}
+    .vo-active{{color:{green_color};font-weight: bold}}
     .vo-inactive{{color:gray;font-weight: bold}}
     td.voting{{padding-right:20px;padding-top:5px;padding-bottom:5px;color: red}}
 </style>

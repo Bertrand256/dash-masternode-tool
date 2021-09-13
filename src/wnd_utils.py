@@ -894,14 +894,16 @@ class IconTextItemDelegate(QItemDelegate):
             painter.setPen(QPen(Qt.NoPen))
             if option.state & QStyle.State_Selected:
                 if (option.state & QStyle.State_HasFocus) or (view_has_focus and select_whole_row):
-                    fg_color = Qt.white
+                    fg_color = fg_color = option.palette.color(QPalette.Normal, option.palette.HighlightedText)
                     painter.fillRect(option.rect,
                                      QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
                 else:
-                    fg_color = Qt.black
-                    painter.fillRect(option.rect, QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
+                    fg_color = option.palette.color(QPalette.Inactive, option.palette.HighlightedText)
+                    painter.fillRect(option.rect,
+                                     QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
             else:
                 painter.setBrush(QBrush(self.background_color))
+                fg_color = option.palette.color(QPalette.Normal, option.palette.WindowText)
 
             r = option.rect
             r.translate(IconTextItemDelegate.CellHorizontalMargin, IconTextItemDelegate.CellVerticalMargin)
@@ -962,19 +964,6 @@ class ProxyStyleNoFocusRect(QProxyStyle):
         return QProxyStyle.styleHint(self, hint, option, widget, returnData)
 
 
-def is_color_dark(color: QColor) -> bool:
-    """
-    Determines whether the color given in the 'color' attribute is dark or bright.
-    :param color: the color value to be checked
-    :return: true if 'color' is dark, false otherwise
-    """
-
-    if color.red() * 0.2126 + color.green() * 0.7152 + color.blue() * 0.0722 < 128:
-        return True
-    else:
-        return False
-
-
 class QDetectThemeChange:
     """
     The purpose of this class is to detect system theme changes by verifying the background color of the widget.
@@ -995,3 +984,40 @@ class QDetectThemeChange:
         if self.background_color != bc:
             self.background_color = bc
             self.onThemeChanged()
+
+
+def is_color_dark(color: QColor) -> bool:
+    """
+    Determines whether the color given in the 'color' attribute is dark or bright.
+    :param color: the color value to be checked
+    :return: true if 'color' is dark, false otherwise
+    """
+
+    if color.red() * 0.2126 + color.green() * 0.7152 + color.blue() * 0.0722 < 128:
+        return True
+    else:
+        return False
+
+
+def get_widget_font_color_green(wdg: QWidget) -> str:
+    palette = wdg.palette()
+    bg_color = palette.color(QPalette.Normal, palette.Window)
+    if is_color_dark(bg_color):
+        return QColor(Qt.green).name()
+    else:
+        return QColor(Qt.darkGreen).name()
+
+
+def get_widget_font_color_blue(wdg: QWidget) -> str:
+    palette = wdg.palette()
+    bg_color = palette.color(QPalette.Normal, palette.Window)
+    if is_color_dark(bg_color):
+        return 'lightblue'
+    else:
+        return 'navy'
+
+
+def get_widget_font_color_default(wdg: QWidget) -> str:
+    palette = wdg.palette()
+    color = palette.color(QPalette.Normal, palette.WindowText)
+    return color.name()

@@ -12,19 +12,19 @@ from app_defs import FEE_DUFF_PER_BYTE
 from dash_utils import validate_address
 from dashd_intf import DashdInterface
 from ui import ui_revoke_mn_dlg
-from wnd_utils import WndUtils, ProxyStyleNoFocusRect
-
+from wnd_utils import WndUtils, ProxyStyleNoFocusRect, QDetectThemeChange, get_widget_font_color_green
 
 CACHE_ITEM_SHOW_COMMANDS = 'RevokeMnDlg_ShowCommands'
 
 
-class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
+class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
     def __init__(self,
                  main_dlg,
                  app_config: AppConfig,
                  dashd_intf: DashdInterface,
                  masternode: MasternodeConfig):
         QDialog.__init__(self, main_dlg)
+        QDetectThemeChange.__init__(self)
         ui_revoke_mn_dlg.Ui_RevokeMnDlg.__init__(self)
         WndUtils.__init__(self, main_dlg.app_config)
         self.main_dlg = main_dlg
@@ -70,6 +70,12 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
         sh = QDialog.sizeHint(self)
         sh.setWidth(self.width())
         return sh
+
+    def onThemeChanged(self):
+        self.update_styles()
+
+    def update_styles(self):
+        self.update_manual_cmd_info()
 
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
@@ -140,14 +146,15 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
 
     def update_manual_cmd_info(self):
         try:
+            green_color = get_widget_font_color_green(self)
             self.validate_data()
             cmd = f'protx revoke "{self.dmn_protx_hash}" "{self.masternode.dmn_operator_private_key}" ' \
-                f'{self.revocation_reason} "<span style="color:green">feeSourceAddress</span>"'
+                f'{self.revocation_reason} "<span style="color:{green_color}">feeSourceAddress</span>"'
             msg = '<ol>' \
                   '<li>Start a Dash Core wallet with sufficient funds to cover a transaction fee.</li>'
             msg += '<li>Execute the following command in the Dash Core debug console:<br><br>'
-            msg += '  <code style=\"background-color:#e6e6e6\">' + cmd + '</code></li><br>'
-            msg += 'Replace <span style="color:green">feeSourceAddress</span> with the address being the ' \
+            msg += '  <code>' + cmd + '</code></li><br>'
+            msg += f'Replace <span style="color:{green_color}">feeSourceAddress</span> with the address being the ' \
                    'source of the transaction fee.'
             msg += '</ol>'
 

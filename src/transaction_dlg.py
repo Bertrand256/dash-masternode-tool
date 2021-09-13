@@ -20,13 +20,12 @@ from bitcoinrpc.authproxy import JSONRPCException
 import app_cache
 import app_utils
 from app_config import AppConfig
-from app_defs import COLOR_FORM_VALUES_DARK_BG, COLOR_FORM_VALUES_LIGHT_BG
 from hw_common import HWType
 from dashd_intf import DashdInterface
 from hw_intf import HwSessionInfo
 from ui.ui_transaction_dlg import Ui_TransactionDlg
 from wallet_common import UtxoType, TxOutputType, Bip44AddressType
-from wnd_utils import WndUtils, ProxyStyleNoFocusRect, QDetectThemeChange, is_color_dark
+from wnd_utils import WndUtils, ProxyStyleNoFocusRect, QDetectThemeChange, is_color_dark, get_widget_font_color_blue
 
 CACHE_ITEM_DETAILS_WORD_WRAP = 'TransactionDlg_DetailsWordWrap'
 
@@ -120,11 +119,7 @@ class TransactionDlg(QDialog, QDetectThemeChange, Ui_TransactionDlg, WndUtils):
         palette = self.palette()
         bg_col = palette.color(QPalette.Normal, palette.Base)
         bg_color = bg_col.name()
-        fg_color = palette.color(QPalette.Active, palette.Text).name()
-        if is_color_dark(bg_col):
-            value_color = COLOR_FORM_VALUES_DARK_BG
-        else:
-            value_color = COLOR_FORM_VALUES_LIGHT_BG
+        value_color = get_widget_font_color_blue(self)
 
         try:
             tx_size_str = '?'

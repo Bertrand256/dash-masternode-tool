@@ -267,7 +267,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.update_key_controls_state()
 
     def update_dynamic_labels(self):
-
         def style_to_color(style: str) -> str:
             if style == 'hl1':
                 color = 'color:#00802b'

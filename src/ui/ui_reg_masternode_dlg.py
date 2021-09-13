@@ -568,7 +568,7 @@ class Ui_RegMasternodeDlg(object):
         self.verticalLayout.addWidget(self.frame)
 
         self.retranslateUi(RegMasternodeDlg)
-        self.stackedWidget.setCurrentIndex(1)
+        self.stackedWidget.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(RegMasternodeDlg)
         RegMasternodeDlg.setTabOrder(self.edtCollateralTx, self.edtCollateralIndex)
         RegMasternodeDlg.setTabOrder(self.edtCollateralIndex, self.edtIP)

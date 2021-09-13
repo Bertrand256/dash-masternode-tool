@@ -13,13 +13,12 @@ from dash_utils import wif_privkey_to_address, generate_wif_privkey, generate_bl
     bls_privkey_to_pubkey, validate_wif_privkey
 from dashd_intf import DashdInterface
 from ui import ui_upd_mn_service_dlg
-from wnd_utils import WndUtils, ProxyStyleNoFocusRect
-
+from wnd_utils import WndUtils, ProxyStyleNoFocusRect, QDetectThemeChange, get_widget_font_color_green
 
 CACHE_ITEM_SHOW_COMMANDS = 'UpdMnServiceDlg_ShowCommands'
 
 
-class UpdMnServiceDlg(QDialog, ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg, WndUtils):
+class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg, WndUtils):
     def __init__(self,
                  main_dlg,
                  app_config: AppConfig,
@@ -27,6 +26,7 @@ class UpdMnServiceDlg(QDialog, ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg, WndUtil
                  masternode: MasternodeConfig,
                  on_mn_config_updated_callback: Callable):
         QDialog.__init__(self, main_dlg)
+        QDetectThemeChange.__init__(self)
         ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg.__init__(self)
         WndUtils.__init__(self, main_dlg.app_config)
         self.main_dlg = main_dlg
@@ -80,6 +80,12 @@ class UpdMnServiceDlg(QDialog, ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg, WndUtil
         sh = QDialog.sizeHint(self)
         sh.setWidth(self.width())
         return sh
+
+    def onThemeChanged(self):
+        self.update_styles()
+
+    def update_styles(self):
+        self.update_manual_cmd_info()
 
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
@@ -191,15 +197,16 @@ class UpdMnServiceDlg(QDialog, ui_upd_mn_service_dlg.Ui_UpdMnServiceDlg, WndUtil
 
     def update_manual_cmd_info(self):
         try:
+            green_color = get_widget_font_color_green(self)
             self.validate_data()
             cmd = f'protx update_service "{self.dmn_protx_hash}" "{self.dmn_new_ip}:{str(self.dmn_new_port)}" ' \
                 f'"{self.masternode.dmn_operator_private_key}" "{self.dmn_new_operator_payout_address}" ' \
-                f'"<span style="color:green">feeSourceAddress</span>"'
+                f'"<span style="color:{green_color}">feeSourceAddress</span>"'
             msg = '<ol>' \
                   '<li>Start a Dash Core wallet with sufficient funds to cover a transaction fee.</li>'
             msg += '<li>Execute the following command in the Dash Core debug console:<br><br>'
-            msg += '  <code style=\"background-color:#e6e6e6\">' + cmd + '</code></li><br>'
-            msg += 'Replace <span style="color:green">feeSourceAddress</span> with the address being the ' \
+            msg += '  <code>' + cmd + '</code></li><br>'
+            msg += f'Replace <span style="color:{green_color}">feeSourceAddress</span> with the address being the ' \
                    'source of the transaction fee.'
             msg += '</ol>'
 

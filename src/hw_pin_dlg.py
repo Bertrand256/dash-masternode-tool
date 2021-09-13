@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: Bertrand256
 # Created on: 2017-03
+import re
 from typing import Optional
 
 from PyQt5 import QtCore
@@ -30,12 +31,6 @@ class HardwareWalletPinDlg(QDialog, QDetectThemeChange, ui_hw_pin_dlg.Ui_Hardwar
         if columns not in (2, 3):
             raise Exception('Invalid number of matrix columns')
         self.setupUi(self)
-
-    def new_key(self, new_key):
-        self.pin += new_key
-        self.edtPin.setText('*' * len(self.pin))
-        if self.max_length == 1:
-            self.accept()
 
     def setupUi(self, dialog: QDialog):
         ui_hw_pin_dlg.Ui_HardwareWalletPinDlg.setupUi(self, self)
@@ -71,7 +66,7 @@ class HardwareWalletPinDlg(QDialog, QDetectThemeChange, ui_hw_pin_dlg.Ui_Hardwar
         self.btnPin7.clicked.connect(lambda: self.new_key('7'))
         self.btnPin8.clicked.connect(lambda: self.new_key('8'))
         self.btnPin9.clicked.connect(lambda: self.new_key('9'))
-        self.btnEnterPin.clicked.connect(self.btnEnterClick)
+        self.btnEnterPin.clicked.connect(self.accept_pin)
         star = '\u26ab'
         if self.hide_numbers:
             self.btnPin1.setText(star)
@@ -116,11 +111,17 @@ class HardwareWalletPinDlg(QDialog, QDetectThemeChange, ui_hw_pin_dlg.Ui_Hardwar
 
         QTimer.singleShot(100, set)
 
+    def new_key(self, new_key):
+        self.pin += new_key
+        self.edtPin.setText('*' * len(self.pin))
+        if self.max_length == 1:
+            self.accept()
+
     def btnDeleteClick(self):
         self.pin = self.pin[:-1]
         self.edtPin.setText('*' * len(self.pin))
 
-    def btnEnterClick(self):
+    def accept_pin(self):
         if self.pin:
             if len(self.pin) > 9:
                 self.error_msg('The PIN exceeds 9-character limit.')
@@ -128,6 +129,15 @@ class HardwareWalletPinDlg(QDialog, QDetectThemeChange, ui_hw_pin_dlg.Ui_Hardwar
                 self.accept()
         else:
             self.error_msg('Empty PIN!')
+
+    def keyPressEvent(self, event):
+        if event.key() == QtCore.Qt.Key_Enter:
+            self.accept_pin()
+        else:
+            t = event.text()
+            if re.match(r'\d', t):
+                self.new_key(t)
+        event.accept()
 
     def set_style_sheet(self):
         palette = self.palette()

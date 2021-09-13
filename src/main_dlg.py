@@ -51,7 +51,7 @@ from hw_intf import HwSessionInfo
 from psw_cache import SshPassCache
 from sign_message_dlg import SignMessageDlg
 from wallet_tools_dlg import WalletToolsDlg
-from wnd_utils import WndUtils, QDetectThemeChange
+from wnd_utils import WndUtils, QDetectThemeChange, get_widget_font_color_green, get_widget_font_color_default
 from ui import ui_main_dlg
 
 
@@ -122,7 +122,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
         self.lblStatus2.setOpenExternalLinks(True)
         self.show_connection_disconnected()
         self.set_status_text2('<b>HW status:</b> idle')
-        self.set_stylesheet()
+        self.update_styles()
 
         WndUtils.set_icon(self, self.action_save_config_file, 'save.png')
         WndUtils.set_icon(self, self.action_check_network_connection, "link-check.png")
@@ -201,9 +201,10 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
         app_cache.save_window_size(self)
 
     def onThemeChanged(self):
-        self.set_stylesheet()
+        self.update_styles()
+        self.display_app_messages()
 
-    def set_stylesheet(self):
+    def update_styles(self):
         p = self.palette()
         bg_color_active = p.color(QPalette.Normal, p.Base).name()
         bg_color_inactive = p.color(QPalette.Inactive, p.Window).name()
@@ -212,6 +213,14 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                                "} QLineEdit:read-only {\n"
                                f"    background-color: {bg_color_inactive};\n"
                                "}\n")
+
+        green_color = get_widget_font_color_green(self)
+        style = f'QLabel[level="success"]{{color:{green_color}}} ' \
+                f'QLabel[level="warning"]{{color:#ff6600}} ' \
+                f'QLabel[level="error"]{{background-color:red;color:white}} ' \
+                f'QLabel{{margin-right:20px;margin-left:8px}}'
+        self.lblStatus1.setStyleSheet(style)
+        self.lblStatus2.setStyleSheet(style)
 
     def configuration_to_ui(self):
         """
@@ -667,11 +676,11 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
     def show_connection_failed(self):
         """Shows status information related to a failed connection attempt. There can be more attempts to connect
         to another nodes if there are such in configuration."""
-        self.set_status_text1('<b>RPC network status:</b> failed connection to %s' % self.dashd_intf.get_active_conn_description(), 'red')
+        self.set_status_text1('<b>RPC network status:</b> failed connection to %s' % self.dashd_intf.get_active_conn_description(), 'error')
 
     def show_connection_successful(self):
         """Shows status information after successful connection to a Dash RPC node."""
-        self.set_status_text1('<b>RPC network status:</b> OK (%s)' % self.dashd_intf.get_active_conn_description(), 'green')
+        self.set_status_text1('<b>RPC network status:</b> OK (%s)' % self.dashd_intf.get_active_conn_description(), 'success')
 
     def show_connection_disconnected(self):
         """Shows status message related to disconnection from Dash RPC node."""
@@ -816,40 +825,39 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
             # configuration not complete: show config window
             self.error_msg("There are no (enabled) connections to an RPC node in your configuration.")
 
-    def set_status_text1(self, text, color=None):
+    def set_status_text1(self, text, style=None):
         def set_status(text, color):
+            self.lblStatus1.setProperty('level', style)
             self.lblStatus1.setText(text)
-            if not color:
-                self.lblStatus1.setStyleSheet('')
-            else:
-                self.lblStatus1.setStyleSheet('QLabel{color: ' + color + ';margin-right:20px;margin-left:8px}')
+            self.update_styles()
 
         if threading.current_thread() != threading.main_thread():
-            self.call_in_main_thread(set_status, text, color)
+            self.call_in_main_thread(set_status, text, style)
         else:
-            set_status(text, color)
+            set_status(text, style)
 
-    def set_status_text2(self, text, color=None):
+    def set_status_text2(self, text, style=None):
         def set_status(text, color):
+            self.lblStatus2.setProperty('level', style)
             self.lblStatus2.setText(text)
-            if not color:
-                self.lblStatus2.setStyleSheet('')
-            else:
-                self.lblStatus2.setStyleSheet('QLabel{color: ' + color + '}')
+            self.update_styles()
 
         if threading.current_thread() != threading.main_thread():
-            self.call_in_main_thread(set_status, text, color)
+            self.call_in_main_thread(set_status, text, style)
         else:
-            set_status(text, color)
+            set_status(text, style)
 
     def display_app_messages(self):
         left, top, right, bottom = self.layMessage.getContentsMargins()
         t = ''
+        green_color = get_widget_font_color_green(self)
+        default_color = get_widget_font_color_default(self)
+
         for m_id in self.app_messages:
             m = self.app_messages[m_id]
             if not m.hidden:
                 if m.type == AppTextMessageType.INFO:
-                    s = 'color:green'
+                    s = 'color:'+green_color
                 elif m.type == AppTextMessageType.WARN:
                     s = 'background-color:rgb(255,128,0);color:white;'
                 else:
@@ -858,7 +866,8 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                 if t:
                     t += '<br>'
                 t += f'<span style="{s}">{m.message}</span>&nbsp;' \
-                    f'<span style="display:inline-box"><a style="text-decoration:none;color:black;" href="{str(m_id)}">\u2715</img></a><span>'
+                    f'<span style="display:inline-box"><a style="text-decoration:none;color:{default_color};" ' \
+                     f'href="{str(m_id)}">\u2715</img></a><span>'
 
         if not t:
             self.lblMessage.setVisible(False)
@@ -946,7 +955,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
 
     @pyqtSlot(HWDevice)
     def on_hardware_wallet_connected(self, hw_device: HWDevice):
-        self.set_status_text2('<b>HW status:</b> connected to %s' % hw_device.get_description(), 'green')
+        self.set_status_text2('<b>HW status:</b> connected to %s' % hw_device.get_description(), 'success')
         self.update_edit_controls_state()
 
     @pyqtSlot()
@@ -956,7 +965,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
 
     @pyqtSlot(str)
     def on_hardware_wallet_connection_error(self, message):
-        self.set_status_text2('<b>HW status:</b> connection error', 'red')
+        self.set_status_text2('<b>HW status:</b> connection error', 'error')
         self.update_edit_controls_state()
         self.error_msg(message)
 

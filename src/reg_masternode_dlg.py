@@ -31,8 +31,8 @@ from dashd_intf import DashdInterface
 from thread_fun_dlg import CtrlObject
 from ui import ui_reg_masternode_dlg
 from wallet_common import Bip44AccountType, Bip44AddressType
-from wnd_utils import WndUtils
-
+from wnd_utils import WndUtils, is_color_dark, QDetectThemeChange, get_widget_font_color_blue, \
+    get_widget_font_color_green
 
 STEP_MN_DATA = 1
 STEP_DASHD_TYPE = 2
@@ -50,10 +50,11 @@ CACHE_ITEM_SHOW_FIELD_HINTS = 'RegMasternodeDlg_ShowFieldHints'
 log = logging.getLogger('dmt.reg_masternode')
 
 
-class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUtils):
+class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUtils):
     def __init__(self, main_dlg, config: AppConfig, dashd_intf: DashdInterface, masternode: MasternodeConfig,
                  on_proregtx_success_callback: Callable):
         QDialog.__init__(self, main_dlg)
+        QDetectThemeChange.__init__(self)
         ui_reg_masternode_dlg.Ui_RegMasternodeDlg.__init__(self)
         WndUtils.__init__(self, main_dlg.app_config)
         self.main_dlg = main_dlg
@@ -62,7 +63,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.dashd_intf: DashdInterface = dashd_intf
         self.v016_network: bool = False
         self.on_proregtx_success_callback = on_proregtx_success_callback
-        self.style = '<style>.info{color:darkblue} .warning{color:#ff6600} .error{background-color:red;color:white}</style>'
+        self.style = ''
+        self.styled_widgets: List[QWidget] = []
         self.operator_reward_saved = None
         self.owner_pkey_generated: Optional[str] = None
         self.operator_pkey_generated: Optional[str] = None
@@ -133,11 +135,10 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         WndUtils.set_icon(self, self.btnManualProtxSubmitCopy, 'content-copy@16px.png')
         WndUtils.set_icon(self, self.btnManualTxHashPaste, 'content-paste@16px.png')
         WndUtils.set_icon(self, self.btnSummaryDMNOperatorKeyCopy, 'content-copy@16px.png')
-        self.edtSummaryDMNOperatorKey.setStyleSheet("QLineEdit{background-color: white} "
-                                                    "QLineEdit:read-only{background-color: white}")
         doc_url = app_defs.get_doc_url('deterministic-mn-migration.md')
         if doc_url:
             self.lblDocumentation.setText(f'<a href="{doc_url}">Documentation</a>')
+        self.update_styles()
         self.update_dynamic_labels()
         self.update_ctrls_visibility()
         self.update_ctrl_state()
@@ -166,6 +167,25 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
         self.tm_resize_dlg = QTimer(self)
         self.tm_resize_dlg.setSingleShot(True)
         self.tm_resize_dlg.singleShot(100, set)
+
+    def onThemeChanged(self):
+        self.update_styles()
+
+    def update_styles(self):
+        blue_color = get_widget_font_color_blue(self)
+        green_color = get_widget_font_color_green(self)
+
+        self.style = f'QLabel[level="info"]{{color:{blue_color}}} \n QLabel[level="warning"]{{color:#ff6600}} \n ' \
+                     f'QLabel[level="error"]{{background-color:red;color:white}}'
+        self.setStyleSheet(self.style)
+
+        # Stylesheet using custom properties (i.e. "level") needs to be applied to particular descendant widgets,
+        # otherwise it doens't work
+        for w in self.styled_widgets:
+            w.setStyleSheet(self.style)
+
+        self.lblProtxSummary1.setStyleSheet(f'QLabel{{color:{green_color};font-weight: bold}}')
+
 
     def update_dynamic_labels(self):
 
@@ -400,11 +420,14 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
     def set_ctrl_message(self, control, message: str, style: str):
         if message:
-            control.setText(f'{self.style}<span class="{style}">{message}</span>')
+            control.setProperty('level', style)
+            control.setText(message)
+            control.setStyleSheet(self.style)
             control.setVisible(True)
-            # control.repaint()
         else:
             control.setVisible(False)
+        if control not in self.styled_widgets:
+            self.styled_widgets.append(control)
 
     def update_ctrls_visibility(self):
         if not self.deterministic_mns_spork_active:
@@ -1101,9 +1124,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             elif self.current_step == STEP_MANUAL_OWN_NODE:
                 self.start_manual_process()
             elif self.current_step == STEP_SUMMARY:
-                self.lblProtxSummary1.setText('<b><span style="color:green">Congratulations! The transaction for your DIP-3 '
-                                              'masternode has been submitted and is currently awaiting confirmations.'
-                                              '</b></span>')
+                self.lblProtxSummary1.setText('Congratulations! The transaction for your DIP-3 '
+                                              'masternode has been submitted and is currently awaiting confirmations.')
                 if self.on_proregtx_success_callback:
                     self.on_proregtx_success_callback(self.masternode)
                 if not self.check_tx_confirmation():
@@ -1196,6 +1218,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
 
         try:
             try:
+                green_color = get_widget_font_color_green(self)
                 mn_reg_support = self.dashd_intf.checkfeaturesupport('protx_register', self.app_config.app_version)
                 # is the "registration" feature enabled on the current rpc node?
                 if not mn_reg_support.get('enabled'):
@@ -1283,7 +1306,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 payload_sig_str = self.sign_protx_message_with_hw(msg_to_sign)
 
                 set_text(self.lblProtxTransaction3, '<b>2. Signing message with hardware wallet.</b> '
-                                                    '<span style="color:green">Success.</span>')
+                                                    f'<span style="color:{green_color}">Success.</span>')
             except CancelException:
                 set_text(self.lblProtxTransaction3,
                          '<b>2. Signing message with hardware wallet.</b> <span style="color:red">Cancelled.</span>')
@@ -1304,7 +1327,7 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
                 log.debug('protx register_submit returned: ' + str(self.dmn_reg_tx_hash))
                 set_text(self.lblProtxTransaction4,
                          '<b>3. Submitting the signed protx transaction to the remote node.</b> <span style="'
-                         'color:green">Success.</span>')
+                         f'color:{green_color}">Success.</span>')
                 finished_with_success()
             except Exception as e:
                 log.exception('protx register_submit failed')
@@ -1395,8 +1418,8 @@ class RegMasternodeDlg(QDialog, ui_reg_masternode_dlg.Ui_RegMasternodeDlg, WndUt
             if conf:
                 h = tx.get('height')
                 self.lblProtxSummary1.setText(
-                    '<b><span style="color:green">Congratulations! The transaction for your DIP-3 masternode has been '
-                    f'confirmed in block {h}.</b></span> ')
+                    'Congratulations! The transaction for your DIP-3 masternode has been '
+                    f'confirmed in block {h}. ')
                 return True
         except Exception:
             pass

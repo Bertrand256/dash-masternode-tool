@@ -15,7 +15,7 @@ from thread_fun_dlg import CtrlObject
 from ui.ui_hw_settings_wdg import Ui_WdgHwSettings
 from wallet_tools_common import ActionPageBase, handle_hw_exceptions
 from hw_intf import HWDevices
-from wnd_utils import WndUtils
+from wnd_utils import WndUtils, QDetectThemeChange, get_widget_font_color_green
 
 
 class Step(Enum):
@@ -24,9 +24,10 @@ class Step(Enum):
     STEP_NO_HW_ERROR = 2
 
 
-class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
+class WdgHwSettings(QWidget, QDetectThemeChange, Ui_WdgHwSettings, ActionPageBase):
     def __init__(self, parent, hw_devices: HWDevices):
         QWidget.__init__(self, parent=parent)
+        QDetectThemeChange.__init__(self)
         Ui_WdgHwSettings.__init__(self)
         ActionPageBase.__init__(self, parent, parent.app_config, hw_devices, 'Hardware wallet settings')
 
@@ -69,6 +70,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
         self.set_btn_back_visible(True)
         self.set_btn_continue_visible(False)
         self.set_hw_panel_visible(True)
+        self.update_styles()
         self.update_ui()
 
         with MethodCallLimit(self, self.on_connected_hw_device_changed, call_count_limit=1):
@@ -78,6 +80,12 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
                 if not self.cur_hw_device.hw_client:
                     self.hw_devices.open_hw_session(self.cur_hw_device)
             self.on_connected_hw_device_changed(self.cur_hw_device)
+
+    def onThemeChanged(self):
+        self.update_styles()
+
+    def update_styles(self):
+        self.update_ui()
 
     @method_call_tracker
     def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
@@ -145,6 +153,8 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
 
     def update_ui(self):
         try:
+            green_color = get_widget_font_color_green(self)
+
             if self.cur_hw_device and self.cur_hw_device.hw_client and self.cur_hw_device.hw_type != HWType.ledger_nano:
                 if self.current_step == Step.STEP_SETTINGS:
                     self.show_action_page()
@@ -166,7 +176,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
                                 ver_str = f'<a href={latest_fw_version_src.notes}>{latest_fw_version}</a>'
                             else:
                                 ver_str = latest_fw_version
-                            version_info_msg += ' <span style="color:green">(new version available: ' + ver_str + ')</span>'
+                            version_info_msg += f' <span style="color:{green_color}">(new version available: ' + ver_str + ')</span>'
                     self.lblFirmwareVersion.setText(version_info_msg)
 
                     if self.hw_opt_pin_protection is True:
@@ -174,7 +184,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
                         self.btnEnDisPin.setText('Disable')
                         self.btnEnDisPin.setEnabled(True)
                         self.btnChangePin.setEnabled(True)
-                        self.lblPinStatus.setStyleSheet('QLabel{color: green}')
+                        self.lblPinStatus.setStyleSheet(f'QLabel{{color: {green_color}}}')
                     elif self.hw_opt_pin_protection is False:
                         self.lblPinStatus.setText('disabled')
                         self.btnEnDisPin.setText('Enable')
@@ -190,7 +200,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
 
                     if self.hw_opt_passphrase_protection is True:
                         self.lblPassStatus.setText('enabled')
-                        self.lblPassStatus.setStyleSheet('QLabel{color: green}')
+                        self.lblPassStatus.setStyleSheet(f'QLabel{{color: {green_color}}}')
                         self.btnEnDisPass.setText('Disable')
                         self.btnEnDisPass.setEnabled(True)
                     elif self.hw_opt_passphrase_protection is False:
@@ -206,7 +216,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
 
                     if self.hw_opt_passphrase_always_on_device is True:
                         self.lblPassAlwaysOnDeviceStatus.setText('enabled')
-                        self.lblPassAlwaysOnDeviceStatus.setStyleSheet('QLabel{color: green}')
+                        self.lblPassAlwaysOnDeviceStatus.setStyleSheet(f'QLabel{{color: {green_color}}}')
                         self.btnEnDisPassAlwaysOnDevice.setText('Disable')
                         self.btnEnDisPassAlwaysOnDevice.setEnabled(True)
                     elif self.hw_opt_passphrase_always_on_device is False:
@@ -222,7 +232,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
 
                     if self.hw_opt_wipe_code_protection is True:
                         self.lblWipeCodeStatus.setText('enabled')
-                        self.lblWipeCodeStatus.setStyleSheet('QLabel{color: green}')
+                        self.lblWipeCodeStatus.setStyleSheet(f'QLabel{{color: {green_color}}}')
                         self.btnEnDisWipeCode.setText('Disable')
                         self.btnEnDisWipeCode.setEnabled(True)
                     elif self.hw_opt_wipe_code_protection is False:
@@ -238,7 +248,7 @@ class WdgHwSettings(QWidget, Ui_WdgHwSettings, ActionPageBase):
 
                     if self.hw_opt_sd_protection is True:
                         self.lblSDCardProtectionStatus.setText('enabled')
-                        self.lblSDCardProtectionStatus.setStyleSheet('QLabel{color: green}')
+                        self.lblSDCardProtectionStatus.setStyleSheet(f'QLabel{{color: {green_color}}}')
                         self.btnEnDisSDCardProtection.setText('Disable')
                         self.btnEnDisSDCardProtection.setEnabled(True)
                         self.btnRefreshSDCardProtection.setEnabled(True)

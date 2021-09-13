@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import QDialog, QDialogButtonBox
 from bitcoinrpc.authproxy import EncodeDecimal
 
 from ui import ui_cmd_console_dlg
-from wnd_utils import WndUtils
+from wnd_utils import WndUtils, get_widget_font_color_green
 import logging
 import app_cache
 from app_defs import get_known_loggers, DEFAULT_LOG_FORMAT
@@ -96,7 +96,7 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
             newl = ''
         else:
             newl = '<br>'
-        self.message(newl + '&gt; <b>' + command + '</b><br>', 'green')
+        self.message(newl + '&gt; <b>' + command + '</b><br>', get_widget_font_color_green(self.edtCmdLog))
         ok = False
 
         match = re.search(r"\s*([A-Za-z0-9]+)\s*(.*)", command)

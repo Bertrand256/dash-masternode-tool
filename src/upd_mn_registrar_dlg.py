@@ -12,12 +12,13 @@ from dash_utils import wif_privkey_to_address, generate_wif_privkey, generate_bl
     bls_privkey_to_pubkey, validate_wif_privkey
 from dashd_intf import DashdInterface
 from ui import ui_upd_mn_registrar_dlg
-from wnd_utils import WndUtils, ProxyStyleNoFocusRect
+from wnd_utils import WndUtils, ProxyStyleNoFocusRect, QDetectThemeChange, get_widget_font_color_blue, \
+    get_widget_font_color_green
 
 CACHE_ITEM_SHOW_COMMANDS = 'UpdMnRegistrarDlg_ShowCommands'
 
 
-class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, WndUtils):
+class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, WndUtils):
     def __init__(self,
                  main_dlg,
                  app_config: AppConfig,
@@ -28,6 +29,7 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                  show_upd_operator: bool,
                  show_upd_voting: bool):
         QDialog.__init__(self, main_dlg)
+        QDetectThemeChange.__init__(self)
         ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg.__init__(self)
         WndUtils.__init__(self, main_dlg.app_config)
         self.main_dlg = main_dlg
@@ -87,6 +89,12 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
         sh = QDialog.sizeHint(self)
         sh.setWidth(self.width())
         return sh
+
+    def onThemeChanged(self):
+        self.update_styles()
+
+    def update_styles(self):
+        self.update_manual_cmd_info()
 
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
@@ -340,10 +348,12 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                       (self.show_upd_operator and bool(self.edtOperatorKey.text())) or \
                       (self.show_upd_voting and bool(self.edtVotingKey.text()))
 
+            green_color = get_widget_font_color_green(self)
+
             if changed:
                 cmd = f'protx update_registrar "{self.dmn_protx_hash}" "{self.dmn_new_operator_pubkey}" ' \
                     f'"{self.dmn_new_voting_address}" "{self.dmn_new_payout_address}" ' \
-                    f'"<span style="color:green">feeSourceAddress</span>"'
+                    f'"<span style="color:{green_color}">feeSourceAddress</span>"'
                 msg = "<ol>" \
                       "<li>Start a Dash Core wallet with sufficient funds to cover a transaction fee.</li>"
                 msg += "<li>Import the owner private key into the Dash Core wallet if you haven't done this " \
@@ -351,8 +361,8 @@ class UpdMnRegistrarDlg(QDialog, ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg, W
                        "deterministic-mn-migration.md#can-i-modify-the-payout-address-without-resetting-the-" \
                        "place-in-the-payment-queue\">details</a>).</li>"
                 msg += "<li>Execute the following command in the Dash Core debug console:<br><br>"
-                msg += "  <code style=\"background-color:#e6e6e6\">" + cmd + '</code></li><br>'
-                msg += 'Replace <span style="color:green">feeSourceAddress</span> with the address being the ' \
+                msg += "  <code>" + cmd + '</code></li><br>'
+                msg += f'Replace <span style="color:{green_color}">feeSourceAddress</span> with the address being the ' \
                        'source of the transaction fee.'
                 msg += "</ol>"
             else:

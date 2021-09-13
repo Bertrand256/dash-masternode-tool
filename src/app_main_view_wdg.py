@@ -25,19 +25,17 @@ import app_cache
 import app_utils
 import hw_intf
 from app_config import AppConfig, MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING
-from app_defs import COLOR_ERROR_STR, COLOR_WARNING_STR, COLOR_OK_STR, COLOR_ERROR, COLOR_WARNING, COLOR_OK, \
-    AppTextMessageType, SCREENSHOT_MODE, COLOR_FORM_VALUES_LIGHT_BG, COLOR_FORM_VALUES_DARK_BG
+from app_defs import COLOR_ERROR_STR, COLOR_WARNING_STR, COLOR_ERROR, COLOR_WARNING, \
+    AppTextMessageType, SCREENSHOT_MODE
 from common import CancelException
 from dashd_intf import DashdInterface, Masternode
 from ext_item_model import ExtSortFilterItemModel, TableModelColumn, HorizontalAlignment
 from masternode_details_wdg import WdgMasternodeDetails
 from ui import ui_app_main_view_wdg
 from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, IconTextItemDelegate, is_color_dark, \
-    QDetectThemeChange
+    QDetectThemeChange, get_widget_font_color_blue, get_widget_font_color_green
 
 CACHE_ITEM_SHOW_MN_DETAILS_PANEL = 'MainWindow_ShowMNDetailsPanel'
-COLOR_PENDING_PROTX_STR = '#0033cc'
-COLOR_PENDING_PROTX = QColor(COLOR_PENDING_PROTX_STR)
 DASH_PRICE_FETCH_INTERVAL_SECONDS = 120
 MN_BALANCE_FETCH_INTERVAL_SECONDS = 240
 
@@ -520,7 +518,6 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         t = f'Masternode status details (<a href="{link_text}">{link_text}</a>)'
         self.lblMnStatusLabel.setText(t)
         self.lblMnStatus.setVisible(panel_visible)
-        self.lblMnStatusLabel.setVisible(panel_visible)
 
     @pyqtSlot(bool)
     def on_btnRefreshMnStatus_clicked(self):
@@ -1086,10 +1083,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         try:
             palette = self.palette()
             bg_color = palette.color(QPalette.Normal, palette.Window)
-            if is_color_dark(bg_color):
-                value_color = COLOR_FORM_VALUES_DARK_BG
-            else:
-                value_color = COLOR_FORM_VALUES_LIGHT_BG
+            value_color = get_widget_font_color_blue(self)
 
             status = (
                 '<style>td {white-space:nowrap;padding-right:8px;padding-top:4px}'
@@ -1146,13 +1140,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 else:
                     return addr[:chars_begin_end] + '..' + addr[-chars_begin_end:]
 
-        palette = self.palette()
-        bg_color = palette.color(QPalette.Normal, palette.Window)
-        if is_color_dark(bg_color):
-            value_color = COLOR_FORM_VALUES_DARK_BG
-        else:
-            value_color = COLOR_FORM_VALUES_LIGHT_BG
-
+        value_color = get_widget_font_color_blue(self)
         status = ''
         mn = self.cur_masternode
         if mn:
@@ -1162,13 +1150,14 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 warnings: List[str] = []
 
                 if st.protx_conf_pending:
-                    add_status_line('', '<b>Protx transaction pending, please wait...</b>', COLOR_PENDING_PROTX_STR)
+                    add_status_line('', '<b>Protx transaction pending, please wait...</b>',
+                                    get_widget_font_color_blue(self.viewMasternodes))
                 if st.is_error():
                     status_color = COLOR_ERROR_STR
                 elif st.is_warning():
                     status_color = COLOR_WARNING_STR
                 else:
-                    status_color = COLOR_OK_STR
+                    status_color = get_widget_font_color_green(self.viewMasternodes)
                 status_text = st.get_status()
                 if st.pose_penalty:
                     status_text += ', PoSePenalty: ' + str(st.pose_penalty)
@@ -1373,13 +1362,13 @@ class MasternodesTableModel(ExtSortFilterItemModel):
                             if col.name == 'status':
                                 if st:
                                     if st.protx_conf_pending:
-                                        return COLOR_PENDING_PROTX
+                                        return QColor(get_widget_font_color_blue(self.view))
                                     elif st.is_error():
                                         return COLOR_ERROR
                                     elif st.is_warning():
                                         return COLOR_WARNING
                                     else:
-                                        return COLOR_OK
+                                        return QColor(get_widget_font_color_green(self.view))
                         return None
 
                     elif role == Qt.TextAlignmentRole:

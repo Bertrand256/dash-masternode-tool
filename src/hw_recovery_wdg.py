@@ -34,7 +34,7 @@ from seed_words_wdg import SeedWordsWdg
 from ui.ui_hw_recovery_wdg import Ui_WdgRecoverHw
 from wallet_tools_common import ActionPageBase
 from hw_intf import HWDevices
-from wnd_utils import WndUtils, ReadOnlyTableCellDelegate
+from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, QDetectThemeChange
 
 
 class Step(Enum):
@@ -66,9 +66,10 @@ class Scenario(Enum):
     # STEP_FINISHED
 
 
-class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
+class WdgRecoverHw(QWidget, QDetectThemeChange, Ui_WdgRecoverHw, ActionPageBase):
     def __init__(self, parent, hw_devices: HWDevices):
         QWidget.__init__(self, parent=parent)
+        QDetectThemeChange.__init__(self)
         Ui_WdgRecoverHw.__init__(self)
         ActionPageBase.__init__(self, parent, parent.app_config, hw_devices, 'Recover from backup seed')
 
@@ -108,6 +109,7 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
         lay = self.page3.layout()
         lay.addWidget(self.words_wdg)
         self.set_word_count(self.word_count)
+        self.update_styles()
 
     def initialize(self):
         ActionPageBase.initialize(self)
@@ -123,6 +125,12 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
             #     if not self.cur_hw_device.hw_client:
             #         self.hw_devices.open_hw_session(self.cur_hw_device)
             self.on_connected_hw_device_changed(self.hw_devices.get_selected_device())
+
+    def onThemeChanged(self):
+        self.update_styles()
+
+    def update_styles(self):
+        self.lblPinMessage.setStyleSheet('QLabel {color: gray}')
 
     @method_call_tracker
     def on_connected_hw_device_changed(self, cur_hw_device: HWDevice):
@@ -308,7 +316,8 @@ class WdgRecoverHw(QWidget, Ui_WdgRecoverHw, ActionPageBase):
                         self.edtDeviceLabel.show()
                         self.lblDeviceLabel.show()
                         self.lblPinMessage.show()
-                        self.lblPinMessage.setText('<span style="color:gray">Note: if set, the device will ask you for a new PIN during the recovery.</span>')
+                        self.lblPinMessage.setText('Note: if set, the device will ask you for a new PIN '
+                                                   'during the recovery.')
                         self.lblPassphraseMessage.show()
                         self.lblPassphraseMessage.setText(
                             '<span style="color:gray">Note: passphrase is not stored on the device - if this setting '

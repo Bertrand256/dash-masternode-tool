@@ -187,7 +187,7 @@ class Ui_WdgAppMainView(object):
         self.verticalLayout_6.addWidget(self.lblMnStatus)
 
         self.retranslateUi(WdgAppMainView)
-        self.stackedWidget.setCurrentIndex(0)
+        self.stackedWidget.setCurrentIndex(1)
         QtCore.QMetaObject.connectSlotsByName(WdgAppMainView)
 
     def retranslateUi(self, WdgAppMainView):

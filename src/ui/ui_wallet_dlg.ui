@@ -410,7 +410,7 @@
                        <string/>
                       </property>
                       <property name="text">
-                       <string>Unselect All</string>
+                       <string>Deselect All</string>
                       </property>
                       <property name="iconSize">
                        <size>
