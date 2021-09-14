@@ -172,8 +172,8 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.update_styles()
 
     def update_styles(self):
-        blue_color = get_widget_font_color_blue(self)
-        green_color = get_widget_font_color_green(self)
+        blue_color = get_widget_font_color_blue(self.lblIPMsg)
+        green_color = get_widget_font_color_green(self.lblIPMsg)
 
         self.style = f'QLabel[level="info"]{{color:{blue_color}}} \n QLabel[level="warning"]{{color:#ff6600}} \n ' \
                      f'QLabel[level="error"]{{background-color:red;color:white}}'

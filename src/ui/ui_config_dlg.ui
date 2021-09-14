@@ -453,6 +453,16 @@
         </widget>
        </item>
        <item>
+        <widget class="QCheckBox" name="chbUIDarkMode">
+         <property name="toolTip">
+          <string>Use dark mode (independent of the OS settings)</string>
+         </property>
+         <property name="text">
+          <string>Use UI dark mode</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <layout class="QHBoxLayout" name="hlLogLevel">
          <item>
           <widget class="QLabel" name="lblLogLevel">

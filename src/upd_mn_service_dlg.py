@@ -197,7 +197,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
 
     def update_manual_cmd_info(self):
         try:
-            green_color = get_widget_font_color_green(self)
+            green_color = get_widget_font_color_green(self.lblIP)
             self.validate_data()
             cmd = f'protx update_service "{self.dmn_protx_hash}" "{self.dmn_new_ip}:{str(self.dmn_new_port)}" ' \
                 f'"{self.masternode.dmn_operator_private_key}" "{self.dmn_new_operator_payout_address}" ' \

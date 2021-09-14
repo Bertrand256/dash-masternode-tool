@@ -861,7 +861,7 @@ class IconTextItemDelegate(QItemDelegate):
         if index.isValid():
             text_alignment = index.data(Qt.TextAlignmentRole)
             if not text_alignment:
-                text_alignment = Qt.AlignLeft
+                text_alignment = Qt.AlignLeft | Qt.AlignVCenter
             fg_color = index.data(Qt.ForegroundRole)
             if not fg_color:
                 fg_color = Qt.black
@@ -879,7 +879,7 @@ class IconTextItemDelegate(QItemDelegate):
             painter.setPen(QPen(Qt.NoPen))
             if option.state & QStyle.State_Selected:
                 if (option.state & QStyle.State_HasFocus) or (view_has_focus and select_whole_row):
-                    fg_color = fg_color = option.palette.color(QPalette.Normal, option.palette.HighlightedText)
+                    fg_color = option.palette.color(QPalette.Normal, option.palette.HighlightedText)
                     painter.fillRect(option.rect,
                                      QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
                 else:
@@ -901,6 +901,14 @@ class IconTextItemDelegate(QItemDelegate):
                     rp = QRect(r)
                     rp.setWidth(pix.width())
                     rp.setHeight(pix.height())
+
+                    if text_alignment & Qt.AlignVCenter:
+                        # align incon vertically if the text is aligned so
+                        diff_height = r.height() - pix.height()
+                        if diff_height > 2:
+                            diff_offs = int(diff_height/2)
+                            if diff_offs:
+                                rp.adjust(0, diff_offs, 0, diff_offs)
                     painter.drawImage(rp, pix.toImage())
                     r.translate(rp.width() + IconTextItemDelegate.IconRightMargin, 0)
                     r.setWidth(r.width() - rp.width() - IconTextItemDelegate.IconRightMargin)

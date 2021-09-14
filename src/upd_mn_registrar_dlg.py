@@ -348,7 +348,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                       (self.show_upd_operator and bool(self.edtOperatorKey.text())) or \
                       (self.show_upd_voting and bool(self.edtVotingKey.text()))
 
-            green_color = get_widget_font_color_green(self)
+            green_color = get_widget_font_color_green(self.lblVotingKey)
 
             if changed:
                 cmd = f'protx update_registrar "{self.dmn_protx_hash}" "{self.dmn_new_operator_pubkey}" ' \

@@ -76,6 +76,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         # block ui controls -> cur config data copying while setting ui controls initial values
         self.disable_cfg_update = False
         self.is_modified = False
+        self.global_options_modified = False  # user modified options not related to a config file
         self.setupUi(self)
 
     def setupUi(self, dialog: QDialog):
@@ -218,6 +219,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.chbEncryptConfigFile.setChecked(self.local_config.encrypt_config_file)
         self.chbFetchDataAfterStart.setChecked(self.local_config.fetch_network_data_after_start)
         self.chbShowDashFIATValue.setChecked(self.local_config.show_dash_value_in_fiat)
+        self.chbUIDarkMode.setChecked(self.local_config.ui_use_dark_mode)
 
         idx = {
                 'CRITICAL': 0,
@@ -253,9 +255,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         app_cache.set_value('ConfigDlg_ConnectionSplitter_Sizes', self.splitter.sizes())
 
     def on_accepted(self):
-        """Executed after clicking the 'OK' button."""
-        if self.is_modified:
-            self.apply_config_changes()
+        self.apply_config_changes()
 
     def display_connection_list(self):
         self.lstConns.clear()
@@ -598,6 +598,10 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.local_config.random_dash_net_config = checked
             self.set_modified()
 
+    def on_chbUIDarkMode_toggled(self, checked):
+        if not self.disable_cfg_update:
+            self.local_config.ui_use_dark_mode = checked
+
     def update_ssh_ctrls_ui(self):
         index = self.ssh_tunnel_widget.cboAuthentication.currentIndex()
         pkey_visible = (index == 2)
@@ -854,6 +858,9 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
     def get_is_modified(self):
         return self.is_modified
 
+    def get_global_options_modified(self):
+        return self.global_options_modified
+
     def apply_config_changes(self):
         """
         Applies changes made by the user by moving the UI controls values to the appropriate
@@ -868,6 +875,10 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.app_config.conn_config_changed()
             self.app_config.set_log_level(self.local_config.log_level_str)
             self.app_config.modified = True
+
+        if self.local_config.ui_use_dark_mode != self.app_config.ui_use_dark_mode:
+            self.global_options_modified = True
+            self.app_config.ui_use_dark_mode = self.local_config.ui_use_dark_mode
 
     def on_btnEncryptionPublicKey_clicked(self):
         updated = False

@@ -49,7 +49,7 @@ from wnd_utils import WndUtils
 CURRENT_CFG_FILE_VERSION = 5
 CACHE_ITEM_LOGGERS_LOGLEVEL = 'LoggersLogLevel'
 CACHE_ITEM_LOG_FORMAT = 'LogFormat'
-
+GLOBAL_SETTINGS_FILE_NAME = 'dmt_global_settings.json'
 
 DMN_ROLE_OWNER = 0x1
 DMN_ROLE_OPERATOR = 0x2
@@ -110,6 +110,7 @@ class AppConfig(QObject):
         self.initialized = False
         self.app_dir = ''  # will be passed in the init method
         self.app_version = ''
+        self.global_config = Optional[app_cache.AppCache]
         QLocale.setDefault(app_utils.get_default_locale())
         self.date_format = app_utils.get_default_locale().dateFormat(QLocale.ShortFormat)
         self.date_time_format = app_utils.get_default_locale().dateTimeFormat(QLocale.ShortFormat)
@@ -189,6 +190,7 @@ class AppConfig(QObject):
         self.config_file_encrypted = False
         self.fetch_network_data_after_start = True
         self.show_dash_value_in_fiat = True
+        self.ui_use_dark_mode = False  # Use dark mode independently from the OS settings
 
         # attributes related to encryption cache data with hardware wallet:
         self.hw_generated_key = b"\xab\x0fs}\x8b\t\xb4\xc3\xb8\x05\xba\xd1\x96\x9bq`I\xed(8w\xbf\x95\xf0-\x1a\x14\xcb\x1c\x1d+\xcd"
@@ -209,6 +211,16 @@ class AppConfig(QObject):
             self.default_rpc_connections = []
             logging.exception('Exception while parsing default RPC connections.')
 
+    @staticmethod
+    def get_default_user_data_dir():
+        user_home_dir = os.path.expanduser('~')
+        app_user_data_dir = os.path.join(user_home_dir, APP_DATA_DIR_NAME + '-v' + str(CURRENT_CFG_FILE_VERSION))
+        return app_user_data_dir
+
+    @staticmethod
+    def get_default_global_settings_file_name():
+        return os.path.join(AppConfig.get_default_user_data_dir(), GLOBAL_SETTINGS_FILE_NAME)
+
     def init(self, app_dir):
         """ Initialize configuration after opening the application. """
         self.app_dir = app_dir
@@ -221,6 +233,8 @@ class AppConfig(QObject):
                 self.app_version = app_utils.extract_app_version(lines)
         except:
             pass
+
+        self.global_config = app_cache.AppCache(self.app_version)
 
         parser = argparse.ArgumentParser()
         parser.add_argument('--config', help="Path to a configuration file", dest='config')
@@ -277,19 +291,12 @@ class AppConfig(QObject):
         old_user_data_dir = ''
         user_home_dir = os.path.expanduser('~')
         if not app_user_dir:
-            app_user_dir = os.path.join(user_home_dir, APP_DATA_DIR_NAME + '-v' + str(CURRENT_CFG_FILE_VERSION))
-            if not os.path.exists(app_user_dir):
-                prior_version_dirs = ['.dmt']
-                # look for the data dir of the previous version
-                for d in prior_version_dirs:
-                    old_user_data_dir = os.path.join(user_home_dir, d)
-                    if os.path.exists(old_user_data_dir):
-                        migrate_config = True
-                        break
+            app_user_dir = AppConfig.get_default_user_data_dir()
 
         self.data_dir = app_user_dir
         self.cache_dir = os.path.join(self.data_dir, 'cache')
         cache_file_name = os.path.join(self.cache_dir, 'dmt_cache_v2.json')
+        global_settings_file_name = os.path.join(self.data_dir, GLOBAL_SETTINGS_FILE_NAME)
 
         if migrate_config:
             try:
@@ -371,6 +378,9 @@ class AppConfig(QObject):
         app_cache.init(cache_file_name, self.app_version)
         self.app_last_version = app_cache.get_value('app_version', '', str)
         self.app_config_file_name = ''
+        self.global_config.set_file_name(global_settings_file_name)
+        self.global_config.start()
+        self.ui_use_dark_mode = self.global_config.get_value('UI_USE_DARK_MODE', False, bool)
 
         if args.config is not None:
             # set config file name to what user passed in the 'config' argument
@@ -434,6 +444,11 @@ class AppConfig(QObject):
         self.save_cache_settings()
         self.save_loggers_config()
         app_cache.finish()
+
+        self.global_config.set_value('UI_USE_DARK_MODE', self.ui_use_dark_mode)
+        app_cache.save_data(True)
+        self.global_config.save_data()
+
         if self.db_intf:
             self.db_intf.close()
 
@@ -490,6 +505,7 @@ class AppConfig(QObject):
             # ... otherwise just copy attribute without reconfiguring logger
             self.log_level_str = src_config.log_level_str
         self.encrypt_config_file = src_config.encrypt_config_file
+        self.ui_use_dark_mode = src_config.ui_use_dark_mode
 
     def configure_cache(self):
         if self.is_testnet:
@@ -638,9 +654,6 @@ class AppConfig(QObject):
         if not file_name:
             file_name = self.app_config_file_name
 
-        configuration_corrected = False
-        errors_while_reading = False
-
         if os.path.exists(file_name):
             config = ConfigParser()
             try:
@@ -738,6 +751,7 @@ class AppConfig(QObject):
                                                                           fallback='1'))
                 self.add_random_offset_to_vote_time = \
                     self.value_to_bool(config.get(section, 'add_random_offset_to_vote_time', fallback='1'))
+
                 self.encrypt_config_file = \
                     self.value_to_bool(config.get(section, 'encrypt_config_file', fallback='0'))
 

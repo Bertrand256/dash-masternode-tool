@@ -146,7 +146,7 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
 
     def update_manual_cmd_info(self):
         try:
-            green_color = get_widget_font_color_green(self)
+            green_color = get_widget_font_color_green(self.lblIP)
             self.validate_data()
             cmd = f'protx revoke "{self.dmn_protx_hash}" "{self.masternode.dmn_operator_private_key}" ' \
                 f'{self.revocation_reason} "<span style="color:{green_color}">feeSourceAddress</span>"'

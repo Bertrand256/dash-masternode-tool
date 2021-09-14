@@ -1,3 +1,14 @@
+## [0.9.27] - 2021-09-14
+**Added**
+- UI dark mode option independent of the OS settings (*Config->Miscellaneous->Use UI dark mode*).  
+- New toolbar icons with enhanced visual consistency (kudos to **Doeke Koedijk** for creating them).
+- Possibility to use keypad when entering PIN for Trezor devices. 
+
+**Fixed**
+- Support for macOS dark theme.
+- Fixed an issue of the "Masternode status details" option disappearing after its usage.
+- Fixed several other, minor visual issues.
+
 ## [0.9.27] - 2021-05-18
 ###Version with screenshots: [see here](doc/v0.9.27-changes.md)
 **Added**

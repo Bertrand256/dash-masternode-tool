@@ -720,7 +720,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         self.set_styles()
 
     def set_styles(self):
-        value_color = wnd_utils.get_widget_font_color_blue(self)
+        value_color = wnd_utils.get_widget_font_color_blue(self.lblMessage)
         self.lblMessage.setStyleSheet(f'QLabel {{color:{value_color}}}')
         self.refresh_details_tabs()
 
@@ -744,11 +744,12 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         if self.next_budget_amount:
             total_pct_approved = round(total_amount_approved * 100 / self.next_budget_amount, 2)
             total_pct_requested = round(total_amount_requested * 100 / self.next_budget_amount, 2)
-        self.next_budget_requested = total_amount_requested
-        self.next_budget_approved = total_amount_approved
-        self.next_budget_left = self.next_budget_amount - self.next_budget_approved
-        if self.next_budget_left < 0:
-            self.next_budget_left = 0
+            self.next_budget_requested = total_amount_requested
+            self.next_budget_approved = total_amount_approved
+            self.next_budget_left = self.next_budget_amount - self.next_budget_approved
+            if self.next_budget_left < 0:
+                self.next_budget_left = 0
+
         self.next_budget_requested_pct = total_pct_requested
         self.next_budget_approved_pct = total_pct_approved
         self.next_budget_approved_by_user_yes_votes = total_amount_approved_by_user_yes_vote

@@ -5,11 +5,14 @@ import sys
 
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
+import qdarkstyle
 
 import main_dlg
 import traceback
 import logging
 
+from app_cache import AppCache
+from app_config import AppConfig
 from wnd_utils import WndUtils
 
 
@@ -39,8 +42,28 @@ if __name__ == '__main__':
         if tail == 'src':
             app_dir = path
 
+    os.environ['QT_API'] = 'pyqt5'
+
     app = QApplication(sys.argv)
-    ui = main_dlg.MainWindow(app_dir)
+    ui_dark_mode_activated = False
+
+    try:
+        # check in the user configured the ui dark mode in the default global settings; if so, apply it here
+        # (before GUI is instantiated) to avoid flickering caused by switching from the default UI theme
+        config_file = AppConfig.get_default_global_settings_file_name()
+        if config_file and os.path.exists(config_file):
+            cache = AppCache('0.0.0')
+            cache.set_file_name(config_file)
+            dark_mode = cache.get_value('UI_USE_DARK_MODE', False, bool)
+            if dark_mode:
+                app.setStyleSheet(qdarkstyle.load_stylesheet())
+                ui_dark_mode_activated = True
+            del cache
+
+    except Exception:
+        pass
+
+    ui = main_dlg.MainWindow(app_dir, ui_dark_mode_activated)
     ui.show()
 
     try:
