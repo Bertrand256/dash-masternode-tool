@@ -1044,10 +1044,13 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
             self.error_msg('Dash daemon not connected')
         else:
             try:
+                self.main_view.stop_threads()
                 ui = wallet_dlg.WalletDlg(self, self.hw_session, initial_mn_sel=initial_mn)
                 ui.exec_()
             except Exception as e:
                 self.error_msg(str(e), True)
+            finally:
+                self.main_view.resume_threads()
 
     @pyqtSlot(bool)
     def on_action_sign_message_with_collateral_addr_triggered(self):

@@ -161,7 +161,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def setupUi(self, dialog: QDialog):
         ui_wallet_dlg.Ui_WalletDlg.setupUi(self, self)
-        self.setWindowTitle('Transfer funds')
+        self.setWindowTitle('Wallet')
         self.chbHideCollateralTx.setChecked(True)
         WndUtils.set_icon(self.main_ui, self.btnCheckAll, 'check.png')
         WndUtils.set_icon(self.main_ui, self.btnUncheckAll, 'uncheck.png')
@@ -952,7 +952,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.btnSetHwIdentityLabel.hide()
             self.btnPurgeHwIdentity.hide()
         else:
-            ht = HWType.get_desc(self.hw_session.hw_type)
+            if self.hw_session and self.hw_session.hw_device:
+                ht = self.hw_session.hw_device.get_description()
+            else:
+                ht = HWType.get_desc(self.hw_session.hw_type)
             id, label = self.bip44_wallet.get_hd_identity_info()
             if label:
                 label = f'<td> as <i>{label}</i></td>'

@@ -296,7 +296,7 @@ class Ui_WalletDlg(object):
 
     def retranslateUi(self, WalletDlg):
         _translate = QtCore.QCoreApplication.translate
-        WalletDlg.setWindowTitle(_translate("WalletDlg", "Dialog"))
+        WalletDlg.setWindowTitle(_translate("WalletDlg", "Wallet"))
         self.btnSetHwIdentityLabel.setToolTip(_translate("WalletDlg", "Set/change hw identity label"))
         self.btnSetHwIdentityLabel.setText(_translate("WalletDlg", "..."))
         self.btnPurgeHwIdentity.setToolTip(_translate("WalletDlg", "Purge this identity from cache"))

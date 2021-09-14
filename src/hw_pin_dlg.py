@@ -141,14 +141,16 @@ class HardwareWalletPinDlg(QDialog, QDetectThemeChange, ui_hw_pin_dlg.Ui_Hardwar
 
     def set_style_sheet(self):
         palette = self.palette()
-        btn_color = palette.color(QPalette.Active, palette.Button).name()
+        font_color = palette.color(QPalette.Active, palette.Text).name()
+        btn_color = palette.color(QPalette.Active, palette.Base).name()
         btn_color_pressed = palette.color(QPalette.Active, palette.Highlight).name()
 
         style_sheet = ("QPushButton {padding: 1px 1px 1 1px; border: 1px solid lightgray;"
                        "    border-radius:5px}"
                        f"  QPushButton:enabled {{background-color: {btn_color}}}"
                        f"  QPushButton:pressed {{background-color: {btn_color_pressed}}}"
-                       f"  QPushButton:default {{background-color: {btn_color_pressed}}}")
+                       f"  QPushButton:default {{background-color: {btn_color_pressed}}}"
+                       f"  QPushButton{{color: {font_color}}}")
         self.wdgPinButtons.setStyleSheet(style_sheet)
 
     def onThemeChanged(self):

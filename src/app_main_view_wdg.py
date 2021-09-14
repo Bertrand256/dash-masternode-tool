@@ -201,6 +201,9 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             log.info('Waiting for refresh_price_thread to finish...')
             self.refresh_price_thread_ref.wait(5000)
 
+    def resume_threads(self):
+        self.finishing = False
+
     def onThemeChanged(self):
         self.update_info_page()
         self.update_mn_preview()
