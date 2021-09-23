@@ -70,7 +70,7 @@ p, li {{ white-space: pre-wrap; }}
 <li style=" margin-top:4px; margin-bottom:0px; margin-left:0px; margin-right:0px; 
   -qt-block-indent:0; text-indent:0px;">chaeplin for <a href="https://github.com/chaeplin/dashmnb">dashmnb</a>, which inspired the creation of this program</li>
 <li style=" " style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; 
-  -qt-block-indent:0; text-indent:0px;">Andreas Antonopolous for his excellent technical book <a href="http://shop.oreilly.com/product/0636920049524.do">Mastering Bitcoin</a> (<a href="https://github.com/bitcoinbook/bitcoinbook/tree/develop">GitHub version</a>)</li>
+  -qt-block-indent:0; text-indent:0px;">Andreas Antonopolous for his excellent technical book <a href="https://shop.oreilly.com/product/0636920049524.do">Mastering Bitcoin</a> (<a href="https://github.com/bitcoinbook/bitcoinbook/tree/develop">GitHub version</a>)</li>
 <li style=" " style=" margin-top:0px; margin-bottom:6px; margin-left:0px; margin-right:0px; 
   -qt-block-indent:0; text-indent:0px;">Vitalik Buterin for <a href="https://github.com/vbuterin/pybitcointools">pybitcointools</a> library, which is used in this app</li></ul>
 <p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; 

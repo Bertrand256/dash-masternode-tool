@@ -64,7 +64,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         WndUtils.__init__(self, app_config)
         self.app_config = app_config
         self.main_window = parent
-        self.local_config = AppConfig()
+        self.local_config = AppConfig(app_config.internal_ui_dark_mode_activated)
         self.local_config.copy_from(app_config)
 
         # list of connections from self.local_config.dash_net_configs split on separate lists for mainnet and testnet

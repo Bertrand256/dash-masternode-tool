@@ -6,6 +6,8 @@ import sys
 
 import re
 from typing import Optional, Callable, Dict, List
+
+import qdarkstyle.dark.palette
 import simplejson
 import logging
 
@@ -117,9 +119,12 @@ class TransactionDlg(QDialog, QDetectThemeChange, Ui_TransactionDlg, WndUtils):
             return float(val)
 
         palette = self.palette()
-        bg_col = palette.color(QPalette.Normal, palette.Base)
-        bg_color = bg_col.name()
-        value_color = get_widget_font_color_blue(self)
+        if self.app_config.internal_ui_dark_mode_activated:
+            bg_color = qdarkstyle.dark.palette.DarkPalette.COLOR_BACKGROUND_1
+        else:
+            bg_col = palette.color(QPalette.Normal, palette.Base)
+            bg_color = bg_col.name()
+        value_color = get_widget_font_color_blue(bg_color)
 
         try:
             tx_size_str = '?'
@@ -277,7 +282,7 @@ p.lbl{{margin: 0 5px 0 0; font-weight: bold;}}
 p.val{{margin: 0 0 0 8px; color: {value_color};}}
 </style></head>
 <body style="font-size:{self.base_font_size}pt; font-weight:400; font-style:normal; margin-left:10px;margin-right:10px;
-  background-color:{bg_color}; color:{fg_color}">
+  background-color:{bg_color};">
 <p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">
 <span style=" font-size:{self.title_font_size}pt; font-weight:600;">{title}</span></p>
 <p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; 

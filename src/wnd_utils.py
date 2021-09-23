@@ -16,20 +16,17 @@ import app_utils
 import thread_utils
 import time
 from PyQt5 import QtWidgets, QtCore, QtGui
-from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEvent, QPointF, QSize, QModelIndex, QRect, \
-    QRectF
-from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap, QTextDocument, QCursor, \
-    QAbstractTextDocumentLayout, QFontMetrics, QTransform, QKeySequence, QFont, QShowEvent
+from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEvent, QPointF, QSize, QModelIndex, QRect
+from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap, QTextDocument, \
+    QAbstractTextDocumentLayout, QTransform, QShowEvent
 from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit, \
     QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView, QAction, QMenu, QApplication, \
-    QProxyStyle, QWidgetItem, QLayout, QSpacerItem, QLabel, QMainWindow
+    QProxyStyle, QWidgetItem, QLayout, QSpacerItem
 import math
-import message_dlg
 from common import CancelException
 from thread_fun_dlg import ThreadFunDlg, WorkerThread, CtrlObject
 
 
-# noinspection PyTypeChecker
 class WndUtils:
 
     def __init__(self, app_config=None):
@@ -992,19 +989,36 @@ def is_color_dark(color: QColor) -> bool:
         return False
 
 
-def get_widget_font_color_green(wdg: QWidget) -> str:
-    palette = wdg.palette()
-    bg_color = palette.color(QPalette.Normal, palette.Window)
-    if is_color_dark(bg_color):
+def get_bg_color(wdg_or_color: Union[QWidget, QColor]) -> QColor:
+    if isinstance(wdg_or_color, QColor):
+        bg_color = wdg_or_color
+    elif isinstance(wdg_or_color, str):
+        bg_color = QColor(wdg_or_color)
+    else:
+        if isinstance(wdg_or_color, QWidget):
+            pal = wdg_or_color.palette()
+        else:
+            pal = None
+        if not pal:
+            pal = QApplication.instance().palette()
+        if pal:
+            bg_color = pal.color(QPalette.Normal, wdg_or_color.palette().Window)
+        else:
+            bg_color = None
+    return bg_color
+
+
+def get_widget_font_color_green(wdg_or_color: Union[QWidget, QColor]) -> str:
+    bg_color = get_bg_color(wdg_or_color)
+    if bg_color and is_color_dark(bg_color):
         return QColor(Qt.green).name()
     else:
         return QColor(Qt.darkGreen).name()
 
 
-def get_widget_font_color_blue(wdg: QWidget) -> str:
-    palette = wdg.palette()
-    bg_color = palette.color(QPalette.Normal, palette.Window)
-    if is_color_dark(bg_color):
+def get_widget_font_color_blue(wdg_or_color: Union[QWidget, QColor]) -> str:
+    bg_color = get_bg_color(wdg_or_color)
+    if bg_color and is_color_dark(bg_color):
         return 'lightblue'
     else:
         return '#1f3d7a'

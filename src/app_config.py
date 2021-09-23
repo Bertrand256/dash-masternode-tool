@@ -105,7 +105,7 @@ class AppFeatureStatus(QObject):
 class AppConfig(QObject):
     display_app_message = QtCore.pyqtSignal(int, str, object)
 
-    def __init__(self):
+    def __init__(self, ui_dark_mode_activated: bool):
         QObject.__init__(self)
         self.initialized = False
         self.app_dir = ''  # will be passed in the init method
@@ -114,6 +114,7 @@ class AppConfig(QObject):
         QLocale.setDefault(app_utils.get_default_locale())
         self.date_format = app_utils.get_default_locale().dateFormat(QLocale.ShortFormat)
         self.date_time_format = app_utils.get_default_locale().dateTimeFormat(QLocale.ShortFormat)
+        self._internal_ui_dark_mode_activated = ui_dark_mode_activated
 
         # List of Dash network configurations. Multiple conn configs advantage is to give the possibility to use
         # another config if particular one is not functioning (when using "public" RPC service, it could be node's
@@ -1474,6 +1475,14 @@ class AppConfig(QObject):
 
     def get_app_img_dir(self):
         return os.path.join(self.app_dir, '', 'img')
+
+    @property
+    def internal_ui_dark_mode_activated(self):
+        return self._internal_ui_dark_mode_activated
+
+    @internal_ui_dark_mode_activated.setter
+    def internal_ui_dark_mode_activated(self, activated: bool):
+        self._internal_ui_dark_mode_activated = activated
 
 
 class MasternodeConfig:

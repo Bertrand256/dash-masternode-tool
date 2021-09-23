@@ -62,16 +62,15 @@ log = logging.getLogger('dmt.main')
 class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainWindow):
     update_status_signal = QtCore.pyqtSignal(str, str)  # signal for updating status text from inside thread
 
-    def __init__(self, app_dir, ui_dark_mode_activated_externally: bool = False):
+    def __init__(self, app_dir, internal_ui_dark_mode_activated: bool = False):
         QMainWindow.__init__(self)
         QDetectThemeChange.__init__(self)
         WndUtils.__init__(self, None)
         ui_main_dlg.Ui_MainWindow.__init__(self)
 
         self.finishing = False
-        self.ui_dark_mode_activated = ui_dark_mode_activated_externally
         self.app_messages: Dict[int, DispMessage] = {}
-        self.app_config = AppConfig()
+        self.app_config = AppConfig(internal_ui_dark_mode_activated)
         self.app_config.init(app_dir)
         self.app_config.display_app_message.connect(self.add_app_message)
         WndUtils.set_app_config(self, self.app_config)
@@ -242,15 +241,15 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
 
     def update_app_ui_theme(self):
         if self.app_config.ui_use_dark_mode:
-            if not self.ui_dark_mode_activated:
+            if not self.app_config.internal_ui_dark_mode_activated:
                 app = QApplication.instance()
                 app.setStyleSheet(qdarkstyle.load_stylesheet())
-                self.ui_dark_mode_activated = True
+                self.app_config.internal_ui_dark_mode_activated = True
         else:
-            if self.ui_dark_mode_activated:
+            if self.app_config.internal_ui_dark_mode_activated:
                 app = QApplication.instance()
                 app.setStyleSheet('')
-                self.ui_dark_mode_activated = False
+                self.app_config.internal_ui_dark_mode_activated = False
 
     def load_configuration_from_file(self, file_name: Optional[str], ask_save_changes = True,
                                      update_current_file_name = True) -> None:
