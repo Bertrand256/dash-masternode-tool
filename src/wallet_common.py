@@ -341,11 +341,7 @@ class Bip44AddressType(AttrsProtected, Bip44Entry):
         return False
 
     def update_from_args(self, balance, received) -> bool:
-        """
-        Update fields used in UI which can change after fetching transactions.
-        :param src_addr: The source address.
-        :return: True if any of the fields had different value before and was updated.
-        """
+        """ Update fields used in UI which can change after fetching transactions. """
         if self.balance != balance or self.received != received:
             self.balance = balance
             self.received = received
@@ -457,7 +453,6 @@ class Bip44AccountType(AttrsProtected, Bip44Entry):
     def update_from_args(self, balance: int, received: int, label: str, bip32_path: str) -> bool:
         """
         Updates the account atttributes which can be changed by fetching new transactions process.
-        :param src_account:
         :return: True if any of the attributes have been updated.
         """
         if balance != self.balance or received != self.received:

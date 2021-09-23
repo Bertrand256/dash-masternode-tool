@@ -272,16 +272,16 @@ def num_to_varint(n):
 
 
 def read_varint_from_buf(buffer, offset) -> typing.Tuple[int, int]:
-    if (buffer[offset] < 0xfd):
+    if buffer[offset] < 0xfd:
         value_size = 1
         value = buffer[offset]
-    elif (buffer[offset] == 0xfd):
+    elif buffer[offset] == 0xfd:
         value_size = 3
         value = int.from_bytes(buffer[offset + 1: offset + 3], byteorder='little')
-    elif (buffer[offset] == 0xfe):
+    elif buffer[offset] == 0xfe:
         value_size = 5
         value = int.from_bytes(buffer[offset + 1: offset + 5], byteorder='little')
-    elif (buffer[offset] == 0xff):
+    elif buffer[offset] == 0xff:
         value_size = 9
         value = int.from_bytes(buffer[offset + 1: offset + 9], byteorder='little')
     else:
@@ -291,18 +291,18 @@ def read_varint_from_buf(buffer, offset) -> typing.Tuple[int, int]:
 
 def read_varint_from_file(fptr: typing.BinaryIO) -> int:
     buffer = fptr.read(1)
-    if (buffer[0] < 0xfd):
+    if buffer[0] < 0xfd:
         value_size = 1
         value = buffer[0]
-    elif (buffer[0] == 0xfd):
+    elif buffer[0] == 0xfd:
         value_size = 2
         buffer = fptr.read(value_size)
         value = int.from_bytes(buffer[0: 2], byteorder='little')
-    elif (buffer[0] == 0xfe):
+    elif buffer[0] == 0xfe:
         value_size = 4
         buffer = fptr.read(value_size)
         value = int.from_bytes(buffer[0: 4], byteorder='little')
-    elif (buffer[0] == 0xff):
+    elif buffer[0] == 0xff:
         value_size = 8
         buffer = fptr.read(value_size)
         value = int.from_bytes(buffer[0: 8], byteorder='little')

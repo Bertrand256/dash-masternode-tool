@@ -445,7 +445,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
 
     def update_fields_info(self, show_invalid_data_msg: bool):
         """
-        :param show_data_invalid_msg: if the argument is true and the data is invalid, an error message is shown
+        :param show_invalid_data_msg: if the argument is true and the data is invalid, an error message is shown
             below the control; the argument is set to True if before moving to the next step there are some errors
             found in the data provided by the user.
         """
@@ -459,7 +459,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
 
     def upd_collateral_tx_info(self, show_invalid_data_msg: bool):
         """
-        :param show_data_invalid_msg: if the argument is true and the data is invalid, an error message is shown
+        :param show_invalid_data_msg: if the argument is true and the data is invalid, an error message is shown
             below the control; the argument is set to True if before moving to the next step there are some errors
             found in the data provided by the user.
         """
@@ -473,7 +473,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
 
     def upd_ip_info(self, show_invalid_data_msg: bool):
         """
-        :param show_data_invalid_msg: if the argument is true and the data is invalid, an error message is shown
+        :param show_invalid_data_msg: if the argument is true and the data is invalid, an error message is shown
             below the control; the argument is set to True if before moving to the next step there are some errors
             found in the data provided by the user.
         """
@@ -1217,8 +1217,8 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             WndUtils.call_in_main_thread(call)
 
         try:
+            green_color = get_widget_font_color_green(self)
             try:
-                green_color = get_widget_font_color_green(self)
                 mn_reg_support = self.dashd_intf.checkfeaturesupport('protx_register', self.app_config.app_version)
                 # is the "registration" feature enabled on the current rpc node?
                 if not mn_reg_support.get('enabled'):

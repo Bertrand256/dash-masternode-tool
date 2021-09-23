@@ -42,8 +42,7 @@ from hw_intf import HwSessionInfo
 from thread_fun_dlg import WorkerThread, CtrlObject
 from wallet_data_models import UtxoTableModel, MnAddressTableModel, AccountListModel, MnAddressItem, \
     TransactionTableModel, FILTER_AND, FILTER_OR, FILTER_OPER_EQ, FILTER_OPER_GTEQ, FILTER_OPER_LTEQ
-from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, HyperlinkItemDelegate, \
-    LineEditTableCellDelegate
+from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, LineEditTableCellDelegate
 from ui import ui_wallet_dlg
 from wallet_widgets import SendFundsDestination, WalletMnItemDelegate, WalletAccountItemDelegate, \
     TxSenderRecipientItemDelegate
@@ -946,6 +945,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             img_size_str = ''
 
         self.btnFetchTransactions.setVisible(self.hw_connected() or self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST)
+        link_color = self.app_config.get_hyperlink_font_color(self.lblHW)
+        style = f'<style>a {{color: {link_color}}}</style>'
         if not self.hw_connected():
             t = f'<table><tr><td>Hardware wallet <span>not connected</span></td>' \
                 f'<td> (<a href="hw-connect">connect</a>)</td></tr></table>'
@@ -965,7 +966,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 f'{label}</tr></table>'
             self.btnSetHwIdentityLabel.show()
             self.btnPurgeHwIdentity.show()
-        self.lblHW.setText(t)
+        self.lblHW.setText(style + t)
 
     def on_lblHW_linkHovered(self, link):
         if link == 'hw-disconnect':

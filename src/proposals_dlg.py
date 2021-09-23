@@ -720,7 +720,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         self.set_styles()
 
     def set_styles(self):
-        value_color = wnd_utils.get_widget_font_color_blue(self.lblMessage)
+        value_color = self.app_config.get_widget_font_color_blue(self.lblMessage)
         self.lblMessage.setStyleSheet(f'QLabel {{color:{value_color}}}')
         self.refresh_details_tabs()
 
@@ -1540,10 +1540,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         return modified_ext_attributes
 
     def read_voting_from_db(self):
-        """ Read voting results for specified voting columns
-        :param columns list of voting columns for which data will be loaded from db; it is used when user adds
-          a new column - wee want read data only for this column
-        """
+        """ Read voting results for specified voting columns """
         self.display_message('Reading voting data from DB, please wait...')
         begin_time = time.time()
 
@@ -1986,7 +1983,8 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
     def refresh_details_tabs(self):
         try:
-            green_color = wnd_utils.get_widget_font_color_green(self)
+            green_color = self.app_config.get_widget_font_color_green(self)
+            link_color = self.app_config.get_hyperlink_font_color(self)
             proposals = self.get_selected_proposals(active_voting_only=False)
             active_proposals = []
             for p in proposals:
@@ -2060,6 +2058,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 <style type="text/css">
     td.first-col-label, td.padding {{padding-top:2px;padding-bottom:2px;}}
     td {{border-style: none}}
+    a {{color: {link_color}}}
     .first-col-label {{font-weight: bold; text-align: right; padding-right:6px; white-space:nowrap}}
     .inter-label {{font-weight: bold; padding-right: 5px; padding-left: 5px; white-space:nowrap}}
     .status-1{{background-color:{COLOR_YES};color:white}}
@@ -2154,6 +2153,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 <style type="text/css">
     td.first-col-label, td.padding {{padding-top:2px;padding-bottom:2px;}}
     td {{border-style: solid; border-color:darkgray}}
+    a {{color: {link_color}}}
     .first-col-label {{font-weight: bold; text-align: right; padding-right:6px; white-space:nowrap}}
     .inter-label {{font-weight: bold; padding-right: 5px; padding-left: 5px; white-space:nowrap}}
     .status-1{{background-color:{COLOR_YES};color:white}}
@@ -2923,7 +2923,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
 
 class ProposalsModel(ExtSortFilterItemModel):
-    def __init__(self, parent, proposals):
+    def __init__(self, parent: ProposalsDlg, proposals):
         ExtSortFilterItemModel.__init__(self, parent, columns=[
             ProposalColumn('no', 'No', True),
             ProposalColumn('name', 'Name', False),
@@ -2959,7 +2959,7 @@ class ProposalsModel(ExtSortFilterItemModel):
         self.sorting_column_name = 'no'
         self.sorting_order = Qt.AscendingOrder
         self.budget_cycle_days = 28.8
-        self.parent = parent
+        self.parent: ProposalsDlg = parent
         self.proposals = proposals
         self.filter_text = ''
         self.filter_columns = []
@@ -2970,7 +2970,8 @@ class ProposalsModel(ExtSortFilterItemModel):
 
     def set_view(self, table_view: QTableView):
         super().set_view(table_view)
-        link_delegate = wnd_utils.HyperlinkItemDelegate(table_view)
+        link_delegate = wnd_utils.HyperlinkItemDelegate(
+            table_view, self.parent.app_config.get_hyperlink_font_color(table_view))
         link_delegate.linkActivated.connect(self.hyperlink_activated)
         table_view.setItemDelegateForColumn(self.col_index_by_name('url'), link_delegate)
         table_view.setItemDelegateForColumn(self.col_index_by_name('name'), link_delegate)
@@ -3010,7 +3011,7 @@ class ProposalsModel(ExtSortFilterItemModel):
                                     return app_utils.to_string(value.date())
                             else:
                                 return ''
-                        elif col.name in ('active'):
+                        elif col.name == 'active':
                             return 'Yes' if prop.get_value(col.name) is True else 'No'
                         elif col.name in ('title', 'url', 'name'):
                             value = prop.get_value(col.name)

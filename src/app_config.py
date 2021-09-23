@@ -3,7 +3,6 @@
 # Author: Bertrand256
 # Created on: 2017-03
 import argparse
-import base64
 import codecs
 import datetime
 import glob
@@ -14,7 +13,6 @@ import copy
 import shutil
 import subprocess
 import sys
-import threading
 from io import StringIO
 from configparser import ConfigParser
 from random import randint
@@ -24,17 +22,17 @@ from typing import Optional, Callable, Dict, Tuple, List
 import bitcoin
 from logging.handlers import RotatingFileHandler
 
+import qdarkstyle
 from PyQt5 import QtCore
 from PyQt5.QtCore import QLocale, QObject
-from PyQt5.QtWidgets import QMessageBox
-from cryptography.fernet import Fernet
+from PyQt5.QtGui import QPalette
+from PyQt5.QtWidgets import QMessageBox, QWidget
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 
 import app_defs
 import dash_utils
-import hw_intf
-from app_defs import APP_NAME_SHORT, APP_NAME_LONG, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT, get_known_loggers
+from app_defs import APP_NAME_LONG, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT, get_known_loggers
 from app_utils import encrypt, decrypt
 import app_cache
 import default_config
@@ -43,8 +41,7 @@ from common import CancelException
 from db_intf import DBCache
 from encrypted_files import read_file_encrypted, write_file_encrypted
 from hw_common import HWType, HWNotConnectedException
-from wnd_utils import WndUtils
-
+from wnd_utils import WndUtils, get_widget_font_color_blue, get_widget_font_color_green
 
 CURRENT_CFG_FILE_VERSION = 5
 CACHE_ITEM_LOGGERS_LOGLEVEL = 'LoggersLogLevel'
@@ -56,7 +53,7 @@ DMN_ROLE_OPERATOR = 0x2
 DMN_ROLE_VOTING = 0x4
 
 
-class InputKeyType():
+class InputKeyType:
     PRIVATE = 1
     PUBLIC = 2
 
@@ -1118,7 +1115,7 @@ class AppConfig(QObject):
                         status = a.get('status')
                         message = a.get('message', '')
                         if status in ('enabled', 'disabled'):
-                            return (True if status == 'enabled' else False, prio, message)
+                            return True if status == 'enabled' else False, prio, message
             return None, None, None
 
         if self._remote_app_params:
@@ -1171,7 +1168,7 @@ class AppConfig(QObject):
     def set_log_level(self, new_log_level_str: str):
         """
         Method called when log level has been changed by the user. New log
-        :param new_log_level: new log level (symbol as INFO,WARNING,etc) to be set.
+        :param new_log_level_str: new log level (symbol as INFO,WARNING,etc) to be set.
         """
         if self.log_level_str != new_log_level_str:
             ll_sav = self.log_level_str
@@ -1483,6 +1480,43 @@ class AppConfig(QObject):
     @internal_ui_dark_mode_activated.setter
     def internal_ui_dark_mode_activated(self, activated: bool):
         self._internal_ui_dark_mode_activated = activated
+
+    def get_widget_font_color_blue(self, wdg: QWidget) -> str:
+        if self.internal_ui_dark_mode_activated:
+            bg_color = qdarkstyle.Palette.COLOR_BACKGROUND_1
+        else:
+            palette = wdg.palette()
+            bg_col = palette.color(QPalette.Normal, palette.Base)
+            bg_color = bg_col.name()
+        return get_widget_font_color_blue(bg_color)
+
+    def get_widget_font_color_green(self, wdg: QWidget) -> str:
+        if self.internal_ui_dark_mode_activated:
+            bg_color = qdarkstyle.Palette.COLOR_BACKGROUND_1
+        else:
+            palette = wdg.palette()
+            bg_col = palette.color(QPalette.Normal, palette.Base)
+            bg_color = bg_col.name()
+        return get_widget_font_color_green(bg_color)
+
+    def get_hyperlink_font_color(self, wdg: QWidget) -> str:
+        palette = wdg.palette()
+        bg_col = palette.color(QPalette.Normal, palette.Link)
+
+        if self.internal_ui_dark_mode_activated:
+            bg_col = bg_col.lighter(140)
+        bg_color = bg_col.name()
+        return bg_color
+
+    def get_widget_background_color(self, wdg: QWidget) -> str:
+        if self.internal_ui_dark_mode_activated:
+            bg_color = qdarkstyle.DarkPalette.COLOR_BACKGROUND_1
+        else:
+            palette = wdg.palette()
+            bg_col = palette.color(QPalette.Normal, palette.Base)
+            bg_color = bg_col.name()
+        return bg_color
+
 
 
 class MasternodeConfig:

@@ -43,8 +43,8 @@ import wallet_dlg
 import app_utils
 from masternode_details_wdg import WdgMasternodeDetails
 from proposals_dlg import ProposalsDlg
-from app_config import AppConfig, MasternodeConfig, APP_NAME_SHORT, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
-from app_defs import PROJECT_URL, DispMessage, AppTextMessageType
+from app_config import AppConfig, MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
+from app_defs import PROJECT_URL, APP_NAME_SHORT, DispMessage, AppTextMessageType
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_common import HWPinException, HWType, HWDevice, HWNotConnectedException
 import hw_intf
@@ -610,8 +610,6 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
         """
         Thread function checking whether there is a new version of the application on Github page.
         :param ctrl: thread control structure (not used here) 
-        :param cur_date_str: Current date string - it will be saved in the cache file as the date of the 
-            last-version-check date.
         :param force_check: True if version-check has been invoked by the user, not the app itself.
         :return: None
         """

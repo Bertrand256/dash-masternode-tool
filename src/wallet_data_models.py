@@ -376,7 +376,7 @@ class AccountListModel(ExtSortFilterItemModel):
 
 
 class UtxoTableModel(ExtSortFilterItemModel):
-    def __init__(self, parent, masternode_list: List[MasternodeConfig], tx_explorer_url: str):
+    def __init__(self, parent: 'WalletDlg', masternode_list: List[MasternodeConfig], tx_explorer_url: str):
         ExtSortFilterItemModel.__init__(self, parent, [
             TableModelColumn('satoshis', 'Amount (Dash)', True, 100),
             TableModelColumn('confirmations', 'Confirmations', True, 100),
@@ -394,6 +394,7 @@ class UtxoTableModel(ExtSortFilterItemModel):
         self.utxos: List[UtxoType] = []
         self.utxo_by_id: Dict[int, UtxoType] = {}
         self.block_height = None
+        self.dialog: 'WalletDlg' = parent
 
         self.mn_by_collateral_tx: Dict[str, MasternodeConfig] = {}
         self.mn_by_collateral_address: Dict[str, MasternodeConfig] = {}
@@ -413,7 +414,8 @@ class UtxoTableModel(ExtSortFilterItemModel):
 
     def set_view(self, table_view: QTableView):
         super().set_view(table_view)
-        link_delagate = wnd_utils.HyperlinkItemDelegate(table_view)
+        link_delagate = wnd_utils.HyperlinkItemDelegate(
+            table_view, self.dialog.app_config.get_hyperlink_font_color(table_view))
         link_delagate.linkActivated.connect(self.hyperlink_activated)
         table_view.setItemDelegateForColumn(self.col_index_by_name('txid'), link_delagate)
 
@@ -611,6 +613,7 @@ class TransactionTableModel(ExtSortFilterItemModel):
         self.tx_explorer_url = tx_explorer_url
         self.__current_block_height = None
         self.__data_modified = False
+        self.dialog: 'WalletDlg' = parent
 
         # filter:
         self.filter_type = FILTER_OR
@@ -626,7 +629,8 @@ class TransactionTableModel(ExtSortFilterItemModel):
 
     def set_view(self, table_view: QTableView):
         super().set_view(table_view)
-        link_delagate = wnd_utils.HyperlinkItemDelegate(table_view)
+        link_delagate = wnd_utils.HyperlinkItemDelegate(
+            table_view, self.dialog.app_config.get_hyperlink_font_color(table_view))
         link_delagate.linkActivated.connect(self.hyperlink_activated)
         table_view.setItemDelegateForColumn(self.col_index_by_name('tx_hash'), link_delagate)
 

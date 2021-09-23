@@ -13,13 +13,11 @@ from datetime import datetime
 from enum import Enum
 from typing import Callable, Optional, List, Dict, Any
 
-import bitcoin
 import requests
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtCore import pyqtSlot, Qt, QTimer, QVariant, QModelIndex, QRect, QPoint, QUrl
-from PyQt5.QtGui import QTextDocument, QPen, QBrush, QPalette, QImage, QPixmap, QColor, QDesktopServices
-from PyQt5.QtWidgets import QWidget, QLineEdit, QMessageBox, QAction, QApplication, QActionGroup, QTableView, \
-    QItemDelegate, QStyleOptionViewItem, QStyle, QAbstractItemView, QLabel, QMenu, QPushButton
+from PyQt5.QtCore import pyqtSlot, Qt, QTimer, QVariant, QModelIndex, QPoint, QUrl
+from PyQt5.QtGui import QPalette, QColor, QDesktopServices
+from PyQt5.QtWidgets import QWidget, QMessageBox, QApplication, QTableView, QItemDelegate, QMenu
 
 import app_cache
 import app_utils
@@ -32,7 +30,7 @@ from dashd_intf import DashdInterface, Masternode
 from ext_item_model import ExtSortFilterItemModel, TableModelColumn, HorizontalAlignment
 from masternode_details_wdg import WdgMasternodeDetails
 from ui import ui_app_main_view_wdg
-from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, IconTextItemDelegate, is_color_dark, \
+from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, IconTextItemDelegate, \
     QDetectThemeChange, get_widget_font_color_blue, get_widget_font_color_green
 
 CACHE_ITEM_SHOW_MN_DETAILS_PANEL = 'MainWindow_ShowMNDetailsPanel'
@@ -518,7 +516,8 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                         self.mn_details_panel_visible
 
         link_text = 'hide' if self.mn_details_panel_visible else 'show'
-        t = f'Masternode status details (<a href="{link_text}">{link_text}</a>)'
+        link_color = self.app_config.get_hyperlink_font_color(self.lblMnStatusLabel)
+        t = f'<style>a {{color: {link_color}}}</style>Masternode status details (<a href="{link_text}">{link_text}</a>)'
         self.lblMnStatusLabel.setText(t)
         self.lblMnStatus.setVisible(panel_visible)
 
@@ -1143,7 +1142,8 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 else:
                     return addr[:chars_begin_end] + '..' + addr[-chars_begin_end:]
 
-        value_color = get_widget_font_color_blue(self)
+        value_color = self.app_config.get_widget_font_color_blue(self)
+        link_color = self.app_config.get_hyperlink_font_color(self)
         status = ''
         mn = self.cur_masternode
         if mn:
@@ -1154,13 +1154,13 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
 
                 if st.protx_conf_pending:
                     add_status_line('', '<b>Protx transaction pending, please wait...</b>',
-                                    get_widget_font_color_blue(self.viewMasternodes))
+                                    self.app_config.get_widget_font_color_blue(self.viewMasternodes))
                 if st.is_error():
                     status_color = COLOR_ERROR_STR
                 elif st.is_warning():
                     status_color = COLOR_WARNING_STR
                 else:
-                    status_color = get_widget_font_color_green(self.viewMasternodes)
+                    status_color = self.app_config.get_widget_font_color_green(self.viewMasternodes)
                 status_text = st.get_status()
                 if st.pose_penalty:
                     status_text += ', PoSePenalty: ' + str(st.pose_penalty)
@@ -1257,6 +1257,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 status = \
                     '<style>td {white-space:nowrap;padding-right:8px}' \
                     '.title {text-align:right;font-weight:normal}' \
+                    f'a {{color: {link_color}}}' \
                     '.ago {font-style:normal}' \
                     f'.value {{color:{value_color}}}' \
                     '.error {color:' + COLOR_ERROR_STR + '}' \

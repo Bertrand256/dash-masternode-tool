@@ -118,13 +118,9 @@ class TransactionDlg(QDialog, QDetectThemeChange, Ui_TransactionDlg, WndUtils):
                     val = round(val / 1e8, 8)
             return float(val)
 
-        palette = self.palette()
-        if self.app_config.internal_ui_dark_mode_activated:
-            bg_color = qdarkstyle.dark.palette.DarkPalette.COLOR_BACKGROUND_1
-        else:
-            bg_col = palette.color(QPalette.Normal, palette.Base)
-            bg_color = bg_col.name()
-        value_color = get_widget_font_color_blue(bg_color)
+        value_color = self.app_config.get_widget_font_color_blue(self)
+        bg_color = self.app_config.get_widget_background_color(self)
+        link_color = self.app_config.get_hyperlink_font_color(self)
 
         try:
             tx_size_str = '?'
@@ -280,6 +276,7 @@ class TransactionDlg(QDialog, QDetectThemeChange, Ui_TransactionDlg, WndUtils):
 td.lbl{{text-align: right;vertical-align: top;}} 
 p.lbl{{margin: 0 5px 0 0; font-weight: bold;}} 
 p.val{{margin: 0 0 0 8px; color: {value_color};}}
+a {{color: {link_color}}}
 </style></head>
 <body style="font-size:{self.base_font_size}pt; font-weight:400; font-style:normal; margin-left:10px;margin-right:10px;
   background-color:{bg_color};">

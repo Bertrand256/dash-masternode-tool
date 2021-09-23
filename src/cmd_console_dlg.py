@@ -161,7 +161,7 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
                     except:
                         a = args.split()
                         for idx, el in enumerate(a):
-                            if isinstance(el, str) and el.lower() in ('true','false'):
+                            if isinstance(el, str) and el.lower() in ('true', 'false'):
                                 a[idx] = (el.lower() == 'true')
                         ok = self.rpc_command(match.group(1), *a)
                 else:

@@ -100,11 +100,7 @@ class WndUtils:
             return dlg(message, buttons, default_button, icon)
 
     def center_by_widget(self, parent):
-        """
-        Centers this window by window given by attribute 'center_by_window'
-        :param center_by_window: Reference to (parent) window by wich this window will be centered.
-        :return: None
-        """
+        """ Centers this window by window given by attribute 'center_by_window' """
         self.move(parent.frameGeometry().topLeft() + parent.rect().center() - self.rect().center())
 
     @staticmethod
@@ -744,7 +740,7 @@ HTML_LINK_HORZ_MARGIN = 3
 class HyperlinkItemDelegate(QStyledItemDelegate):
     linkActivated = QtCore.pyqtSignal(str)
 
-    def __init__(self, parentView: QTableView):
+    def __init__(self, parentView: QTableView, link_color: str = ''):
         QStyledItemDelegate.__init__(self, parentView)
 
         parentView.setMouseTracking(True)
@@ -756,6 +752,10 @@ class HyperlinkItemDelegate(QStyledItemDelegate):
         self.ctx_mnu = QMenu()
         self.last_link = None
         self.last_text = None
+        if not link_color:
+            self.link_color = parentView.palette().color(QPalette.Normal, parentView.palette().Link).name()
+        else:
+            self.link_color = link_color
         self.action_copy_link = self.ctx_mnu.addAction("Copy Link Location")
         self.action_copy_link.triggered.connect(self.on_action_copy_link_triggered)
         self.action_copy_text = self.ctx_mnu.addAction("Copy text")
@@ -768,24 +768,25 @@ class HyperlinkItemDelegate(QStyledItemDelegate):
         mouse_over = option.state & QStyle.State_MouseOver
         painter.save()
 
-        color = ''
         if option.state & QStyle.State_Selected:
             if has_focus:
                 painter.fillRect(option.rect, QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
-                color = "color: white"
+                color = option.palette.color(QPalette.Normal, option.palette.HighlightedText).name()
             else:
                 painter.fillRect(option.rect, QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
+                color = option.palette.color(QPalette.Inactive, option.palette.HighlightedText).name()
         else:
             painter.setBrush(QBrush(option.palette.color(QPalette.Normal, option.palette.Base)))
+            color = self.link_color
 
         if mouse_over:
             doc = self.doc_hovered_item
             self.last_hovered_pos = option.rect.topLeft()
-            doc.setDefaultStyleSheet(f"a {{{color}}}")
+            doc.setDefaultStyleSheet(f"a {{color: {color}}}")
         else:
             doc = self.doc_not_hovered
             self.parent().unsetCursor()
-            doc.setDefaultStyleSheet(f"a {{text-decoration: none;{color}}}")
+            doc.setDefaultStyleSheet(f"a {{text-decoration: none;color: {color};}}")
 
         doc.setDefaultFont(option.font)
         doc.setHtml(option.text)

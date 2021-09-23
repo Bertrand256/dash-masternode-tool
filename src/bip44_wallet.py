@@ -6,10 +6,9 @@ import threading
 import time
 import datetime
 import logging
-from functools import partial
 
 from PyQt5 import QtCore
-from typing import List, Dict, Tuple, Optional, Any, Generator, NamedTuple, Callable, ByteString, Union
+from typing import List, Dict, Tuple, Optional, Generator, Callable, Union
 from PyQt5.QtCore import QObject, Qt
 import app_utils
 import hw_intf
@@ -115,12 +114,12 @@ class Bip44Wallet(QObject):
         self.purge_unconf_txs_called = False
         self.external_call_level = 0
 
-        self.on_account_added_callback: Callable[[Bip44AccountType], None] = None
-        self.on_account_data_changed_callback: Callable[[Bip44AccountType], None] = None
-        self.on_account_address_added_callback: Callable[[Bip44AccountType, Bip44AddressType], None] = None
-        self.on_address_data_changed_callback: Callable[[Bip44AccountType, Bip44AddressType], None] = None
-        self.on_address_loaded_callback: Callable[[Bip44AddressType], None] = None
-        self.on_fetch_account_txs_feedback: Callable[[int], None] = None  # args: number of txses fetched each call
+        self.on_account_added_callback: Optional[Callable[[Bip44AccountType], None]] = None
+        self.on_account_data_changed_callback: Optional[Callable[[Bip44AccountType], None]] = None
+        self.on_account_address_added_callback: Optional[Callable[[Bip44AccountType, Bip44AddressType], None]] = None
+        self.on_address_data_changed_callback: Optional[Callable[[Bip44AccountType, Bip44AddressType], None]] = None
+        self.on_address_loaded_callback: Optional[Callable[[Bip44AddressType], None]] = None
+        self.on_fetch_account_txs_feedback: Optional[Callable[[int], None]] = None  # args: number of txses fetched each call
 
     def signal_account_added(self, account: Bip44AccountType):
         if self.on_account_added_callback and account and self.__tree_id == account.tree_id and \
@@ -365,7 +364,7 @@ class Bip44Wallet(QObject):
         if not addr:
             acc = None
             addr = self.addresses_by_id.get(addr_id)
-        return (addr, acc)
+        return addr, acc
 
     def _get_bip44_entry_by_xpub(self, xpub) -> Bip44Entry:
         raise Exception('ToDo')
@@ -521,8 +520,8 @@ class Bip44Wallet(QObject):
                               account: Bip44AccountType) -> Generator[Bip44AddressType, None, None]:
 
         tm_begin = time.time()
+        count = 0
         try:
-            count = 0
             for idx in range(addr_start_index, addr_start_index + addr_count):
                 addr_info = self._get_child_address(key_entry, idx)
                 if account:
@@ -1205,7 +1204,7 @@ class Bip44Wallet(QObject):
         log.debug('Finished fetching transactions for all accounts.')
 
     def fetch_account_txs_xpub(self, account: Union[Bip44AccountType, str], change: int,
-                               check_break_process_fun: Callable, priority: int = DEFAULT_TX_FETCH_PRIORITY):
+                               check_break_process_fun: Optional[Callable], priority: int = DEFAULT_TX_FETCH_PRIORITY):
         """
         Dedicated for scanning external xpub accounts (not managed by the current hardware wallet) to find the
         first not used ("fresh") addres to be used as a transaction destination.
@@ -1275,7 +1274,7 @@ class Bip44Wallet(QObject):
         Scans for a specific address. If necessary, the method fetches transactions to reveal the all used addresses.
         :param addr: the address being searched.
         """
-        addr_found: Bip44AddressType = None
+        addr_found: Optional[Bip44AddressType] = None
 
         def new_address_fetched(new_addr: Bip44AddressType):
             nonlocal addr, addr_found

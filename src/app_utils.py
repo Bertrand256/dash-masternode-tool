@@ -14,7 +14,7 @@ import binascii
 import datetime
 from typing import Optional, List, Tuple, ByteString, BinaryIO, Callable
 from PyQt5.QtCore import QLocale
-from PyQt5.QtWidgets import QMessageBox, QMenu, QAction
+from PyQt5.QtWidgets import QMenu, QAction
 from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
