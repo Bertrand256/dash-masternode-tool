@@ -69,7 +69,7 @@ docker build -t bertrand256/build-dmt .
 
 #### 4. Create a Docker container
 
-A Docker container is an instance of an image (similar to how an object is an instance of a class in the software development world), and it exists until you delete it. You can therefore skip this step if you have created the container before. To easily identify the container, we give it a specific name (dmtbuild) when it is created so you can easily check if it exists in your system.
+A Docker container is an instance of an image (similar to how an object is an instance of a class in the software development world), and it exists until you delete it. You can therefore skip this step if you have created the container before. To easily identify the container, we give it a specific name (dmtbuild) when it is created, so you can easily check if it exists in your system.
 
 ```
 docker ps -a --filter name=dmtbuild --filter ancestor=bertrand256/build-dmt

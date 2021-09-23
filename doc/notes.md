@@ -1,7 +1,7 @@
 ## Note DMTN0001
 Keepkey hardware wallets have a certain - probably unplanned - trait, that required a 
 dedicated support in the DMT application. Namely, the passphrase encoding type 
-used by KeepKey (NFC) is different than the encoding described in the BIP-39 standard (NFKD), 
+used by KeepKey (NFC) is different from the encoding described in the BIP-39 standard (NFKD), 
 which btw is used by Trezor. As a result, using national (non-ASCII) characters 
 in passphrase in Keepkey will result in different Dash addresses than those that would 
 generate Trezor for the same seed.
@@ -28,7 +28,7 @@ For those who do not want to do it on their own, I have prepared firmware for Tr
 Remember to close other applications connected to the same hardware wallet device DMT 
 communicates with, for example web browsers with open online wallet apps, Chrome wallet apps, etc. 
 Communication with the device by these applications may distort data exchanged by DMT, which 
-may result in unexpected behavior like returning different Dash address than the one for which 
+may result in unexpected behavior like returning a different Dash address than the one for which 
 the query was sent.
 
 ## Note DMT0004

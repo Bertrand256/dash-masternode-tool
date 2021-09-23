@@ -13,7 +13,7 @@ Each model of hardware wallet offers its own native client application to perfor
 
 ### Step 1
 
-Open the Trezor native wallet at https://wallet.trezor.io in the Chrome browser and enter your PIN/passphrase if enabled (it is highly recommended to enable both when setting up your Trezor).
+Open the Trezor native wallet at https://wallet.trezor.io in the Chrome browser and enter your PIN/passphrase if enabled (it is highly recommended enabling both of them when setting up your Trezor).
 
 ### Step 2
 

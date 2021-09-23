@@ -4,7 +4,7 @@ None of the most popular hardware wallets supports Dash TESTNET in official firm
 
 For those who do not want to bother (or do not have knowledge) the compilation procedure, I have prepared custom firmwares with TESTNET support for Trezor and KeepKey. Files are available for download at the following address: https://github.com/Bertrand256/dash-masternode-tool/tree/master/hardware-wallets/firmware.
 
-> **Important**: the latest versions of the Trezor One bootloader have a bug disallowing running custom firmwares, so until the situation is clarified, firmwares for this device, prepared by me will be hidden. Therefore currently, when it comes to support for Dash TESTNET, I have only published firmwares for Trezor T and Keepkey devices.
+> **Important**: the latest versions of the Trezor One bootloader have a bug disallowing running custom firmwares, so until the situation is clarified, firmwares for this device, prepared by me will be hidden. Therefore, currently when it comes to support for Dash TESTNET, I have only published firmwares for Trezor T and Keepkey devices.
 
 To automatically download firmware and install it in the device, you can use the `Tools->Hardware Wallet Initialization/Recovery` window.
 

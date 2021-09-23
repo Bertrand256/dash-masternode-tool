@@ -6,7 +6,7 @@ Before describing the individual steps, the following prerequisites apply:
   * You have a server with a static public IP address, on which you have installed the *Dash daemon* (*dashd*) software.
   * The server is running a Linux operating system. While other operating systems may work, this guide will assume you are following best practices and using the most popular and supported system available.
   * You have access to the server over SSH.
-  * *dashd* has been installed in the home directory of the user which you use to log in to the server.
+  * *dashd* has been installed in the home directory of the user which you use, to log in to the server.
 
 ## Sending 1000 Dash to the address controlled by your hardware wallet
 

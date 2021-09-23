@@ -6,7 +6,7 @@ We will use the official Dash Core client as the Dash daemon for this configurat
 
 ## Enable JSON-RPC and "indexing" in Dash Core
 ###  Set the required parameters in the `dash.conf` file
-The default Dash Core configuration does not include all of the required settings, so some changes to the `dash.conf` file are necessary. The location of this file varies depending on the operating system you are using and may be changed during installation, so paths will not be specified here due to possible confusion. Instead, select `Tools -> Open Wallet Configuration File` from the Dash Core menu. The `dash.conf` file will open in your default text editor.
+The default Dash Core configuration does not include all the required settings, so some changes to the `dash.conf` file are necessary. The location of this file varies depending on the operating system you are using and may be changed during installation, so paths will not be specified here due to possible confusion. Instead, select `Tools -> Open Wallet Configuration File` from the Dash Core menu. The `dash.conf` file will open in your default text editor.
 
 Copy and paste the following parameters/values into the file, changing the `rpcuser` and `rpcpassword` values to your own unique values:
 ```ini
@@ -26,7 +26,7 @@ txindex=1
 Close Dash Core by selecting `File -> Exit` from the menu, then open it again.
 
 ### Rebuild index
-Setting parameters related to indexing and even restarting the application is not enough for Dash Core to entirely update its internal database to support indexing, so it is necessary to force the operation. Follow the following steps to do so:
+Setting parameters related to indexing and even restarting the application is not enough for Dash Core to entirely update its internal database to support indexing, so it is necessary to force the operation. These are steps to take:
 
  * Select the `Tools -> Wallet Repair` menu item.
  * Click the `Rebuild index` button in the Wallet Repair dialog box.  

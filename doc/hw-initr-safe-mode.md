@@ -12,7 +12,7 @@ For Trezor and KeepKey wallets, this is a standard recovery scenario. It is char
 ![Number of words](img/hwri/rec-number-of-words.png)
 
 #### Step 4: Define hardware wallet configuration options
-Enter the device label and decide whether or not you wish to use a PIN and/or passphrase.  
+Enter the device label and decide whether you wish to use a PIN and/or passphrase.  
 ![Choose hw options](img/hwri/rec-options-safe.png)
 
 #### Step 5 (optional): Select the device instance

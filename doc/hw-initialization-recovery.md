@@ -39,7 +39,7 @@ It is critical to understand that knowing the set of words comprising a recovery
 
 Standard methods of device initialization and recovery are designed in such a way that they should be safe even on a computer infected with malware or viruses. But with significant funds controlled by the recovery seed, you don’t have to be paranoid to think that it would be even better to perform such activities offline. This is a particular concern for users working on Windows computers or computers which regularly download many files from the internet, exposing them to potential infection.
 
-To such people (but not only them), it is strongly recommended to perform recovery or initialization using a Linux OS launched from a [live CD](hw-initr-live-cd-linux.md) – after the job is done, there will be no record or any data saved that could be sent to hostile server when reconnected to the internet.
+To such people (but not only them), it is strongly recommended performing recovery or initialization using a Linux OS launched from a [live CD](hw-initr-live-cd-linux.md) – after the job is done, there will be no record or any data saved that could be sent to hostile server when reconnected to the internet.
 
 ## Hardware wallet initialization and recovery in DMT
 

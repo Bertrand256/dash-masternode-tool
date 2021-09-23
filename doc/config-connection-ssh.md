@@ -23,7 +23,7 @@ The communication is set up as follows:
 ### Enable JSON-RPC and "indexing" in the Dash daemon configuration
 
 The procedure is similar to the RPC/indexing [procedure](config-connection-direct.md#2-enable-json-rpc-and-indexing-in-the-dash-core) for a local RPC node scenario.
- * Log in to the server running the Dash daemon (*dashd*) with a SSH terminal.
+ * Log in to the server running the Dash daemon (*dashd*) with an SSH terminal.
  * Change to the *dashd* configuration directory: `cd ~/.dashcore`
  * Open the `dash.conf` file with your preferred text editor: `nano dash.conf`
  * Enter the configuration parameters listed [here](config-connection-direct.md#set-the-required-parameters-in-the-dashconf-file).

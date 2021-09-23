@@ -23,7 +23,7 @@ When version 0.9.5 or higher of the DMT application is run the first time, "publ
 
 ![Public connection configuration window](img/dmt-config-dlg-public.png)
 
-If you see connections and all three are checked (enabled) you don't need to do anything. If you see connections but they are not enabled, you just need to enable them. I also suggest deactivating all other connections, since these may be connections from an old configuration.
+If you see connections and all three are checked (enabled) you don't need to do anything. If you see connections, but they are not enabled, you just need to enable them. I also suggest deactivating all other connections, since these may be connections from an old configuration.
 
 If any of the listed "predefined" nodes are missing or are incomplete, follow these steps:
  * Select all the text from the block below and copy to the clipboard (do not miss the square brackets at the beginning and the end of the text), for Dash MAINNET:
@@ -87,7 +87,7 @@ and for Dash TESTNET:
  * Right-click on the `Connections` box.
  * From the popup menu choose the `Paste connection(s) from cliboard` action:
     ![Paste connections from clipboard](img/dmt-config-dlg-public-recover.png)
- * Click `Yes` to the question whether you want to import connections.
+ * Click `Yes` to the question asking you whether you want to import connections.
 
 All three connections should then be added to the configuration.
 

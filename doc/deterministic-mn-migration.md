@@ -9,14 +9,14 @@ transaction (**ProRegTx**) in which all the necessary information is
 provided.
 
 The scope covered in this document applies only to what directly relates
-to the DMT functionalities and it focuses on the migration from
+to the DMT functionalities, and it focuses on the migration from
 nondeterministic to deterministic (DIP3) masternodes. To get familiar
 with a broader context in this matter, read the following document:
 [Dash 0.13 Upgrade Procedure](https://docs.dash.org/en/stable/masternodes/dip3-upgrade.html#masternode-registration-from-dmt),
 which I highly recommend.
 
 It's worth noting here, that this process can be performed completely
-independently from DMT (using the Dash Core wallet), however, the
+independently of DMT (using the Dash Core wallet), however, the
 inclusion of this function in DMT is aimed at the maximum facilitation
 of this process.
 
@@ -69,7 +69,7 @@ in the process are marked with an ellipse:
   correct. Verification of this in DMT:  
   ![Prerequisites](img/dmn/address-bip32path-verification.png)
 - Close all other programs that could communicate with the same hardware
-  wallet device which you use in DMT (eg. Trezor online wallet). Two (or
+  wallet device which you use in DMT (e.g. Trezor online wallet). Two (or
   more) programs communicating with the same device simultaneously can
   interfere with each other's communication in such a way that they may
   receive incorrect results.
@@ -90,7 +90,7 @@ ones:
 
 >  Note: if you use the external operator, it usually depends on him
 >  which scenario you will need fulfill to perform the process. Most
->  operators impose the second approach and actually it is the most
+>  operators impose the second approach, and actually it is the most
 >  convenient (for them) and the most secure (for both parties) method.
 
 
@@ -120,7 +120,7 @@ you :
 - If you have your own Dash Core synchronized with the network but
   without the RPC interface or indexing enabled, choose
   [Manual method using own Dash node](#manual-method-using-own-dash-node-m3).
-- If you do not have and you can not easily run Dash Core (for example,
+- If you do not have, and you can not easily run Dash Core (for example,
   you don't have disk space for blockchain data) or you feel
   uncomfortable using a terminal-type user interface, choose
   [Automatic method using "public" RPC nodes](#automatic-method-using-public-rpc-nodes-m1).
@@ -131,7 +131,7 @@ the need to send the owner private key to the remote RPC node. This key
 is necessary to sign the payload data being part of the ProRegTx
 transaction, which is created on the remote node
 ([details](https://github.com/dashpay/dips/blob/master/dip-0003.md#registering-a-masternode-proregtx)).
-If this raises your concerns (eg. you do not trust the RPC node
+If this raises your concerns (e.g. you do not trust the RPC node
 operator), choose another method.
 
 >  **Note 1.** The RPC nodes preconfigured in DMT (alice, luna, suzy)
@@ -187,7 +187,7 @@ The only data derived from the configurations you might want to change
 is the **payout address**. The default value is the collateral address,
 but in the new model you can enter any address here. Thanks to this, you
 get the option of separating the payout address from the collateral
-address, eg. by placing them in different wallets. Note that this option
+address, e.g. by placing them in different wallets. Note that this option
 will be effective after activating **Spork 15**. Until then, you will
 receive payments to the collateral address.
 
@@ -221,7 +221,7 @@ At this step, the wizard executes two operations on the remote Dash node
 be asked to sign a special message with the hardware wallet controlling
 the masternode collateral. The resulting signature is supposed to prove
 that you really have the collateral private key under your control and
-that you're not trying to hijack a someone else's collateral
+that you're not trying to hijack someone else's collateral
 transaction.
 
 ![HW confirmation](img/dmn/wizard-page3-hw-conf.png)
@@ -232,7 +232,7 @@ automatically go to the summary page.
 #### Step 6. Summary - final actions
 ![Summary](img/dmn/wizard-summary.png)  
 
-The summary page will show all relevant values (eg. private keys) used
+The summary page will show all relevant values (e.g. private keys) used
 during the process. Most of them will be copied to the masternode
 configuration in DMT, nevertheless it's worth saving them in a separate
 file.
@@ -240,7 +240,7 @@ file.
 The last thing to do here depends on your use case:
 * **UC1**: as suggested on the screen, copy the `masternodeblsprivkey =
   ...` line into the dash.conf file on the server running your
-  masternode, then restart the dashd daemon..
+  masternode, then restart the dashd daemon.
 * **UC2**: your operator should carry out the above-mentioned operation
   by himself , so in this case you don't need to do anything.
 
@@ -395,7 +395,7 @@ commands from the Dash Core Debug console.
     it by issuing the command  
     `walletpassphrase "your-wallet-passphrase" 600`
   
-    2.2. Copy the owner private key to clipboard (eg. from DMT
+    2.2. Copy the owner private key to clipboard (e.g. from DMT
     configuration).
     
     2.3. Import the key by executing the following command in Debug

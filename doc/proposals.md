@@ -6,13 +6,13 @@ Version 0.9.8 of *DMT* introduced functionality for *masternode owners* (MNOs) t
 To use these features, open the *Proposals* window by clicking the `Proposals` button in the main application window or the `Tools->Proposals` menu item. The following window appears:  
 ![Proposals window](img/dmt-proposals-window.png)
 
-The first time you open the window, it will take a few minutes for the application to retrieve data on all of the proposals currently maintained by the network, as well as the votes cast on them by masternodes. That data is saved to a cache database, so the opening the window should be faster once the data in in the local cache.
+The first time you open the window, it will take a few minutes for the application to retrieve data on all the proposals currently maintained by the network, as well as the votes cast on them by masternodes. That data is saved to a cache database, so the opening the window should be faster once the data in the local cache.
 
 The upper part of the window shows a list of proposals in a table, with several common proposal attributes visible in columns. You can control visibility and the display order of the columns by clicking the `Columns` button and enabling or reordering the columns of interest to you in the `Columns` dialog.  
 ![Column selection dialog](img/dmt-proposals-columns.png)
 
 In the `Proposals` dialog, you can:
- * View the list of all of the currently available proposals and associated details.
+ * View the list of all the currently available proposals and associated details.
  * View the list of votes cast on particular proposal.
  * Cast a vote on proposals (if a masternode is configured in *DMT*).
  * Save proposal and vote data to a CSV file for further analysis.
@@ -53,7 +53,7 @@ Alternatively, you can vote on the `Details` tab, using the links from the top o
 
 #### Privacy
 
-If you own several masternodes, you should consider that casting a vote with all of them simultaneously is in effect publicly linking all of the nodes to a single owner, which may be considered a privacy risk. The following screenshot highlights this point:  
+If you own several masternodes, you should consider that casting a vote with all of them simultaneously is in effect publicly linking all the nodes to a single owner, which may be considered a privacy risk. The following screenshot highlights this point:  
 ![Simultaneous voting](img/dmt-proposals-vote-time-offset.png)  
 Bear in mind that all of this information is available to anybody with access to any Dash daemon.
 

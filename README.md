@@ -56,7 +56,7 @@ This action can be carried out using the *Dash Core* reference software client. 
 requires sending 1000 Dash to an address controlled by the *Dash Core* wallet. After the recent increase 
 in the value of Dash and a burst in the amount of malware distributed over the Internet, you do not have 
 to be paranoid to conclude that keeping large amounts of funds in a software wallet is not the most secure option. 
-For these reasons, it is highly recommended to use a **hardware wallet** for this purpose.
+For these reasons, it is highly recommended using a **hardware wallet** for this purpose.
 
 # Dash Masternode Tool
 
@@ -93,7 +93,7 @@ Most of the application features are accessible from the main program window:
 
 ## Connection setup
 
-Most of the application features involve exchanging data between the application itself and the Dash network. To do this, *DMT* needs to connect to one of the full nodes on the network, specifically one which can handle JSON-RPC requests. This node plays the role of a gateway for *DMT* to the Dash network. It does not matter which full node node provides the service, because all nodes reach consensus by synchronizing information between each other on the Dash network.
+Most of the application features involve exchanging data between the application itself and the Dash network. To do this, *DMT* needs to connect to one of the full nodes on the network, specifically one which can handle JSON-RPC requests. This node plays the role of a gateway for *DMT* to the Dash network. It does not matter which full node provides the service, because all nodes reach consensus by synchronizing information between each other on the Dash network.
 
 Depending on your preferences (and skills) you can choose one of three possible connection types:
  * [Direct connection to a local node](doc/config-connection-direct.md), for example to *Dash Core* running on your normal computer.
@@ -146,7 +146,7 @@ The steps are as follows:
 
 3. Verification that the masternode status is not already `ENABLED` or `PRE_ENABLED`. If it is, the following warning appears:  
   ![Warning: masternode state is enabled](doc/img/startmn-state-warning.png)  
-  If your masternode is running and you decide to send a `start masternode` message anyway, your masternode payment queue position will be reset.
+  If your masternode is running, and you decide to send a `start masternode` message anyway, your masternode payment queue position will be reset.
 
 4. Opening a connection to the hardware wallet. Message in case of failure:  
   ![Cannot find Trezor device](doc/img/startmn-hw-error.png)
