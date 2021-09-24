@@ -395,6 +395,7 @@ def hw_connection_tracker(func):
     return wrapper
 
 
+# noinspection PyTypeChecker
 class HWDevices(QObject):
     """
     Manages information about all hardware wallet devices connected to the computer.
@@ -937,6 +938,7 @@ class HWDevices(QObject):
             decrypt, (), True, force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_device.hw_client))
 
 
+# noinspection PyTypeChecker
 class HwSessionInfo(HWSessionBase):
     sig_hw_connected = QtCore.pyqtSignal(HWDevice)
     sig_hw_disconnected = QtCore.pyqtSignal()

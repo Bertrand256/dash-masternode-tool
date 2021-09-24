@@ -908,8 +908,6 @@ class Bip44Wallet(QObject):
 
     def _get_tx_db_id(self, db_cursor, txhash: str, tx_json: Dict = None, create=True) -> Tuple[int, Optional[Dict]]:
         """
-        :param tx_entry:
-        :param db_cursor:
         :return: Tuple[int <transaction db id>, Optional[Dict <transaction details json>]]
         """
         tx_hash = self._wrap_txid(txhash)

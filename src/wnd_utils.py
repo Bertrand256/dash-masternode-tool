@@ -356,6 +356,7 @@ class WndUtils:
             if isinstance(item, QWidgetItem):
                 w = item.widget()
                 layout.removeWidget(w)
+                # noinspection PyTypeChecker
                 w.setParent(None)
                 del w
             elif isinstance(item, QLayout):
