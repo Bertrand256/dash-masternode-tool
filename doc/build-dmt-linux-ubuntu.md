@@ -2,7 +2,7 @@
 
 ### Method based on physical or virtual linux machine
 
-An Ubuntu distribution with Python 3.8 is required to build DMT. This example uses Ubuntu 18.04, which comes with an 
+An Ubuntu distribution with Python 3.8 is required to build DMT. This example uses Ubuntu 16.04, which comes with an 
 appropriate version installed by default. You can verify the Python version by typing:
 
 ```
@@ -16,33 +16,40 @@ You should see a response similar to the following:
 After making sure that you have the correct Python version, execute the following commands from the terminal:
 
 ```
-sudo apt-get update
-sudo apt-get -y upgrade
-sudo apt-get -y install libudev-dev libusb-1.0-0-dev libfox-1.6-dev autotools-dev autoconf automake libtool libpython3-all-dev python3.8-dev python3-pip git cmake
-sudo pip3 install virtualenv
-sudo pip3 install --upgrade pip
-cd ~
-mkdir dmt-build && cd dmt-build
-python3.8 -m venv dmt-venv
-source dmt-venv/bin/activate
-git clone https://github.com/Bertrand256/dash-masternode-tool
-cd dash-masternode-tool/
-pip install -r requirements.txt
-pip install --upgrade pip
-pyinstaller --distpath=../dmt-dist/dist/linux --workpath=../dist-dist/build/linux dash_masternode_tool.spec
+sudo apt update \
+&& sudo apt -y upgrade \
+&& sudo apt -y install software-properties-common \
+&& sudo add-apt-repository -y ppa:deadsnakes/ppa \
+&& sudo apt update \
+&& sudo apt -y install curl libxcb-xinerama0 libudev-dev libusb-1.0-0-dev libfox-1.6-dev autotools-dev autoconf automake libtool libpython3-all-dev python3.8 python3.8-venv python3.8-dev git cmake python3.8-distutils \
+&& cd ~ \
+&& curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py \
+&& python3.8 get-pip.py \
+&& mkdir -p dmt-build \
+&& cd dmt-build \
+&& sudoo python3.8 -m pip install virtualenv \
+&& sudo python3.8 -m virtualenv -p python3.8 venv \
+&& . venv/bin/activate \
+&& git clone https://github.com/Bertrand256/dash-masternode-tool \
+&& cd dash-masternode-tool/ \
+&& pip install -r requirements.txt \
+&& cd ~/dmt-build/
+&& mkdir -p ~/dmt-build/dist
+pyinstaller --distpath=dist/linux --workpath=dist/linux/build dash_masternode_tool.spec
 ```
 
 The following files will be created once the build has completed successfully:
 
-* Executable: `~/dmt/dist/linux/DashMasternodeTool`
-* Compressed executable: `~/dmt/dist/all/DashMasternodeTool_<verion_string>.linux.tar.gz`
+* Executable: `~/dmt-build/dist/linux/DashMasternodeTool`
+* Compressed executable: `~/dmt-build/dist/all/DashMasternodeTool_<verion_string>.linux.tar.gz`
 
 
 ### Method based on Docker
 
 This method uses a dedicated **docker image** configured to carry out an automated build process for *Dash Masternode Tool*. The advantage of this method is its simplicity, and the fact that it does not make any changes in the list of installed apps/libraries on your physical/virtual machine. All necessary dependencies are installed inside the Docker container. The second important advantage is that compilation can also be carried out on Windows or macOS (if Docker is installed), but keep in mind that the result of the build will be a Linux executable.
 
-> **Note: Skip steps 3 and 4 if you are not performing this procedure for the first time (building a newer version of DMT, for example)**
+> **Note: skip steps 1 to 4 if you have done them before - if you are just building a newer version of DMT, go 
+> straight to step 5.**
 
 #### 1. Create a new directory
 We will refer to this as the *working directory* in the remainder of this documentation.
@@ -90,7 +97,7 @@ Create the container:
 
 ``` 
 mkdir -p build
-docker create --name dmtbuild -v $(pwd)/build:/root/dmt/dist -it bertrand256/build-dmt:ubuntu
+docker create --name dmtbuild -v $(pwd)/build:/root/dmt-build/dist -it bertrand256/build-dmt:ubuntu
 ```
 
 #### 5. Build the Dash Masternode Tool executable
@@ -99,4 +106,6 @@ docker create --name dmtbuild -v $(pwd)/build:/root/dmt/dist -it bertrand256/bui
 docker start -ai dmtbuild
 ```
 
-When the command completes, compiled binary can be found in the 'build' subdirectory of your current directory.
+After the process completes, the resulting files can be found in the `build` subdirectory of your current directory:
+* Executable: `linux/DashMasternodeTool`
+* Compressed executable: `all/DashMasternodeTool_<verion_string>.linux.tar.gz`
