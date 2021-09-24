@@ -1,4 +1,10 @@
-## [0.9.27] - 2021-09-14
+## [0.9.29] - 2021-09-24
+**Fixed**
+- Fixed the "name 'fg_color' is not defined" error in the wallet tx confirmation dialog.
+- Improving visibility of hyperlinks in dark mode (will be continued in several other dialogs).
+- Updating dockerfile (Ubuntu based) for building the app.
+
+## [0.9.28] - 2021-09-14
 **Added**
 - UI dark mode option independent of the OS settings (*Config->Miscellaneous->Use UI dark mode*).  
 - New toolbar icons with enhanced visual consistency (kudos to **Doeke Koedijk** for creating them).
