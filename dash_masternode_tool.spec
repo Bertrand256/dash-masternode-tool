@@ -61,7 +61,6 @@ def find_file_in_dirs(dirs, file_name):
     for dir_name in dirs:
         file_full_path = os.path.join(dir_name, file_name)
         if os.path.exists(file_full_path):
-            print('------ found file ' + file_full_path)
             return file_full_path
     raise Exception('Unable to find ' + file_name)
 
@@ -177,8 +176,6 @@ if not os.path.exists(all_bin_dir):
     os.makedirs(all_bin_dir)
 
 # zip archives
-print(dist_path)
-print(all_bin_dir)
 os.chdir(dist_path)
 
 if os_type == 'win32':
