@@ -6,7 +6,6 @@ import platform
 from PyInstaller.utils.hooks import (collect_data_files, collect_submodules,
                                      collect_dynamic_libs)
 
-
 block_cipher = None
 
 os_type = sys.platform
@@ -24,7 +23,7 @@ with open(os.path.join(base_dir, 'version.txt')) as fptr:
 
 binary_files = []
 data_files = [
- ('version.txt', '.')
+    ('version.txt', '.')
 ]
 
 # source: https://github.com/akhavr/electrum-dash/blob/master/contrib/osx/osx.spec
@@ -38,6 +37,7 @@ hiddenimports += [
     'PyQt5.sip',
     'usb1'
 ]
+
 
 def add_data_file(file: str, dest_dir: str):
     global data_files
@@ -57,12 +57,20 @@ for f in os.listdir(os.path.join(base_dir, 'img')):
         add_data_file('img/' + f, '/img')
 
 
-lib_path = next(p for p in sys.path if 'site-packages' in p)
+def find_file_in_dirs(dirs, file_name):
+    for dir_name in dirs:
+        file_full_path = os.path.join(dir_name, file_name)
+        if os.path.exists(file_full_path):
+            print('------ found file ' + file_full_path)
+            return file_full_path
+    raise Exception('Unable to find ' + file_name)
 
-add_data_file(os.path.join(lib_path, 'bitcoin/english.txt'), '/bitcoin')
-add_data_file(os.path.join(lib_path, 'mnemonic/wordlist/english.txt'), '/mnemonic/wordlist')
-add_data_file(os.path.join(lib_path, 'trezorlib/transport'), 'trezorlib/transport')
 
+lib_paths = [p for p in sys.path if 'site-packages' in p]
+
+add_data_file(find_file_in_dirs(lib_paths, 'bitcoin/english.txt'), '/bitcoin')
+add_data_file(find_file_in_dirs(lib_paths, 'mnemonic/wordlist/english.txt'), '/mnemonic/wordlist')
+add_data_file(find_file_in_dirs(lib_paths, 'trezorlib/transport'), 'trezorlib/transport')
 
 excludes = [
     'PyQt5.QtBluetooth',
@@ -108,21 +116,21 @@ data_files += collect_data_files('trezorlib')
 data_files += collect_data_files('btchip')
 data_files += collect_data_files('keepkeylib')
 
-
 if os_type == 'darwin':
     add_binary_file('/usr/local/lib/libusb-1.0.dylib', '.')
 elif os_type == 'linux':
-    add_binary_file('/usr/lib/x86_64-linux-gnu/libxcb-xinerama.so.0', '.')
+    add_binary_file(find_file_in_dirs(('/usr/lib', '/usr/lib64'), 'libxcb-xinerama.so.0'), '.')
 elif os_type == 'win32':
     mod = importlib.import_module('usb1')
     if mod and mod.__path__:
-        l = os.path.join(mod.__path__[0], 'libusb-1.0.dll')
-        if not os.path.isfile(l):
+        libusb_full_path = os.path.join(mod.__path__[0], 'libusb-1.0.dll')
+        if not os.path.isfile(libusb_full_path):
             import ctypes.util
-            l = ctypes.util.find_library('libusb-1.0.dll')
-        if l:
-            add_binary_file(l, '.')
-            print('found libusb library: ' + l)
+
+            libusb_full_path = ctypes.util.find_library('libusb-1.0.dll')
+        if libusb_full_path:
+            add_binary_file(libusb_full_path, '.')
+            print('found libusb library: ' + libusb_full_path)
         else:
             print('WARNING: libusb-1.0.dll not found!!')
 
@@ -139,7 +147,7 @@ a = Analysis(['src/dash_masternode_tool.py'],
              cipher=block_cipher)
 
 pyz = PYZ(a.pure, a.zipped_data,
-             cipher=block_cipher)
+          cipher=block_cipher)
 
 exe = EXE(pyz,
           a.scripts,
@@ -151,16 +159,16 @@ exe = EXE(pyz,
           strip=False,
           upx=False,
           console=False,
-		  icon=os.path.join('img',('dmt.%s' % ('icns' if os_type=='darwin' else 'ico'))))
+          icon=os.path.join('img', ('dmt.%s' % ('icns' if os_type == 'darwin' else 'ico'))))
 
 if os_type == 'darwin':
     app = BUNDLE(exe,
                  name='DashMasternodeTool.app',
                  icon='img/dmt.icns',
                  bundle_identifier=None,
-                     info_plist={
-                        'NSHighResolutionCapable': 'True'
-                     }
+                 info_plist={
+                     'NSHighResolutionCapable': 'True'
+                 }
                  )
 
 dist_path = os.path.join(base_dir, DISTPATH)
@@ -175,10 +183,14 @@ os.chdir(dist_path)
 
 if os_type == 'win32':
     print('Compressing Windows executable')
-    os.system('"7z.exe" a %s %s -mx0' % (os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.win' + no_bits + '.zip'),  'DashMasternodeTool.exe'))
+    os.system('"7z.exe" a %s %s -mx0' % (
+        os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.win' + no_bits + '.zip'),
+        'DashMasternodeTool.exe'))
 elif os_type == 'darwin':
     print('Compressing Mac executable')
-    os.system('zip -r "%s" "%s"' % (os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.mac.zip'),  'DashMasternodeTool.app'))
+    os.system('zip -r "%s" "%s"' % (
+        os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.mac.zip'), 'DashMasternodeTool.app'))
 elif os_type == 'linux':
     print('Compressing Linux executable')
-    os.system('tar -zcvf %s %s' % (os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.linux.tar.gz'),  'DashMasternodeTool'))
+    os.system('tar -zcvf %s %s' % (
+        os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.linux.tar.gz'), 'DashMasternodeTool'))
