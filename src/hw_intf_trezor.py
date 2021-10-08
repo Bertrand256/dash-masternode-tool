@@ -289,7 +289,7 @@ def json_to_tx(coin, data):
 
     t.inputs =[]
     for vin in data["vin"]:
-        if vin["scriptSig"]["hex"] == "c9":
+        if "scriptSig" in vin and vin["scriptSig"]["hex"] == "c9":
             i = messages.TxInputType()
             i.prev_hash = b"\0" * 32
             i.prev_index = vin["sequence"]
