@@ -1942,7 +1942,13 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         if self.app_config.read_proposals_external_attributes:
             # select proposals for which we read additional data from external sources as DashCentral.org
             for prop in self.proposals:
-                if not prop.ext_attributes_loaded:
+                prop_url = prop.get_value('url')
+                prop_name = prop.get_value('name')
+                dc_url_assumed = 'https://www.dashcentral.org/p/' + prop_name
+                if not prop.ext_attributes_loaded or \
+                        (re.match(r'.*dashcentral\.org', prop_url.lower()) and  # Force re-fetch of data from DashCentral
+                         prop_url.lower() != dc_url_assumed.lower()):           # upon the possible user error related to
+                                                                                # the 'url' field
                     proposals.append(prop)
         if proposals and not self.finishing:
             if self.read_external_attributes(proposals):
