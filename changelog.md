@@ -1,3 +1,8 @@
+## [0.9.30] - 2021-10-17
+**Changed**
+- Proposals: fixing user errors regarding the "URL" field for 
+addresses referring to DashCentral, a recent common mistake made by proposal owners.
+
 ## [0.9.29] - 2021-09-24
 **Fixed**
 - Fixed the "name 'fg_color' is not defined" error in the wallet tx confirmation dialog.
