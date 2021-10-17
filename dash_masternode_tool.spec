@@ -118,7 +118,8 @@ data_files += collect_data_files('keepkeylib')
 if os_type == 'darwin':
     add_binary_file('/usr/local/lib/libusb-1.0.dylib', '.')
 elif os_type == 'linux':
-    add_binary_file(find_file_in_dirs(('/usr/lib', '/usr/lib64'), 'libxcb-xinerama.so.0'), '.')
+    add_binary_file(find_file_in_dirs(('/usr/lib', '/usr/lib64', '/usr/lib/x86_64-linux-gnu'),
+                                      'libxcb-xinerama.so.0'), '.')
 elif os_type == 'win32':
     mod = importlib.import_module('usb1')
     if mod and mod.__path__:
