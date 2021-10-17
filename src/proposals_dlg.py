@@ -764,75 +764,79 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                 self.lblBudgetSummary.setText('')
 
         self.calculate_budget_summary()
-        next_sb_dt = datetime.datetime.fromtimestamp(self.next_superblock_time)
-        voting_deadline_dt = datetime.datetime.fromtimestamp(self.next_voting_deadline)
-        if self.voting_deadline_passed:
-            dl_add_info = '<span style="color:red"> (passed)</span>'
-        else:
-            dl_add_info = ''
-            dl_diff = self.next_voting_deadline - time.time()
-            if dl_diff > 0:
-                if dl_diff < 3600:
-                    dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=True, out_hours=False,
-                                                        out_days=False, out_weeks=False)
-                elif dl_diff < 3600 * 3:
-                    dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=True, out_hours=True,
-                                                        out_days=False, out_weeks=False)
-                elif dl_diff < 3600 * 24:
-                    dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=False, out_hours=True,
-                                                        out_days=False, out_weeks=False)
-                elif dl_diff < 3600 * 24 * 3:
-                    dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=False, out_hours=True,
-                                                        out_days=True, out_weeks=False)
-                else:
-                    dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=False, out_hours=False,
-                                                        out_days=True, out_weeks=False)
-                dl_add_info = f'<span> ({dl_str})</span>'
 
-        budget_approved = ''
-        if self.next_budget_approved is not None:
-            budget_approved = f'<td><b>Budget approved:</b> {app_utils.to_string(round(self.next_budget_approved))} Dash '
-            if self.next_budget_approved_pct is not None:
-                budget_approved += f'({app_utils.to_string(round(self.next_budget_approved_pct, 2))}%)'
-            budget_approved += '</td>'
-
-        budget_requested = ''
-        if self.next_budget_requested is not None:
-            budget_requested = f'<td><b>Budget requested:</b> {app_utils.to_string(round(self.next_budget_requested))} Dash '
-            if self.next_budget_requested_pct is not None:
-                budget_requested += f'({app_utils.to_string(round(self.next_budget_requested_pct, 2))}%)'
-            budget_requested += '</td>'
-        bra = ''
-        if budget_approved and budget_requested:
-            bra = '<tr>' + budget_approved + budget_requested + '</tr>'
-
-        budget_approved_user_yes = ''
-        if self.votes_loaded:
-            if self.next_budget_approved_by_user_yes_votes is not None:
-                budget_approved_user_yes = \
-                    f'<tr><td colspan="2"><b>Budget approved by your YES votes:</b> ' \
-                    f'{app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes))} Dash '
-                if self.next_budget_amount:
-                    budget_approved_user_yes += \
-                        f'({app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_amount, 2))}% of the available budget'
-                    if self.next_budget_approved:
-                        budget_approved_user_yes += f', {app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_approved, 2))}% of the approved budget'
-                    budget_approved_user_yes += ')'
-                budget_approved_user_yes += '</td></tr>'
-
-        message = '<html><head></head><style>td{padding-right:10px;white-space:nowrap;}</style><body>' \
-                  f'<table style="margin-left:6px">' \
-                  f'<tr><td><b>Next superblock date:</b> {app_utils.to_string(next_sb_dt)}</td>' \
-                  f'<td><b>Voting deadline:</b> {app_utils.to_string(voting_deadline_dt)}{dl_add_info}</td></tr>' \
-                  f'{bra}<tr><td><b>Budget available:</b> {app_utils.to_string(round(self.next_budget_amount))} Dash</td>' \
-                  f'<td><b>Budget left:</b> {app_utils.to_string(round(self.next_budget_left))} Dash</td></tr>' \
-                  f'{budget_approved_user_yes}</table></body></html>'
-
-        if not self.finishing:
-            if threading.current_thread() != threading.main_thread():
-                WndUtils.call_in_main_thread(disp, message)
+        if self.next_superblock_time and self.next_voting_deadline:
+            next_sb_dt = datetime.datetime.fromtimestamp(self.next_superblock_time)
+            voting_deadline_dt = datetime.datetime.fromtimestamp(self.next_voting_deadline)
+            if self.voting_deadline_passed:
+                dl_add_info = '<span style="color:red"> (passed)</span>'
             else:
-                disp(message)
+                dl_add_info = ''
+                dl_diff = self.next_voting_deadline - time.time()
+                if dl_diff > 0:
+                    if dl_diff < 3600:
+                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=True, out_hours=False,
+                                                            out_days=False, out_weeks=False)
+                    elif dl_diff < 3600 * 3:
+                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=True, out_hours=True,
+                                                            out_days=False, out_weeks=False)
+                    elif dl_diff < 3600 * 24:
+                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=False, out_hours=True,
+                                                            out_days=False, out_weeks=False)
+                    elif dl_diff < 3600 * 24 * 3:
+                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=False, out_hours=True,
+                                                            out_days=True, out_weeks=False)
+                    else:
+                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=False, out_hours=False,
+                                                            out_days=True, out_weeks=False)
+                    dl_add_info = f'<span> ({dl_str})</span>'
+
+            budget_approved = ''
+            if self.next_budget_approved is not None:
+                budget_approved = f'<td><b>Budget approved:</b> {app_utils.to_string(round(self.next_budget_approved))} Dash '
+                if self.next_budget_approved_pct is not None:
+                    budget_approved += f'({app_utils.to_string(round(self.next_budget_approved_pct, 2))}%)'
+                budget_approved += '</td>'
+
+            budget_requested = ''
+            if self.next_budget_requested is not None:
+                budget_requested = f'<td><b>Budget requested:</b> {app_utils.to_string(round(self.next_budget_requested))} Dash '
+                if self.next_budget_requested_pct is not None:
+                    budget_requested += f'({app_utils.to_string(round(self.next_budget_requested_pct, 2))}%)'
+                budget_requested += '</td>'
+            bra = ''
+            if budget_approved and budget_requested:
+                bra = '<tr>' + budget_approved + budget_requested + '</tr>'
+
+            budget_approved_user_yes = ''
+            if self.votes_loaded:
+                if self.next_budget_approved_by_user_yes_votes is not None:
+                    budget_approved_user_yes = \
+                        f'<tr><td colspan="2"><b>Budget approved by your YES votes:</b> ' \
+                        f'{app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes))} Dash '
+                    if self.next_budget_amount:
+                        budget_approved_user_yes += \
+                            f'({app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_amount, 2))}% of the available budget'
+                        if self.next_budget_approved:
+                            budget_approved_user_yes += f', {app_utils.to_string(round(self.next_budget_approved_by_user_yes_votes * 100 / self.next_budget_approved, 2))}% of the approved budget'
+                        budget_approved_user_yes += ')'
+                    budget_approved_user_yes += '</td></tr>'
+
+            message = '<html><head></head><style>td{padding-right:10px;white-space:nowrap;}</style><body>' \
+                      f'<table style="margin-left:6px">' \
+                      f'<tr><td><b>Next superblock date:</b> {app_utils.to_string(next_sb_dt)}</td>' \
+                      f'<td><b>Voting deadline:</b> {app_utils.to_string(voting_deadline_dt)}{dl_add_info}</td></tr>' \
+                      f'{bra}<tr><td><b>Budget available:</b> {app_utils.to_string(round(self.next_budget_amount))} Dash</td>' \
+                      f'<td><b>Budget left:</b> {app_utils.to_string(round(self.next_budget_left))} Dash</td></tr>' \
+                      f'{budget_approved_user_yes}</table></body></html>'
+
+            if not self.finishing:
+                if threading.current_thread() != threading.main_thread():
+                    WndUtils.call_in_main_thread(disp, message)
+                else:
+                    disp(message)
+        else:
+            logging.error('Either next_superblock_time or next_voting_deadline is empty. Cannot show budget summary.')
 
     def read_proposals_from_network(self):
         """ Reads proposals from the Dash network. """
@@ -884,6 +888,11 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                 try:
                     prop_raw = proposals_new[pro_key]
 
+                    if not isinstance(prop_raw, dict):
+                        log.error(f'Data fetched from network for proposal {pro_key} is of type '
+                                  f'{type(prop_raw).__name__} instead of type dict.')
+                        continue
+
                     prop_dstr = prop_raw.get("DataString")
                     prop_data_json = json.loads(prop_dstr)
                     prop_data = find_prop_data(prop_data_json)
@@ -910,7 +919,8 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     prop.set_value('no_count', int(prop_raw['NoCount']))
                     prop.set_value('abstain_count', int(prop_raw['AbstainCount']))
                     prop.set_value('creation_time', datetime.datetime.fromtimestamp(int(prop_raw["CreationTime"])))
-                    prop.set_value('url', prop_data['url'])
+                    if is_new or not prop.get_value('url'):
+                        prop.set_value('url', prop_data['url'])
                     prop.set_value('payment_address', prop_data["payment_address"])
                     prop.set_value('type', prop_data['type'])
                     prop.set_value('hash', hash)
@@ -1293,7 +1303,9 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                                 self.next_superblock_time, self.users_masternodes,
                                                 self.get_governance_info,
                                                 self.find_superblocks_for_timestamp)
-                                prop.set_value('name', row[0])
+                                prop_url = row[9]
+                                prop_name = row[0]
+                                prop.set_value('name', prop_name)
                                 prop.set_value('payment_start', datetime.datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S'))
                                 prop.set_value('payment_end',  datetime.datetime.strptime(row[2], '%Y-%m-%d %H:%M:%S'))
                                 prop.set_value('payment_amount', row[3])
@@ -1302,7 +1314,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                 prop.set_value('no_count', row[6])
                                 prop.set_value('abstain_count', row[7])
                                 prop.set_value('creation_time', datetime.datetime.strptime(row[8], '%Y-%m-%d %H:%M:%S'))
-                                prop.set_value('url', row[9])
+                                prop.set_value('url', prop_url)
                                 prop.set_value('payment_address', row[10])
                                 prop.set_value('type', row[11])
                                 prop.set_value('hash', row[12])
@@ -1321,6 +1333,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                 prop.ext_attributes_loaded = True if row[28] else False
 
                                 ext_attributes_load_time = 0 if not row[29] else row[29]
+                                dc_url_assumed = 'https://www.dashcentral.org/p/' + prop_name
                                 if prop.ext_attributes_loaded:
                                     if not row[26] and not row[27] and time.time() - ext_attributes_load_time > 86400:
                                         # reload external attributes is the 'owner' and 'title' are empty
@@ -1330,6 +1343,12 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                         # reload external attributes of the active proposals every x days in case
                                         # the proposal title changed
                                         prop.ext_attributes_loaded = False
+                                    elif re.match(r'.*dashcentral\.org', prop_url.lower()) and \
+                                        prop_url.lower() != dc_url_assumed.lower():
+                                        # possibly invalid DashCentral URL entered by the proposal owner; refetch it
+                                        # from the DashCentral API, but not too often
+                                        if time.time() - ext_attributes_load_time > 86400:
+                                            prop.ext_attributes_loaded = False
 
                                 prop.apply_values(self.masternodes, self.last_superblock_time,
                                                   self.next_superblock_time)
@@ -1437,8 +1456,8 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         url_err_retries = 2
 
         try:
-            url = self.app_config.dash_central_proposal_api
-            if url:
+            dc_api_url = self.app_config.dash_central_proposal_api
+            if dc_api_url:
                 exceptions_occurred = False
                 for idx, prop in enumerate(proposals):
                     if self.finishing:
@@ -1450,12 +1469,12 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     try:
                         prop.marker = False
                         hash = prop.get_value('hash')
-                        cur_url = url.replace('%HASH%', hash)
+                        prop_api_url = dc_api_url.replace('%HASH%', hash)
                         network_tm_begin = time.time()
                         contents = None
                         for url_try in range(0, url_err_retries+1):
                             try:
-                                response = urllib.request.urlopen(cur_url, context=ssl._create_unverified_context())
+                                response = urllib.request.urlopen(prop_api_url, context=ssl._create_unverified_context())
                                 contents = response.read()
                                 break
                             except URLError:
@@ -1477,6 +1496,17 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                             title = p.get('title')
                             if title:
                                 prop.set_value('title', title)
+
+                            dw_url = p.get('dw_url')
+                            cur_prop_url = prop.get_value('url')
+                            # dc_url_assumed = 'https://www.dashcentral.org/p/' +
+                            if re.match(r'.*dashcentral\.org', cur_prop_url.lower()) and dw_url and \
+                                    cur_prop_url != dw_url:
+                                n = prop.get_value('name')
+                                log.info(f'Fixing the possibly broken url related to DashCentral for the proposal '
+                                         f'"{n}" (hash: {hash})')
+                                prop.set_value('url', dw_url)
+
                         else:
                             err = contents.get('error_type')
                             if err is not None:
@@ -1505,9 +1535,9 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                 if prop.modified:
                                     cur.execute(
                                         'UPDATE PROPOSALS set owner=?, title=?, ext_attributes_loaded=1, '
-                                        'ext_attributes_load_time=? where id=?',
+                                        'ext_attributes_load_time=?, url=? where id=?',
                                         (prop.get_value('owner'), prop.get_value('title'), int(time.time()),
-                                         prop.db_id))
+                                         prop.get_value('url'), prop.db_id))
                                     modified_ext_attributes = True
                                 elif not prop.ext_attributes_loaded:
                                     # ext attributes loaded but empty; set ext_attributes_loaded to 1 to avoid reading
@@ -2005,7 +2035,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                 url = self.current_proposal.get_value('url')
                 status = str(self.current_proposal.voting_status)
 
-                if not re.match('.*dashcentral\.org', url.lower()):
+                if not re.match(r'.*dashcentral\.org', url.lower()):
                     dc_url = 'https://www.dashcentral.org/p/' + prop.get_value('name')
                     dc_entry = f'<tr class="main-row"><td class="first-col-label">DC URL:</td><td class="padding">' \
                                f'<a href="{dc_url}">{dc_url}</a></td></tr>'
