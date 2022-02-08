@@ -1113,7 +1113,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
             self.last_superblock = self.governanceinfo.get('lastsuperblock')
             self.next_superblock = self.governanceinfo.get('nextsuperblock')
-            sb_cycle = round(self.governanceinfo.get('superblockcycle') / 10)
+            sb_cycle = round(self.superblock_cycle_blocks / 10)
             self.next_budget_amount = float(self.dashd_intf.getsuperblockbudget(self.next_superblock))
 
             # superblocks occur every 16616 blocks (approximately 28.8 days)
