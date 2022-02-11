@@ -777,13 +777,11 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
                 if ssh.connect():
                     dashd_conf = ssh.find_dashd_config()
                     self.disable_cfg_update = True
-                    if isinstance(dashd_conf, tuple) and len(dashd_conf) >= 3:
+                    if isinstance(dashd_conf, tuple) and len(dashd_conf) >= 2:
                         if not dashd_conf[0]:
-                            self.info_msg('Remore Dash daemon seems to be shut down')
-                        elif not dashd_conf[1]:
                             self.info_msg('Could not find remote dashd.conf file')
                         else:
-                            file = dashd_conf[2]
+                            file = dashd_conf[1]
                             rpcuser = file.get('rpcuser', '')
                             rpcpassword = file.get('rpcpassword', '')
                             rpcport = file.get('rpcport', '9998')

@@ -310,60 +310,21 @@ class DashdSSH(object):
         :return: tuple (dashd_running, dashd_config_found, dashd config file contents as dict)
                 or error string in error occurred.
         """
-        dashd_running = False
-        dashd_config_found = False
+        config = {}
         if not self.ssh:
             raise Exception('SSH session not ready')
         try:
-            # find dashd process id if running
-            try:
-                pids = self.remote_command('ps -C "dashd" -o pid')
-            except UnknownError:
-                raise Exception('is dashd running on the remote machine?')
-            pid = None
-            if isinstance(pids, list):
-                pids = [pid.strip() for pid in pids]
-            if len(pids) >= 2 and pids[0] == 'PID' and re.match('\d+', pids[1]):
-                pid = pids[1]
-            elif len(pids) >= 1 and re.match('\d+', pids[0]):
-                pid = pids[1]
-            config = {}
-            if pid:
-                dashd_running = True
-                # using dashd pid find its executable path and then .dashcore directory and finally dash.conf file
-                executables = self.remote_command('ls -l /proc/' + str(pid) + '/exe')
-                if executables and len(executables) >= 1:
-                    elems = executables[0].split('->')
-                    if len(elems) == 2:
-                        executable = elems[1].strip()
-                        dashd_dir = os.path.dirname(executable)
-                        dash_conf_file = dashd_dir + '/.dashcore/dash.conf'
-                        conf_lines = []
-                        try:
-                            conf_lines = self.remote_command('cat ' + dash_conf_file)
-                        except Exception as e:
-                            # probably error no such file or directory
-                            # try to read dashd's cwd + cmdline
-                            cwd_lines = self.remote_command('ls -l /proc/' + str(pid) + '/cwd')
-                            if cwd_lines:
-                                elems = cwd_lines[0].split('->')
-                                if len(elems) >= 2:
-                                    cwd = elems[1]
-                                    dash_conf_file = cwd + '/.dashcore/dash.conf'
-                                    try:
-                                        conf_lines = self.remote_command('cat ' + dash_conf_file)
-                                    except Exception as e:
-                                        # second method did not suceed, so assume, that conf file is located
-                                        # i /home/<username>/.dashcore directory
-                                        dash_conf_file = '/home/' + self.username + '/.dashcore/dash.conf'
-                                        conf_lines = self.remote_command('cat ' + dash_conf_file)
+            # check if dash.conf exists under the default location
+            dash_conf_path = '~/.dashcore/dash.conf'
+            self.remote_command('ls ' + dash_conf_path)
 
-                        for line in conf_lines:
-                            elems = [e.strip() for e in line.split('=')]
-                            if len(elems) == 2:
-                                config[elems[0]] = elems[1]
-                        dashd_config_found = True
-            return dashd_running, dashd_config_found, config
+            conf_lines = self.remote_command('cat ' + dash_conf_path)
+            for line in conf_lines:
+                elems = [e.strip() for e in line.split('=')]
+                if len(elems) == 2:
+                    config[elems[0]] = elems[1]
+            dashd_config_found = True
+            return dashd_config_found, config
         except Exception as e:
             return str(e)
 

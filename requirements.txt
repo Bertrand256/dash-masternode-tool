@@ -8,7 +8,7 @@ PyQtChart==5.15.3
 pyinstaller==4.4; sys_platform == 'linux'
 pyinstaller>=4.3; sys_platform == 'darwin'
 pyinstaller>=4.3; sys_platform == 'win32'
-paramiko~=2.7.2
+paramiko~=2.9.2
 requests
 mnemonic~=0.19
 simplejson~=3.17.2
