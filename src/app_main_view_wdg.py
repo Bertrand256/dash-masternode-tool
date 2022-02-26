@@ -256,7 +256,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         self.refresh_masternodes_view()
         self.update_mn_preview()
         self.masternode_data_changed.emit()
-        self.wdg_masternode.masternode_data_to_ui(False)
+        self.wdg_masternode.set_masternode(self.cur_masternode)
 
     def update_ui(self):
         if self.current_view.value != self.stackedWidget.currentIndex():
