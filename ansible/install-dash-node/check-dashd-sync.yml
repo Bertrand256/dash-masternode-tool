@@ -1,0 +1,19 @@
+- name: Installation of the Dash node
+  hosts: dashnode
+  become: True
+  vars_files:
+    install-dash-node-vars
+
+  tasks:
+    - name: Check if dashd synchronized
+      shell:
+        cmd: ~/.dashcore/dash-cli mnsync status
+      become_user: "{{ dashuser }}"
+      register: results
+      until: results.stdout.find("MASTERNODE_SYNC_FINISHED") != -1
+      delay: 5
+      retries: 500
+
+    - name: Display success message
+      debug:
+        msg: dashd seems to be synchronized

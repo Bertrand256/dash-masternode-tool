@@ -1,0 +1,8 @@
+dashuser: dash
+dashuser_password: ""
+dashnode_testnet: false
+ssh_additional_pubkey: ""
+ssh_disable_password_login: true
+ssh_disable_root_login: true
+ssh_add_local_id_rsa_pubkey: true
+swap_size: "4G"
