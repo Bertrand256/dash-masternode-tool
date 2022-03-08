@@ -21,7 +21,7 @@ All collateral UTXOs (worth 1000 Dash) are initially hidden to avoid unintention
 To send some funds from your wallet, select the UTXOs (coins) to be included in the transaction:
 ![Wallet2](img/wallet-2.png)
 
-It is worth noting that you do not have to send the entire amount which is the sum of all the UTXOs you have selected. You can reduce this value to the desired level by editing it manually, wich will cause the remainder to be returned to one of the so-called change addresses from your hardware wallet:
+It is worth noting that you do not have to send the entire amount which is the sum of all the UTXOs you have selected. You can reduce this value to the desired level by editing it manually, wich will cause the remainder to be returned to one of the so-called change addresses from your hardware wallet:  
 ![Wallet2](img/wallet-3.png)
 
 Once you have entered your target addresses and amounts, by clicking **Prepare Transaction** you can go to the next step, which will be signing transaction with your hardware.
@@ -30,7 +30,7 @@ Once you have entered your target addresses and amounts, by clicking **Prepare T
 > 
 > **Note 2**. Signing a transaction with hardware wallet does not result in the transaction being automatically broadcasted to the Dash network. Before this happens, DMT will show you a confirmation window where you will have the option to cancel the process.
 
-After signing the transaction with your hardware wallet, the application will display a summary and will ask you for confirmation for broadcasting the signed transaction to the Dash network:
+After signing the transaction with your hardware wallet, the application will display a summary and will ask you for confirmation for broadcasting the signed transaction to the Dash network:  
 ![Broadcast signed transaction confirmation](img/wallet-summary.png)
 
 

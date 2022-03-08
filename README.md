@@ -66,7 +66,7 @@ For masternode registration it is necessary to prepare a so-called collateral tr
 Masternode registration is the act of broadcasting to the Dash network that we have a node configured to act as a Dash masternode.
 
 ### Updating the masternode payout address
-This topic is covered [here](doc/other-features.md#signing-messages-with-hardware-wallets).
+This topic is covered [here](doc/other-features.md#updating-the-masternode-payout-address).
 
 ### Updating the masternode operator key
 This topic is covered [here](doc/other-features.md#updating-the-masternode-operator-key).
