@@ -134,7 +134,7 @@ Replace capitalized strings with the appropriate values:
 * **HOST_IP**: IP address of your VPS server on which you install Dash node
 * **DASHUSER_PASS**: The password to be set for the newly created linux user who will own the Dash software (above referred to as dashuser).
 
-The script should complete in up to a few minutes with the following message:  
+At the beginning, the **SSH password** prompt will be displayed, to which you should reply by entering the password for the root user of your VPS. After that, the server configuration process will begin, the individual steps of which can be viewed on the terminal screen. It will take up to a dozen minutes and when it is finished you will see something like this:  
 ![Ansible results](img/ansible-dash-node-installation-result.png)
 
 The outcome should be that the server has been properly configured to work as a Dash node and finally the *dashd* program has been launched, starting its synchronization with the Dash blockchain. This process will probably take up to several hours, and you can check its status by executing the `dash-cli mnsync status` command periodically.
