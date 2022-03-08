@@ -18,7 +18,7 @@ All collateral UTXOs (worth 1000 Dash) are initially hidden to avoid unintention
 > **Note**. Rows with a red font in the *Confirmations* column and a gray background are related to so-called *coinbase* transactions, that don't have the required number of confirmations to spend them. You should restrain from sending them and instead wait until they have received at least 100 confirmations. 
 
 
-To send some funds from your wallet, select the UTXOs (coins) to be included in the transaction:
+To send some funds from your wallet, select the UTXOs (coins) to be included in the transaction:  
 ![Wallet2](img/wallet-2.png)
 
 It is worth noting that you do not have to send the entire amount which is the sum of all the UTXOs you have selected. You can reduce this value to the desired level by editing it manually, wich will cause the remainder to be returned to one of the so-called change addresses from your hardware wallet:  
