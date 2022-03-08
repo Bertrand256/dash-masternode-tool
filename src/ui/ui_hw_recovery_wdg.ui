@@ -561,7 +561,7 @@
          <item row="0" column="0">
           <widget class="QLabel" name="lblDeviceWordsInputType">
            <property name="text">
-            <string>Tnput type on device</string>
+            <string>Input type on device</string>
            </property>
            <property name="alignment">
             <set>Qt::AlignCenter</set>

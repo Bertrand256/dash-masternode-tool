@@ -382,10 +382,12 @@ class WdgRecoverHw(QWidget, QDetectThemeChange, Ui_WdgRecoverHw, ActionPageBase)
                             self.lblOptionsPageMessage.hide()
                     elif self.cur_hw_device.hw_type == HWType.ledger_nano:
                         msg_text = '<span><b>Important! Start your Ledger Nano S wallet in recovery mode:</b></span>' \
-                                   '<ol><li>Clear the device by selecting the \'Settings->Device->Reset all\' menu ' \
+                                   '<ol><li>Clear the device by selecting the \'Settings->Device->Reset all\' (Nano ' \
+                                   'S) or \'Security->Reset device\' (Nano X) menu ' \
                                    'item.</li>' \
                                    '<li>Power the device off.</li>' \
-                                   '<li>Power the device on while holding down the right-hand physical button.</li>' \
+                                   '<li>Power the device on while holding down the right-hand (Nano S) or left-hand ' \
+                                   '(Nano X) physical button.</li>' \
                                    '</ol>'
                         self.lblOptionsPageMessage.show()
                         self.lblOptionsPageMessage.setText(msg_text)

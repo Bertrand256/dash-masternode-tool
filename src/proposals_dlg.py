@@ -635,7 +635,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
             QDialog.keyPressEvent(self, event)
 
     def special_action_reload_external_attributes(self):
-        """ Action invoked by the shortcut: CTRL/CMD-ALT-E: reload proposal external attributes. """
+        """ Action invoked by the shortcut: Ctrl/Cmd-ALT-E: reload proposal external attributes. """
         if self.btnProposalsRefresh.isEnabled():
             if self.query_dlg('Do you really want to reload proposal external attributes?',
                               buttons=QMessageBox.Yes | QMessageBox.Cancel,

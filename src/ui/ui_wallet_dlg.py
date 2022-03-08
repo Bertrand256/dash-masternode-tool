@@ -313,7 +313,7 @@ class Ui_WalletDlg(object):
         self.btnCheckAll.setText(_translate("WalletDlg", "Select All"))
         self.btnUncheckAll.setText(_translate("WalletDlg", "Deselect All"))
         self.btnUtxoViewColumns.setText(_translate("WalletDlg", "Columns..."))
-        self.chbHideCollateralTx.setText(_translate("WalletDlg", "Hide collateral utxos"))
+        self.chbHideCollateralTx.setText(_translate("WalletDlg", "Hide collateral UTXOs"))
         self.btnSend.setText(_translate("WalletDlg", "Prepare Transaction"))
         self.detailsTab.setTabText(self.detailsTab.indexOf(self.tabSend), _translate("WalletDlg", "Send"))
         self.btnTxesViewColumns.setText(_translate("WalletDlg", "Columns..."))

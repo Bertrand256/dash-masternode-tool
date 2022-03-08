@@ -301,7 +301,7 @@ class Ui_WdgRecoverHw(object):
         self.edtPassphrase.setToolTip(_translate("WdgRecoverHw", "<html><head/><body><p>This passphrase (if used) will be saved in your Ledger Nano S device and will be secured with the secondary PIN .</p></body></html>"))
         self.edtPassphrase.setPlaceholderText(_translate("WdgRecoverHw", "Passphrase"))
         self.btnShowPassphrase.setToolTip(_translate("WdgRecoverHw", "Show passphrase"))
-        self.lblDeviceWordsInputType.setText(_translate("WdgRecoverHw", "Tnput type on device"))
+        self.lblDeviceWordsInputType.setText(_translate("WdgRecoverHw", "Input type on device"))
         self.rbScrambledWords.setText(_translate("WdgRecoverHw", "Scrambled words"))
         self.rbWordsMatrix.setText(_translate("WdgRecoverHw", "Word matrix"))
         self.lblOptionsEntropy.setText(_translate("WdgRecoverHw", "Entropy:"))

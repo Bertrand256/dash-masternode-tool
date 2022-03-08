@@ -135,7 +135,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         WndUtils.set_icon(self, self.btnManualProtxSubmitCopy, 'content-copy@16px.png')
         WndUtils.set_icon(self, self.btnManualTxHashPaste, 'content-paste@16px.png')
         WndUtils.set_icon(self, self.btnSummaryDMNOperatorKeyCopy, 'content-copy@16px.png')
-        doc_url = app_defs.get_doc_url('deterministic-mn-migration.md')
+        doc_url = app_defs.get_doc_url('README.md#setting-up-a-masternode', use_doc_subdir=False)
         if doc_url:
             self.lblDocumentation.setText(f'<a href="{doc_url}">Documentation</a>')
         self.update_styles()
@@ -611,7 +611,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         nt = self.get_dash_node_type()
         msg = ''
         if nt is None:
-            msg = 'DIP-3 masternode registration involves sending a special transaction via the v0.13 Dash node ' \
+            msg = 'DIP-3 masternode registration involves sending a special transaction via the Dash node ' \
                   '(eg Dash-Qt). <b>Note, that this requires incurring a certain transaction fee, as with any ' \
                   'other ("normal") transaction.</b>'
         elif nt == NODE_TYPE_PUBLIC_RPC:
@@ -623,7 +623,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                   'using your own Dash wallet.'
 
         elif nt == NODE_TYPE_OWN:
-            msg = 'A Dash Core wallet (v0.13) with sufficient funds to cover transaction fees is required to ' \
+            msg = 'A Dash Core wallet with sufficient funds to cover transaction fees is required to ' \
                   'complete the next steps.'
         self.lblDashNodeTypeMessage.setText(msg)
 

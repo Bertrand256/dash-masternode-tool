@@ -59,6 +59,12 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         ui_upd_mn_registrar_dlg.Ui_UpdMnRegistrarDlg.setupUi(self, self)
         self.btnClose.hide()
         self.edtManualCommands.setStyle(ProxyStyleNoFocusRect())
+        if self.show_upd_payout:
+            self.setWindowTitle("Update payout address")
+        elif self.show_upd_voting:
+            self.setWindowTitle("Update voting key")
+        elif self.show_upd_operator:
+            self.setWindowTitle("Update operator key")
         self.restore_cache_settings()
         self.update_ctrls_state()
         self.minimize_dialog_height()
@@ -227,8 +233,8 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                                 'Update Transaction&gt;</span> you agree to send the owner private key to '
                                 'the remote RPC node which is necessary to automatically execute the required command ('
                                 'read notes <a href="https://github.com/Bertrand256/dash-masternode-tool/blob/'
-                                'master/doc/deterministic-mn-migration.md#automatic-method-using-public-rpc-'
-                                'nodes-m1">here</a>). If you do not agree, follow the manual steps.</span>')
+                                'master/doc/registering-masternode.md#scenario-1-automatic-method-using-public-rpc-'
+                                'nodes">here</a>). If you do not agree, follow the manual steps.</span>')
         self.minimize_dialog_height()
 
     @pyqtSlot(str)
@@ -357,9 +363,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                 msg = "<ol>" \
                       "<li>Start a Dash Core wallet with sufficient funds to cover a transaction fee.</li>"
                 msg += "<li>Import the owner private key into the Dash Core wallet if you haven't done this " \
-                       "before (<a href=\"https://github.com/Bertrand256/dash-masternode-tool/blob/master/doc/" \
-                       "deterministic-mn-migration.md#can-i-modify-the-payout-address-without-resetting-the-" \
-                       "place-in-the-payment-queue\">details</a>).</li>"
+                       "before.</li>"
                 msg += "<li>Execute the following command in the Dash Core debug console:<br><br>"
                 msg += "  <code>" + cmd + '</code></li><br>'
                 msg += f'Replace <span style="color:{green_color}">feeSourceAddress</span> with the address being the ' \

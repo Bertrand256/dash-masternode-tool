@@ -436,7 +436,7 @@
                        <string notr="true"/>
                       </property>
                       <property name="text">
-                       <string>Hide collateral utxos</string>
+                       <string>Hide collateral UTXOs</string>
                       </property>
                      </widget>
                     </item>
