@@ -1,7 +1,7 @@
-#Installing and configuring a Dash node with manual steps
+# Installing and configuring a Dash node with manual steps
 > The main purpose of this tutorial is educational, showing you all the steps you need to take manually to install the server part of the masternode service. Members of the Dash community have also created other tutorials that look at the problem from a slightly different perspective, allowing for more automation, for example: https://www.dash.org/forum/threads/system-wide-masternode-setup-with-systemd-auto-re-start-rfc.39460/.
 
-##Scope of work
+## Scope of work
 The goal is to run the official Dash daemon (`dashd`) software on a server (or a VPS service) whose IP address is visible on the Internet.
 
 The minimum hardware requirements are: **2 GB RAM + 2 GB swap** and **60 GB of disk** space, with some provision to prevent running out of space which would result in the service stopping and a masternode falling out of the payment queue.
@@ -10,7 +10,7 @@ The most optimal solution these days is not to use a physical server, but instea
 
 Before you complete the following steps, you will need to choose and purchase a VPS service, as described in: [Choosing a VPS service](selecting-a-vps-service.md).
 
-##Installation steps
+## Installation steps
 After several minutes (up to an hour) after purchasing the VPS service you should receive an email from the provider with information about the IP address under which the service is available and the initial password set for the root user. The first steps to take are about securing the service. If you don't, your service may be taken over in such a way that you unknowingly make it available for botnet activities such as conducting DDOS attacks.
 
 You will log into the VPS service from an **SSH terminal** running on your local computer. If your operating system is Windows, the best choice is to install **Putty** (https://www.ssh.com/academy/ssh/putty/download). If you use macOS or Linux, you don't need to install anything, because `ssh` program is installed by default.
@@ -24,7 +24,7 @@ You will log into the VPS service from an **SSH terminal** running on your local
 > - from the menu that will appear click on the link "Launch LISH Console"
 > - your VPS terminal will open in the new window
 
-###1. Update the operating system and install the software required
+### 1. Update the operating system and install the software required
 * Log in to your VPS service using an SSH terminal (Putty on Windows) with the IP address and root password you received from your provider
 * Change the password for the root user:
   ```
@@ -46,7 +46,7 @@ You will log into the VPS service from an **SSH terminal** running on your local
   ```
   > Note: after rebooting the server you need to log in again with an SSH terminal.
 
-###2. Creating a new Linux account that owns the Dash software
+### 2. Creating a new Linux account that owns the Dash software
 * Create a new linux user which will run the dash daemon. You will also use this account from now on to log in to your VPS via SSH. The name can be anything, so let's assume it is *dash*:  
   ```
   adduser dash
@@ -80,7 +80,7 @@ You will log into the VPS service from an **SSH terminal** running on your local
   exit
   ```
 
-###3. Generating private-public key pairs (done on your client computer)
+### 3. Generating private-public key pairs (done on your client computer)
 The SSH protocol allows you to authenticate using a username and password, and that's what you'll do initially, right after setting up the VPS service. However, password based authenticated method is not considered secure (it allows relatively easy brute-force password cracking), so one of the first things you should do on the server is to change the authentication method to one that uses a public-private key pair.
 
 > **Important:** This step should be done on your computer from which you connect via SSH to the VPS. It only needs to be done once, so if you already have an SSH key pair generated, you should skip the step.
@@ -98,7 +98,7 @@ The SSH protocol allows you to authenticate using a username and password, and t
   cat ~/.ssh/id_rsa.pub
   ```
  
-###4. Copying your SSH public key to the server
+### 4. Copying your SSH public key to the server
 * Log in to your VPS service with an SSH terminal
 * Create the `.ssh` directory:
   ```
@@ -115,7 +115,7 @@ The SSH protocol allows you to authenticate using a username and password, and t
 * Save your changes (Ctrl+O then ENTER) and close the editor (Ctrl+X)
 * Test if authentication with SSH public key works by logging off of SSH client and logging on again with the `dash` user. You should now be able to log in without a password or with the password you set up for your SSH private key (which I recommend).
 
-###5. Secure your SSH server by disabling root logins and password authentication
+### 5. Secure your SSH server by disabling root logins and password authentication
 * Open the SSH server configuracion file in a text editor:
   ```
   sudo nano /etc/ssh/sshd_config
@@ -135,7 +135,7 @@ The SSH protocol allows you to authenticate using a username and password, and t
   ```
 * Test if you can log in with SSH session after the configuration changes by logging of and logging in again using the `dash` account
 
-###6. Configure the VPS firewall
+### 6. Configure the VPS firewall
 To ensure your server security, you need to restrict incoming network traffic to only those ports that are necessary for its correct operation i.e.: 9999 and 22 TCP.
 
 Login in to `dash` with your SSH terminal and execute:
@@ -150,7 +150,7 @@ Login in to `dash` with your SSH terminal and execute:
   ````
 The following warning will be shown when the last command is run: `Command may disrupt existing ssh connections. Proceed with operation (y|n)?` to chich you should reply by typing: y.
 
-###7. Configure swap space
+### 7. Configure swap space
 From your SSH terminal execute the following commands:
   ```
   sudo fallocate -l 4G /var/swapfile
@@ -174,7 +174,7 @@ Configure a new swap file to be automatically enabled after reboot
   sudo reboot
   ```
 
-###8. Import GPG public keys, so you can verify the authenticity of the Dash software you will download:
+### 8. Import GPG public keys, so you can verify the authenticity of the Dash software you will download:
   
   ```
   curl https://keybase.io/codablock/pgp_keys.asc | gpg --import
@@ -183,7 +183,7 @@ Configure a new swap file to be automatically enabled after reboot
   
   Source: [Veryfing Dash Core](https://docs.dash.org/en/stable/wallets/dashcore/installation-linux.html?#verifying-dash-core)
 
-###9. Download and configure Dash software
+### 9. Download and configure Dash software
 * Log in to your VPS using an SSH terminal with the `dash` linux account
 * Download and configure the Dash software:
   ```
@@ -223,7 +223,7 @@ If it doesn't happen, open the following address in your web browser: https://gi
   ```
   You should now have two files in the current directory: `dashd` and `dash-cli` and that's all you need to run a masternode.
 
-###10. Add the path to the Dash binaries in the .profile file
+### 10. Add the path to the Dash binaries in the .profile file
 * Open the `~/.profile` in a text editor:
   ```
   nano ~/.profile
@@ -237,7 +237,7 @@ If it doesn't happen, open the following address in your web browser: https://gi
   ```
   source ~/.profile
   ```
-###11. Create a configuration file with the initial settings for the Dash daemon
+### 11. Create a configuration file with the initial settings for the Dash daemon
 * Open the `~/.dashcore/dash.conf` file in a text editor:
   ```
   nano ~/.dashcore/dash.conf
@@ -259,7 +259,7 @@ If it doesn't happen, open the following address in your web browser: https://gi
 
   What values you choose for USERNAME_FOR_RPC_INTERFACE and PASSWORD_FOR_RPC_INTERFACE is completely irrelevant.
 
-###12. Installing *sentinel*
+### 12. Installing *sentinel*
 Sentinel is an additional program that must be installed for the masternode to perform all necessary operations. It is a program written in Python and its installation basically consists of downloading the source code from GitHub and preparing the runtime environment.
 
 The next steps will be performed from the SSH terminal after logging in to the dash user.
@@ -294,7 +294,7 @@ The next steps will be performed from the SSH terminal after logging in to the d
 
 * Save your changes (CTRL+O, ENTER) and exit the editor (CTRL+X)
 
-###13. Start the dashd program and wait for the blockchain synchronization to complete
+### 13. Start the dashd program and wait for the blockchain synchronization to complete
 ```
 ~/.dashcore/dashd
 ```
@@ -323,13 +323,13 @@ The whole operation is complete if the *AssetName* field has the value *MASTERNO
 }
 ```
 
-##Troubleshooting
-###Problem 1: `error code: -28` after executing the `dash-cli` command
+## Troubleshooting
+### Problem 1: `error code: -28` after executing the `dash-cli` command
 **Reason**: your *dashd* haven't finished reading all the required local files.
 
 **Resolution**: give the *Dash daemon* a few minutes more time to read all the data it needs and then reissue the command.
 
-###Problem 2: `error: Could not connect to the server 127.0.0.1:9998` after executing `dash-cli`
+### Problem 2: `error: Could not connect to the server 127.0.0.1:9998` after executing `dash-cli`
 **Reason**: it is likely that the *dashd* process has shut down due to some error.
 
 **Resolution**: print the last several dozen lines of the Dash daemon debug file, where you are likely to find details of the problem. To do this, execute the following command `tail -50 ~/.dashcore/debug.log`.
