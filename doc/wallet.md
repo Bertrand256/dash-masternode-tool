@@ -1,4 +1,4 @@
-#Graphical interface to hardware wallets
+# Graphical interface to hardware wallets
 
 DMT allows you to transfer your masternode earnings in a safe way. Unlike the official applications of hardware wallet manufacturers, DMT gives you a 100% control over which *unspent transaction outputs* (UTXO) you want to transfer. This has the same effect as the *Coin control* functionality implemented in the *Dash Core* wallet.
 

@@ -1,1 +1,1 @@
-##This document is now obsolete and has been replaced by another [one](../README.md#setting-up-a-masternode).
+## This document is now obsolete and has been replaced by another [one](../README.md#setting-up-a-masternode).

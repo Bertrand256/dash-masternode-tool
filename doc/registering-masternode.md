@@ -20,7 +20,7 @@ independently of DMT (using the Dash Core wallet), however, the
 inclusion of this function in DMT is aimed at the maximum facilitation
 of this process.
 
-##1. Create a new masternode entry in Dash Masternode Tool
+## 1. Create a new masternode entry in Dash Masternode Tool
 * After starting the *Run Dash Masternode Tool* application, click the **add a new one** link (if your configuration is empty):  
 ![Add new masternode](img/add-new-masternode.png)  
 
@@ -45,7 +45,7 @@ of this process.
  
 * After filling in the data, press the *Apply changes* button.
 
-##2. Start the *Masternode registration wizard* and fill in the initial data
+## 2. Start the *Masternode registration wizard* and fill in the initial data
 * Select the masternode from the list in the main DMT window.
 * Click the **Register Masternode...** menu item under the **MN actions** button.
 * Fill in the required data:  
@@ -58,13 +58,13 @@ of this process.
     * If you employ an external masternode operator who provided you with the operator's **public key**, then click the **use pubkey** link and enter that key into the field on the right.
 * Click the **Continue** button at the bottom right of the wizard.
 
-##3. Masternode registration
+## 3. Masternode registration
 There are three methods of masternode registration using DMT:
 - **Automatic method using "public" RPC nodes**: choose this method if you don't have, or you cannot easily run Dash Core (for example, you don't have disk space for blockchain data) or you feel uncomfortable using a terminal-type user interface. This is the simplest method, so it's deditacted especially for people with less technical experience.
 - **Automatic method using your own RPC node**: choose this method if you have your own Dash Core synchronized with the network and the RPC interface and indexing enabled.
 - **Manual method using own your Dash node**: choose this method if you have your own Dash Core synchronized with the network but without the RPC interface or indexing enabled.
 
-###Scenario 1: Automatic method using "public" RPC nodes
+### Scenario 1: Automatic method using "public" RPC nodes
 The advantage of this method is its simplicity but the disadvantage is the need to send the owner private key to the remote RPC node. This key is necessary to sign the payload data being part of the *ProRegTx* transaction, which is created on the remote node ([details](https://github.com/dashpay/dips/blob/master/dip-0003.md#registering-a-masternode-proregtx)). If this raises your concerns (e.g. you do not trust the RPC node
 operator), choose another method.
 
@@ -73,7 +73,7 @@ operator), choose another method.
 
 >  **Note 2**. What would happen if the operator key fell into the wrong hands? Taking into possession of this key does not allow the theft of the collateral (which is controlled by hardware wallet), but may have some financial aspect. Namely, it allows sending a  [ProUpRegTx](https://github.com/dashpay/dips/blob/master/dip-0003.md#updating-registrar-of-masternode-proupregtx) transaction, which allows to change the payout address. In an extreme case, you may lose your masternode reward, one or a few,  depending on when you would notice the change. Protection against this is quite simple - it is enough to monitor changes of the masternode payout address and owner key using data available on the Dash network. This feature is implemented in DMT under the **Refresh status** button. If there is a change in relation to the data stored in the configuration, a warning will be displayed. If something like this happens, you must immediately generate a new *ProRegTx* transaction with a new set of keys.
 
-####Step 1.1. Select the registration method 
+#### Step 1.1. Select the registration method 
 Select the **Remote Dash RPC Node (automatic method)** option, then click **Continue**.
 
 ![Method](img/registering-masternode-automatic-1.png)
@@ -86,7 +86,7 @@ At this step, the wizard executes two operations on the remote Dash node (**regi
 If the operation completes without an error, the wizard will
 automatically go to the summary page.
 
-####Step 1.3. Summary and final actions
+#### Step 1.3. Summary and final actions
 ![Summary](img/registering-masternode-summary.png)  
 
 The summary page will show all relevant values (e.g. private keys) used
@@ -98,7 +98,7 @@ Note the message at the bottom regarding *masternodeblsprivkey* - we will need t
 
 Click **Close**.
 
-###Scenario 2: Automatic method using your own RPC node
+### Scenario 2: Automatic method using your own RPC node
 This method works identically to the previous one, but utilizes your own
 RPC node to interact with the Dash network. Its advantage is that the
 owner private key (which needs to be sent to the node) is under your
@@ -128,7 +128,7 @@ Follow the steps from scenario
 [Automatic method using "public" RPC nodes](#scenario-1-automatic-method-using-public-rpc-nodes)
 
 
-###Scenario 3: Manual method using own Dash node
+### Scenario 3: Manual method using own Dash node
 The advantage of this method is that no private keys go outside your
 computer and that to perform the steps it's enough to have access to a
 Dash Core wallet, not necessarily with the RPC interface and indexing
@@ -136,12 +136,12 @@ enabled. The disadvantage is the need to manually execute some commands
 from the Dash Core debug console, which may not be very comfortable for
 some people.
 
-####Step 3.1. Install Dash Core and synchronize it with the network
+#### Step 3.1. Install Dash Core and synchronize it with the network
 
-####Step 3.2. Prepare funds to cover transaction fees
+#### Step 3.2. Prepare funds to cover transaction fees
 See: [Prepare funds to cover transaction fees](#step-22-prepare-funds-to-cover-transaction-fees)
 
-####Step 3.3. Select the registration method 
+#### Step 3.3. Select the registration method 
 Assuming that within the [Start the Masternode registration wizard and fill in the initial data](#2-start-the-masternode-registration-wizard-and-fill-in-the-initial-data) section you started the wizard and after filling in the data you went to the next step, choose the option **Your own Dash-Qt wallet (manual method)** and click the **Continue** button.
  
 ![Config - deterministic](img/registering-masternode-manual-reg-method.png)  
@@ -183,29 +183,29 @@ necessary parameters.
 
 Hint: you can use the **Copy** button on the right.
  
-####Step 3.10. Execute the command in the Dash Core debug console
+#### Step 3.10. Execute the command in the Dash Core debug console
   
-####Step 3.11. Copy the protx transaction number resulting from the command
+#### Step 3.11. Copy the protx transaction number resulting from the command
 ![Protx tx hash](img/registering-masternode-manual-f.png)
 
 This string will from now on identify your deterministic masternode.
 
-####Step 3.12. Paste the copied transaction number into field "5" in DMT.
+#### Step 3.12. Paste the copied transaction number into field "5" in DMT.
 ![Protx tx hash](img/registering-masternode-manual-g.png)
 
 Press the **Continue** button.
 
-####Step 3.13. Summary - final actions
+#### Step 3.13. Summary - final actions
 Follow the step: [Step 1.3. Summary and final actions](#step-13-summary-and-final-actions)
 
-##4. Final configuration of the masternode dash daemon
+## 4. Final configuration of the masternode dash daemon
 The approach here depends on the type of operator handling your masternode, that is, if your operator is an external entity that has provided you with an operator key that is a **public key**, then you skip this section because it is up to the operator to perform the operations described here. 
 
 If your operator is an external entity that expects you to give it an operator key of type private key, then you just give it to them and skip the rest.
 
 The following actions only apply if you yourself are the operator of your masternode.
 
-####Step 4.1. Entering the operator key into the *dash.conf* file of your dash node.
+#### Step 4.1. Entering the operator key into the *dash.conf* file of your dash node.
 In the [Summary and final actions](#step-13-summary-and-final-actions) step, DMT presented you with a configuration string containing the operator key to be placed in your masternode's dash node configuration, which is of the form: `masternodeblsprivkey=OPERATOR_PRIVATE_KEY`.
 
 If you have this string copied, you will use it in the next step. If you don't have it, go to the masternode details in the main DMT window, click the button with an eye icon to the right of the *Ooperator private key* field (1), then when the previously hidden key content becomes visible, copy it to the clipboard (2). It will be used in the next step.  
@@ -223,7 +223,7 @@ If you have this string copied, you will use it in the next step. If you don't h
   replacing OPERATOR_PRIVATE_KEY with the operator's private key obtained in the previous step.
 * Save your changes (Ctrl+O, ENTER) and exit the editor (Ctrl+X).
 
-####4.2. Restarting the dash daemon
+#### 4.2. Restarting the dash daemon
 A restart of the Dash daemon is required for the changes to take effect.
 * With your SSH session execute the following command:
   ```
@@ -237,7 +237,7 @@ A restart of the Dash daemon is required for the changes to take effect.
   
 To check the status of a masternode from the point of view of its daemon, run the command: `~/.dashcore/dash-cli masternode status`.
 
-##FAQ / troubleshooting
+## FAQ / troubleshooting
 #### Can I register deterministic masternode more than once for the same collateral transaction?
 Yes, you can do it as many times as you like, but keep in mind the
 following:

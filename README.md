@@ -1,6 +1,6 @@
 # Dash Masternode Tool (DMT)
 
-##Masternodes
+## Masternodes
 
 Dash masternodes are full nodes which are incentivized by receiving a share of the block reward as payment in return 
 for the tasks they perform for the network, of which the most important include participation in *InstantSend* 
@@ -26,7 +26,7 @@ In addition to these features, the application also allows you to perform some a
 
 ![DMT main window](doc/img/dmt-main-window.png)
 
-##Configuration
+## Configuration
 In order to work properly, the application needs to communicate with the Dash network, which is done via so-called Dash RPC nodes. Technically, an RPC node is simply a running Dash Core or dashd program with the RPC API enabled. It does not matter whether it runs locally on the same computer as DMT or on some remote server on the Internet. All that matters is to ensure the network is properly configured, so that the RPC service is accessible from the computer you are running your DMT instance from.
 
 ### Network configuration
@@ -43,44 +43,44 @@ The application currently supports the following command-line parameters:
 * `--config`: a non-standard path to a configuration file. Example:
   `DashMasternodeTool.exe --config=C:\dmt-configs\config1.ini`
 
-##Features
+## Features
 
-###Setting up a masternode
+### Setting up a masternode
 This is the main functionality of the *Dash Masternode Tool* application.
 
-####The steps of the entire process are: 
-#####Step 1. [Selecting a VPS service](doc/selecting-a-vps-service.md)  
+#### The steps of the entire process are: 
+##### Step 1. [Selecting a VPS service](doc/selecting-a-vps-service.md)  
 The basis of a masternode is a Dash daemon running on a server 24/7, having its own IP address reachable from the Internet. To ensure the required availability, the most optimal solution is to use a so-called Virtual Private Server (VPS) rented from a reliable service provider. While you can run the masternode daemon on your own server (even Rapberry Pi) and use your home internet connection to make it public, it's not very reliable in most cases, so in this documentation we will refer to that server simply as a VPS. If in your case, it will actually be a physical server, then all the steps described for installing software on it will still be valid.
 
-#####Step 2. Installing and configuring a Dash node
+##### Step 2. Installing and configuring a Dash node
 After obtaining the appropriate VPS service, it is necessary to install (and properly configure) the software that will make up the Dash node being the basis of the masternode.
 
 In this documentation, we will focus on two scenarios of such installation:  
  * [manual installation of the Dash node](doc/installing-dash-node-manual.md)
  * [automatic installation of the Dash node using Ansible](doc/installing-dash-node-ansible.md)
 
-#####Step 3. [Preparing a *collateral transaction*](doc/preparing-collateral-transaction.md)
+##### Step 3. [Preparing a *collateral transaction*](doc/preparing-collateral-transaction.md)
 For masternode registration it is necessary to prepare a so-called collateral transaction in advance by sending 1000 Dash to one of the addresses from your own hardware wallet.
 
-#####Step 4. [Registering a masternode](doc/registering-masternode.md)
+##### Step 4. [Registering a masternode](doc/registering-masternode.md)
 Masternode registration is the act of broadcasting to the Dash network that we have a node configured to act as a Dash masternode.
 
-###Updating the masternode payout address
+### Updating the masternode payout address
 This topic is covered [here](doc/other-features.md#signing-messages-with-hardware-wallets).
 
-###Updating the masternode operator key
+### Updating the masternode operator key
 This topic is covered [here](doc/other-features.md#updating-the-masternode-operator-key).
 
-###Updating the masternode voting key
+### Updating the masternode voting key
 This topic is covered [here](doc/other-features.md#updating-the-masternode-voting-key).
 
-###Updating the masternode IP, port and operator payout address
+### Updating the masternode IP, port and operator payout address
 This topic is covered [here](doc/other-features.md#updating-the-masternode-ip-port-and-operator-payout-address).
 
-###Revoking masternode 
+### Revoking masternode 
 This topic is covered [here](doc/other-features.md#revoking-masternode).
 
-###Wallet
+### Wallet
 
 In general, this functionality is a graphical interface to hardware wallets, the main task of which is to send funds to specified addresses. It therefore implements functions similar to those provided by official device manufacturers' applications, but has a few additional features that can be quite important for masternode owners:
 * hiding by default collateral transactions to protect them from accidental spending and thus dostroying the associated masternode;
@@ -88,30 +88,30 @@ In general, this functionality is a graphical interface to hardware wallets, the
 
 This topic is covered [here](doc/wallet.md).
 
-###Voting on proposals
+### Voting on proposals
 Voting on proposals is a very important part of Dash governance, as it provides funding for both the core of the project (the work of the Dash Core Group) and community-led side projects to support the entire ecosystem.
 
 This topic is covered [here](doc/proposals.md).
 
-###Signing messages with masternode private keys
+### Signing messages with masternode private keys
 This topic is covered [here](doc/other-features.md#signing-messages-with-masternode-private-keys).
 
-###Signing messages with hardware wallets
+### Signing messages with hardware wallets
 This topic is dovered [here](doc/other-features.md#signing-messages-with-hardware-wallets).
 
-###Changing the hardware wallets settings
+### Changing the hardware wallets settings
 This topic is covered [here](doc/other-features.md#changing-the-hardware-wallets-settings).
 
-###Restoring hardware wallets from recovery seed
+### Restoring hardware wallets from recovery seed
 The topic is covered [here](doc/hw-recovery.md).
 
-###Hardware wallet initialization with newly generated seed
+### Hardware wallet initialization with newly generated seed
 The topic is covered [here](doc/hw-initialization.md).
 
-###Wiping hardware wallet
+### Wiping hardware wallet
 The topic is covered [here](doc/hw-wiping.md).
   
-##Hardware wallets
+## Hardware wallets
 
 ### Supported hardware wallets
 
@@ -119,7 +119,7 @@ The topic is covered [here](doc/hw-wiping.md).
 - [x] KeepKey
 - [x] Ledger Nano (mode S and X)
 
-###Linux udev rules for hardware wallets
+### Linux udev rules for hardware wallets
 In order for USB devices to be properly recognized under Linux, their so-called udev rules have to be added. As hardware wallets are USB devices, this also applies to them.
 Below is a list of commands that add udev rules for hardware wallets supported by this application, i.e. Trezor, Keepkey and Ledger. If, after installing them, you have a problem with the correct detection of the device, look for the appropriate rules on the manufacturer's website.
 
@@ -156,7 +156,7 @@ sudo udevadm trigger
 sudo udevadm control --reload-rules 
 ```
 
-##Running the application from ready-made binary versions
+## Running the application from ready-made binary versions
 
 This application is written in Python 3, but requires several additional libraries to properly function. These libraries in turn require the installation of a C++ compiler. All in all, compiling DMT from source is not trivial for non-technical users.
 
@@ -207,7 +207,7 @@ The verification method described below is based on use of the Keybase applicati
    PGP Fingerprint: 8044dcb5d241349f815f95220d8f46caa62f7efd.
    ```
 
-##Running the application from self-built binaries
+## Running the application from self-built binaries
 The goal is to build a binary version yourself using the source code available on GitHub. Although the procedure is not very complicated, some technical knowledge is required, because the operating systems for which this documentation was created are constantly changing, so it is quite possible that you will encounter some problems that you will have to solve on your own. 
 
 The procedure differs depending on the operating system and, in the case of Linux, also on its distribution:
@@ -216,8 +216,8 @@ The procedure differs depending on the operating system and, in the case of Linu
 * [Building the DMT executable file on macOS](doc/build-dmt-mac.md)
 * [Building the DMT executable file on Windows](doc/build-dmt-windows.md)
 
-##Running DMT on an offline Linux system
+## Running DMT on an offline Linux system
 This topic is covered [here](doc/running-dmt-on-linux-live-cd.md).
 
-##Changelog 
+## Changelog 
 Changelog is available [here](changelog.md).

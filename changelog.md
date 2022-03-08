@@ -21,7 +21,7 @@ addresses referring to DashCentral, a recent common mistake made by proposal own
 - Fixed several other, minor visual issues.
 
 ## [0.9.27] - 2021-05-18
-###Version with screenshots: [see here](doc/v0.9.27-changes.md)
+### Version with screenshots: [see here](doc/v0.9.27-changes.md)
 **Added**
 - A new way of presenting masternode data in the main window - masternode list.  
 - Masternode details moved to a separate page/view.

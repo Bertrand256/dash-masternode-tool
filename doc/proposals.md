@@ -1,4 +1,4 @@
-##Voting for proposals
+## Voting for proposals
 One of the advantages of owning a masternode is that you can vote on proposals submitted by members of the community. These proposals cover a wide variety of topics, but the idea is that its implementation should add some value to the Dash community.
 
 Voting on proposals can be done from the Dash Core debugging console, but it is quite difficult for it do there. Therefore, in addition to casting votes itself, DMT provides the functionality of presenting a list of proposals with all their details, which greatly improves decision-making.

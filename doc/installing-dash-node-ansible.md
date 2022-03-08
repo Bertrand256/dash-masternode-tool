@@ -1,14 +1,14 @@
-#Installing and configuring a Dash node with Ansible
+# Installing and configuring a Dash node with Ansible
 
 The method described below basically performs all the steps described in  [Installing and configuring a Dash node using manual steps](installing-dash-node-manual.md), but using Ansible, so apart from the preparation steps, all the steps listed there are done here, but automatically.
 
 Ansible is an automation software dedicated to run under Linux. It can be used on computers with macOS or Windows 10, though, but before you can do that, it is necessary to perform a few additional steps.
 
-##Preparation steps
+## Preparation steps
 The steps to follow depend on what operating system you are using on your computer. The term *operating system*, as used in this chapter, refers to the operating system installed on the computer you are working on, or in other words - your client workstation.
 
-###Preparation steps for Linux
-####Step 1. Installing the necessary software
+### Preparation steps for Linux
+#### Step 1. Installing the necessary software
 Start your Linux terminal and run the following commands:
 ```
 sudo apt update
@@ -16,7 +16,7 @@ sudo apt -y upgrade
 sudo apt -y install ansible sshpass git
 ```
 
-####Step 2. Creating an SSH authentication key
+#### Step 2. Creating an SSH authentication key
 By default, the prepared Ansible script configures the remote server so that after the installation is complete, you can only authenticate with your SSH key and not your password. You can disable this option in the Ansible configuration file, but it's not recommended because leaving the password authentication option on will expose you to brute force attacks from the Internet to take over your machine.
 
 > **Note**. If you already have the `~/.ssh/id_rsa` file on your computer, it means you have already done it before, and you can skip it.
@@ -29,8 +29,8 @@ In this step you can set some options (such as additional password encryption of
 
 [Next steps](#running-the-installation-with-ansible)
 
-###Preparation steps for macOS
-####Step 1. Installing *Homebrew*:
+### Preparation steps for macOS
+#### Step 1. Installing *Homebrew*:
 
   ```
   curl -fsSL -o install.sh https://raw.githubusercontent.com/Homebrew/install/master/install.sh
@@ -39,24 +39,24 @@ In this step you can set some options (such as additional password encryption of
 
   Installation takes about 5 minutes to complete. More details: [https://brew.sh/](https://brew.sh/).
 
-####Step 2. Installing the necessary software
+#### Step 2. Installing the necessary software
 Start your macOS terminal and run the following commands:
   ```
   brew install hudochenkov/sshpass/sshpass
   brew install ansible git
   ```
 
-####Step 3. Creating an SSH authentication key
+#### Step 3. Creating an SSH authentication key
 Go through all the steps in the [Linux](#step-2-creating-an-ssh-authentication-key) section related creating an SSH key.
 
 [Next steps](#running-the-installation-with-ansible)
 
-###Preparation steps for Windows 10
+### Preparation steps for Windows 10
 You have two options:
 * Use virtualization software like VirtualBox to install a virtual machine based on Linux (I suggest you choose the Ubuntu 20.04 distribution). In this case, after installing the VM, follow all the steps in this document dedicated to Linux from the VM.
 * Use *Windows Subsystem for Linux* (WSL). WSL is an optional Windows 10 component that allows you to run Linux programs from the Windows text console. Since it also allows you to use a Linux SSH program to connect to remote hosts, it's a great option in my opinion in place of Putty, used for this purpose until now.
 
-####Step 1. Installing WSL
+#### Step 1. Installing WSL
 Reference: [https://docs.microsoft.com/en-us/windows/wsl/install](https://docs.microsoft.com/en-us/windows/wsl/install).
 
 * Start cmd.exe and run the following command from it:
@@ -89,20 +89,20 @@ Reference: [https://docs.microsoft.com/en-us/windows/wsl/install](https://docs.m
   You will be able to start your Linux WSL terminal from the start menu:  
   ![WSL starting ubuntu](img/wsl-starting-ubuntu.png)
 
-####Step 2. Installing the necessary software inside your WSL Linux instance
+#### Step 2. Installing the necessary software inside your WSL Linux instance
 Start the WSL Linux terminal and go through all the steps of the [Linux](#preparation-steps-for-linux) section.
 > **Note**. SSH private key generated inside WSL Linux will be available only from there. If you want to use it with your Putty, you need to extract it from the WSL instance and convert it to Putty format using PuttyGen.
 
-##Running the installation with Ansible
+## Running the installation with Ansible
 Launch the terminal program on your computer (or the WSL Linux terminal if you are using Windows 10).
 
-####Step 1. Get the DMT sources
+#### Step 1. Get the DMT sources
 ```
 cd ~
 git clone https://github.com/Bertrand256/dash-masternode-tool
 ```
 
-####Step 2. Review and, if necessary, adjust the configuration to your needs
+#### Step 2. Review and, if necessary, adjust the configuration to your needs
 The configuration can be found in the `dash-masternode-tool/ansible/install-dash-node/install-dash-node-vars` file. It is in the format of the Ansible variables file, but it (the format) is simple enough, that needs no additional explanation.
 
 You may not need to change anything, but if you do, open the configuration file in your preferred text editor (e.g. nano):
@@ -124,7 +124,7 @@ After making changes, save them (Ctrl + O, ENTER) and exit the editor (Ctrl + X)
 | **ssh_add_local_id_rsa_pubkey**       | If set to true (default), Ansible will add your local `~/.ssh/id_rsa.pub` file to the `authorized_keys` on the remote dash node under the dashuser user (and root as fallback), making it possible to authenticate with an SSH key.|
 | **swap_size**                         | Swap file size.|
 
-####Step 3. Run the Ansible script
+#### Step 3. Run the Ansible script
 ```
 cd ~/dash-masternode-tool/ansible/install-dash-node
 ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook --ask-pass -i HOST_IP, -e "ansible_user=root dashuser_password=DASHUSER_PASS" install-dash-node-ubuntu.yml
@@ -153,8 +153,8 @@ The operation is complete if the *AssetName* field has value *MASTERNODE_SYNC_FI
 
 > **Note**. From now on, instead of the *root* user, log in to the server as the user specified by the *dashuser* parameter.
 
-##Troubleshooting
-###Problem 1: `man-in-the-middle attack` error message when trying to connect win an SSH terminal.
+## Troubleshooting
+### Problem 1: `man-in-the-middle attack` error message when trying to connect win an SSH terminal.
 Entire error message:
 ```
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@

@@ -1,13 +1,13 @@
-#Hardware wallet initialization with newly generated seed
+# Hardware wallet initialization with newly generated seed
 This functionality initiates the hardware wallet initialization process with the newly generated word set. The process is performed on the device itself, so it is completely safe.
 
 Available for Trezor and Keepkey devices. On Ledger Nano devices, this feature works independently of any external applications - it can be run from the device itself.
 
-###Step 1: Start the hardware wallet initialization wizard
+### Step 1: Start the hardware wallet initialization wizard
 Do this by clicking the *Tools->Toolbox* menu item or the *Toolbox* button on the main window toolbar, then click *Initialize hardware wallet with newly generated seed*.  
 ![Hardware wallet setup window](img/toolbox-home.png)
 
-###Step 2: Set the initial options  
+### Step 2: Set the initial options  
 Select the number of words the generated seed will consist of and whether to enable PIN and password options. The latter two options can be changed later from the [HW settings](other-features.md#changing-the-hardware-wallets-settings) dialog.
 
 ![Number of words](img/hw-initialization-options.png)
