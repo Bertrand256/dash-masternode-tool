@@ -1,4 +1,4 @@
-## Building the Dash Masternode Tool executable on Ubuntu Linux
+## Building the DMT executable file on Ubuntu Linux
 
 ### Method based on physical or virtual linux machine
 

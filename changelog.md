@@ -36,7 +36,7 @@ addresses referring to DashCentral, a recent common mistake made by proposal own
   - Interface for configuring an additional method of securing Trezor T devices - an SD 
     card that must be present to start the device ([details](https://wiki.trezor.io/User_manual:SD_card_protection)).
 - Interface to the wallet seed recovery method for Trezor One with increased security, based on the word matrix.    
-- Tool to help creating the "rpcauth" string, which allows starting RPC interface on a server without leaving 
+- Tool to help to create the "rpcauth" string, which allows starting RPC interface on a server without leaving 
   password to the interface on the server.
 - Removing the strict setting of the hardware wallet type in the app configuration in favor of the dynamic selection 
   of the device from the currently connected ones.
@@ -136,7 +136,7 @@ the estimated date of the next payment.
 
 **Changed**
 - Removed the pre-spork 15 code.
-- Fixes in the proposals dialog: support for v0.14-beta, issues with number of payment cycles. 
+- Fixes in the *Proposals* dialog: support for v0.14-beta, issues with number of payment cycles. 
 - Clearing the pre-spork 15 voting results from the app cache to suggest 
 users the need to re-submit their votes.
 - Fixed some stability issues in the wallet dialog.
@@ -151,7 +151,7 @@ of: Dash address, public key and public key hash (for diagnostics).
 - Wallet: the possibility of adding/hiding any BIP44 account (use 
 context menu). Please note, that if there is a gap between the account 
 added and the last one used (having a transaction history), the 
-official client app for a given hardware wallet (eg Trezor online 
+official client app for a given hardware wallet (e.g. Trezor online 
 wallet) will not show it.
 - Wallet: the possibility o hiding accounts.
 - Wallet: signing messages with any address.

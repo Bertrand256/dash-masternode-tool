@@ -1,5 +1,5 @@
-## Building the Dash Masternode Tool executable on Windows
-The following procedure describes the process of building a 64-bit executable file under Windows 7. The procedure to compile for a 32-bit version or using Windows 10 does not differ significantly.
+## Building the DMT executable file on Windows
+The following procedure describes the process of building a 64-bit executable file under Windows 10. The procedure to compile for a 32-bit version or using Windows 10 does not differ significantly.
 
 We assume that the procedure is carried out on a clean installation of the operating system, on which you have not previously installed any program used in the procedure (e.g. Python). To avoid any confusion arising from version incompatibilities, any previously installed software should be uninstalled first.
 
@@ -11,7 +11,7 @@ Python version 3.8 or above is required to build DMT. Download and install Pytho
 
   ![Download Python](img/build-dmt/bwin-install-python-1.jpg)
 
-* From the _Files_ section, click the _Windows x86-64 executable installer_ link:
+* From the _Files_ section, click the *Windows x86-64 executable installer* link:
 
   ![Download Python](img/build-dmt/bwin-install-python-2.jpg)
 
@@ -60,7 +60,6 @@ The final step of the DMT build process compresses the executable file created d
 ### Install *Visual C++ 2015 Build Tools*
 
 * Download the installer from http://go.microsoft.com/fwlink/?LinkId=691126:
-
 
 * Run the installer with the *Default* option selected and click the *Install* button:
 
@@ -128,4 +127,4 @@ Open the Windows command prompt (*cmd.exe*)  and run the following commands:
   ```
 
 
-Once the build has completed successfully, a compressed Windows executable file will be created in the ***C:\projects\dist\all*** directory. An uncompressed executable file (*DashMasernodeTool.exe*) can be found in the ***C:\projects\dist\win64*** directory.
+Once the build has completed successfully, a compressed Windows executable file will be created in the `C:\projects\dist\all` directory. An uncompressed executable file (*DashMasernodeTool.exe*) can be found in the `C:\projects\dist\win64` directory.

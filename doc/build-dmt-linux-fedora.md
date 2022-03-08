@@ -1,4 +1,4 @@
-## Building the Dash Masternode Tool executable on Fedora Linux (33)
+## Building the DMT executable file on Fedora Linux (33)
 
 ### Method based on physical or virtual linux machine
 

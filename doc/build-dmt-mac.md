@@ -1,4 +1,4 @@
-## Building the Dash Masternode Tool executable on macOS
+## Building the DMT executable file on macOS
 
 You can build Dash Masternode Tool for macOS by opening the Terminal app and running the following commands:
 
@@ -29,9 +29,8 @@ You can build Dash Masternode Tool for macOS by opening the Terminal app and run
   python3 --version
   ```
 
-  You should see a response similar to the following:
+  You should see a response similar to the following: `Python 3.8.x`, where x means the latest build number.
 
-  `Python 3.8.x`, where x means the latest build number.
 
 * Create a Python virtual environment for DMT:
 
@@ -71,4 +70,4 @@ You can build Dash Masternode Tool for macOS by opening the Terminal app and run
   ```
 
 
-Once the build has completed successfully, a compressed macOS executable file will be created in the ***~/projects/dist/all*** directory. An uncompressed app package (*DashMasternodeTool.app*) can be found in the ***~/projects/dist/mac*** directory.
+Once the build has completed successfully, a compressed macOS executable file will be created in the `~/projects/dist/all` directory. An uncompressed app package (*DashMasternodeTool.app*) can be found in the `~/projects/dist/mac` directory.
