@@ -1098,7 +1098,8 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                 if not pk:
                     self.error_msg("The masternode owner private key has not been configured.")
                 else:
-                    ui = SignMessageDlg(self, None, None, None, None, pk)
+                    ui = SignMessageDlg(self, None, None, None,
+                                        mn.get_dmn_owner_public_address(self.app_config.dash_network), pk)
                     ui.exec_()
             except Exception as e:
                 self.error_msg(str(e), True)
@@ -1110,11 +1111,11 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
         mn = self.main_view.get_cur_masternode()
         if mn:
             try:
-                pk = mn.dmn_voting_private_key
                 if not pk:
                     self.error_msg("The masternode voting private key has not been configured.")
                 else:
-                    ui = SignMessageDlg(self, None, None, None, None, pk)
+                    ui = SignMessageDlg(self, None, None, None,
+                                        mn.get_dmn_voting_public_address(self.app_config.dash_network), pk)
                     ui.exec_()
             except Exception as e:
                 self.error_msg(str(e), True)
