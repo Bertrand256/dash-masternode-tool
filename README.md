@@ -178,12 +178,12 @@ The verification method described below is based on use of the Keybase applicati
 
 2. Change the current directory to the folder where the DMT release files were downloaded:
 
-   `cd /Users/<username>/dmt-dist`
+   `cd DOWNLOAD_DIR`
 
    After invoking the *list directory* command (`ls` for Mac/Linux, `dir` for Windows ) you should see both the archived executable (.tar.gz, .zip) and the corresponding signature file (.asc):
 
    ```
-   <username>: ls
+   ls
    DashMasternodeTool_0.9.30.mac.dmg    DashMasternodeTool_0.9.30.mac.dmg.asc
    ```
 
