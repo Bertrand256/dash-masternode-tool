@@ -64,7 +64,7 @@ def control_hw_call(func):
         hw_session: HwSessionInfo = args[0]
         client = hw_session.hw_client
         if not client:
-            client = hw_session.hw_connect()
+            client = hw_session.connect_hardware_wallet()
         if not client:
             raise HWNotConnectedException()
         try:

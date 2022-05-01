@@ -109,6 +109,13 @@ class btchipDMT(btchip):
         result['value'] = response
         return result
 
+    def getJCExtendedFeatures(self):
+        # Workaround for the incompatibility with the btchip client library introduced in the Ledger Dash app v2.0.4:
+        # mask the original call to 'getJCExtendedFeatures', which destabilizes communication with the device
+        # by sending the BTCHIP_INS_EXT_CACHE_GET_FEATURES command
+        result = {'proprietaryApi': True}
+        return result
+
 
 def process_ledger_exceptions(func):
     """
