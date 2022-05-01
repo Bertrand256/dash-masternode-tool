@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>667</width>
-    <height>440</height>
+    <height>445</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -32,7 +32,7 @@
       <enum>QTabWidget::Rounded</enum>
      </property>
      <property name="currentIndex">
-      <number>0</number>
+      <number>1</number>
      </property>
      <widget class="QWidget" name="tabDashd">
       <attribute name="title">

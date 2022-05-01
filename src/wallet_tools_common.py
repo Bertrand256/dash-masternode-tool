@@ -12,12 +12,13 @@ log = logging.getLogger('dmt.wallet_tools_dlg')
 
 
 class ActionPageBase:
-    def __init__(self, parent_dialog, app_config: AppConfig, hw_devices: hw_intf.HWDevices, action_title: str):
+    def __init__(self, parent_dialog, app_config: AppConfig, hw_devices: Optional[hw_intf.HWDevices], action_title: str):
         self.parent_dialog = parent_dialog
         self.app_config: AppConfig = app_config
         self.finishing = False
         self.hw_devices = hw_devices
-        self.hw_devices.sig_connected_hw_device_changed.connect(self._on_connected_hw_device_changed)
+        if self.hw_devices:
+            self.hw_devices.sig_connected_hw_device_changed.connect(self._on_connected_hw_device_changed)
         self.action_title = action_title
         self.fn_exit_page: Optional[Callable[[], None]] = None
         self.fn_set_action_title: Optional[Callable[[str], None]] = None

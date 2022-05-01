@@ -15,7 +15,7 @@ class Ui_ConfigDlg(object):
     def setupUi(self, ConfigDlg):
         ConfigDlg.setObjectName("ConfigDlg")
         ConfigDlg.setWindowModality(QtCore.Qt.NonModal)
-        ConfigDlg.resize(667, 440)
+        ConfigDlg.resize(667, 445)
         ConfigDlg.setModal(False)
         self.verticalLayout = QtWidgets.QVBoxLayout(ConfigDlg)
         self.verticalLayout.setSizeConstraint(QtWidgets.QLayout.SetDefaultConstraint)
@@ -217,7 +217,7 @@ class Ui_ConfigDlg(object):
         self.verticalLayout.addWidget(self.buttonBox)
 
         self.retranslateUi(ConfigDlg)
-        self.tabWidget.setCurrentIndex(0)
+        self.tabWidget.setCurrentIndex(1)
         self.buttonBox.accepted.connect(ConfigDlg.accept)
         self.buttonBox.rejected.connect(ConfigDlg.reject)
         QtCore.QMetaObject.connectSlotsByName(ConfigDlg)

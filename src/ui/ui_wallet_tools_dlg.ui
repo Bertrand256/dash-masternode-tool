@@ -96,6 +96,13 @@
            </widget>
           </item>
           <item>
+           <widget class="QCommandLinkButton" name="actShamirTools">
+            <property name="text">
+             <string>Shamir secret backup/recovery</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <spacer name="verticalSpacer">
             <property name="orientation">
              <enum>Qt::Vertical</enum>
