@@ -61,7 +61,6 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.masternode = masternode
         self.app_config = config
         self.dashd_intf: DashdInterface = dashd_intf
-        self.v016_network: bool = False
         self.on_proregtx_success_callback = on_proregtx_success_callback
         self.style = ''
         self.styled_widgets: List[QWidget] = []
@@ -126,7 +125,6 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.chbWholeMNReward.setChecked(True)
         self.lblProtxSummary2.linkActivated.connect(self.save_summary_info)
         self.lblCollateralTxMsg.sizePolicy().setHeightForWidth(True)
-        self.get_network_info()
         self.prepare_keys()
         self.btnClose.hide()
         WndUtils.set_icon(self, self.btnManualFundingAddressPaste, 'content-paste@16px.png')
@@ -297,18 +295,6 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         else:
             tt = 'Change input type to private key'
         self.lblVotingKey.setToolTip(tt)
-
-    def get_network_info(self):
-        try:
-            info = self.dashd_intf.getnetworkinfo()
-            ver = info.get('version', 0)
-            if ver < 170000:
-                self.v016_network = True
-            else:
-                self.v016_network = False
-        except Exception as e:
-            WndUtils.error_msg(str(e), True)
-            QTimer.singleShot(100, self.close)
 
     def prepare_keys(self):
         gen_owner = False
@@ -1266,10 +1252,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                 set_text(self.lblProtxTransaction1, '<b>1. Preparing a ProRegTx transaction on a remote node...</b>')
 
                 if self.dmn_owner_key_type == InputKeyType.PRIVATE:
-                    if self.v016_network:
-                        owner_key = self.dmn_owner_privkey
-                    else:
-                        owner_key = wif_privkey_to_address(self.dmn_owner_privkey, self.app_config.dash_network)
+                    owner_key = wif_privkey_to_address(self.dmn_owner_privkey, self.app_config.dash_network)
                 else:
                     owner_key = self.dmn_owner_address
 
@@ -1381,10 +1364,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             valid = validate_address(addr, self.app_config.dash_network)
             if valid:
                 if self.dmn_owner_key_type == InputKeyType.PRIVATE:
-                    if self.v016_network:
-                        owner_key = self.dmn_owner_privkey
-                    else:
-                        owner_key = wif_privkey_to_address(self.dmn_owner_privkey, self.app_config.dash_network)
+                    owner_key = wif_privkey_to_address(self.dmn_owner_privkey, self.app_config.dash_network)
                 else:
                     owner_key = self.dmn_owner_address
 
