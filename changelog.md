@@ -1,3 +1,15 @@
+## [0.9.32] - 2022-09-02
+**Fixed**
+- Adaptation to v18 of the Dash RPC interface, resolving DMT error "An error occurred while sending 
+transaction: -8: Second argument must be numeric (maxfeerate)...".
+
+**Changed**
+- Update versions of the dependent libraries to the latest supported ones.
+
+## [0.9.31] - 2022-05-01
+**Changed**
+- Workaround for the incompatibility with the btchip client library introduced in the Ledger Dash app v2.0.4
+
 ## [0.9.30] - 2021-10-17
 **Changed**
 - Proposals: fixing user errors regarding the "URL" field for 
