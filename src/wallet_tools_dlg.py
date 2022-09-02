@@ -87,6 +87,7 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         self.action_layout.setContentsMargins(6, 6, 6, 6)
         self.action_layout.setSpacing(3)
         self.action_layout.setObjectName("action_layout")
+        self.actShamirTools.setVisible(False)
         WndUtils.change_widget_font_attrs(self.lblTitle, point_size_diff=3, bold=True)
 
     def on_close(self):

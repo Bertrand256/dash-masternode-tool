@@ -1315,7 +1315,7 @@ class DashdInterface(WndUtils):
                                          mn.queue_position, mn.db_id))
                                     db_modified = True
 
-                        # remove non existing masternodes from cache
+                        # remove non-existing masternodes from cache
                         for mn_index in reversed(range(len(self.masternodes))):
                             if feedback_fun:
                                 feedback_fun()
@@ -1418,10 +1418,16 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
-    @control_rpc_call
+    @control_rpc_call(allow_switching_conns=False)
     def sendrawtransaction(self, tx, use_instant_send):
         if self.open():
-            return self.proxy.sendrawtransaction(tx, False, use_instant_send)
+            ni = self.rpc_call(False, False, 'getnetworkinfo')
+            if ni.get('version', 180000) >= 180000:
+                fee = 0
+            else:
+                fee = False
+
+            return self.proxy.sendrawtransaction(tx, fee, use_instant_send)
         else:
             raise Exception('Not connected')
 
