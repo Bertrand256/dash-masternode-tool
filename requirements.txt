@@ -19,5 +19,5 @@ btchip-python
 ledgerwallet
 python-bls
 construct==2.10.68
-protobuf==3.20.1
+protobuf==3.20.2
 QDarkStyle>=3.0.2
