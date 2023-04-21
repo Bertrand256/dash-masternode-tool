@@ -17,7 +17,7 @@ bip32utils~=0.3.post4
 more-itertools
 btchip-python
 ledgerwallet
-python-bls
+blspy==1.0.16
 construct==2.10.68
 protobuf==3.20.1
 QDarkStyle>=3.0.2

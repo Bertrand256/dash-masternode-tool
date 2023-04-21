@@ -13,7 +13,8 @@ from random import randint
 import bitcoin
 from bip32utils import Base58
 import base58
-from bls_py import bls
+from blspy import (PrivateKey, Util, AugSchemeMPL, PopSchemeMPL,
+                   G1Element, G2Element)
 
 
 # Bitcoin opcodes used in the application
@@ -204,22 +205,9 @@ def generate_bls_privkey() -> str:
         pk_bytes = bytes.fromhex(privkey)
         num_pk = bitcoin.decode_privkey(privkey, 'hex')
         if 0 < num_pk < bitcoin.N:
-            if pk_bytes[0] >= 0x74:
-                if i == max_iterations - 1: # BLS restriction: the first byte is less than 0x74
-                    # after 'limit' iterations we couldn't get the first byte "compatible" with BLS so
-                    # the last resort is to change it to a random value < 0x73
-                    tmp_pk_bytes = bytearray(pk_bytes)
-                    tmp_pk_bytes[0] = randint(0, 0x73)
-                    logging.warning('Changing the first byte of the generated BLS key from %s to %s to meet '
-                                    'the requirements', str(pk_bytes[0]), str(tmp_pk_bytes[0]))
-                    pk_bytes = bytes(tmp_pk_bytes)
-                else:
-                    continue
-
             try:
-                pk = bls.PrivateKey.from_bytes(pk_bytes)
-                pk_bin = pk.serialize()
-                return pk_bin.hex()
+                pk: PrivateKey = AugSchemeMPL.key_gen(pk_bytes)
+                return bytes(pk).hex()
             except Exception as e:
                 logging.warning('Could not process "%s" as a BLS private key. Error details: %s',
                                 pk_bytes.hex(), str(e))
@@ -229,17 +217,10 @@ def generate_bls_privkey() -> str:
 
 
 def bls_privkey_to_pubkey(privkey: str) -> str:
-    """
-    :param privkey: BLS privkey as a hex string
-    :return: BLS pubkey as a hex string.
-    """
     pk_bin = bytes.fromhex(privkey)
-    if len(pk_bin) != 32:
-        raise Exception(f'Invalid private key length: {len(pk_bin)} (should be 32)')
-    pk = bls.PrivateKey.from_bytes(pk_bin)
-    pubkey = pk.get_public_key()
-    pubkey_bin = pubkey.serialize()
-    return pubkey_bin.hex()
+    pk = PrivateKey.from_bytes(pk_bin)
+    pubkey = bytes(pk.get_g1()).hex()
+    return pubkey
 
 
 def validate_bls_privkey(privkey: str) -> bool:

@@ -97,7 +97,7 @@ This topic is covered [here](doc/proposals.md).
 This topic is covered [here](doc/other-features.md#signing-messages-with-masternode-private-keys).
 
 ### Signing messages with hardware wallets
-This topic is dovered [here](doc/other-features.md#signing-messages-with-hardware-wallets).
+This topic is covered [here](doc/other-features.md#signing-messages-with-hardware-wallets).
 
 ### Changing the hardware wallets settings
 This topic is covered [here](doc/other-features.md#changing-the-hardware-wallets-settings).
