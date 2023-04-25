@@ -1252,12 +1252,12 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                 set_text(self.lblProtxTransaction1, '<b>1. Preparing a ProRegTx transaction on a remote node...</b>')
 
                 if self.dmn_owner_key_type == InputKeyType.PRIVATE:
-                    owner_key = wif_privkey_to_address(self.dmn_owner_privkey, self.app_config.dash_network)
+                    owner_address = wif_privkey_to_address(self.dmn_owner_privkey, self.app_config.dash_network)
                 else:
-                    owner_key = self.dmn_owner_address
+                    owner_address = self.dmn_owner_address
 
                 params = ['register_prepare', self.dmn_collateral_tx, self.dmn_collateral_tx_index,
-                          self.dmn_ip + ':' + str(self.dmn_tcp_port) if self.dmn_ip else '0', owner_key,
+                          self.dmn_ip + ':' + str(self.dmn_tcp_port) if self.dmn_ip else '0', owner_address,
                           self.dmn_operator_pubkey, self.dmn_voting_address, str(round(self.dmn_operator_reward, 2)),
                           self.dmn_owner_payout_addr]
                 if funding_address:

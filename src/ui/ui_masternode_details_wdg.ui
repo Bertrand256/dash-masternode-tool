@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>741</width>
-    <height>281</height>
+    <height>378</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -155,31 +155,55 @@
         <item>
          <widget class="QLineEdit" name="edtName"/>
         </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout">
         <item>
-         <widget class="QLabel" name="lblTitle">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="styleSheet">
-           <string notr="true"/>
+         <widget class="QLabel" name="lblMasternodeType">
+          <property name="minimumSize">
+           <size>
+            <width>144</width>
+            <height>0</height>
+           </size>
           </property>
           <property name="text">
-           <string/>
+           <string>Masternode type</string>
           </property>
-          <property name="wordWrap">
-           <bool>false</bool>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QLabel" name="lblAction">
+         <widget class="QRadioButton" name="rbMNTypeRegular">
           <property name="text">
-           <string/>
+           <string>Regular (1000 Dash)</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
           </property>
          </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="rbMNTypeHPMN">
+          <property name="text">
+           <string> HPMN (4000 Dash)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
         </item>
        </layout>
       </item>
@@ -512,6 +536,9 @@
         </item>
         <item>
          <widget class="QToolButton" name="btnGenerateOwnerPrivateKey">
+          <property name="toolTip">
+           <string>Generate a new owner private key</string>
+          </property>
           <property name="text">
            <string>Generate new</string>
           </property>
@@ -590,6 +617,9 @@
         </item>
         <item>
          <widget class="QToolButton" name="btnGenerateOperatorPrivateKey">
+          <property name="toolTip">
+           <string>Generate a new operator private key (BLS)</string>
+          </property>
           <property name="text">
            <string>Generate new</string>
           </property>
@@ -668,10 +698,126 @@
         </item>
         <item>
          <widget class="QToolButton" name="btnGenerateVotingPrivateKey">
+          <property name="toolTip">
+           <string>Generate a new voting private key</string>
+          </property>
           <property name="text">
            <string>Generate new</string>
           </property>
          </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_11">
+        <item>
+         <widget class="QLabel" name="lblPlatformNodeId">
+          <property name="minimumSize">
+           <size>
+            <width>144</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Platform Node ID</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="edtPlatformNodeId">
+          <property name="clearButtonEnabled">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnCopyPlatformId">
+          <property name="toolTip">
+           <string>Copy Platform Node ID to clipboard</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnGeneratePlatformNodeId">
+          <property name="toolTip">
+           <string>Generate a new Platform Node ID</string>
+          </property>
+          <property name="text">
+           <string>Generate new</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_13">
+        <item>
+         <widget class="QLabel" name="lblPlatformP2PPort">
+          <property name="minimumSize">
+           <size>
+            <width>144</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Platform P2P port</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="edtPlatformP2PPort"/>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnPlatformP2PPortSetDefault">
+          <property name="toolTip">
+           <string>Set default value for Platform P2P port</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="lblPlatformHTTPPort">
+          <property name="text">
+           <string>Platform HTTP port</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="edtPlatformHTTPPort"/>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnPlatformHTTPPortSetDefault">
+          <property name="toolTip">
+           <string>Set default value for Platform HTTP port</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacer_4">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
         </item>
        </layout>
       </item>

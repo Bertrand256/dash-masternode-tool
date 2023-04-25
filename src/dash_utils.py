@@ -233,9 +233,9 @@ def validate_bls_privkey(privkey: str) -> bool:
 
 def validate_bls_pubkey(pubkey: str) -> bool:
     try:
-        bls.PublicKey.from_bytes(bytes.fromhex(pubkey))
+        pk = G1Element.from_bytes(bytes.fromhex(pubkey))
         return True
-    except Exception:
+    except Exception as e:
         return False
 
 

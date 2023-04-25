@@ -8,7 +8,8 @@ from PyQt5.QtWidgets import QWidget, QLineEdit, QMessageBox, QAction, QApplicati
 
 import dash_utils
 import hw_intf
-from app_config import MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING, InputKeyType, AppConfig
+from app_config import MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING, InputKeyType, AppConfig, \
+    MasternodeType
 from app_defs import DispMessage, AppTextMessageType
 from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException
 from common import CancelException
@@ -51,7 +52,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         WndUtils.set_icon(self.parent, self.btnCopyOperatorKey, 'content-copy@16px.png')
         WndUtils.set_icon(self.parent, self.btnCopyVotingKey, 'content-copy@16px.png')
         WndUtils.set_icon(self.parent, self.btnCopyProtxHash, 'content-copy@16px.png')
+        WndUtils.set_icon(self.parent, self.btnCopyPlatformId, 'content-copy@16px.png')
         WndUtils.set_icon(self.parent, self.btnShowCollateralPathAddress, 'eye@16px.png')
+        WndUtils.set_icon(self.parent, self.btnPlatformP2PPortSetDefault, 'restore@16px.png')
+        WndUtils.set_icon(self.parent, self.btnPlatformHTTPPortSetDefault, 'restore@16px.png')
 
         self.act_view_as_owner_private_key = QAction('View as private key', self)
         self.act_view_as_owner_private_key.setData('privkey')
@@ -147,6 +151,9 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.btnShowCollateralPathAddress.setFixedHeight(h)
         self.btnBip32PathToAddress.setFixedHeight(h)
         self.btnLocateCollateral.setFixedHeight(h)
+        self.btnCopyPlatformId.setFixedHeight(h)
+        self.btnPlatformP2PPortSetDefault.setFixedHeight(h)
+        self.btnPlatformHTTPPortSetDefault.setFixedHeight(h)
 
     def update_ui_controls_state(self):
         """Update visibility and enabled/disabled state of the UI controls.
@@ -209,6 +216,26 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.act_view_as_voting_public_key.setVisible(self.masternode is not None and
                                                       self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE)
 
+        # Platform Node ID
+        self.lblPlatformNodeId.setVisible(self.masternode is not None and
+                                          (self.masternode.masternode_type == MasternodeType.HPMN))
+        self.edtPlatformNodeId.setVisible(self.masternode is not None and
+                                          (self.masternode.masternode_type == MasternodeType.HPMN))
+        self.btnCopyPlatformId.setVisible(self.masternode is not None and
+                                          (self.masternode.masternode_type == MasternodeType.HPMN))
+
+        # Platform P2P port
+        self.lblPlatformP2PPort.setVisible(self.masternode is not None and
+                                           (self.masternode.masternode_type == MasternodeType.HPMN))
+        self.edtPlatformP2PPort.setVisible(self.masternode is not None and
+                                           (self.masternode.masternode_type == MasternodeType.HPMN))
+
+        # Platform HTTP port
+        self.lblPlatformHTTPPort.setVisible(self.masternode is not None and
+                                            (self.masternode.masternode_type == MasternodeType.HPMN))
+        self.edtPlatformHTTPPort.setVisible(self.masternode is not None and
+                                            (self.masternode.masternode_type == MasternodeType.HPMN))
+
         self.btnGenerateOwnerPrivateKey.setVisible(
             self.masternode is not None and self.edit_mode and
             self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE and
@@ -223,6 +250,21 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.masternode is not None and self.edit_mode and
             self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE and
             self.masternode.dmn_user_roles & DMN_ROLE_VOTING > 0)
+
+        self.btnGeneratePlatformNodeId.setVisible(
+            self.masternode is not None and self.edit_mode and
+            self.masternode.masternode_type == MasternodeType.HPMN and
+            self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0)
+
+        self.btnPlatformP2PPortSetDefault.setVisible(
+            self.masternode is not None and self.edit_mode and
+            self.masternode.masternode_type == MasternodeType.HPMN and
+            self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0)
+
+        self.btnPlatformHTTPPortSetDefault.setVisible(
+            self.masternode is not None and self.edit_mode and
+            self.masternode.masternode_type == MasternodeType.HPMN and
+            self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0)
 
         self.lblUserRole.setVisible(self.masternode is not None)
         self.chbRoleOwner.setVisible(self.masternode is not None)
@@ -246,6 +288,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.chbRoleVoting.setEnabled(self.edit_mode)
         self.chbRoleOperator.setEnabled(self.edit_mode)
         self.chbRoleOwner.setEnabled(self.edit_mode)
+        self.rbMNTypeRegular.setEnabled(self.edit_mode)
+        self.rbMNTypeHPMN.setEnabled(self.edit_mode)
         self.edtName.setReadOnly(self.edit_mode is False)
         self.edtIP.setReadOnly(self.edit_mode is False)
         self.edtPort.setReadOnly(self.edit_mode is False)
@@ -257,9 +301,15 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.edtOwnerKey.setReadOnly(self.edit_mode is False)
         self.edtOperatorKey.setReadOnly(self.edit_mode is False)
         self.edtVotingKey.setReadOnly(self.edit_mode is False)
+        self.edtPlatformNodeId.setReadOnly(self.edit_mode is False)
+        self.edtPlatformP2PPort.setReadOnly(self.edit_mode is False)
+        self.edtPlatformHTTPPort.setReadOnly(self.edit_mode is False)
         self.btnGenerateOwnerPrivateKey.setEnabled(self.edit_mode is True)
         self.btnGenerateOperatorPrivateKey.setEnabled(self.edit_mode is True)
         self.btnGenerateVotingPrivateKey.setEnabled(self.edit_mode is True)
+        self.btnGeneratePlatformNodeId.setEnabled(self.edit_mode is True)
+        self.btnPlatformP2PPortSetDefault.setEnabled(self.edit_mode is True)
+        self.btnPlatformHTTPPortSetDefault.setEnabled(self.edit_mode is True)
         self.btnLocateCollateral.setEnabled(self.edit_mode)
         col_btn_visible = self.masternode is not None and (not self.masternode.collateral_tx or
                                                            not self.masternode.collateral_address or
@@ -383,6 +433,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.chbRoleOwner.setChecked(self.masternode.dmn_user_roles & DMN_ROLE_OWNER)
             self.chbRoleOperator.setChecked(self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR)
             self.chbRoleVoting.setChecked(self.masternode.dmn_user_roles & DMN_ROLE_VOTING)
+            self.rbMNTypeRegular.setChecked(self.masternode.masternode_type == MasternodeType.REGULAR)
+            self.rbMNTypeHPMN.setChecked(self.masternode.masternode_type == MasternodeType.HPMN)
             self.edtName.setText(self.masternode.name)
             self.edtIP.setText(self.masternode.ip)
             self.edtPort.setText(self.masternode.port)
@@ -394,6 +446,9 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.edtOwnerKey.setText(self.get_owner_key_to_display())
             self.edtVotingKey.setText(self.get_voting_key_to_display())
             self.edtOperatorKey.setText(self.get_operator_key_to_display())
+            self.edtPlatformNodeId.setText(self.masternode.platform_node_id)
+            self.edtPlatformP2PPort.setText(self.masternode.platform_p2p_port)
+            self.edtPlatformHTTPPort.setText(self.masternode.platform_http_port)
             self.updating_ui = False
             self.set_buttons_height()
         else:
@@ -609,6 +664,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
         self.lblUserRole.setFixedWidth(width)
         self.lblName.setFixedWidth(width)
+        self.lblMasternodeType.setFixedWidth(width)
         self.lblIP.setFixedWidth(width)
         self.lblCollateral.setFixedWidth(width)
         self.lblCollateralTxHash.setFixedWidth(width)
@@ -616,6 +672,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.lblOwnerKey.setFixedWidth(width)
         self.lblOperatorKey.setFixedWidth(width)
         self.lblVotingKey.setFixedWidth(width)
+        self.lblPlatformNodeId.setFixedWidth(width)
+        self.lblPlatformP2PPort.setFixedWidth(width)
 
     def set_masternode(self, src_masternode: Optional[MasternodeConfig]):
         self.updating_ui = True
@@ -677,6 +735,24 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 self.masternode.dmn_user_roles |= DMN_ROLE_VOTING
             else:
                 self.masternode.dmn_user_roles &= ~DMN_ROLE_VOTING
+            self.update_ui_controls_state()
+            self.on_mn_data_modified()
+            self.role_modified.emit()
+
+    @pyqtSlot(bool)
+    def on_rbMNTypeRegular_toggled(self, checked):
+        if not self.updating_ui:
+            if checked:
+                self.masternode.masternode_type = MasternodeType.REGULAR
+            self.update_ui_controls_state()
+            self.on_mn_data_modified()
+            self.role_modified.emit()
+
+    @pyqtSlot(bool)
+    def on_rbMNTypeHPMN_toggled(self, checked):
+        if not self.updating_ui:
+            if checked:
+                self.masternode.masternode_type = MasternodeType.HPMN
             self.update_ui_controls_state()
             self.on_mn_data_modified()
             self.role_modified.emit()
@@ -788,16 +864,16 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                         keys_modified.append('owner')
 
                     if mn.dmn_user_roles & DMN_ROLE_OPERATOR > 0 and \
-                        ((not mn.dmn_operator_private_key and mn.dmn_operator_key_type == InputKeyType.PRIVATE) or
-                         (not mn.dmn_operator_public_key and mn.dmn_operator_key_type == InputKeyType.PUBLIC)):
+                            ((not mn.dmn_operator_private_key and mn.dmn_operator_key_type == InputKeyType.PRIVATE) or
+                             (not mn.dmn_operator_public_key and mn.dmn_operator_key_type == InputKeyType.PUBLIC)):
                         mn.dmn_operator_key_type = InputKeyType.PUBLIC
                         mn.dmn_operator_public_key = protx.pubkey_operator
                         modified = True
                         keys_modified.append('operator')
 
                     if mn.dmn_user_roles & DMN_ROLE_VOTING > 0 and \
-                        ((not mn.dmn_voting_private_key and mn.dmn_voting_key_type == InputKeyType.PRIVATE) or
-                         (not mn.dmn_voting_address and mn.dmn_voting_key_type == InputKeyType.PUBLIC)):
+                            ((not mn.dmn_voting_private_key and mn.dmn_voting_key_type == InputKeyType.PRIVATE) or
+                             (not mn.dmn_voting_address and mn.dmn_voting_key_type == InputKeyType.PUBLIC)):
                         mn.dmn_voting_key_type = InputKeyType.PUBLIC
                         mn.dmn_voting_address = protx.voting_address
                         modified = True
@@ -880,6 +956,29 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.update_dynamic_labels()
             self.on_mn_data_modified()
 
+    @pyqtSlot(str)
+    def on_edtPlatformNodeId_textEdited(self, text):
+        if self.masternode and not self.updating_ui:
+            self.masternode.platform_node_id = text.strip()
+            self.update_dynamic_labels()
+            self.on_mn_data_modified()
+
+    @pyqtSlot(str)
+    def on_edtPlatformP2PPort_textEdited(self, text):
+        if self.masternode and not self.updating_ui:
+            _t = text.strip()
+            self.masternode.platform_p2p_port = int(_t) if _t else None
+            self.update_dynamic_labels()
+            self.on_mn_data_modified()
+
+    @pyqtSlot(str)
+    def on_edtPlatformHTTPPort_textEdited(self, text):
+        if self.masternode and not self.updating_ui:
+            _t = text.strip()
+            self.masternode.platform_http_port = int(_t) if _t else None
+            self.update_dynamic_labels()
+            self.on_mn_data_modified()
+
     def validate_keys(self):
         self.owner_key_invalid = False
         self.operator_key_invalid = False
@@ -906,8 +1005,9 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
             if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
                 if self.masternode.dmn_voting_private_key:
-                    self.voting_key_invalid = not dash_utils.validate_wif_privkey(self.masternode.dmn_voting_private_key,
-                                                                                  self.app_config.dash_network)
+                    self.voting_key_invalid = not dash_utils.validate_wif_privkey(
+                        self.masternode.dmn_voting_private_key,
+                        self.app_config.dash_network)
             else:
                 if self.masternode.dmn_voting_address:
                     self.voting_key_invalid = not dash_utils.validate_address(self.masternode.dmn_voting_address,
