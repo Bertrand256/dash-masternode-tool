@@ -857,7 +857,7 @@ class AppConfig(QObject):
                                     logging.error('Error reading platform_p2p_port from configuration file: ' + str(e))
 
                                 try:
-                                    tmp_str = config.get(section, 'platform_p2p_port', fallback='')
+                                    tmp_str = config.get(section, 'platform_http_port', fallback='')
                                     if tmp_str:
                                         mn.platform_http_port = int(tmp_str)
                                 except Exception as e:
@@ -1013,15 +1013,16 @@ class AppConfig(QObject):
             if not file_name:
                 return
 
-        # backup old ini file
+        # backup old config file
         if self.backup_config_file and update_current_file_name:
             if os.path.exists(file_name):
-                tm_str = datetime.datetime.now().strftime('%Y-%m-%d %H_%M')
+                tm_str = datetime.datetime.now().strftime('%Y-%m-%d')
                 back_file_name = os.path.join(self.cfg_backup_dir, 'config_' + tm_str + '.ini')
-                try:
-                    copyfile(file_name, back_file_name)
-                except:
-                    pass
+                if not os.path.exists(back_file_name):  # create no more than one backup per day
+                    try:
+                        copyfile(file_name, back_file_name)
+                    except Exception:
+                        pass
 
         section = 'CONFIG'
         config = ConfigParser()
@@ -1071,6 +1072,10 @@ class AppConfig(QObject):
             config.set(section, 'dmn_owner_address', mn.dmn_owner_address)
             config.set(section, 'dmn_operator_public_key', mn.dmn_operator_public_key)
             config.set(section, 'dmn_voting_address', mn.dmn_voting_address)
+            config.set(section, 'masternode_type', str(mn.masternode_type.value))
+            config.set(section, 'platform_node_id', mn.platform_node_id)
+            config.set(section, 'platform_p2p_port', str(mn.platform_p2p_port) if mn.platform_p2p_port else '')
+            config.set(section, 'platform_http_port', str(mn.platform_http_port) if mn.platform_http_port else '')
             mn.modified = False
 
         # save dash network connections
@@ -1834,10 +1839,12 @@ class MasternodeConfig:
     @platform_node_id.setter
     def platform_node_id(self, node_id: str):
         if node_id:
-            try:
-                int(node_id, 16)
-            except ValueError:
-                raise Exception('Platform Node ID must be hexadecimal string')
+            pass
+            # todo: testing
+            # try:
+            #     int(node_id, 16)
+            # except ValueError:
+            #     raise Exception('Platform Node ID must be hexadecimal string')
         self.__platform_node_id = node_id
 
     @property

@@ -4,7 +4,7 @@ import bitcoin
 from PyQt5 import QtCore
 from PyQt5.QtCore import pyqtSlot, Qt, QTimer
 from PyQt5.QtGui import QTextDocument
-from PyQt5.QtWidgets import QWidget, QLineEdit, QMessageBox, QAction, QApplication, QActionGroup
+from PyQt5.QtWidgets import QWidget, QLineEdit, QInputDialog, QMessageBox, QAction, QApplication, QActionGroup
 
 import dash_utils
 import hw_intf
@@ -251,7 +251,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE and
             self.masternode.dmn_user_roles & DMN_ROLE_VOTING > 0)
 
-        self.btnGeneratePlatformNodeId.setVisible(
+        self.btnGetPlatformNodeIdFromPrivate.setVisible(
             self.masternode is not None and self.edit_mode and
             self.masternode.masternode_type == MasternodeType.HPMN and
             self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0)
@@ -307,7 +307,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.btnGenerateOwnerPrivateKey.setEnabled(self.edit_mode is True)
         self.btnGenerateOperatorPrivateKey.setEnabled(self.edit_mode is True)
         self.btnGenerateVotingPrivateKey.setEnabled(self.edit_mode is True)
-        self.btnGeneratePlatformNodeId.setEnabled(self.edit_mode is True)
+        self.btnGetPlatformNodeIdFromPrivate.setEnabled(self.edit_mode is True)
         self.btnPlatformP2PPortSetDefault.setEnabled(self.edit_mode is True)
         self.btnPlatformHTTPPortSetDefault.setEnabled(self.edit_mode is True)
         self.btnLocateCollateral.setEnabled(self.edit_mode)
@@ -447,8 +447,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.edtVotingKey.setText(self.get_voting_key_to_display())
             self.edtOperatorKey.setText(self.get_operator_key_to_display())
             self.edtPlatformNodeId.setText(self.masternode.platform_node_id)
-            self.edtPlatformP2PPort.setText(self.masternode.platform_p2p_port)
-            self.edtPlatformHTTPPort.setText(self.masternode.platform_http_port)
+            self.edtPlatformP2PPort.setText(str(self.masternode.platform_p2p_port)
+                                            if self.masternode.platform_p2p_port is not None else None)
+            self.edtPlatformHTTPPort.setText(str(self.masternode.platform_http_port)
+                                             if self.masternode.platform_http_port is not None else None)
             self.updating_ui = False
             self.set_buttons_height()
         else:
@@ -957,26 +959,23 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.on_mn_data_modified()
 
     @pyqtSlot(str)
-    def on_edtPlatformNodeId_textEdited(self, text):
+    def on_edtPlatformNodeId_textChanged(self, text):
         if self.masternode and not self.updating_ui:
             self.masternode.platform_node_id = text.strip()
-            self.update_dynamic_labels()
             self.on_mn_data_modified()
 
     @pyqtSlot(str)
-    def on_edtPlatformP2PPort_textEdited(self, text):
+    def on_edtPlatformP2PPort_textChanged(self, text):
         if self.masternode and not self.updating_ui:
             _t = text.strip()
             self.masternode.platform_p2p_port = int(_t) if _t else None
-            self.update_dynamic_labels()
             self.on_mn_data_modified()
 
     @pyqtSlot(str)
-    def on_edtPlatformHTTPPort_textEdited(self, text):
+    def on_edtPlatformHTTPPort_textChanged(self, text):
         if self.masternode and not self.updating_ui:
             _t = text.strip()
             self.masternode.platform_http_port = int(_t) if _t else None
-            self.update_dynamic_labels()
             self.on_mn_data_modified()
 
     def validate_keys(self):
@@ -1223,3 +1222,46 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     def on_btnCopyProtxHash_clicked(self):
         cl = QApplication.clipboard()
         cl.setText(self.edtDMNTxHash.text())
+
+    @pyqtSlot()
+    def on_btnCopyPlatformId_clicked(self):
+        cl = QApplication.clipboard()
+        cl.setText(self.edtPlatformNodeId.text())
+
+    @pyqtSlot(bool)
+    def on_btnGetPlatformNodeIdFromPrivate_clicked(self, checked):
+        if self.masternode:
+            key_str, ok = QInputDialog.getMultiLineText(self, "Enter ED25519 private key",
+                                                        "Enter ED25519 private key (PEM/DER/base64):")
+
+            if ok:
+                try:
+                    public_key = dash_utils.ed25519_private_key_to_pubkey(key_str)
+                    platform_id = dash_utils.ed25519_public_key_to_platform_id(public_key)
+                except Exception as e:
+                    WndUtils.error_msg(str(e))
+                    return
+
+                if self.edtPlatformNodeId.text() != platform_id:
+                    if self.edtPlatformNodeId.text():
+                        if WndUtils.query_dlg(
+                                f'This will overwrite the current Platform Node Id value. Do you really want to proceed?',
+                                buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                default_button=QMessageBox.Yes, icon=QMessageBox.Warning) != QMessageBox.Yes:
+                            return
+
+                    self.edtPlatformNodeId.setText(platform_id)
+
+    @pyqtSlot()
+    def on_btnPlatformP2PPortSetDefault_clicked(self):
+        val = "26656"
+        if self.edtPlatformP2PPort.text() != val:
+            self.edtPlatformP2PPort.setText(val)
+            self.on_mn_data_modified()
+
+    @pyqtSlot()
+    def on_btnPlatformHTTPPortSetDefault_clicked(self):
+        val = "443"
+        if self.edtPlatformHTTPPort.text() != val:
+            self.edtPlatformHTTPPort.setText("443")
+            self.on_mn_data_modified()

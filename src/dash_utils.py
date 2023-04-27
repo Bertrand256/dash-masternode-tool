@@ -6,15 +6,18 @@
 import binascii
 import base64
 import logging
+import re
 import struct
 import typing
+import hashlib
 from random import randint
 
 import bitcoin
 from bip32utils import Base58
 import base58
-from blspy import (PrivateKey, Util, AugSchemeMPL, PopSchemeMPL,
-                   G1Element, G2Element)
+from blspy import (PrivateKey, Util, AugSchemeMPL, PopSchemeMPL, G1Element, G2Element)
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+import cryptography.hazmat.primitives.serialization
 
 
 # Bitcoin opcodes used in the application
@@ -472,6 +475,69 @@ def convert_dash_xpub(xpub, dest_prefix: str):
             xpub = Base58.check_encode(raw)
     return xpub
 
+
+def parse_ed25519_private_key(priv_key: str) -> Ed25519PrivateKey:
+    """
+    Parses ed25519 private key from a few formats.
+    :param priv_key: Private key as a string in formats:
+                       a) PEM with "-----BEGIN/END PRIVATE KEY" enclosing
+                       b) PEM without "-----BEGIN/END PRIVATE KEY" enclosing (bare Base64 string)
+                       c) private + public keys concatenated (64 byte)
+    :return: 32-byte private key as a hex string
+    """
+    try:
+        match = re.match(r"-+BEGIN PRIVATE KEY-+\n(.+)\n-+END PRIVATE KEY-+", priv_key, re.IGNORECASE)
+        if match and len(match.groups()) == 1:
+            base64_str = match.group(1)
+            priv_key = base64.b64decode(base64_str)
+        else:
+            # assume, that priv_key is a base64 encoded private key with or without a DER "header""
+            priv_key = base64.b64decode(priv_key)
+
+        pub_key_in = None
+        if len(priv_key) == 48:
+            priv_key = priv_key[16:]  # extract private key from DER encoding
+        elif len(priv_key) == 32:
+            pass
+        elif len(priv_key) == 64:
+            # Assume that the input string contains a combined private key and public key
+            priv_key, pub_key_in = priv_key[0:32], priv_key[32:]
+        else:
+            raise Exception('Invalid private key format (1)')
+
+        pk = Ed25519PrivateKey.from_private_bytes(priv_key)
+        if pub_key_in:
+            pub_key_hex = pk.public_key().public_bytes(cryptography.hazmat.primitives.serialization.Encoding.Raw,
+                                                       cryptography.hazmat.primitives.serialization.PublicFormat.Raw).hex()
+            if pub_key_in.hex() != pub_key_hex:
+                raise Exception('Invalid private key format (2)')
+
+        return pk
+    except Exception as e:
+        raise Exception('Invalid private key format (3): ' + str(e))
+
+
+def ed25519_private_key_to_pubkey(priv_key: str) -> str:
+    """
+    Converts ed25519 private key to public key.
+    :param priv_key: see function parse_ed25519_private_key
+    :return: 32-byte public key as a hex string
+    """
+    pk = parse_ed25519_private_key(priv_key)
+    pub_key_hex = pk.public_key().public_bytes(cryptography.hazmat.primitives.serialization.Encoding.Raw,
+                                               cryptography.hazmat.primitives.serialization.PublicFormat.Raw).hex()
+    return pub_key_hex
+
+
+def ed25519_public_key_to_platform_id(public_key: str) -> str:
+    """
+    Converts ed25519 public key to Dash Platform ID
+    :param public_key: hex encoded public key (32 byte)
+    :return: platform id string
+    """
+    pub_bytes = bytes.fromhex(public_key)
+    hashed = hashlib.sha256(pub_bytes)
+    return hashed.digest()[0:20].hex()
 
 class COutPoint(object):
     def __init__(self, hash: bytes, index: int):

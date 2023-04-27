@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>741</width>
-    <height>378</height>
+    <height>387</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -728,6 +728,9 @@
         </item>
         <item>
          <widget class="QLineEdit" name="edtPlatformNodeId">
+          <property name="echoMode">
+           <enum>QLineEdit::Normal</enum>
+          </property>
           <property name="clearButtonEnabled">
            <bool>true</bool>
           </property>
@@ -744,12 +747,12 @@
          </widget>
         </item>
         <item>
-         <widget class="QToolButton" name="btnGeneratePlatformNodeId">
+         <widget class="QToolButton" name="btnGetPlatformNodeIdFromPrivate">
           <property name="toolTip">
-           <string>Generate a new Platform Node ID</string>
+           <string>Get Platform Node ID from ED25519 private key</string>
           </property>
           <property name="text">
-           <string>Generate new</string>
+           <string>Get from private</string>
           </property>
          </widget>
         </item>
@@ -774,7 +777,11 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="edtPlatformP2PPort"/>
+         <widget class="QLineEdit" name="edtPlatformP2PPort">
+          <property name="clearButtonEnabled">
+           <bool>true</bool>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QToolButton" name="btnPlatformP2PPortSetDefault">
@@ -794,7 +801,11 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="edtPlatformHTTPPort"/>
+         <widget class="QLineEdit" name="edtPlatformHTTPPort">
+          <property name="clearButtonEnabled">
+           <bool>true</bool>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QToolButton" name="btnPlatformHTTPPortSetDefault">
