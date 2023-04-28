@@ -65,7 +65,7 @@ CACHE_ITEM_SHOW_NOT_USED_ADDRESSES = 'WalletDlg_ShowNotUsedAddresses'
 FETCH_DATA_INTERVAL_SECONDS = 60
 MAIN_VIEW_BIP44_ACCOUNTS = 1
 MAIN_VIEW_MASTERNODE_LIST = 2
-
+TX_SIZE_LIMIT_BYTES = 90000
 
 log = logging.getLogger('dmt.wallet_dlg')
 
@@ -156,19 +156,22 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.dt_last_addr_selection_hash_for_txes = ''
         self.dt_last_hd_tree_id = None
 
+        # runtime vars
+        self.rtm_last_dash_by_value = 0
+
         self.setupUi(self)
 
     def setupUi(self, dialog: QDialog):
         ui_wallet_dlg.Ui_WalletDlg.setupUi(self, self)
         self.setWindowTitle('Wallet')
         self.chbHideCollateralTx.setChecked(True)
-        WndUtils.set_icon(self.main_ui, self.btnCheckAll, 'check.png')
+        WndUtils.set_icon(self.main_ui, self.btnSelectUtxos, 'check.png')
         WndUtils.set_icon(self.main_ui, self.btnUncheckAll, 'uncheck.png')
         self.restore_cache_settings()
         self.splitterMain.setStretchFactor(0, 0)
         self.splitterMain.setStretchFactor(1, 1)
 
-        # setup the "loading" spinner
+        # set up the "loading" spinner
         self.loading_data_spinner = SpinnerWidget(self.pnl_input, 22, message='Fetching transactions')
         self.loading_data_spinner.hide()
         self.lay_input.insertWidget(self.lay_input.indexOf(self.btnFetchTransactions) + 1, self.loading_data_spinner)
@@ -240,7 +243,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.mnListView.selectionModel().selectionChanged.connect(self.on_viewMasternodes_selectionChanged)
         self.mnListView.setItemDelegateForColumn(0, WalletMnItemDelegate(self.mnListView))
 
-        # setup the options widget of the accounts list panel
+        # set up the options widget of the accounts list panel
         l = self.pageAccountsListView.layout()
         self.wdg_accounts_view_options = QtWidgets.QWidget()
         self.ui_accounts_view_options = Ui_WdgOptions1()
@@ -249,8 +252,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         l.insertWidget(0, self.wdg_accounts_view_options)
         self.wdg_accounts_view_options.hide()
 
-        # setup the filter widget of the transactions tab
-        l  = self.tabTransactions.layout()
+        # set up the filter widget of the transactions tab
+        l = self.tabTransactions.layout()
         self.wdg_txes_filter = QtWidgets.QWidget()
         self.ui_txes_filter = Ui_WdgWalletTxesFilter()
         self.ui_txes_filter.setupUi(self.wdg_txes_filter)
@@ -298,6 +301,14 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.act_hide_account.triggered.connect(self.on_act_hide_account_triggered)
         WndUtils.set_icon(self.main_ui, self.act_hide_account, 'eye-crossed-out@16px.png', force_color_change='#0066cc')
         self.accountsListView.addAction(self.act_hide_account)
+
+        # select UTXO-s popup menu
+        self.act_select_utxos_by_value_down = QAction('.. by Dash value (consecutively, down from the selected one)',
+                                                      self)
+        self.act_select_utxos_by_value_down.triggered.connect(self.on_select_utxos_by_value_own_triggered)
+        self.act_select_all_utxos = QAction('.. all UTXOs', self)
+        self.act_select_all_utxos.triggered.connect(self.on_select_all_utxos_triggered)
+        self.btnSelectUtxos.addActions((self.act_select_utxos_by_value_down, self.act_select_all_utxos))
 
         # for testing:
         # self.act_delete_account_data = QAction('Clear account data in cache', self)
@@ -517,8 +528,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def on_btnUncheckAll_clicked(self):
         self.utxoTableView.clearSelection()
 
+    # @pyqtSlot(bool)
+    # def on_btnSelectUtxos_clicked(self):
+    #     self.btnSelectUtxos.
+
     @pyqtSlot(bool)
-    def on_btnCheckAll_clicked(self):
+    def on_select_all_utxos_triggered(self):
         sel = self.utxoTableView.selectionModel()
         sel_modified = False
         s = QItemSelection()
@@ -531,6 +546,59 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         s.select(index, index)
             if sel_modified:
                 sel.select(s, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
+
+    @pyqtSlot(bool)
+    def on_select_utxos_by_value_own_triggered(self):
+        try:
+            sel = self.utxoTableView.selectionModel()
+            sel_modified = False
+            s = QItemSelection()
+
+            with self.utxo_table_model:
+                row_indexes = list(self.utxo_table_model.selected_rows())
+                if row_indexes:
+                    self.utxoTableView.clearSelection()
+                    first_row = row_indexes[0]
+                else:
+                    if self.utxo_table_model.rowCount() == 0:
+                        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+                            if not list(self.account_list_model.selected_rows()):
+                                WndUtils.warn_msg("First, select an account.")
+                            else:
+                                WndUtils.warn_msg("No coins (UTXOs) in the currently selected account. "
+                                                  "Select another account.")
+                        elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
+                            WndUtils.warn_msg("No coins (UTXOs) in the currently selected address.")
+                        return
+
+                    first_row = 0
+
+                self.rtm_last_dash_by_value, ok = QInputDialog.getDouble(
+                    self, 'Enter the value in Dash',
+                    'Enter the value (in Dash) you wish to select',
+                    self.rtm_last_dash_by_value)
+
+                if ok:
+                    total_value = 0.0
+                    for row_idx, utxo in enumerate(self.utxo_table_model.utxos[first_row:]):
+                        index = self.utxo_table_model.index(row_idx + first_row, 0)
+                        if not utxo.coinbase_locked:
+                            if not sel.isSelected(index):
+                                sel_modified = True
+                                s.select(index, index)
+                                total_value += utxo.satoshis / 1e8
+                        if total_value >= self.rtm_last_dash_by_value:
+                            break
+
+                    if sel_modified:
+                        sel.select(s, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
+
+                    if total_value < self.rtm_last_dash_by_value:
+                        WndUtils.warn_msg("No records of sufficient total value were found.")
+                    else:
+                        self.wdg_dest_adresses.limit_dest_value(self.rtm_last_dash_by_value)
+        except Exception as e:
+            WndUtils.error_msg(str(e), true)
 
     @pyqtSlot(bool)
     def on_btnUtxoViewColumns_clicked(self):
@@ -548,6 +616,14 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         try:
             self.allow_fetch_transactions = False
             self.enable_synch_with_main_thread = False
+            tx_size_bytes = self.wdg_dest_adresses.calculate_tx_size()
+            if tx_size_bytes >= TX_SIZE_LIMIT_BYTES:
+                if self.query_dlg(
+                        "The estimated transaction size exceeds 90000 bytes, so it is likely that sending will fail. "
+                        "I suggest splitting it into smaller chunks.\n\nDo you want to continue anyway?",
+                        buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                        default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
+                    return
 
             amount, tx_inputs = self.get_selected_utxos()
             if len(tx_inputs):
@@ -567,11 +643,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 #  - the utxo Dash (signing) address matches the hardware wallet address for a given path
                 for utxo_idx, utxo in enumerate(tx_inputs):
                     total_satoshis_inputs += utxo.satoshis
-                    log.info(f'UTXO satosis: {utxo.satoshis}')
                     if utxo.is_collateral:
                         if self.query_dlg(
-                                "Warning: you are going to transfer masternode's collateral (1000 Dash) transaction "
-                                "output. Proceeding will result in broken masternode.\n\n"
+                                "Warning: you are going to transfer masternode's collateral (1000/4000 Dash) "
+                                "transaction output. Proceeding will result in broken masternode.\n\n"
                                 "Do you really want to continue?",
                                 buttons=QMessageBox.Yes | QMessageBox.Cancel,
                                 default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
@@ -599,9 +674,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                 if coinbase_locked_exist:
                     if self.query_dlg("Warning: you have selected at least one coinbase transaction without the "
-                                     "required number of confirmations (100). Your transaction will be "
-                                     "rejected by the network.\n\n"
-                                     "Do you really want to continue?",
+                                      "required number of confirmations (100). Your transaction will be "
+                                      "rejected by the network.\n\n"
+                                      "Do you really want to continue?",
                                       buttons=QMessageBox.Yes | QMessageBox.Cancel,
                                       default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
                         return
@@ -655,8 +730,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                         tx_hex = serialized_tx.hex()
                         log.info('Raw signed transaction: ' + tx_hex)
-                        if len(tx_hex) > 90000:
-                            self.error_msg("Transaction's length exceeds 90000 bytes. Select less UTXOs and try again.")
+                        if len(tx_hex)/2 > TX_SIZE_LIMIT_BYTES:
+                            self.error_msg("Transaction's size exceeds 90000 bytes. Select less UTXOs and try again.")
                         else:
                             after_send_tx_fun = partial(self.process_after_sending_transaction, tx_inputs, tx_outputs)
                             tx_dlg = TransactionDlg(self, self.main_ui.app_config, self.dashd_intf, tx_hex,

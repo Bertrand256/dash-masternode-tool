@@ -566,11 +566,8 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         return change_amount
 
     def calculate_fee(self, change_amount = None) -> float:
-        if change_amount is None:
-            change_amount = self.change_amount
-        recipients_count = len(self.recipients)
-        if change_amount > 0.0:
-            recipients_count += 1
+        # When calculating the fee, for the sake of simplicity, assume that there will always be one output for change.
+        recipients_count = len(self.recipients) + 1
 
         if self.app_config.is_testnet:
             fee_multiplier = 10  # in testnet large transactions tend to get stuck if the fee is "normal"
@@ -578,8 +575,8 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
             fee_multiplier = 1
 
         if self.inputs_total_amount > 0.0:
-            bytes = (self.inputs_count * 148) + (recipients_count * 34) + 10
-            fee = round(bytes * FEE_DUFF_PER_BYTE, 8)
+            tx_bytes = (self.inputs_count * 148) + (recipients_count * 34) + 10
+            fee = round(tx_bytes * FEE_DUFF_PER_BYTE, 8)
             if not fee:
                 fee = MIN_TX_FEE
             fee = round(fee * fee_multiplier / 1e8, 8)
@@ -696,9 +693,9 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
 
     def set_input_amount(self, amount, inputs_count):
         self.inputs_count = inputs_count
-        if amount != self.inputs_total_amount or inputs_count != self.inputs_count:
+        if amount != self.inputs_total_amount:
             # if there is only one recipient address and his current amount equals to the
-            # previuus input_amount, assign new value to him
+            # previuus input_amount, assign new value to it
 
             last_total_amount = self.inputs_total_amount
             last_fee_amount = self.fee_amount
@@ -749,7 +746,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
                 for nr in reversed(range(len(addresses), len(self.recipients))):
                     self.remove_dest_address(self.recipients[nr])
             for idx, addr_item in enumerate(self.recipients):
-                if isinstance(addresses[idx], (list,tuple)):
+                if isinstance(addresses[idx], (list, tuple)):
                     # passed address-value tuple
                     if len(addresses[idx]) >= 1:
                         addr_item.set_address(addresses[idx][0])
@@ -758,6 +755,26 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
                 else:
                     addr_item.set_address(addresses[idx])
             self.display_totals()
+
+    def limit_dest_value(self, dest_value: float):
+        """
+        Sets the value limit for the recipient. If this limit value is less than the sum of the values
+        of all selected UTXOs, the excess will be returned as change.
+        :param dest_value: the limit value to be set
+        """
+        if dest_value < self.inputs_total_amount:
+            left_value = dest_value
+            for idx, addr in enumerate(self.recipients):
+                if idx == len(self.recipients) - 1:
+                    addr.set_value(left_value)
+                else:
+                    if addr.get_value() < left_value:
+                        left_value -= addr.get_value()
+                    else:
+                        addr.set_value(left_value)
+                        left_value = 0.0
+
+            self.update_change_and_fee()
 
     def on_cbo_output_unit_change(self, index):
         if index == 0:
@@ -1026,6 +1043,15 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         if self.fee_amount + self.add_to_fee < 0.0:
             raise Exception('Invalid the fee value.')
         return round((self.fee_amount + self.add_to_fee) * 1e8)
+
+    def calculate_tx_size(self) -> int:
+        """
+        Calculates transaction size in bytes based on the number of inputs and outputs
+        :return: TX size in bytes.
+        """
+        recipients = self.get_number_of_recipients()
+        tx_size_bytes = (self.inputs_count * 148) + (recipients * 34) + 10
+        return tx_size_bytes
 
 
 class WalletMnItemDelegate(QItemDelegate):
