@@ -1,6 +1,6 @@
 python-bitcoinrpc>=1.0
 bitcoin>=1.1.42
-trezor==0.13.3
+trezor==0.13.6
 keepkey
 libusb1~=3.0.0
 PyQt5==5.15.9
@@ -8,15 +8,15 @@ PyQtChart==5.15.6
 pyinstaller==4.4; sys_platform == 'linux'
 pyinstaller>=4.3; sys_platform == 'darwin'
 pyinstaller>=4.3; sys_platform == 'win32'
-paramiko~=2.11.0
-requests
+paramiko==3.1.0
+requests==2.29.0
 mnemonic~=0.19
-simplejson~=3.17.2
+simplejson==3.19.1
 cryptography==40.0.2
 bip32utils~=0.3.post4
-more-itertools
+more-itertools==9.1.0
 btchip-python
-ledgerwallet
+ledgerwallet==0.1.4
 blspy==1.0.16
 construct==2.10.68
 protobuf==3.20.3
