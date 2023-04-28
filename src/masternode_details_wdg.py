@@ -1,4 +1,4 @@
-from typing import Callable, Optional
+from typing import Callable, Optional, Literal, cast
 
 import bitcoin
 from PyQt5 import QtCore
@@ -14,7 +14,7 @@ from app_defs import DispMessage, AppTextMessageType
 from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException
 from common import CancelException
 from dashd_intf import DashdInterface
-from find_coll_tx_dlg import ListCollateralTxsDlg
+from find_coll_tx_dlg import WalletUtxosListDlg
 from thread_fun_dlg import CtrlObject
 from ui import ui_masternode_details_wdg
 from wnd_utils import WndUtils
@@ -1073,21 +1073,16 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     @pyqtSlot(bool)
     def on_btnLocateCollateral_clicked(self, checked):
         try:
-            break_scanning = False
-
-            if not self.hw_session.connect_hardware_wallet():
-                return
-
-            def do_break_scanning():
-                nonlocal break_scanning
-                break_scanning = True
-                return False
-
-            def check_break_scanning():
-                nonlocal break_scanning
-                return break_scanning
-
             def apply_utxo(utxo):
+                if utxo.masternode:
+                    if utxo.masternode.name != self.masternode.name:
+                        if WndUtils.query_dlg(
+                                "Do you really want to use the UTXO that is already assigned to another masternode "
+                                "configuration?",
+                                buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
+                            return False
+
                 self.masternode.collateral_address = utxo.address
                 self.edtCollateralAddress.setText(utxo.address)
                 self.masternode.collateral_bip32_path = utxo.bip32_path
@@ -1099,94 +1094,27 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 self.update_ui_controls_state()
                 self.on_mn_data_modified()
 
-            bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.hw_session,
-                                       self.app_config.db_intf, self.dashd_intf, self.app_config.dash_network)
-
-            utxos = WndUtils.run_thread_dialog(
-                self.get_collateral_tx_address_thread,
-                (bip44_wallet, check_break_scanning, self.edtCollateralAddress.text()),
-                True, force_close_dlg_callback=do_break_scanning)
-
-            if utxos:
-                if len(utxos) == 1 and \
-                        (not self.masternode.collateral_address or
-                         (utxos[0].address_obj and self.masternode.collateral_address == utxos[0].address_obj.address)) \
-                        and (not self.masternode.collateral_tx or utxos[0].txid == self.masternode.collateral_tx):
-                    apply_utxo(utxos[0])
-                    return
-
-                dlg = ListCollateralTxsDlg(self, self.masternode, self.app_config, False, utxos)
-                if dlg.exec_():
-                    utxo = dlg.get_selected_utxo()
-                    if utxo:
-                        apply_utxo(utxo)
+            if self.masternode.masternode_type == MasternodeType.REGULAR:
+                dash_value_to_find = 1000
             else:
-                if utxos is not None:
-                    WndUtils.warn_msg('Couldn\'t find any 1000 Dash UTXO in your wallet.')
+                dash_value_to_find = 4000
+
+            address = self.edtCollateralAddress.text()
+
+            found = WalletUtxosListDlg.select_utxo_from_wallet_dialog(
+                self, dash_value_to_find, self.app_config, self.dashd_intf,
+                address, self.hw_session, apply_utxo)
+
+            if not found:
+                msg = f'Could not find any UTXO of {dash_value_to_find} Dash value'
+                if address:
+                    msg += f' assigned to address {address}.'
+                else:
+                    msg += ' in your wallet.'
+                WndUtils.warn_msg(msg)
+
         except Exception as e:
             WndUtils.error_msg(str(e))
-
-    def get_collateral_tx_address_thread(self, ctrl: CtrlObject,
-                                         bip44_wallet: Bip44Wallet,
-                                         check_break_scanning_ext: Callable[[], bool],
-                                         src_address: str):
-        utxos = []
-        break_scanning = False
-        txes_cnt = 0
-        msg = 'Scanning wallet transactions for 1000 Dash UTXOs.<br>' \
-              'This may take a while (<a href="break">break</a>)....'
-        ctrl.dlg_config(dlg_title="Scanning wallet", show_progress_bar=False)
-        ctrl.display_msg(msg)
-
-        def check_break_scanning():
-            nonlocal break_scanning
-            if break_scanning:
-                # stop the scanning process if the dialog finishes or the address/bip32path has been found
-                raise BreakFetchTransactionsException()
-            if check_break_scanning_ext is not None and check_break_scanning_ext():
-                raise BreakFetchTransactionsException()
-
-        def fetch_txes_feedback(tx_cnt: int):
-            nonlocal msg, txes_cnt
-            txes_cnt += tx_cnt
-            ctrl.display_msg(msg + '<br><br>' + 'Number of transactions fetched so far: ' + str(txes_cnt))
-
-        def on_msg_link_activated(link: str):
-            nonlocal break_scanning
-            if link == 'break':
-                break_scanning = True
-
-        lbl = ctrl.get_msg_label_control()
-        if lbl:
-            def set():
-                lbl.setOpenExternalLinks(False)
-                lbl.setTextInteractionFlags(lbl.textInteractionFlags() & ~Qt.TextSelectableByMouse)
-                lbl.linkActivated.connect(on_msg_link_activated)
-                lbl.repaint()
-
-            WndUtils.call_in_main_thread(set)
-
-        try:
-            bip44_wallet.on_fetch_account_txs_feedback = fetch_txes_feedback
-            if src_address:
-                # limit transactions only to the specific address
-                # addr = bip44_wallet.get_address_item(src_address, False)
-                addr = bip44_wallet.scan_wallet_for_address(src_address, check_break_scanning,
-                                                            feedback_fun=fetch_txes_feedback)
-
-                if addr and addr.tree_id == bip44_wallet.get_tree_id():
-                    bip44_wallet.fetch_addresses_txs([addr], check_break_scanning)
-                    for utxo in bip44_wallet.list_utxos_for_addresses([addr.id], filter_by_satoshis=int(1e11)):
-                        utxos.append(utxo)
-
-            if not utxos:
-                bip44_wallet.fetch_all_accounts_txs(check_break_scanning)
-                for utxo in bip44_wallet.list_utxos_for_account(account_id=None, filter_by_satoshis=int(1e11)):
-                    utxos.append(utxo)
-
-        except BreakFetchTransactionsException:
-            return None
-        return utxos
 
     def on_owner_view_key_type_changed(self):
         self.btnShowOwnerPrivateKey.setChecked(True)

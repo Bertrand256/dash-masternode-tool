@@ -35,7 +35,7 @@
       </sizepolicy>
      </property>
      <property name="currentIndex">
-      <number>4</number>
+      <number>0</number>
      </property>
      <widget class="QWidget" name="page0">
       <property name="sizePolicy">
@@ -398,6 +398,16 @@
              <width>40</width>
              <height>16777215</height>
             </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QToolButton" name="btnSelectCollateralUtxo">
+           <property name="toolTip">
+            <string>Select UTXO for collateral from wallet</string>
+           </property>
+           <property name="text">
+            <string>Select</string>
            </property>
           </widget>
          </item>

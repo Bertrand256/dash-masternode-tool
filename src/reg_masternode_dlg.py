@@ -21,7 +21,7 @@ from bitcoinrpc.authproxy import EncodeDecimal, JSONRPCException
 import app_cache
 import app_defs
 import hw_intf
-from app_config import MasternodeConfig, AppConfig, InputKeyType
+from app_config import MasternodeConfig, MasternodeType, AppConfig, InputKeyType
 from app_defs import FEE_DUFF_PER_BYTE
 from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException, find_wallet_addresses
 from common import CancelException
@@ -378,6 +378,10 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                     self.edtVotingKey.setText(self.masternode.dmn_voting_private_key)
                 else:
                     self.edtVotingKey.setText(self.masternode.dmn_voting_address)
+
+    @pyqtSlot(bool)
+    def on_btnSelectCollateralUtxo_clicked(self):
+        pass
 
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
@@ -953,6 +957,11 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         return ret
 
     def get_collateral_tx_address_thread(self, ctrl: CtrlObject, check_break_scanning_ext: Callable[[], bool]):
+        if self.masternode.masternode_type == MasternodeType.REGULAR:
+            collateral_value_needed = 1e11
+        else:
+            collateral_value_needed = 4e11
+
         txes_cnt = 0
         msg = ''
         break_scanning = False
@@ -994,8 +1003,10 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                 ads = spk.get('addresses')
                 if not ads or len(ads) < 0:
                     raise Exception('The collateral transaction output doesn\'t have the Dash address assigned.')
-                if vout.get('valueSat') != 1000e8:
-                    raise Exception('The value of the collateral transaction output is not equal to 1000 Dash.')
+                if vout.get('valueSat') != collateral_value_needed:
+                    raise Exception(f'The value of the collateral transaction output is not equal to '
+                                    f'{round(collateral_value_needed / 1e8)} Dash, which it should be '
+                                    f'for this type of masternode.\n\nSelect another tx output.')
 
                 self.dmn_collateral_tx_address = ads[0]
             else:
