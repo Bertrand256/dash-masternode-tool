@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>862</width>
+    <width>905</width>
     <height>625</height>
    </rect>
   </property>
@@ -386,18 +386,21 @@
                      <number>8</number>
                     </property>
                     <item>
-                     <widget class="QToolButton" name="btnCheckAll">
+                     <widget class="QToolButton" name="btnSelectUtxos">
                       <property name="toolTip">
                        <string/>
                       </property>
                       <property name="text">
-                       <string>Select All</string>
+                       <string>Select...</string>
                       </property>
                       <property name="iconSize">
                        <size>
                         <width>12</width>
                         <height>12</height>
                        </size>
+                      </property>
+                      <property name="popupMode">
+                       <enum>QToolButton::InstantPopup</enum>
                       </property>
                       <property name="toolButtonStyle">
                        <enum>Qt::ToolButtonTextBesideIcon</enum>
