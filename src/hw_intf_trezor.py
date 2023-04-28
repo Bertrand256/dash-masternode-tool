@@ -15,7 +15,6 @@ from trezorlib.transport import Transport
 from trezorlib import messages as trezor_proto, exceptions, btc, messages
 from trezorlib.ui import PIN_CURRENT, PIN_NEW, PIN_CONFIRM
 from trezorlib import device
-import trezorlib.firmware as firmware
 import trezorlib.firmware
 import trezorlib
 
@@ -71,12 +70,6 @@ class TrezorUi(object):
         if not self.prompt_shown:
             pass
         self.prompt_shown = True
-
-
-ALLOWED_FIRMWARE_FORMATS = {
-    1: (trezorlib.firmware.FirmwareFormat.TREZOR_ONE, trezorlib.firmware.FirmwareFormat.TREZOR_ONE_V2),
-    2: (trezorlib.firmware.FirmwareFormat.TREZOR_T,),
-}
 
 
 class MyTrezorClient(TrezorClient):
@@ -171,11 +164,6 @@ class MyTrezorClient(TrezorClient):
             raise Exception("Firmware is too old for your device. Aborting.")
         elif not bootloader_onev2 and version == trezorlib.firmware.FirmwareFormat.TREZOR_ONE_V2:
             raise Exception("You need to upgrade to bootloader 1.8.0 first.")
-
-        if f.major_version not in ALLOWED_FIRMWARE_FORMATS:
-            raise Exception("DMT doesn't know your device version. Aborting.")
-        elif version not in ALLOWED_FIRMWARE_FORMATS[f.major_version]:
-            raise Exception("Firmware does not match your device, aborting.")
 
         if bootloader_onev2 and firmware_data[:4] == b"TRZR" and firmware_data[256: 256 + 4] == b"TRZF":
             log.debug("Extracting embedded firmware image.")
