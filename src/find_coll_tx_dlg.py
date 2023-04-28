@@ -262,6 +262,7 @@ class WalletUtxosListDlg(QDialog, ui_find_coll_tx_dlg.Ui_ListCollateralTxsDlg, w
             limit_utxos_to_address: Optional[str],
             hw_session: hw_intf.HwSessionInfo,
             apply_utxo_fun: Callable,
+            auto_apply_if_one: bool = True
     ) -> bool:
         try:
             break_scanning = False
@@ -288,7 +289,7 @@ class WalletUtxosListDlg(QDialog, ui_find_coll_tx_dlg.Ui_ListCollateralTxsDlg, w
                 True, force_close_dlg_callback=do_break_scanning)
 
             if utxos:
-                if len(utxos) == 1:
+                if len(utxos) == 1 and auto_apply_if_one:
                     apply_utxo_fun(utxos[0])
                 else:
                     dlg = WalletUtxosListDlg(parent_dialog, app_config, False, utxo_value_to_find, utxos)

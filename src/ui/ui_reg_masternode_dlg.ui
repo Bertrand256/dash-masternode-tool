@@ -407,7 +407,7 @@
             <string>Select UTXO for collateral from wallet</string>
            </property>
            <property name="text">
-            <string>Select</string>
+            <string>Select ...</string>
            </property>
           </widget>
          </item>

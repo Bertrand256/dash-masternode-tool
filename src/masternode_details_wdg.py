@@ -1100,10 +1100,17 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 dash_value_to_find = 4000
 
             address = self.edtCollateralAddress.text()
+            if self.edtCollateralTxHash.text():
+                # If there is any value in the collateral tx edit box, don't automatically apply the possible
+                # result (if only one UTXO was found). We want to prevent the user from missing the fact, that
+                # the value has been replaced with another
+                auto_apply_result = False
+            else:
+                auto_apply_result = True
 
             found = WalletUtxosListDlg.select_utxo_from_wallet_dialog(
                 self, dash_value_to_find, self.app_config, self.dashd_intf,
-                address, self.hw_session, apply_utxo)
+                address, self.hw_session, apply_utxo, auto_apply_result)
 
             if not found:
                 msg = f'Could not find any UTXO of {dash_value_to_find} Dash value'

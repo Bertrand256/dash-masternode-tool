@@ -620,7 +620,7 @@ class Ui_RegMasternodeDlg(object):
         self.label_15.setText(_translate("RegMasternodeDlg", "Operator reward"))
         self.label_2.setText(_translate("RegMasternodeDlg", "TX index"))
         self.btnSelectCollateralUtxo.setToolTip(_translate("RegMasternodeDlg", "Select UTXO for collateral from wallet"))
-        self.btnSelectCollateralUtxo.setText(_translate("RegMasternodeDlg", "Select"))
+        self.btnSelectCollateralUtxo.setText(_translate("RegMasternodeDlg", "Select ..."))
         self.lblOperatorRewardMsg.setText(_translate("RegMasternodeDlg", "..."))
         self.label.setText(_translate("RegMasternodeDlg", "Collateral TX"))
         self.btnGenerateOwnerKey.setText(_translate("RegMasternodeDlg", "Generate new"))

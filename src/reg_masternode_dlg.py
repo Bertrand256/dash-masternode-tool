@@ -5,17 +5,11 @@
 import base64
 import json
 import logging
-import time
-from collections import namedtuple
-from enum import Enum
-from functools import partial
-from typing import List, Union, Callable, Optional
+from typing import List, Callable, Optional
 import ipaddress
 
-from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtCore import pyqtSlot, Qt, QTimerEvent, QTimer
-from PyQt5.QtGui import QPalette
-from PyQt5.QtWidgets import QDialog, QApplication, QToolButton, QAction, QWidget
+from PyQt5.QtWidgets import QDialog, QMessageBox, QApplication, QWidget
 from bitcoinrpc.authproxy import EncodeDecimal, JSONRPCException
 
 import app_cache
@@ -23,16 +17,17 @@ import app_defs
 import hw_intf
 from app_config import MasternodeConfig, MasternodeType, AppConfig, InputKeyType
 from app_defs import FEE_DUFF_PER_BYTE
-from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException, find_wallet_addresses
+from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException
 from common import CancelException
 from dash_utils import generate_bls_privkey, generate_wif_privkey, validate_address, wif_privkey_to_address, \
-    validate_wif_privkey, bls_privkey_to_pubkey
+    validate_wif_privkey, bls_privkey_to_pubkey, MASTERNODE_TX_MINIMUM_CONFIRMATIONS
 from dashd_intf import DashdInterface
 from thread_fun_dlg import CtrlObject
 from ui import ui_reg_masternode_dlg
-from wallet_common import Bip44AccountType, Bip44AddressType
-from wnd_utils import WndUtils, is_color_dark, QDetectThemeChange, get_widget_font_color_blue, \
+from wnd_utils import WndUtils, QDetectThemeChange, get_widget_font_color_blue, \
     get_widget_font_color_green
+from find_coll_tx_dlg import WalletUtxosListDlg
+from wallet_dlg import WalletDlg
 
 STEP_MN_DATA = 1
 STEP_DASHD_TYPE = 2
@@ -381,7 +376,63 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
 
     @pyqtSlot(bool)
     def on_btnSelectCollateralUtxo_clicked(self):
-        pass
+        try:
+            def apply_utxo(utxo):
+                if utxo.masternode:
+                    if utxo.masternode.name != self.masternode.name:
+                        if WndUtils.query_dlg(
+                                "Do you really want to use the UTXO that is already assigned to another masternode "
+                                "configuration?",
+                                buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
+                            return False
+
+                self.edtCollateralTx.setText(utxo.txid)
+                self.edtCollateralIndex.setText(str(utxo.output_index))
+
+            if self.masternode.masternode_type == MasternodeType.REGULAR:
+                dash_value_to_find = 1000
+            else:
+                dash_value_to_find = 4000
+
+            if self.edtCollateralTx.text():
+                # If there is any value in the collateral tx edit box, don't automatically apply the possible
+                # result (if only one UTXO was found); We want to prevent the user from missing the fact, that
+                # the value has been replaced with another
+                auto_apply_result = False
+            else:
+                auto_apply_result = True
+
+            found = WalletUtxosListDlg.select_utxo_from_wallet_dialog(
+                self, dash_value_to_find, self.app_config, self.dashd_intf,
+                None, self.main_dlg.hw_session, apply_utxo, auto_apply_result)
+
+            if not found:
+                # WndUtils.warn_msg(f'Could not find any UTXO of {dash_value_to_find} Dash value in your wallet.')
+                if WndUtils.query_dlg(
+                        f"Could not find any UTXO of {dash_value_to_find} Dash value in your wallet.\n\n"
+                        f"To continue you must have an unspent {dash_value_to_find} Dash transaction output. "
+                        f"Should I open a wallet window so you can create one? ",
+                        buttons=QMessageBox.Yes | QMessageBox.No,
+                        icon=QMessageBox.Warning) == QMessageBox.Yes:
+                    try:
+                        self.main_dlg.main_view.stop_threads()
+                        ui = WalletDlg(self, self.main_dlg.hw_session, initial_mn_sel=None)
+                        ui.subscribe_for_a_new_utxo(dash_value_to_find)
+                        ui.exec_()
+
+                        utxos_created = ui.get_new_utxos_subscribed()
+                        if utxos_created and len(utxos_created) == 1:
+                            utxo = utxos_created[0]
+                            self.edtCollateralTx.setText(utxo.txid)
+                            self.edtCollateralIndex.setText(str(utxo.output_index))
+                    except Exception as e:
+                        self.error_msg(str(e), True)
+                    finally:
+                        self.main_dlg.main_view.resume_threads()
+
+        except Exception as e:
+            WndUtils.error_msg(str(e))
 
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
@@ -951,8 +1002,9 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             ret = WndUtils.run_thread_dialog(self.get_collateral_tx_address_thread, (check_break_scanning,), True,
                                              force_close_dlg_callback=do_break_scanning)
         except Exception as e:
-            log.exception(str(e))
-            raise Exception(str(e))
+            WndUtils.error_msg(str(e), True)
+            ret = False
+
         self.btnContinue.setEnabled(True)
         return ret
 
@@ -990,6 +1042,13 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             tx = self.dashd_intf.getrawtransaction(self.dmn_collateral_tx, 1, skip_cache=True)
         except Exception as e:
             raise Exception('Cannot get the collateral transaction due to the following error: ' + str(e))
+
+        confirmations = tx.get('confirmations', 0)
+        if confirmations < MASTERNODE_TX_MINIMUM_CONFIRMATIONS:
+            raise Exception(f'The collateral transaction does not yet have '
+                            f'the required number of {MASTERNODE_TX_MINIMUM_CONFIRMATIONS} confirmations. '
+                            f'You must wait for {MASTERNODE_TX_MINIMUM_CONFIRMATIONS - confirmations} more '
+                            f'confirmation(s) before continuing.')
 
         vouts = tx.get('vout')
         if vouts:
