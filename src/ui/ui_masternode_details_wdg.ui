@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>741</width>
-    <height>387</height>
+    <width>784</width>
+    <height>406</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -54,7 +54,7 @@
      </property>
      <layout class="QVBoxLayout" name="verticalLayout">
       <property name="spacing">
-       <number>8</number>
+       <number>6</number>
       </property>
       <property name="leftMargin">
        <number>0</number>
@@ -275,14 +275,17 @@
         </item>
         <item>
          <widget class="QToolButton" name="btnGetMNDataByIP">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>16777215</height>
+           </size>
+          </property>
           <property name="toolTip">
            <string>Fetch public masternode data from network</string>
           </property>
           <property name="text">
            <string>Fetch MN data</string>
-          </property>
-          <property name="toolButtonStyle">
-           <enum>Qt::ToolButtonTextOnly</enum>
           </property>
          </widget>
         </item>
@@ -328,6 +331,12 @@
         </item>
         <item>
          <widget class="QToolButton" name="btnLocateCollateral">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>16777215</height>
+           </size>
+          </property>
           <property name="toolTip">
            <string>Search collateral address in your hardware wallet</string>
           </property>
@@ -455,6 +464,12 @@
         </item>
         <item>
          <widget class="QToolButton" name="btnCopyProtxHash">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
           <property name="toolTip">
            <string>Copy protx hash to clipboard</string>
           </property>
@@ -536,6 +551,12 @@
         </item>
         <item>
          <widget class="QToolButton" name="btnGenerateOwnerPrivateKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>16777215</height>
+           </size>
+          </property>
           <property name="toolTip">
            <string>Generate a new owner private key</string>
           </property>
@@ -617,6 +638,12 @@
         </item>
         <item>
          <widget class="QToolButton" name="btnGenerateOperatorPrivateKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>16777215</height>
+           </size>
+          </property>
           <property name="toolTip">
            <string>Generate a new operator private key (BLS)</string>
           </property>
@@ -698,6 +725,12 @@
         </item>
         <item>
          <widget class="QToolButton" name="btnGenerateVotingPrivateKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>16777215</height>
+           </size>
+          </property>
           <property name="toolTip">
            <string>Generate a new voting private key</string>
           </property>
@@ -738,6 +771,12 @@
         </item>
         <item>
          <widget class="QToolButton" name="btnCopyPlatformId">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
           <property name="toolTip">
            <string>Copy Platform Node ID to clipboard</string>
           </property>
@@ -751,6 +790,12 @@
         </item>
         <item>
          <widget class="QToolButton" name="btnGetPlatformNodeIdFromPrivate">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>16777215</height>
+           </size>
+          </property>
           <property name="toolTip">
            <string>Set Platform Node ID from Ed25519 private key</string>
           </property>
@@ -794,6 +839,12 @@
         </item>
         <item>
          <widget class="QToolButton" name="btnPlatformP2PPortSetDefault">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
           <property name="toolTip">
            <string>Set default value for Platform P2P port</string>
           </property>
@@ -824,6 +875,12 @@
         </item>
         <item>
          <widget class="QToolButton" name="btnPlatformHTTPPortSetDefault">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
           <property name="toolTip">
            <string>Set default value for Platform HTTP port</string>
           </property>

@@ -151,24 +151,22 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
     def set_buttons_height(self):
         h = self.edtName.height()
+        self.btnCopyProtxHash.setFixedHeight(h)
         self.btnCopyOwnerKey.setFixedHeight(h)
         self.btnShowOwnerPrivateKey.setFixedHeight(h)
         self.btnGenerateOwnerPrivateKey.setFixedHeight(h)
-
         self.btnCopyOperatorKey.setFixedHeight(h)
         self.btnShowOperatorPrivateKey.setFixedHeight(h)
         self.btnGenerateOperatorPrivateKey.setFixedHeight(h)
-
         self.btnCopyVotingKey.setFixedHeight(h)
         self.btnShowVotingPrivateKey.setFixedHeight(h)
         self.btnGenerateVotingPrivateKey.setFixedHeight(h)
-        self.btnCopyProtxHash.setFixedHeight(h)
-
         self.btnGetMNDataByIP.setFixedHeight(h)
         self.btnShowCollateralPathAddress.setFixedHeight(h)
         self.btnBip32PathToAddress.setFixedHeight(h)
         self.btnLocateCollateral.setFixedHeight(h)
         self.btnCopyPlatformId.setFixedHeight(h)
+        self.btnGetPlatformNodeIdFromPrivate.setFixedHeight(h)
         self.btnPlatformP2PPortSetDefault.setFixedHeight(h)
         self.btnPlatformHTTPPortSetDefault.setFixedHeight(h)
 

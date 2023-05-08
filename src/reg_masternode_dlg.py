@@ -24,7 +24,8 @@ from common import CancelException
 from dash_utils import generate_bls_privkey, generate_wif_privkey, validate_address, wif_privkey_to_address, \
     validate_wif_privkey, bls_privkey_to_pubkey, MASTERNODE_TX_MINIMUM_CONFIRMATIONS, DASH_PLATFORM_DEFAULT_P2P_PORT, \
     DASH_PLATFORM_DEFAULT_HTTP_PORT, generate_ed25519_private_key, ed25519_private_key_to_pubkey, \
-    ed25519_public_key_to_platform_id, parse_ed25519_private_key
+    ed25519_public_key_to_platform_id, parse_ed25519_private_key, DASH_PLATFORM_DEFAULT_P2P_PORT, \
+    DASH_PLATFORM_DEFAULT_HTTP_PORT
 from dashd_intf import DashdInterface
 from thread_fun_dlg import CtrlObject
 from ui import ui_reg_masternode_dlg
@@ -112,7 +113,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.show_field_hinds = True
         self.summary_info = []
         self.register_prepare_command_name = 'register_prepare'  # register_prepare or register_prepare_hpmn, depending
-                                                                 # on self.masternode_type
+        # on self.masternode_type
         if self.masternode:
             self.collateral_tx_address_path = self.masternode.collateral_bip32_path
         self.bip44_wallet = Bip44Wallet(self.app_config.hw_coin_name, self.main_dlg.hw_session,
@@ -145,6 +146,8 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         WndUtils.set_icon(self, self.btnManualProtxSubmitCopy, 'content-copy@16px.png')
         WndUtils.set_icon(self, self.btnManualTxHashPaste, 'content-paste@16px.png')
         WndUtils.set_icon(self, self.btnSummaryDMNOperatorKeyCopy, 'content-copy@16px.png')
+        WndUtils.set_icon(self.parent, self.btnPlatformP2PPortSetDefault, 'restore@16px.png')
+        WndUtils.set_icon(self.parent, self.btnPlatformHTTPPortSetDefault, 'restore@16px.png')
         doc_url = app_defs.get_doc_url('README.md#setting-up-a-masternode', use_doc_subdir=False)
         if doc_url:
             self.lblDocumentation.setText(f'<a href="{doc_url}">Documentation</a>')
@@ -170,6 +173,12 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             self.killTimer(self.wait_for_confirmation_timer_id)
         self.save_cache_settings()
 
+    def showEvent(self, QShowEvent):
+        def apply():
+            self.set_buttons_height()
+
+        QTimer.singleShot(100, apply)
+
     def restore_cache_settings(self):
         app_cache.restore_window_size(self)
         self.show_field_hinds = app_cache.get_value(CACHE_ITEM_SHOW_FIELD_HINTS, True, bool)
@@ -185,6 +194,15 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.tm_resize_dlg = QTimer(self)
         self.tm_resize_dlg.setSingleShot(True)
         self.tm_resize_dlg.singleShot(100, set)
+
+    def set_buttons_height(self):
+        h = self.edtCollateralTx.height()
+        for btn in (self.btnGenerateOwnerKey, self.btnSelectCollateralUtxo, self.btnGenerateOperatorKey,
+                    self.btnGenerateVotingKey, self.btnGeneratePlatformId, self.btnManualFundingAddressPaste,
+                    self.btnManualProtxPrepareCopy, self.btnManualProtxPrepareResultPaste,
+                    self.btnManualProtxSubmitCopy, self.btnManualTxHashPaste, self.btnSummaryDMNOperatorKeyCopy,
+                    self.btnPlatformHTTPPortSetDefault, self.btnPlatformP2PPortSetDefault):
+            btn.setFixedHeight(h)
 
     def onThemeChanged(self):
         self.update_styles()
@@ -329,7 +347,8 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                 protx_state = protx.get('state')
                 if (protx_state and protx_state.get('service') == self.masternode.ip + ':' +
                     str(self.masternode.tcp_port)) or (protx.get('collateralHash') == self.masternode.collateral_tx and
-                                                       str(protx.get('collateralIndex')) == str(self.masternode.collateral_tx_index)):
+                                                       str(protx.get('collateralIndex')) == str(
+                            self.masternode.collateral_tx_index)):
                     found_protx = True
                     break
         except Exception as e:
@@ -509,6 +528,16 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.platform_node_id_generated = True
         self.edtPlatformNodeId.setText(node_id)
         self.upd_platform_node_id_info(True)
+
+    @pyqtSlot()
+    def on_btnPlatformP2PPortSetDefault_clicked(self):
+        if self.edtPlatformP2PPort.text() != str(DASH_PLATFORM_DEFAULT_P2P_PORT):
+            self.edtPlatformP2PPort.setText(str(DASH_PLATFORM_DEFAULT_P2P_PORT))
+
+    @pyqtSlot()
+    def on_btnPlatformHTTPPortSetDefault_clicked(self):
+        if self.edtPlatformHTTPPort.text() != str(DASH_PLATFORM_DEFAULT_HTTP_PORT):
+            self.edtPlatformHTTPPort.setText(str(DASH_PLATFORM_DEFAULT_HTTP_PORT))
 
     def set_ctrl_message(self, control, message: str, style: str):
         if message:
@@ -1120,6 +1149,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                 self.upd_platform_node_id_info(True)
                 error_count += 1
 
+            self.platform_ports_validation_err_msg = ''
             p2p_port = self.edtPlatformP2PPort.text().strip()
             if not p2p_port:
                 self.platform_ports_validation_err_msg = 'Platform P2P port is required.'
