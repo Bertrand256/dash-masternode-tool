@@ -407,7 +407,7 @@ def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching
 
                         except (ConnectionResetError, ConnectionAbortedError, httplib.CannotSendRequest,
                                 BrokenPipeError) as e:
-                            # this exceptions occur usually when the established connection gets disconnected after
+                            # these exceptions usually occur when the established connection gets disconnected after
                             # some time of inactivity; try to reconnect within the same connection configuration
                             log.warning('Error while calling of "' + str(func) + ' (1)". Details: ' + str(e))
                             if last_conn_reset_time:
@@ -443,7 +443,7 @@ def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching
                             self.last_error_message = str(e.org_exception)
                             raise e.org_exception  # couldn't use another conn config, raise last exception
                         else:
-                            try_nr -= 1  # another config retries do not count
+                            try_nr -= 1  # another config retry does not count
                             last_exception = e.org_exception
                     except Exception:
                         raise

@@ -34,13 +34,13 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
         self.app_config = app_config
         self.dashd_intf = dashd_intf
         self.on_mn_config_updated_callback = on_mn_config_updated_callback
-        self.dmn_protx_hash = self.masternode.dmn_tx_hash
-        self.dmn_actual_operator_pubkey = ""
-        self.dmn_actual_operator_reward = 0
-        self.dmn_new_operator_payout_address = ''
-        self.dmn_prev_ip_port = self.masternode.ip + ':' + str(self.masternode.port)
-        self.dmn_new_ip = ''
-        self.dmn_new_port = ''
+        self.protx_hash = self.masternode.protx_hash
+        self.actual_operator_pubkey = ""
+        self.actual_operator_reward = 0
+        self.new_operator_payout_address = ''
+        self.prev_ip_port = self.masternode.ip + ':' + str(self.masternode.tcp_port)
+        self.new_ip = ''
+        self.new_port: Optional[int] = None
         self.upd_payout_active = False
         self.show_manual_commands = False
         self.setupUi(self)
@@ -50,7 +50,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
         self.btnClose.hide()
         self.edtManualCommands.setStyle(ProxyStyleNoFocusRect())
         self.edtIP.setText(self.masternode.ip)
-        self.edtPort.setText(self.masternode.port)
+        self.edtPort.setText(str(self.masternode.tcp_port))
         self.restore_cache_settings()
         self.update_ctrls_state()
         self.minimize_dialog_height()
@@ -98,32 +98,32 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
     def read_data_from_network(self):
         try:
             protx = None
-            if not self.dmn_protx_hash:
+            if not self.protx_hash:
                 for protx in self.dashd_intf.protx('list', 'registered', True):
                     protx_state = protx.get('state')
                     if (protx_state and protx_state.get(
-                            'service') == self.masternode.ip + ':' + self.masternode.port) or \
+                            'service') == self.masternode.ip + ':' + str(self.masternode.tcp_port)) or \
                             (protx.get('collateralHash') == self.masternode.collateral_tx and
                              str(protx.get('collateralIndex')) == str(self.masternode.collateral_tx_index)):
-                        self.dmn_protx_hash = protx.get("proTxHash")
+                        self.protx_hash = protx.get("proTxHash")
                         break
-                if not self.dmn_protx_hash:
+                if not self.protx_hash:
                     raise Exception("Couldn't find protx hash for this masternode. Enter the protx hash value in your"
                                     " configuration.")
 
             if not protx:
                 try:
-                    protx = self.dashd_intf.protx('info', self.dmn_protx_hash)
+                    protx = self.dashd_intf.protx('info', self.protx_hash)
                 except Exception as e:
                     if str(e).find('not found') >= 0:
                         raise Exception(f'A protx transaction with this hash does not exist or is inactive: '
-                                        f'{self.dmn_protx_hash}.')
+                                        f'{self.protx_hash}.')
                     else:
                         raise
 
             status = protx.get('state', dict)
-            self.dmn_actual_operator_pubkey = status.get('pubKeyOperator')
-            self.dmn_actual_operator_reward = protx.get('operatorReward', 0)
+            self.actual_operator_pubkey = status.get('pubKeyOperator')
+            self.actual_operator_reward = protx.get('operatorReward', 0)
 
         except Exception as e:
             logging.exception('An exception occurred while reading protx information')
@@ -131,8 +131,8 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
 
     def update_ctrls_state(self):
 
-        self.dmn_new_operator_payout_address = self.edtOperatorPayoutAddress.text()
-        if not self.dmn_actual_operator_reward and self.dmn_new_operator_payout_address:
+        self.new_operator_payout_address = self.edtOperatorPayoutAddress.text()
+        if not self.actual_operator_reward and self.new_operator_payout_address:
             self.lblOperatorPayoutMsg.setText('<span style="color:red">Separate reward for the operator has not '
                                               'been configured. If you continue the update service operation will '
                                               'fail.</span>')
@@ -164,22 +164,22 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                 if not validate_address(payout_address, self.app_config.dash_network):
                     raise Exception('Invalid payout Dash address')
                 else:
-                    self.dmn_new_operator_payout_address = payout_address
+                    self.new_operator_payout_address = payout_address
             else:
-                self.dmn_new_operator_payout_address = ""
+                self.new_operator_payout_address = ""
 
-        if self.masternode.dmn_operator_key_type != InputKeyType.PRIVATE:
+        if self.masternode.operator_key_type != InputKeyType.PRIVATE:
             raise Exception('The operator private key is required.')
 
-        if self.masternode.get_dmn_operator_pubkey() != self.dmn_actual_operator_pubkey:
+        if self.masternode.get_operator_pubkey() != self.actual_operator_pubkey:
             raise Exception('The operator key from your configuration does not match the key published on the network.')
 
-        self.dmn_new_ip = self.edtIP.text()
-        if not self.dmn_new_ip:
+        self.new_ip = self.edtIP.text()
+        if not self.new_ip:
             raise Exception("The IP address cannot be empty.")
         try:
-            if self.dmn_new_ip:
-                ipaddress.ip_address(self.dmn_new_ip)
+            if self.new_ip:
+                ipaddress.ip_address(self.new_ip)
         except Exception as e:
             self.edtIP.setFocus()
             raise Exception('Invalid masternode IP address: %s.' % str(e))
@@ -187,10 +187,10 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
         if not self.edtPort.text():
             raise Exception("The TCP port cannot be empty.")
         try:
-            if self.dmn_new_ip:
-                self.dmn_new_port = int(self.edtPort.text())
+            if self.new_ip:
+                self.new_port = int(self.edtPort.text())
             else:
-                self.dmn_new_port = None
+                self.new_port = None
         except Exception:
             self.edtPort.setFocus()
             raise Exception('Invalid TCP port: should be integer.')
@@ -199,8 +199,8 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
         try:
             green_color = get_widget_font_color_green(self.lblIP)
             self.validate_data()
-            cmd = f'protx update_service "{self.dmn_protx_hash}" "{self.dmn_new_ip}:{str(self.dmn_new_port)}" ' \
-                f'"{self.masternode.dmn_operator_private_key}" "{self.dmn_new_operator_payout_address}" ' \
+            cmd = f'protx update_service "{self.protx_hash}" "{self.new_ip}:{str(self.new_port)}" ' \
+                f'"{self.masternode.operator_private_key}" "{self.new_operator_payout_address}" ' \
                 f'"<span style="color:{green_color}">feeSourceAddress</span>"'
             msg = '<ol>' \
                   '<li>Start a Dash Core wallet with sufficient funds to cover a transaction fee.</li>'
@@ -229,16 +229,16 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
     def send_upd_tx(self):
         try:
             funding_address = ''
-            if self.dmn_new_ip:
-                dmn_new_ip_port = self.dmn_new_ip + ':' + str(self.dmn_new_port)
+            if self.new_ip:
+                dmn_new_ip_port = self.new_ip + ':' + str(self.new_port)
             else:
                 dmn_new_ip_port = '"0"'
 
             params = ['update_service',
-                      self.dmn_protx_hash,
+                      self.protx_hash,
                       dmn_new_ip_port,
-                      self.masternode.dmn_operator_private_key,
-                      self.dmn_new_operator_payout_address,
+                      self.masternode.operator_private_key,
+                      self.new_operator_payout_address,
                       funding_address]
 
             try:
@@ -303,14 +303,14 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                      f'The new values ​​will be visible on the network after the transaction is confirmed, i.e. in ' \
                      f'about 2.5 minutes.'
 
-                if bool(dmn_new_ip_port) and self.dmn_prev_ip_port != dmn_new_ip_port:
+                if bool(dmn_new_ip_port) and self.prev_ip_port != dmn_new_ip_port:
                     msg += '\n\nYou have changed the masternode IP/port. Do you want to automatically update ' \
                            'this in the app configuration?'
 
                     if self.query_dlg(msg, buttons=QMessageBox.Yes | QMessageBox.No, default_button=QMessageBox.Yes,
                                       icon=QMessageBox.Information) == QMessageBox.Yes:
-                        self.masternode.ip = self.dmn_new_ip
-                        self.masternode.port = str(self.dmn_new_port)
+                        self.masternode.ip = self.new_ip
+                        self.masternode.tcp_port = self.new_port
 
                         if self.on_mn_config_updated_callback:
                             self.on_mn_config_updated_callback(self.masternode)

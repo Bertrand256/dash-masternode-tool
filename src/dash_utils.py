@@ -30,6 +30,8 @@ OP_EQUAL = b'\x87'
 DEFAULT_SENTINEL_VERSION = 0x010001  # sentinel version before implementation of nSentinelVersion in CMasternodePing
 DEFAULT_DAEMON_VERSION = 120200  # daemon version before implementation of nDaemonVersion in CMasternodePing
 MASTERNODE_TX_MINIMUM_CONFIRMATIONS = 15
+DASH_PLATFORM_DEFAULT_P2P_PORT = 26656
+DASH_PLATFORM_DEFAULT_HTTP_PORT = 443
 
 class ChainParams(object):
     B58_PREFIXES_PUBKEY_ADDRESS = None
@@ -476,6 +478,16 @@ def convert_dash_xpub(xpub, dest_prefix: str):
     return xpub
 
 
+def generate_ed25519_private_key() -> str:
+    """
+    Generates an ed25519 private key as a hex-encoded 32-byte binary value
+    :return: hex-encoded string
+    """
+    pk = Ed25519PrivateKey.generate()
+    pk_bin = pk.private_bytes_raw()
+    return pk_bin.hex()
+
+
 def parse_ed25519_private_key(priv_key: str) -> Ed25519PrivateKey:
     """
     Parses ed25519 private key from a few formats.
@@ -483,6 +495,7 @@ def parse_ed25519_private_key(priv_key: str) -> Ed25519PrivateKey:
                        a) PEM with "-----BEGIN/END PRIVATE KEY" enclosing
                        b) PEM without "-----BEGIN/END PRIVATE KEY" enclosing (bare Base64 string)
                        c) private + public keys concatenated (64 byte)
+                       d) hex-encoded 32-byte value (64-byte string)
     :return: 32-byte private key as a hex string
     """
     try:
@@ -490,6 +503,9 @@ def parse_ed25519_private_key(priv_key: str) -> Ed25519PrivateKey:
         if match and len(match.groups()) == 1:
             base64_str = match.group(1)
             priv_key = base64.b64decode(base64_str)
+        elif len(priv_key) == 64:
+            # assume that priv-key is a hex-encoded binary value
+            priv_key = bytes.fromhex(priv_key)
         else:
             # assume, that priv_key is a base64 encoded private key with or without a DER "header""
             priv_key = base64.b64decode(priv_key)
@@ -507,8 +523,10 @@ def parse_ed25519_private_key(priv_key: str) -> Ed25519PrivateKey:
 
         pk = Ed25519PrivateKey.from_private_bytes(priv_key)
         if pub_key_in:
-            pub_key_hex = pk.public_key().public_bytes(cryptography.hazmat.primitives.serialization.Encoding.Raw,
-                                                       cryptography.hazmat.primitives.serialization.PublicFormat.Raw).hex()
+            pub_key_hex = pk.public_key().public_bytes(
+                cryptography.hazmat.primitives.serialization.Encoding.Raw,
+                cryptography.hazmat.primitives.serialization.PublicFormat.Raw).hex()
+
             if pub_key_in.hex() != pub_key_hex:
                 raise Exception('Invalid private key format (2)')
 
@@ -519,7 +537,7 @@ def parse_ed25519_private_key(priv_key: str) -> Ed25519PrivateKey:
 
 def ed25519_private_key_to_pubkey(priv_key: str) -> str:
     """
-    Converts ed25519 private key to public key.
+    Converts Ed25519 private key to a public key.
     :param priv_key: see function parse_ed25519_private_key
     :return: 32-byte public key as a hex string
     """

@@ -1,3 +1,4 @@
+import base64
 from typing import Callable, Optional, Literal, cast
 
 import bitcoin
@@ -5,6 +6,8 @@ from PyQt5 import QtCore
 from PyQt5.QtCore import pyqtSlot, Qt, QTimer
 from PyQt5.QtGui import QTextDocument
 from PyQt5.QtWidgets import QWidget, QLineEdit, QInputDialog, QMessageBox, QAction, QApplication, QActionGroup
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+import cryptography.hazmat.primitives.serialization
 
 import dash_utils
 import hw_intf
@@ -35,7 +38,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.dashd_intf = dashd_intf
         self.hw_session = hw_session
         self.masternode = MasternodeConfig()  # temporary object to avoid changing attributes of the global
-        # mn object, since user has the ability to cancel edition
+        # mn object, since user has the ability to cancel editing
         self.updating_ui = False
         self.edit_mode = False
         self.owner_key_invalid = False
@@ -122,6 +125,20 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.btnShowOperatorPrivateKey.addActions((self.act_view_as_operator_private_key,
                                                    self.act_view_as_operator_public_key))
 
+        # Copy Platform Node Id as ...:
+        self.act_copy_platform_node_as_pkcs8_base64 = QAction('Copy Ed25519 private key as PKCS8 / base64', self)
+        self.act_copy_platform_node_as_pkcs8_pem = QAction('Copy Ed25519 private key as PKCS8 / PEM', self)
+        self.act_copy_platform_node_as_pkcs8_der = QAction('Copy Ed25519 private key as PKCS8 / DER_HEX', self)
+        self.act_copy_platform_node_as_raw_hex = QAction('Copy Ed25519 private key as RAW / HEX', self)
+        self.act_copy_platform_node_as_pkcs8_base64.triggered.connect(
+            self.on_copy_platform_node_as_pkcs8_base64_triggered)
+        self.act_copy_platform_node_as_pkcs8_pem.triggered.connect(self.on_copy_platform_node_as_pkcs8_pem_triggered)
+        self.act_copy_platform_node_as_pkcs8_der.triggered.connect(self.on_copy_platform_node_as_pkcs8_der_triggered)
+        self.act_copy_platform_node_as_raw_hex.triggered.connect(self.on_copy_platform_node_as_raw_hex_triggered)
+        self.btnCopyPlatformId.addActions((self.act_copy_platform_node_as_pkcs8_base64,
+                                           self.act_copy_platform_node_as_raw_hex,
+                                           self.act_copy_platform_node_as_pkcs8_der,
+                                           self.act_copy_platform_node_as_pkcs8_pem))
         self.update_ui_controls_state()
 
     def showEvent(self, QShowEvent):
@@ -206,15 +223,15 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                                          (self.masternode.dmn_user_roles & DMN_ROLE_VOTING > 0))
 
         self.act_view_as_owner_private_key.setVisible(self.masternode is not None and
-                                                      self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE)
+                                                      self.masternode.owner_key_type == InputKeyType.PRIVATE)
         self.act_view_as_owner_public_key.setVisible(self.masternode is not None and
-                                                     self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE)
+                                                     self.masternode.owner_key_type == InputKeyType.PRIVATE)
         self.act_view_as_operator_private_key.setVisible(self.masternode is not None and
-                                                         self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE)
+                                                         self.masternode.operator_key_type == InputKeyType.PRIVATE)
         self.act_view_as_voting_private_key.setVisible(self.masternode is not None and
-                                                       self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE)
+                                                       self.masternode.voting_key_type == InputKeyType.PRIVATE)
         self.act_view_as_voting_public_key.setVisible(self.masternode is not None and
-                                                      self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE)
+                                                      self.masternode.voting_key_type == InputKeyType.PRIVATE)
 
         # Platform Node ID
         self.lblPlatformNodeId.setVisible(self.masternode is not None and
@@ -238,17 +255,17 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
         self.btnGenerateOwnerPrivateKey.setVisible(
             self.masternode is not None and self.edit_mode and
-            self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE and
+            self.masternode.owner_key_type == InputKeyType.PRIVATE and
             self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0)
 
         self.btnGenerateOperatorPrivateKey.setVisible(
             self.masternode is not None and self.edit_mode and
-            self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE and
+            self.masternode.operator_key_type == InputKeyType.PRIVATE and
             self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0)
 
         self.btnGenerateVotingPrivateKey.setVisible(
             self.masternode is not None and self.edit_mode and
-            self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE and
+            self.masternode.voting_key_type == InputKeyType.PRIVATE and
             self.masternode.dmn_user_roles & DMN_ROLE_VOTING > 0)
 
         self.btnGetPlatformNodeIdFromPrivate.setVisible(
@@ -354,7 +371,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
         if self.masternode:
             style = ''
-            if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+            if self.masternode.owner_key_type == InputKeyType.PRIVATE:
                 key_type, tooltip_anchor, placeholder_text = ('privkey', 'address', 'Enter the owner private key')
                 if not self.edit_mode and not self.act_view_as_owner_private_key.isChecked():
                     style = 'hl2'
@@ -368,7 +385,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.edtOwnerKey.setPlaceholderText(placeholder_text)
 
             style = ''
-            if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
+            if self.masternode.operator_key_type == InputKeyType.PRIVATE:
                 key_type, tooltip_anchor, placeholder_text = ('privkey', 'pubkey', 'Enter the operator private key')
                 if not self.edit_mode and not self.act_view_as_operator_private_key.isChecked():
                     style = 'hl2'
@@ -382,7 +399,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.edtOperatorKey.setPlaceholderText(placeholder_text)
 
             style = ''
-            if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
+            if self.masternode.voting_key_type == InputKeyType.PRIVATE:
                 key_type, tooltip_anchor, placeholder_text = ('privkey', 'address', 'Enter the voting private key')
                 if not self.edit_mode and not self.act_view_as_voting_private_key.isChecked():
                     style = 'hl2'
@@ -411,17 +428,17 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
     def masternode_data_to_ui(self, reset_key_view_type: bool = False):
         if self.masternode:
-            if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+            if self.masternode.owner_key_type == InputKeyType.PRIVATE:
                 self.act_view_as_owner_private_key.setChecked(True)
             else:
                 self.act_view_as_owner_public_address.setChecked(True)
 
-            if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
+            if self.masternode.operator_key_type == InputKeyType.PRIVATE:
                 self.act_view_as_operator_private_key.setChecked(True)
             else:
                 self.act_view_as_operator_public_key.setChecked(True)
 
-            if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
+            if self.masternode.voting_key_type == InputKeyType.PRIVATE:
                 self.act_view_as_voting_private_key.setChecked(True)
             else:
                 self.act_view_as_voting_public_address.setChecked(True)
@@ -437,12 +454,12 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.rbMNTypeHPMN.setChecked(self.masternode.masternode_type == MasternodeType.HPMN)
             self.edtName.setText(self.masternode.name)
             self.edtIP.setText(self.masternode.ip)
-            self.edtPort.setText(self.masternode.port)
+            self.edtPort.setText(str(self.masternode.tcp_port))
             self.edtCollateralAddress.setText(self.masternode.collateral_address)
             self.edtCollateralPath.setText(self.masternode.collateral_bip32_path)
             self.edtCollateralTxHash.setText(self.masternode.collateral_tx)
-            self.edtCollateralTxIndex.setText(self.masternode.collateral_tx_index)
-            self.edtDMNTxHash.setText(self.masternode.dmn_tx_hash)
+            self.edtCollateralTxIndex.setText(str(self.masternode.collateral_tx_index))
+            self.edtDMNTxHash.setText(self.masternode.protx_hash)
             self.edtOwnerKey.setText(self.get_owner_key_to_display())
             self.edtVotingKey.setText(self.get_voting_key_to_display())
             self.edtOperatorKey.setText(self.get_operator_key_to_display())
@@ -462,25 +479,25 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         ret = ''
         if self.masternode:
             if self.edit_mode:
-                if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
-                    ret = self.masternode.dmn_owner_private_key
+                if self.masternode.owner_key_type == InputKeyType.PRIVATE:
+                    ret = self.masternode.owner_private_key
                 else:
-                    ret = self.masternode.dmn_owner_address
+                    ret = self.masternode.owner_address
             else:
                 try:
-                    if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
+                    if self.masternode.owner_key_type == InputKeyType.PRIVATE:
                         if self.act_view_as_owner_private_key.isChecked():
-                            ret = self.masternode.dmn_owner_private_key
+                            ret = self.masternode.owner_private_key
                         elif self.act_view_as_owner_public_address.isChecked():
-                            if self.masternode.dmn_owner_private_key:
-                                ret = dash_utils.wif_privkey_to_address(self.masternode.dmn_owner_private_key,
+                            if self.masternode.owner_private_key:
+                                ret = dash_utils.wif_privkey_to_address(self.masternode.owner_private_key,
                                                                         self.app_config.dash_network)
                         elif self.act_view_as_owner_public_key.isChecked():
-                            if self.masternode.dmn_owner_private_key:
-                                ret = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_owner_private_key)
+                            if self.masternode.owner_private_key:
+                                ret = dash_utils.wif_privkey_to_pubkey(self.masternode.owner_private_key)
                         elif self.act_view_as_owner_public_key_hash.isChecked():
-                            if self.masternode.dmn_owner_private_key:
-                                pubkey = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_owner_private_key)
+                            if self.masternode.owner_private_key:
+                                pubkey = dash_utils.wif_privkey_to_pubkey(self.masternode.owner_private_key)
                                 pubkey_bin = bytes.fromhex(pubkey)
                                 pub_hash = bitcoin.bin_hash160(pubkey_bin)
                                 ret = pub_hash.hex()
@@ -488,9 +505,9 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                             ret = '???'
                     else:
                         if self.act_view_as_owner_public_address.isChecked():
-                            ret = self.masternode.dmn_owner_address
+                            ret = self.masternode.owner_address
                         elif self.act_view_as_owner_public_key_hash.isChecked():
-                            ret = self.masternode.get_dmn_owner_pubkey_hash()
+                            ret = self.masternode.get_owner_pubkey_hash()
                         else:
                             ret = '???'
                 except Exception as e:
@@ -505,25 +522,25 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         ret = ''
         if self.masternode:
             if self.edit_mode:
-                if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-                    ret = self.masternode.dmn_voting_private_key
+                if self.masternode.voting_key_type == InputKeyType.PRIVATE:
+                    ret = self.masternode.voting_private_key
                 else:
-                    ret = self.masternode.dmn_voting_address
+                    ret = self.masternode.voting_address
             else:
                 try:
-                    if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
+                    if self.masternode.voting_key_type == InputKeyType.PRIVATE:
                         if self.act_view_as_voting_private_key.isChecked():
-                            ret = self.masternode.dmn_voting_private_key
+                            ret = self.masternode.voting_private_key
                         elif self.act_view_as_voting_public_address.isChecked():
-                            if self.masternode.dmn_voting_private_key:
-                                ret = dash_utils.wif_privkey_to_address(self.masternode.dmn_voting_private_key,
+                            if self.masternode.voting_private_key:
+                                ret = dash_utils.wif_privkey_to_address(self.masternode.voting_private_key,
                                                                         self.app_config.dash_network)
                         elif self.act_view_as_voting_public_key.isChecked():
-                            if self.masternode.dmn_voting_private_key:
-                                ret = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_voting_private_key)
+                            if self.masternode.voting_private_key:
+                                ret = dash_utils.wif_privkey_to_pubkey(self.masternode.voting_private_key)
                         elif self.act_view_as_voting_public_key_hash.isChecked():
-                            if self.masternode.dmn_voting_private_key:
-                                pubkey = dash_utils.wif_privkey_to_pubkey(self.masternode.dmn_voting_private_key)
+                            if self.masternode.voting_private_key:
+                                pubkey = dash_utils.wif_privkey_to_pubkey(self.masternode.voting_private_key)
                                 pubkey_bin = bytes.fromhex(pubkey)
                                 pub_hash = bitcoin.bin_hash160(pubkey_bin)
                                 ret = pub_hash.hex()
@@ -531,9 +548,9 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                             ret = '???'
                     else:
                         if self.act_view_as_voting_public_address.isChecked():
-                            ret = self.masternode.dmn_voting_address
+                            ret = self.masternode.voting_address
                         elif self.act_view_as_voting_public_key_hash.isChecked():
-                            ret = self.masternode.get_dmn_voting_pubkey_hash()
+                            ret = self.masternode.get_voting_pubkey_hash()
                         else:
                             ret = '???'
                 except Exception as e:
@@ -547,22 +564,22 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         ret = ''
         if self.masternode:
             if self.edit_mode:
-                if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
-                    ret = self.masternode.dmn_operator_private_key
+                if self.masternode.operator_key_type == InputKeyType.PRIVATE:
+                    ret = self.masternode.operator_private_key
                 else:
-                    ret = self.masternode.dmn_operator_public_key
+                    ret = self.masternode.operator_public_key
             else:
                 try:
-                    if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
+                    if self.masternode.operator_key_type == InputKeyType.PRIVATE:
                         if self.act_view_as_operator_private_key.isChecked():
-                            ret = self.masternode.dmn_operator_private_key
+                            ret = self.masternode.operator_private_key
                         elif self.act_view_as_operator_public_key.isChecked():
-                            ret = self.masternode.get_dmn_operator_pubkey()
+                            ret = self.masternode.get_operator_pubkey()
                         else:
                             ret = '???'
                     else:
                         if self.act_view_as_operator_public_key.isChecked():
-                            ret = self.masternode.dmn_operator_public_key
+                            ret = self.masternode.operator_public_key
                         else:
                             ret = '???'
                 except Exception as e:
@@ -575,13 +592,13 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     @pyqtSlot(str)
     def on_lblOwnerKey_linkActivated(self, link):
         if self.masternode and self.edit_mode:
-            if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
-                self.masternode.dmn_owner_key_type = InputKeyType.PUBLIC
-                self.edtOwnerKey.setText(self.masternode.dmn_owner_address)
+            if self.masternode.owner_key_type == InputKeyType.PRIVATE:
+                self.masternode.owner_key_type = InputKeyType.PUBLIC
+                self.edtOwnerKey.setText(self.masternode.owner_address)
                 self.act_view_as_owner_private_key.setChecked(True)
             else:
-                self.masternode.dmn_owner_key_type = InputKeyType.PRIVATE
-                self.edtOwnerKey.setText(self.masternode.dmn_owner_private_key)
+                self.masternode.owner_key_type = InputKeyType.PRIVATE
+                self.edtOwnerKey.setText(self.masternode.owner_private_key)
                 self.act_view_as_owner_public_address.setChecked(True)
             self.on_mn_data_modified()
             self.update_ui_controls_state()
@@ -589,13 +606,13 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     @pyqtSlot(str)
     def on_lblOperatorKey_linkActivated(self, link):
         if self.masternode and self.edit_mode:
-            if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
-                self.masternode.dmn_operator_key_type = InputKeyType.PUBLIC
-                self.edtOperatorKey.setText(self.masternode.dmn_operator_public_key)
+            if self.masternode.operator_key_type == InputKeyType.PRIVATE:
+                self.masternode.operator_key_type = InputKeyType.PUBLIC
+                self.edtOperatorKey.setText(self.masternode.operator_public_key)
                 self.act_view_as_operator_private_key.setChecked(True)
             else:
-                self.masternode.dmn_operator_key_type = InputKeyType.PRIVATE
-                self.edtOperatorKey.setText(self.masternode.dmn_operator_private_key)
+                self.masternode.operator_key_type = InputKeyType.PRIVATE
+                self.edtOperatorKey.setText(self.masternode.operator_private_key)
                 self.act_view_as_operator_public_key.setChecked(True)
             self.on_mn_data_modified()
             self.update_ui_controls_state()
@@ -603,13 +620,13 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     @pyqtSlot(str)
     def on_lblVotingKey_linkActivated(self, link):
         if self.masternode and self.edit_mode:
-            if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-                self.masternode.dmn_voting_key_type = InputKeyType.PUBLIC
-                self.edtVotingKey.setText(self.masternode.dmn_voting_address)
+            if self.masternode.voting_key_type == InputKeyType.PRIVATE:
+                self.masternode.voting_key_type = InputKeyType.PUBLIC
+                self.edtVotingKey.setText(self.masternode.voting_address)
                 self.act_view_as_voting_private_key.setChecked(True)
             else:
-                self.masternode.dmn_voting_key_type = InputKeyType.PRIVATE
-                self.edtVotingKey.setText(self.masternode.dmn_voting_private_key)
+                self.masternode.voting_key_type = InputKeyType.PRIVATE
+                self.edtVotingKey.setText(self.masternode.voting_private_key)
                 self.act_view_as_voting_public_address.setChecked(True)
             self.on_mn_data_modified()
             self.update_ui_controls_state()
@@ -776,7 +793,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     def on_edtPort_textEdited(self, text):
         if self.masternode and not self.updating_ui:
             self.on_mn_data_modified()
-            self.masternode.port = text.strip()
+            self.masternode.tcp_port = int(text.strip()) if text.strip() else None
 
     @pyqtSlot(str)
     def on_edtCollateralAddress_textEdited(self, text):
@@ -815,12 +832,12 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     def on_edtDMNTxHash_textEdited(self, text):
         if self.masternode and not self.updating_ui:
             self.on_mn_data_modified()
-            self.masternode.dmn_tx_hash = text.strip()
+            self.masternode.protx_hash = text.strip()
 
     @pyqtSlot(bool)
     def on_btnGetMNDataByIP_clicked(self, _):
         if self.masternode and not self.updating_ui:
-            if not (self.masternode.ip and self.masternode.port):
+            if not (self.masternode.ip and self.masternode.tcp_port):
                 WndUtils.error_msg('Enter the masternode IP address and TCP port number.')
                 return
 
@@ -829,7 +846,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             mn = self.masternode
             updated_fields = []
 
-            ip_port = mn.ip + ':' + mn.port
+            ip_port = mn.ip + ':' + str(mn.tcp_port)
             mn_info = self.dashd_intf.masternodes_by_ip_port.get(ip_port)
             modified = False
             keys_modified = []
@@ -842,10 +859,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                         mn.collateral_address = protx.collateral_address
                         modified = True
 
-                    if mn.dmn_tx_hash != protx.protx_hash:
+                    if mn.protx_hash != protx.protx_hash:
                         updated_fields.append('protx hash')
                         # self.edtDMNTxHash.setText(protx.protx_hash)
-                        self.masternode.dmn_tx_hash = protx.protx_hash
+                        self.masternode.protx_hash = protx.protx_hash
                         modified = True
 
                     if mn.collateral_tx != protx.collateral_hash or str(mn.collateral_tx_index) != \
@@ -858,26 +875,26 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                         modified = True
 
                     if mn.dmn_user_roles & DMN_ROLE_OWNER > 0 and \
-                            ((not mn.dmn_owner_private_key and mn.dmn_owner_key_type == InputKeyType.PRIVATE) or
-                             (not mn.dmn_owner_address and mn.dmn_owner_key_type == InputKeyType.PUBLIC)):
-                        mn.dmn_owner_key_type = InputKeyType.PUBLIC
-                        mn.dmn_owner_address = protx.owner_address
+                            ((not mn.owner_private_key and mn.owner_key_type == InputKeyType.PRIVATE) or
+                             (not mn.owner_address and mn.owner_key_type == InputKeyType.PUBLIC)):
+                        mn.owner_key_type = InputKeyType.PUBLIC
+                        mn.owner_address = protx.owner_address
                         modified = True
                         keys_modified.append('owner')
 
                     if mn.dmn_user_roles & DMN_ROLE_OPERATOR > 0 and \
-                            ((not mn.dmn_operator_private_key and mn.dmn_operator_key_type == InputKeyType.PRIVATE) or
-                             (not mn.dmn_operator_public_key and mn.dmn_operator_key_type == InputKeyType.PUBLIC)):
-                        mn.dmn_operator_key_type = InputKeyType.PUBLIC
-                        mn.dmn_operator_public_key = protx.pubkey_operator
+                            ((not mn.operator_private_key and mn.operator_key_type == InputKeyType.PRIVATE) or
+                             (not mn.operator_public_key and mn.operator_key_type == InputKeyType.PUBLIC)):
+                        mn.operator_key_type = InputKeyType.PUBLIC
+                        mn.operator_public_key = protx.pubkey_operator
                         modified = True
                         keys_modified.append('operator')
 
                     if mn.dmn_user_roles & DMN_ROLE_VOTING > 0 and \
-                            ((not mn.dmn_voting_private_key and mn.dmn_voting_key_type == InputKeyType.PRIVATE) or
-                             (not mn.dmn_voting_address and mn.dmn_voting_key_type == InputKeyType.PUBLIC)):
-                        mn.dmn_voting_key_type = InputKeyType.PUBLIC
-                        mn.dmn_voting_address = protx.voting_address
+                            ((not mn.voting_private_key and mn.voting_key_type == InputKeyType.PRIVATE) or
+                             (not mn.voting_address and mn.voting_key_type == InputKeyType.PUBLIC)):
+                        mn.voting_key_type = InputKeyType.PUBLIC
+                        mn.voting_address = protx.voting_address
                         modified = True
                         keys_modified.append('voting')
 
@@ -928,10 +945,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     @pyqtSlot(str)
     def on_edtOwnerKey_textEdited(self, text):
         if self.masternode and not self.updating_ui:
-            if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
-                self.masternode.dmn_owner_private_key = text.strip()
+            if self.masternode.owner_key_type == InputKeyType.PRIVATE:
+                self.masternode.owner_private_key = text.strip()
             else:
-                self.masternode.dmn_owner_address = text.strip()
+                self.masternode.owner_address = text.strip()
             self.validate_keys()
             self.update_dynamic_labels()
             self.on_mn_data_modified()
@@ -939,10 +956,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     @pyqtSlot(str)
     def on_edtOperatorKey_textEdited(self, text):
         if self.masternode and not self.updating_ui:
-            if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
-                self.masternode.dmn_operator_private_key = text.strip()
+            if self.masternode.operator_key_type == InputKeyType.PRIVATE:
+                self.masternode.operator_private_key = text.strip()
             else:
-                self.masternode.dmn_operator_public_key = text.strip()
+                self.masternode.operator_public_key = text.strip()
             self.validate_keys()
             self.update_dynamic_labels()
             self.on_mn_data_modified()
@@ -950,10 +967,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     @pyqtSlot(str)
     def on_edtVotingKey_textEdited(self, text):
         if self.masternode and not self.updating_ui:
-            if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-                self.masternode.dmn_voting_private_key = text.strip()
+            if self.masternode.voting_key_type == InputKeyType.PRIVATE:
+                self.masternode.voting_private_key = text.strip()
             else:
-                self.masternode.dmn_voting_address = text.strip()
+                self.masternode.voting_address = text.strip()
             self.validate_keys()
             self.update_dynamic_labels()
             self.on_mn_data_modified()
@@ -984,32 +1001,32 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.voting_key_invalid = False
 
         if self.masternode:
-            if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
-                if self.masternode.dmn_owner_private_key:
-                    self.owner_key_invalid = not dash_utils.validate_wif_privkey(self.masternode.dmn_owner_private_key,
+            if self.masternode.owner_key_type == InputKeyType.PRIVATE:
+                if self.masternode.owner_private_key:
+                    self.owner_key_invalid = not dash_utils.validate_wif_privkey(self.masternode.owner_private_key,
                                                                                  self.app_config.dash_network)
             else:
-                if self.masternode.dmn_owner_address:
-                    self.owner_key_invalid = not dash_utils.validate_address(self.masternode.dmn_owner_address,
+                if self.masternode.owner_address:
+                    self.owner_key_invalid = not dash_utils.validate_address(self.masternode.owner_address,
                                                                              self.app_config.dash_network)
 
-            if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
-                if self.masternode.dmn_operator_private_key:
+            if self.masternode.operator_key_type == InputKeyType.PRIVATE:
+                if self.masternode.operator_private_key:
                     self.operator_key_invalid = not dash_utils.validate_bls_privkey(
-                        self.masternode.dmn_operator_private_key)
+                        self.masternode.operator_private_key)
             else:
-                if self.masternode.dmn_operator_public_key:
+                if self.masternode.operator_public_key:
                     self.operator_key_invalid = not dash_utils.validate_bls_pubkey(
-                        self.masternode.dmn_operator_public_key)
+                        self.masternode.operator_public_key)
 
-            if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-                if self.masternode.dmn_voting_private_key:
+            if self.masternode.voting_key_type == InputKeyType.PRIVATE:
+                if self.masternode.voting_private_key:
                     self.voting_key_invalid = not dash_utils.validate_wif_privkey(
-                        self.masternode.dmn_voting_private_key,
+                        self.masternode.voting_private_key,
                         self.app_config.dash_network)
             else:
-                if self.masternode.dmn_voting_address:
-                    self.voting_key_invalid = not dash_utils.validate_address(self.masternode.dmn_voting_address,
+                if self.masternode.voting_address:
+                    self.voting_key_invalid = not dash_utils.validate_address(self.masternode.voting_address,
                                                                               self.app_config.dash_network)
 
     def generate_priv_key(self, pk_type: str, edit_control: QLineEdit, compressed: bool):
@@ -1032,7 +1049,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         if self.masternode:
             pk = self.generate_priv_key('owner', self.edtOwnerKey, True)
             if pk:
-                self.masternode.dmn_owner_private_key = pk
+                self.masternode.owner_private_key = pk
                 self.btnShowOwnerPrivateKey.setChecked(True)
                 self.on_mn_data_modified()
 
@@ -1042,7 +1059,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
             pk = self.generate_priv_key('operator', self.edtOperatorKey, True)
             if pk:
-                self.masternode.dmn_operator_private_key = pk
+                self.masternode.operator_private_key = pk
                 self.btnShowOperatorPrivateKey.setChecked(True)
                 self.on_mn_data_modified()
 
@@ -1051,7 +1068,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         if self.masternode:
             pk = self.generate_priv_key('voting', self.edtVotingKey, True)
             if pk:
-                self.masternode.dmn_voting_private_key = pk
+                self.masternode.voting_private_key = pk
                 self.btnShowVotingPrivateKey.setChecked(True)
                 self.on_mn_data_modified()
 
@@ -1163,6 +1180,78 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         cl = QApplication.clipboard()
         cl.setText(self.edtPlatformNodeId.text())
 
+    @pyqtSlot()
+    def on_copy_platform_node_as_pkcs8_base64_triggered(self):
+        try:
+            if self.masternode and self.masternode.platform_node_id_private_key:
+                priv: Ed25519PrivateKey = dash_utils.parse_ed25519_private_key(
+                    self.masternode.platform_node_id_private_key)
+                priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.DER,
+                                                cryptography.hazmat.primitives.serialization.PrivateFormat.PKCS8,
+                                                cryptography.hazmat.primitives.serialization.NoEncryption())
+                priv_str = base64.b64encode(priv_bytes).decode('ascii')
+                cl = QApplication.clipboard()
+                cl.setText(priv_str)
+            else:
+                WndUtils.warn_msg('Your Platform Node Id has not been entered into the configuraions as an Ed25519 '
+                                  'private key.')
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
+
+    @pyqtSlot()
+    def on_copy_platform_node_as_pkcs8_der_triggered(self):
+        try:
+            if self.masternode and self.masternode.platform_node_id_private_key:
+                priv: Ed25519PrivateKey = dash_utils.parse_ed25519_private_key(
+                    self.masternode.platform_node_id_private_key)
+                priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.DER,
+                                                cryptography.hazmat.primitives.serialization.PrivateFormat.PKCS8,
+                                                cryptography.hazmat.primitives.serialization.NoEncryption())
+                priv_str = priv_bytes.hex()
+                cl = QApplication.clipboard()
+                cl.setText(priv_str)
+            else:
+                WndUtils.warn_msg('Your Platform Node Id has not been entered into the configuraions as an Ed25519 '
+                                  'private key.')
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
+
+    @pyqtSlot()
+    def on_copy_platform_node_as_pkcs8_pem_triggered(self):
+        try:
+            if self.masternode and self.masternode.platform_node_id_private_key:
+                priv: Ed25519PrivateKey = dash_utils.parse_ed25519_private_key(
+                    self.masternode.platform_node_id_private_key)
+                priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.PEM,
+                                                cryptography.hazmat.primitives.serialization.PrivateFormat.PKCS8,
+                                                cryptography.hazmat.primitives.serialization.NoEncryption())
+                priv_str = priv_bytes.decode('ascii')
+                cl = QApplication.clipboard()
+                cl.setText(priv_str)
+            else:
+                WndUtils.warn_msg('Your Platform Node Id has not been entered into the configuraions as an Ed25519 '
+                                  'private key.')
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
+
+    @pyqtSlot()
+    def on_copy_platform_node_as_raw_hex_triggered(self):
+        try:
+            if self.masternode and self.masternode.platform_node_id_private_key:
+                priv: Ed25519PrivateKey = dash_utils.parse_ed25519_private_key(
+                    self.masternode.platform_node_id_private_key)
+                priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.Raw,
+                                                cryptography.hazmat.primitives.serialization.PrivateFormat.Raw,
+                                                cryptography.hazmat.primitives.serialization.NoEncryption())
+                priv_str = priv_bytes.hex()
+                cl = QApplication.clipboard()
+                cl.setText(priv_str)
+            else:
+                WndUtils.warn_msg('Your Platform Node Id has not been entered into the configuraions as an Ed25519 '
+                                  'private key.')
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
+
     @pyqtSlot(bool)
     def on_btnGetPlatformNodeIdFromPrivate_clicked(self, checked):
         if self.masternode:
@@ -1189,14 +1278,12 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
     @pyqtSlot()
     def on_btnPlatformP2PPortSetDefault_clicked(self):
-        val = "26656"
-        if self.edtPlatformP2PPort.text() != val:
-            self.edtPlatformP2PPort.setText(val)
+        if self.edtPlatformP2PPort.text() != str(dash_utils.DASH_PLATFORM_DEFAULT_P2P_PORT):
+            self.edtPlatformP2PPort.setText(str(dash_utils.DASH_PLATFORM_DEFAULT_P2P_PORT))
             self.on_mn_data_modified()
 
     @pyqtSlot()
     def on_btnPlatformHTTPPortSetDefault_clicked(self):
-        val = "443"
-        if self.edtPlatformHTTPPort.text() != val:
-            self.edtPlatformHTTPPort.setText("443")
+        if self.edtPlatformHTTPPort.text() != str(dash_utils.DASH_PLATFORM_DEFAULT_HTTP_PORT):
+            self.edtPlatformHTTPPort.setText(str(dash_utils.DASH_PLATFORM_DEFAULT_HTTP_PORT))
             self.on_mn_data_modified()

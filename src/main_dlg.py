@@ -43,7 +43,7 @@ import wallet_dlg
 import app_utils
 from masternode_details_wdg import WdgMasternodeDetails
 from proposals_dlg import ProposalsDlg
-from app_config import AppConfig, MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
+from app_config import AppConfig, MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType, MasternodeType
 from app_defs import PROJECT_URL, APP_NAME_SHORT, DispMessage, AppTextMessageType
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_common import HWPinException, HWType, HWDevice, HWNotConnectedException
@@ -54,7 +54,6 @@ from sign_message_dlg import SignMessageDlg
 from wallet_tools_dlg import WalletToolsDlg
 from wnd_utils import WndUtils, QDetectThemeChange, get_widget_font_color_green, get_widget_font_color_default
 from ui import ui_main_dlg
-
 
 log = logging.getLogger('dmt.main')
 
@@ -216,10 +215,10 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
         bg_color_active = p.color(QPalette.Normal, p.Base).name()
         bg_color_inactive = p.color(QPalette.Inactive, p.Window).name()
         self.setStyleSheet("QLineEdit {\n"
-                               f"    background-color: {bg_color_active};\n"
-                               "} QLineEdit:read-only {\n"
-                               f"    background-color: {bg_color_inactive};\n"
-                               "}\n")
+                           f"    background-color: {bg_color_active};\n"
+                           "} QLineEdit:read-only {\n"
+                           f"    background-color: {bg_color_inactive};\n"
+                           "}\n")
 
         green_color = get_widget_font_color_green(self)
         style = f'QLabel[level="success"]{{color:{green_color}}} ' \
@@ -251,8 +250,8 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                 app.setStyleSheet('')
                 self.app_config.internal_ui_dark_mode_activated = False
 
-    def load_configuration_from_file(self, file_name: Optional[str], ask_save_changes = True,
-                                     update_current_file_name = True) -> None:
+    def load_configuration_from_file(self, file_name: Optional[str], ask_save_changes=True,
+                                     update_current_file_name=True) -> None:
         """
         Load configuration from a file.
         :param file_name: Name of the configuration file to be loaded into the application. If the value is Noney, then
@@ -433,7 +432,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
         self.update_config_files_mru_menu_items()
         self.display_window_title()
         self.editing_enabled = self.app_config.is_modified()
-        self.main_view.set_edit_mode(self.editing_enabled )
+        self.main_view.set_edit_mode(self.editing_enabled)
         self.update_edit_controls_state()
 
     @pyqtSlot(bool)
@@ -467,7 +466,8 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
             file_name = self.save_config_file_query(dir, self, self.app_config)
 
             if file_name:
-                self.app_config.save_to_file(hw_session=self.hw_session, file_name=file_name, update_current_file_name=False)
+                self.app_config.save_to_file(hw_session=self.hw_session, file_name=file_name,
+                                             update_current_file_name=False)
                 WndUtils.info_msg('Configuration has been exported.')
         except Exception as e:
             self.error_msg(str(e), True)
@@ -510,7 +510,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
             input.setComboBoxEditable(False)
             input.setOption(QInputDialog.UseListViewForComboBoxItems, True)
             input.setWindowTitle('Restore from backup')
-            file_dates:List[Tuple[str, float, str]] = []
+            file_dates: List[Tuple[str, float, str]] = []
 
             for fname in os.listdir(self.app_config.cfg_backup_dir):
                 try:
@@ -528,7 +528,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
             cbo_items = []
             if file_dates:
                 for idx, (date_str, ts, file_name) in enumerate(file_dates):
-                    disp_text = str(idx+1) +'. ' + date_str
+                    disp_text = str(idx + 1) + '. ' + date_str
                     file_dates[idx] = (disp_text, ts, file_name)
                     cbo_items.append(disp_text)
 
@@ -555,7 +555,8 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
             try:
                 ret = QDesktopServices.openUrl(QUrl("file:///%s" % self.app_config.data_dir))
                 if not ret:
-                    self.warn_msg('Could not open "%s" folder using a default OS application.' % self.app_config.data_dir)
+                    self.warn_msg(
+                        'Could not open "%s" folder using a default OS application.' % self.app_config.data_dir)
             except Exception as e:
                 self.error_msg(str(e), True)
 
@@ -656,7 +657,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                                                      % APP_NAME_SHORT, AppTextMessageType.INFO)
                     elif force_check:
                         self.add_app_message(DispMessage.NEW_VERSION, "Could not read the remote version number.",
-                                              AppTextMessageType.WARN)
+                                             AppTextMessageType.WARN)
 
         except Exception:
             logging.exception('Exception occurred while loading/processing the project remote configuration')
@@ -699,11 +700,14 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
     def show_connection_failed(self):
         """Shows status information related to a failed connection attempt. There can be more attempts to connect
         to another nodes if there are such in configuration."""
-        self.set_status_text1('<b>RPC network status:</b> failed connection to %s' % self.dashd_intf.get_active_conn_description(), 'error')
+        self.set_status_text1(
+            '<b>RPC network status:</b> failed connection to %s' % self.dashd_intf.get_active_conn_description(),
+            'error')
 
     def show_connection_successful(self):
         """Shows status information after successful connection to a Dash RPC node."""
-        self.set_status_text1('<b>RPC network status:</b> OK (%s)' % self.dashd_intf.get_active_conn_description(), 'success')
+        self.set_status_text1('<b>RPC network status:</b> OK (%s)' % self.dashd_intf.get_active_conn_description(),
+                              'success')
 
     def show_connection_disconnected(self):
         """Shows status message related to disconnection from Dash RPC node."""
@@ -767,7 +771,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                 if not synced:
                     logging.info("dashd not synced")
                     if not self.is_dashd_syncing and not (hasattr(self, 'wait_for_dashd_synced_thread') and
-                                                                  self.wait_for_dashd_synced_thread is not None):
+                                                          self.wait_for_dashd_synced_thread is not None):
                         self.is_dashd_syncing = True
                         self.wait_for_dashd_synced_thread = self.run_thread(self, wait_for_synch_finished_thread, (),
                                                                             on_thread_finish=connect_finished)
@@ -880,7 +884,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
             m = self.app_messages[m_id]
             if not m.hidden:
                 if m.type == AppTextMessageType.INFO:
-                    s = 'color:'+green_color
+                    s = 'color:' + green_color
                 elif m.type == AppTextMessageType.WARN:
                     s = 'background-color:rgb(255,128,0);color:white;'
                 else:
@@ -889,7 +893,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                 if t:
                     t += '<br>'
                 t += f'<span style="{s}">{m.message}</span>&nbsp;' \
-                    f'<span style="display:inline-box"><a style="text-decoration:none;color:{default_color};" ' \
+                     f'<span style="display:inline-box"><a style="text-decoration:none;color:{default_color};" ' \
                      f'href="{str(m_id)}">\u2715</img></a><span>'
 
         if not t:
@@ -905,6 +909,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
         """
         Display message in the app message area.
         """
+
         def set_message(msg_id: int, text, type):
             m = self.app_messages.get(msg_id)
             if not m:
@@ -1029,7 +1034,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
             self.action_update_masternode_voting_key.setEnabled(mn_is_selected and
                                                                 cur_mn.dmn_user_roles & DMN_ROLE_OWNER)
             self.action_update_masternode_service.setEnabled(mn_is_selected and
-                                                                cur_mn.dmn_user_roles & DMN_ROLE_OPERATOR)
+                                                             cur_mn.dmn_user_roles & DMN_ROLE_OPERATOR)
             self.action_revoke_masternode.setEnabled(mn_is_selected and
                                                      cur_mn.dmn_user_roles & DMN_ROLE_OPERATOR)
 
@@ -1094,12 +1099,12 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
         mn = self.main_view.get_cur_masternode()
         if mn:
             try:
-                pk = mn.dmn_owner_private_key
+                pk = mn.owner_private_key
                 if not pk:
                     self.error_msg("The masternode owner private key has not been configured.")
                 else:
                     ui = SignMessageDlg(self, None, None, None,
-                                        mn.get_dmn_owner_public_address(self.app_config.dash_network), pk)
+                                        mn.get_owner_public_address(self.app_config.dash_network), pk)
                     ui.exec_()
             except Exception as e:
                 self.error_msg(str(e), True)
@@ -1111,11 +1116,12 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
         mn = self.main_view.get_cur_masternode()
         if mn:
             try:
-                if not pk:
+                if not mn.voting_private_key:
                     self.error_msg("The masternode voting private key has not been configured.")
                 else:
                     ui = SignMessageDlg(self, None, None, None,
-                                        mn.get_dmn_voting_public_address(self.app_config.dash_network), pk)
+                                        mn.get_voting_public_address(self.app_config.dash_network),
+                                        mn.voting_private_key)
                     ui.exec_()
             except Exception as e:
                 self.error_msg(str(e), True)
@@ -1150,45 +1156,69 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
         def on_proregtx_finished(masternode: MasternodeConfig):
             nonlocal reg_dlg, self, cur_masternode
             try:
-                if cur_masternode.dmn_tx_hash != reg_dlg.dmn_reg_tx_hash or \
-                        cur_masternode.dmn_owner_key_type != reg_dlg.dmn_owner_key_type or \
-                        (cur_masternode.dmn_owner_key_type == InputKeyType.PRIVATE and
-                         cur_masternode.dmn_owner_private_key != reg_dlg.dmn_owner_privkey) or \
-                        (cur_masternode.dmn_owner_key_type == InputKeyType.PUBLIC and
-                         cur_masternode.dmn_owner_address != reg_dlg.dmn_owner_address) or \
-                        cur_masternode.dmn_operator_key_type != reg_dlg.dmn_operator_key_type or \
-                        (cur_masternode.dmn_operator_key_type == InputKeyType.PRIVATE and
-                         cur_masternode.dmn_operator_private_key != reg_dlg.dmn_operator_privkey) or \
-                        (cur_masternode.dmn_operator_key_type == InputKeyType.PUBLIC and
-                         cur_masternode.dmn_operator_public_key != reg_dlg.dmn_operator_pubkey) or \
-                        cur_masternode.dmn_voting_key_type != reg_dlg.dmn_voting_key_type or \
-                        (cur_masternode.dmn_voting_key_type == InputKeyType.PRIVATE and
-                         cur_masternode.dmn_voting_private_key != reg_dlg.dmn_voting_privkey) or \
-                        (cur_masternode.dmn_voting_key_type == InputKeyType.PUBLIC and
-                         cur_masternode.dmn_voting_address != reg_dlg.dmn_voting_address):
+                if cur_masternode.protx_hash != reg_dlg.dmn_reg_tx_hash or \
+                        cur_masternode.owner_key_type != reg_dlg.owner_key_type or \
+                        (cur_masternode.owner_key_type == InputKeyType.PRIVATE and
+                         cur_masternode.owner_private_key != reg_dlg.owner_privkey) or \
+                        (cur_masternode.owner_key_type == InputKeyType.PUBLIC and
+                         cur_masternode.owner_address != reg_dlg.owner_address) or \
+                        cur_masternode.operator_key_type != reg_dlg.operator_key_type or \
+                        (cur_masternode.operator_key_type == InputKeyType.PRIVATE and
+                         cur_masternode.operator_private_key != reg_dlg.operator_privkey) or \
+                        (cur_masternode.operator_key_type == InputKeyType.PUBLIC and
+                         cur_masternode.operator_public_key != reg_dlg.operator_pubkey) or \
+                        cur_masternode.voting_key_type != reg_dlg.voting_key_type or \
+                        (cur_masternode.voting_key_type == InputKeyType.PRIVATE and
+                         cur_masternode.voting_private_key != reg_dlg.voting_privkey) or \
+                        (cur_masternode.voting_key_type == InputKeyType.PUBLIC and
+                         cur_masternode.voting_address != reg_dlg.voting_address) or \
+                        cur_masternode.masternode_type != reg_dlg.masternode_type or \
+                        (
+                                reg_dlg.masternode_type == MasternodeType.HPMN and
+                                (cur_masternode.platform_node_id != reg_dlg.platform_node_id or
+                                 cur_masternode.platform_p2p_port != reg_dlg.platform_p2p_port or
+                                 cur_masternode.platform_http_port != reg_dlg.platform_http_port)
+                        ) or \
+                        cur_masternode.collateral_tx != reg_dlg.collateral_tx or \
+                        cur_masternode.collateral_tx_index != reg_dlg.collateral_tx_index or \
+                        cur_masternode.collateral_address != reg_dlg.collateral_tx_address or \
+                        cur_masternode.collateral_bip32_path != reg_dlg.collateral_tx_address_path or \
+                        cur_masternode.ip != reg_dlg.ip or cur_masternode.tcp_port != reg_dlg.tcp_port:
 
-                    cur_masternode.dmn_tx_hash = reg_dlg.dmn_reg_tx_hash
+                    cur_masternode.protx_hash = reg_dlg.dmn_reg_tx_hash
 
-                    cur_masternode.dmn_owner_key_type = reg_dlg.dmn_owner_key_type
-                    if cur_masternode.dmn_owner_key_type == InputKeyType.PRIVATE:
-                        cur_masternode.dmn_owner_private_key = reg_dlg.dmn_owner_privkey
+                    cur_masternode.owner_key_type = reg_dlg.owner_key_type
+                    if cur_masternode.owner_key_type == InputKeyType.PRIVATE:
+                        cur_masternode.owner_private_key = reg_dlg.owner_privkey
                     else:
-                        cur_masternode.dmn_owner_address = reg_dlg.dmn_owner_address
-                        cur_masternode.dmn_owner_private_key = ''
+                        cur_masternode.owner_address = reg_dlg.owner_address
+                        cur_masternode.owner_private_key = ''
 
-                    cur_masternode.dmn_operator_key_type = reg_dlg.dmn_operator_key_type
-                    if cur_masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
-                        cur_masternode.dmn_operator_private_key = reg_dlg.dmn_operator_privkey
+                    cur_masternode.operator_key_type = reg_dlg.operator_key_type
+                    if cur_masternode.operator_key_type == InputKeyType.PRIVATE:
+                        cur_masternode.operator_private_key = reg_dlg.operator_privkey
                     else:
-                        cur_masternode.dmn_operator_public_key = reg_dlg.dmn_operator_pubkey
-                        cur_masternode.dmn_operator_private_key = ''
+                        cur_masternode.operator_public_key = reg_dlg.operator_pubkey
+                        cur_masternode.operator_private_key = ''
 
-                    cur_masternode.dmn_voting_key_type = reg_dlg.dmn_voting_key_type
-                    if cur_masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-                        cur_masternode.dmn_voting_private_key = reg_dlg.dmn_voting_privkey
+                    cur_masternode.voting_key_type = reg_dlg.voting_key_type
+                    if cur_masternode.voting_key_type == InputKeyType.PRIVATE:
+                        cur_masternode.voting_private_key = reg_dlg.voting_privkey
                     else:
-                        cur_masternode.dmn_voting_address = reg_dlg.dmn_voting_address
-                        cur_masternode.dmn_voting_private_key = ''
+                        cur_masternode.voting_address = reg_dlg.voting_address
+                        cur_masternode.voting_private_key = ''
+
+                    cur_masternode.masternode_type = reg_dlg.masternode_type
+                    cur_masternode.platform_node_id = reg_dlg.platform_node_id
+                    cur_masternode.platform_node_id_private_key = reg_dlg.platform_node_id_private_key
+                    cur_masternode.platform_p2p_port = reg_dlg.platform_p2p_port
+                    cur_masternode.platform_http_port = reg_dlg.platform_http_port
+                    cur_masternode.collateral_tx = reg_dlg.collateral_tx
+                    cur_masternode.collateral_tx_index = reg_dlg.collateral_tx_index
+                    cur_masternode.collateral_address = reg_dlg.collateral_tx_address
+                    cur_masternode.collateral_bip32_path = reg_dlg.collateral_tx_address_path
+                    cur_masternode.ip = reg_dlg.ip
+                    cur_masternode.tcp_port = reg_dlg.tcp_port
 
                     if not self.app_config.is_modified():
                         self.save_configuration()

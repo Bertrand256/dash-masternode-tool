@@ -604,7 +604,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     else:
                         self.wdg_dest_adresses.limit_dest_value(self.rtm_last_dash_by_value)
         except Exception as e:
-            WndUtils.error_msg(str(e), true)
+            WndUtils.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnUtxoViewColumns_clicked(self):

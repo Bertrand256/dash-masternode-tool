@@ -478,13 +478,13 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 mn_info: Masternode = self.mn_info_by_mn_cfg.get(self.cur_masternode)
                 ms = self.mns_status.get(self.cur_masternode)
                 if mn_info and mn_info.protx_hash and ms:
-                    self.cur_masternode.dmn_tx_hash = mn_info.protx_hash
+                    self.cur_masternode.protx_hash = mn_info.protx_hash
                     self.cur_masternode.modified = True
                     ms.check_mismatch(self.cur_masternode, mn_info)
                     self.set_cur_masternode_modified()
 
             elif link == 'copy_owner_addr_cfg':
-                cl.setText(self.cur_masternode.get_dmn_owner_public_address(self.app_config.dash_network))
+                cl.setText(self.cur_masternode.get_owner_public_address(self.app_config.dash_network))
 
             elif link == 'copy_owner_addr_net':
                 ms = self.mns_status.get(self.cur_masternode)
@@ -492,7 +492,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                     cl.setText(ms.network_owner_public_address)
 
             elif link == 'copy_operator_key_cfg':
-                cl.setText(self.cur_masternode.get_dmn_operator_pubkey())
+                cl.setText(self.cur_masternode.get_operator_pubkey())
 
             elif link == 'copy_operator_key_net':
                 ms = self.mns_status.get(self.cur_masternode)
@@ -500,7 +500,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                     cl.setText(ms.network_operator_public_key)
 
             elif link == 'copy_voting_addr_cfg':
-                cl.setText(self.cur_masternode.get_dmn_voting_public_address(self.app_config.dash_network))
+                cl.setText(self.cur_masternode.get_voting_public_address(self.app_config.dash_network))
 
             elif link == 'copy_voting_addr_net':
                 ms = self.mns_status.get(self.cur_masternode)
@@ -620,7 +620,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 mn_template = src_masternode.name + '-Clone'
             else:
                 if self.app_config.is_testnet:
-                    new_mn.port = '19999'
+                    new_mn.tcp_port = 19999
                 mn_template = 'MN'
                 force_append_numbers = True
             name_found = None
@@ -779,9 +779,9 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         protx = None
         protx_state = None
 
-        if masternode.dmn_tx_hash:
+        if masternode.protx_hash:
             try:
-                protx = self.dashd_intf.protx('info', masternode.dmn_tx_hash)
+                protx = self.dashd_intf.protx('info', masternode.protx_hash)
                 if protx:
                     protx_state = protx.get('state')
             except Exception as e:
@@ -790,7 +790,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             if not protx:
                 try:
                     # protx transaction is not confirmed yet, so look for it in the mempool
-                    tx = self.dashd_intf.getrawtransaction(masternode.dmn_tx_hash, 1, skip_cache=True)
+                    tx = self.dashd_intf.getrawtransaction(masternode.protx_hash, 1, skip_cache=True)
                     confirmations = tx.get('confirmations', 0)
                     if confirmations < 3:
                         # in this case dmn tx should have been found by the 'protx info' call above;
@@ -798,7 +798,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                         ptx = tx.get('proRegTx')
                         if ptx:
                             protx = {
-                                'proTxHash': masternode.dmn_tx_hash,
+                                'proTxHash': masternode.protx_hash,
                                 'collateralHash': ptx.get('collateralHash'),
                                 'collateralIndex': ptx.get('collateralIndex'),
                                 'state': {
@@ -814,7 +814,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 except Exception as e:
                     pass
 
-        if not (protx_state and ((protx_state.get('service') == masternode.ip + ':' + masternode.port) or
+        if not (protx_state and ((protx_state.get('service') == masternode.ip + ':' + str(masternode.tcp_port)) or
                                  (protx.get('collateralHash') == masternode.collateral_tx and
                                   str(protx.get('collateralIndex')) == str(masternode.collateral_tx_index)))):
             try:
@@ -823,7 +823,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
 
                 for protx in protx_list_registered:
                     protx_state = protx.get('state')
-                    if (protx_state and ((protx_state.get('service') == masternode.ip + ':' + masternode.port) or
+                    if (protx_state and ((protx_state.get('service') == masternode.ip + ':' + str(masternode.tcp_port)) or
                                          (protx.get('collateralHash') == masternode.collateral_tx and
                                           str(protx.get('collateralIndex')) == str(masternode.collateral_tx_index)))):
                         return protx
@@ -870,11 +870,11 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                     self.mns_status[mn] = ms
 
                 if mn.collateral_tx and str(mn.collateral_tx_index):
-                    collateral_id = mn.collateral_tx + '-' + mn.collateral_tx_index
+                    collateral_id = mn.collateral_tx + '-' + str(mn.collateral_tx_index)
                 else:
                     collateral_id = None
-                if mn.ip and mn.port:
-                    ip_port = mn.ip + ':' + str(mn.port)
+                if mn.ip and mn.tcp_port:
+                    ip_port = mn.ip + ':' + str(mn.tcp_port)
                 else:
                     ip_port = None
 
@@ -1222,20 +1222,20 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                     if st.owner_public_address_mismatch:
                         warnings.append(
                             f'Owner address mismatch (config: '
-                            f'{short_address_str(mn.get_dmn_owner_public_address(self.app_config.dash_network), 6)} '
+                            f'{short_address_str(mn.get_owner_public_address(self.app_config.dash_network), 6)} '
                             f'(<a href="copy_owner_addr_cfg">copy</a>), '
                             f'network: {short_address_str(st.network_owner_public_address, 6)} '
                             f'(<a href="copy_owner_addr_net">copy</a>)')
                     if st.operator_pubkey_mismatch:
                         warnings.append(
-                            f'Operator public key mismatch (config: {short_address_str(mn.get_dmn_operator_pubkey(), 6)} '
+                            f'Operator public key mismatch (config: {short_address_str(mn.get_operator_pubkey(), 6)} '
                             f'(<a href="copy_operator_key_cfg">copy</a>), '
                             f'network: {short_address_str(st.network_operator_public_key, 6)}'
                             f'(<a href="copy_operator_key_net">copy</a>)')
                     if st.voting_public_address_mismatch:
                         warnings.append(
                             f'Voting address mismatch (config: '
-                            f'{short_address_str(mn.get_dmn_voting_public_address(self.app_config.dash_network), 6)} '
+                            f'{short_address_str(mn.get_voting_public_address(self.app_config.dash_network), 6)} '
                             f'(<a href="copy_voting_addr_cfg">copy</a>), '
                             f'network: {short_address_str(st.network_voting_public_address, 6)}'
                             f'(<a href="copy_voting_addr_net">copy</a>)')
@@ -1410,7 +1410,7 @@ class MasternodesTableModel(ExtSortFilterItemModel):
                 elif col_name == 'name':
                     ret_val = mn.name
                 elif col_name == 'ip_port':
-                    ret_val = mn.ip + (':' + str(mn.port) if mn.port else '')
+                    ret_val = mn.ip + (':' + str(mn.tcp_port) if mn.tcp_port else '')
                 elif col_name == 'collateral':
                     ret_val = mn.collateral_address
                 elif col_name == 'collateral_tx':
@@ -1426,7 +1426,7 @@ class MasternodesTableModel(ExtSortFilterItemModel):
                         val = 'voting' if not val else val + ' | voting'
                     ret_val = val
                 elif col_name == 'protx':
-                    ret_val = mn.dmn_tx_hash
+                    ret_val = mn.protx_hash
                 elif col_name == 'status':
                     if for_sorting:
                         ret_val = st.status if st else ''
@@ -1644,12 +1644,12 @@ class MasternodeStatus:
         else:
             self.collateral_tx_mismatch = False
 
-        if masternode_info.protx and masternode_cfg.dmn_tx_hash != masternode_info.protx_hash:
+        if masternode_info.protx and masternode_cfg.protx_hash != masternode_info.protx_hash:
             self.protx_mismatch = True
         else:
             self.protx_mismatch = False
 
-        if masternode_info.ip_port != masternode_cfg.ip + ':' + str(masternode_cfg.port):
+        if masternode_info.ip_port != masternode_cfg.ip + ':' + str(masternode_cfg.tcp_port):
             self.ip_port_mismatch = True
         else:
             self.ip_port_mismatch = False
@@ -1661,7 +1661,7 @@ class MasternodeStatus:
             else:
                 self.collateral_address_mismatch = False
 
-            owner_address_cfg = masternode_cfg.get_dmn_owner_public_address(self.dash_network)
+            owner_address_cfg = masternode_cfg.get_owner_public_address(self.dash_network)
             self.network_owner_public_address = masternode_info.protx.owner_address
             if not owner_address_cfg or masternode_info.protx.owner_address != owner_address_cfg:
                 self.owner_public_address_mismatch = True
@@ -1671,7 +1671,7 @@ class MasternodeStatus:
             self.owner_public_address_mismatch = False
 
         if masternode_cfg.dmn_user_roles & DMN_ROLE_OPERATOR:
-            operator_pubkey_cfg = masternode_cfg.get_dmn_operator_pubkey()
+            operator_pubkey_cfg = masternode_cfg.get_operator_pubkey()
             self.network_operator_public_key = masternode_info.protx.pubkey_operator
             if not operator_pubkey_cfg or operator_pubkey_cfg != masternode_info.protx.pubkey_operator:
                 self.operator_pubkey_mismatch = True
@@ -1681,7 +1681,7 @@ class MasternodeStatus:
             self.operator_pubkey_mismatch = False
 
         if masternode_cfg.dmn_user_roles & DMN_ROLE_VOTING:
-            voting_address_cfg = masternode_cfg.get_dmn_voting_public_address(self.dash_network)
+            voting_address_cfg = masternode_cfg.get_voting_public_address(self.dash_network)
             self.network_voting_public_address = masternode_info.protx.voting_address
             if not voting_address_cfg or voting_address_cfg != masternode_info.protx.voting_address:
                 self.voting_public_address_mismatch = True

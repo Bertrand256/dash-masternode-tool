@@ -781,7 +781,7 @@ class AppConfig(QObject):
                                 mn = MasternodeConfig()
                                 mn.name = config.get(section, 'name', fallback='')
                                 mn.ip = config.get(section, 'ip', fallback='')
-                                mn.port = config.get(section, 'port', fallback='')
+                                mn.tcp_port = config.get(section, 'port', fallback='')
                                 mn.collateral_bip32_path = config.get(section, 'collateral_bip32_path',
                                                                       fallback='').strip()
                                 mn.collateral_address = config.get(section, 'collateral_address', fallback='').strip()
@@ -807,32 +807,32 @@ class AppConfig(QObject):
                                 if not mn.dmn_user_roles:
                                     mn.dmn_user_roles = DMN_ROLE_OWNER | DMN_ROLE_OPERATOR | DMN_ROLE_VOTING
 
-                                mn.dmn_tx_hash = config.get(section, 'dmn_tx_hash', fallback='').strip()
-                                mn.dmn_owner_key_type = int(config.get(section, 'dmn_owner_key_type',
-                                                                       fallback=str(InputKeyType.PRIVATE)).strip())
-                                mn.dmn_operator_key_type = int(config.get(section, 'dmn_operator_key_type',
-                                                                          fallback=str(InputKeyType.PRIVATE)).strip())
-                                mn.dmn_voting_key_type = int(config.get(section, 'dmn_voting_key_type',
-                                                                        fallback=str(InputKeyType.PRIVATE)).strip())
-                                if mn.dmn_owner_key_type == InputKeyType.PRIVATE:
-                                    mn.dmn_owner_private_key = self.simple_decrypt(
+                                mn.protx_hash = config.get(section, 'dmn_tx_hash', fallback='').strip()
+                                mn.owner_key_type = int(config.get(section, 'dmn_owner_key_type',
+                                                                   fallback=str(InputKeyType.PRIVATE)).strip())
+                                mn.operator_key_type = int(config.get(section, 'dmn_operator_key_type',
+                                                                      fallback=str(InputKeyType.PRIVATE)).strip())
+                                mn.voting_key_type = int(config.get(section, 'dmn_voting_key_type',
+                                                                    fallback=str(InputKeyType.PRIVATE)).strip())
+                                if mn.owner_key_type == InputKeyType.PRIVATE:
+                                    mn.owner_private_key = self.simple_decrypt(
                                         config.get(section, 'dmn_owner_private_key', fallback='').strip(), False)
                                 else:
-                                    mn.dmn_owner_address = config.get(section, 'dmn_owner_address', fallback='').strip()
+                                    mn.owner_address = config.get(section, 'dmn_owner_address', fallback='').strip()
 
-                                if mn.dmn_operator_key_type == InputKeyType.PRIVATE:
-                                    mn.dmn_operator_private_key = self.simple_decrypt(
+                                if mn.operator_key_type == InputKeyType.PRIVATE:
+                                    mn.operator_private_key = self.simple_decrypt(
                                         config.get(section, 'dmn_operator_private_key', fallback='').strip(), False)
                                 else:
-                                    mn.dmn_operator_public_key = config.get(section, 'dmn_operator_public_key',
-                                                                            fallback='').strip()
+                                    mn.operator_public_key = config.get(section, 'dmn_operator_public_key',
+                                                                        fallback='').strip()
 
-                                if mn.dmn_voting_key_type == InputKeyType.PRIVATE:
-                                    mn.dmn_voting_private_key = self.simple_decrypt(
+                                if mn.voting_key_type == InputKeyType.PRIVATE:
+                                    mn.voting_private_key = self.simple_decrypt(
                                         config.get(section, 'dmn_voting_private_key', fallback='').strip(), False)
                                 else:
-                                    mn.dmn_voting_address = config.get(section, 'dmn_voting_address',
-                                                                       fallback='').strip()
+                                    mn.voting_address = config.get(section, 'dmn_voting_address',
+                                                                   fallback='').strip()
 
                                 try:
                                     tmp_str = config.get(section, 'masternode_type', fallback='').strip()
@@ -848,6 +848,13 @@ class AppConfig(QObject):
                                     mn.platform_node_id = config.get(section, 'platform_node_id', fallback='').strip()
                                 except Exception as e:
                                     logging.error('Error reading platform_node_id from configuration file: ' + str(e))
+
+                                try:
+                                    mn.platform_node_id_private_key = config.get(
+                                        section, 'platform_node_id_private_key', fallback='').strip()
+                                except Exception as e:
+                                    logging.error('Error reading platform_node_id_private_key from configuration '
+                                                  'file: ' + str(e))
 
                                 try:
                                     tmp_str = config.get(section, 'platform_p2p_port', fallback='')
@@ -874,6 +881,10 @@ class AppConfig(QObject):
                             cfg.enabled = self.value_to_bool(config.get(section, 'enabled', fallback='1'))
                             cfg.host = config.get(section, 'host', fallback='').strip()
                             cfg.port = config.get(section, 'port', fallback='').strip()
+                            if cfg.port:
+                                cfg.port = int(cfg.port)
+                            else:
+                                cfg.port = None
                             cfg.use_ssl = self.value_to_bool(config.get(section, 'use_ssl', fallback='0').strip())
                             cfg.username = config.get(section, 'username', fallback='').strip()
                             cfg.set_encrypted_password(config.get(section, 'password', fallback=''),
@@ -1052,7 +1063,7 @@ class AppConfig(QObject):
             config.add_section(section)
             config.set(section, 'name', mn.name)
             config.set(section, 'ip', mn.ip)
-            config.set(section, 'port', str(mn.port))
+            config.set(section, 'port', str(mn.tcp_port))
             # the private key encryption method used below is a very basic one, just to not have them stored
             # in plain text; more serious encryption is used when enabling the 'Encrypt config file' option
             config.set(section, 'collateral_bip32_path', mn.collateral_bip32_path)
@@ -1062,18 +1073,19 @@ class AppConfig(QObject):
             config.set(section, 'use_default_protocol_version', '1' if mn.use_default_protocol_version else '0')
             config.set(section, 'protocol_version', str(mn.protocol_version))
             config.set(section, 'dmn_user_roles', str(mn.dmn_user_roles))
-            config.set(section, 'dmn_tx_hash', mn.dmn_tx_hash)
-            config.set(section, 'dmn_owner_private_key', self.simple_encrypt(mn.dmn_owner_private_key))
-            config.set(section, 'dmn_operator_private_key', self.simple_encrypt(mn.dmn_operator_private_key))
-            config.set(section, 'dmn_voting_private_key', self.simple_encrypt(mn.dmn_voting_private_key))
-            config.set(section, 'dmn_owner_key_type', str(mn.dmn_owner_key_type))
-            config.set(section, 'dmn_operator_key_type', str(mn.dmn_operator_key_type))
-            config.set(section, 'dmn_voting_key_type', str(mn.dmn_voting_key_type))
-            config.set(section, 'dmn_owner_address', mn.dmn_owner_address)
-            config.set(section, 'dmn_operator_public_key', mn.dmn_operator_public_key)
-            config.set(section, 'dmn_voting_address', mn.dmn_voting_address)
+            config.set(section, 'dmn_tx_hash', mn.protx_hash)
+            config.set(section, 'dmn_owner_private_key', self.simple_encrypt(mn.owner_private_key))
+            config.set(section, 'dmn_operator_private_key', self.simple_encrypt(mn.operator_private_key))
+            config.set(section, 'dmn_voting_private_key', self.simple_encrypt(mn.voting_private_key))
+            config.set(section, 'dmn_owner_key_type', str(mn.owner_key_type))
+            config.set(section, 'dmn_operator_key_type', str(mn.operator_key_type))
+            config.set(section, 'dmn_voting_key_type', str(mn.voting_key_type))
+            config.set(section, 'dmn_owner_address', mn.owner_address)
+            config.set(section, 'dmn_operator_public_key', mn.operator_public_key)
+            config.set(section, 'dmn_voting_address', mn.voting_address)
             config.set(section, 'masternode_type', str(mn.masternode_type.value))
             config.set(section, 'platform_node_id', mn.platform_node_id)
+            config.set(section, 'platform_node_id_private_key', mn.platform_node_id_private_key)
             config.set(section, 'platform_p2p_port', str(mn.platform_p2p_port) if mn.platform_p2p_port else '')
             config.set(section, 'platform_http_port', str(mn.platform_http_port) if mn.platform_http_port else '')
             mn.modified = False
@@ -1392,7 +1404,7 @@ class AppConfig(QObject):
     def import_connections(self, in_conns, force_import, limit_to_network: Optional[str]):
         """
         Imports connections from a list. Used at the app's start to process default connections and/or from
-          a configuration dialog, when user pastes from a clipboard a string, describing connections he 
+          a configuration dialog, when a user pastes a string, describing connections he
           wants to add to the configuration. The latter feature is used for a convenience.
         :param in_conns: list of DashNetworkConnectionCfg objects.
         :returns: tuple (list_of_added_connections, list_of_updated_connections)
@@ -1562,7 +1574,7 @@ class MasternodeConfig:
     def __init__(self):
         self.name: str = ''
         self.__ip: str = ''
-        self.__port: str = '9999'
+        self.__port: Optional[int] = 9999
         self.__collateral_bip32_path: str = ''
         self.__collateral_address: str = ''
         self.__collateral_tx: str = ''
@@ -1570,18 +1582,19 @@ class MasternodeConfig:
         self.use_default_protocol_version = True
         self.__protocol_version: str = ''
         self.__dmn_user_roles = DMN_ROLE_OWNER | DMN_ROLE_OPERATOR | DMN_ROLE_VOTING
-        self.__dmn_tx_hash: str = ''
-        self.__dmn_owner_key_type: int = InputKeyType.PRIVATE
-        self.__dmn_operator_key_type: int = InputKeyType.PRIVATE
-        self.__dmn_voting_key_type: int = InputKeyType.PRIVATE
-        self.__dmn_owner_private_key: str = ''
-        self.__dmn_operator_private_key: str = ''
-        self.__dmn_voting_private_key: str = ''
-        self.__dmn_owner_address: str = ''
-        self.__dmn_operator_public_key: str = ''
-        self.__dmn_voting_address: str = ''
+        self.__tx_hash: str = ''
+        self.__owner_key_type: int = InputKeyType.PRIVATE
+        self.__operator_key_type: int = InputKeyType.PRIVATE
+        self.__voting_key_type: int = InputKeyType.PRIVATE
+        self.__owner_private_key: str = ''
+        self.__operator_private_key: str = ''
+        self.__voting_private_key: str = ''
+        self.__owner_address: str = ''
+        self.__operator_public_key: str = ''
+        self.__voting_address: str = ''
         self.__masternode_type: MasternodeType = MasternodeType.REGULAR
         self.__platform_node_id: str = ''
+        self.__platform_node_id_private_key: str = ''  # private key as ed25519 hex string if a user provided such
         self.__platform_p2p_port: Optional[int] = None
         self.__platform_http_port: Optional[int] = None
         self.is_new = False  # True if this mn configuration entry isn't included in the app configuration yet
@@ -1595,7 +1608,7 @@ class MasternodeConfig:
     def copy_from(self, src_mn: 'MasternodeConfig'):
         self.name = src_mn.name
         self.ip = src_mn.ip
-        self.port = src_mn.port
+        self.tcp_port = src_mn.tcp_port
         self.collateral_bip32_path = src_mn.collateral_bip32_path
         self.collateral_address = src_mn.collateral_address
         self.collateral_tx = src_mn.collateral_tx
@@ -1603,18 +1616,19 @@ class MasternodeConfig:
         self.use_default_protocol_version = src_mn.use_default_protocol_version
         self.protocol_version = src_mn.protocol_version
         self.dmn_user_roles = src_mn.dmn_user_roles
-        self.dmn_tx_hash = src_mn.dmn_tx_hash
-        self.dmn_owner_key_type = src_mn.dmn_owner_key_type
-        self.dmn_operator_key_type = src_mn.dmn_operator_key_type
-        self.dmn_voting_key_type = src_mn.dmn_voting_key_type
-        self.dmn_owner_private_key = src_mn.dmn_owner_private_key
-        self.dmn_operator_private_key = src_mn.dmn_operator_private_key
-        self.dmn_voting_private_key = src_mn.dmn_voting_private_key
-        self.dmn_owner_address = src_mn.dmn_owner_address
-        self.dmn_operator_public_key = src_mn.dmn_operator_public_key
-        self.dmn_voting_address = src_mn.dmn_voting_address
+        self.protx_hash = src_mn.protx_hash
+        self.owner_key_type = src_mn.owner_key_type
+        self.operator_key_type = src_mn.operator_key_type
+        self.voting_key_type = src_mn.voting_key_type
+        self.owner_private_key = src_mn.owner_private_key
+        self.operator_private_key = src_mn.operator_private_key
+        self.voting_private_key = src_mn.voting_private_key
+        self.owner_address = src_mn.owner_address
+        self.operator_public_key = src_mn.operator_public_key
+        self.voting_address = src_mn.voting_address
         self.masternode_type = src_mn.masternode_type
         self.platform_node_id = src_mn.platform_node_id
+        self.platform_node_id_private_key = src_mn.platform_node_id_private_key
         self.platform_p2p_port = src_mn.platform_p2p_port
         self.platform_http_port = src_mn.platform_http_port
         self.is_new = src_mn.is_new
@@ -1636,18 +1650,12 @@ class MasternodeConfig:
             self.__ip = new_ip
 
     @property
-    def port(self) -> str:
-        if self.__port:
-            return self.__port.strip()
-        else:
-            return self.__port
+    def tcp_port(self) -> Optional[int]:
+        return self.__port
 
-    @port.setter
-    def port(self, new_port: str):
-        if new_port:
-            self.__port = new_port.strip()
-        else:
-            self.__port = new_port
+    @tcp_port.setter
+    def tcp_port(self, new_port: Optional[int]):
+        self.__port = new_port
 
     @property
     def collateral_bip32_path(self) -> str:
@@ -1728,101 +1736,101 @@ class MasternodeConfig:
         self.__dmn_user_roles = roles
 
     @property
-    def dmn_tx_hash(self) -> str:
-        return self.__dmn_tx_hash
+    def protx_hash(self) -> str:
+        return self.__tx_hash
 
-    @dmn_tx_hash.setter
-    def dmn_tx_hash(self, tx_hash: str):
+    @protx_hash.setter
+    def protx_hash(self, tx_hash: str):
         if tx_hash is None:
             tx_hash = ''
-        self.__dmn_tx_hash = tx_hash.strip()
+        self.__tx_hash = tx_hash.strip()
 
     @property
-    def dmn_owner_private_key(self) -> str:
-        return self.__dmn_owner_private_key
+    def owner_private_key(self) -> str:
+        return self.__owner_private_key
 
-    @dmn_owner_private_key.setter
-    def dmn_owner_private_key(self, dmn_owner_private_key: str):
-        if dmn_owner_private_key is None:
-            dmn_owner_private_key = ''
-        self.__dmn_owner_private_key = dmn_owner_private_key.strip()
-
-    @property
-    def dmn_owner_address(self) -> str:
-        return self.__dmn_owner_address
-
-    @dmn_owner_address.setter
-    def dmn_owner_address(self, address: str):
-        self.__dmn_owner_address = address
+    @owner_private_key.setter
+    def owner_private_key(self, owner_private_key: str):
+        if owner_private_key is None:
+            owner_private_key = ''
+        self.__owner_private_key = owner_private_key.strip()
 
     @property
-    def dmn_operator_private_key(self) -> str:
-        return self.__dmn_operator_private_key
+    def owner_address(self) -> str:
+        return self.__owner_address
 
-    @dmn_operator_private_key.setter
-    def dmn_operator_private_key(self, dmn_operator_private_key: str):
-        if dmn_operator_private_key is None:
-            dmn_operator_private_key = ''
-        self.__dmn_operator_private_key = dmn_operator_private_key.strip()
+    @owner_address.setter
+    def owner_address(self, address: str):
+        self.__owner_address = address
 
     @property
-    def dmn_operator_public_key(self) -> str:
-        return self.__dmn_operator_public_key
+    def operator_private_key(self) -> str:
+        return self.__operator_private_key
 
-    @dmn_operator_public_key.setter
-    def dmn_operator_public_key(self, key: str):
-        self.__dmn_operator_public_key = key
-
-    @property
-    def dmn_voting_private_key(self) -> str:
-        return self.__dmn_voting_private_key
-
-    @dmn_voting_private_key.setter
-    def dmn_voting_private_key(self, dmn_voting_private_key: str):
-        if dmn_voting_private_key is None:
-            dmn_voting_private_key = ''
-        self.__dmn_voting_private_key = dmn_voting_private_key.strip()
+    @operator_private_key.setter
+    def operator_private_key(self, operator_private_key: str):
+        if operator_private_key is None:
+            operator_private_key = ''
+        self.__operator_private_key = operator_private_key.strip()
 
     @property
-    def dmn_voting_address(self) -> str:
-        return self.__dmn_voting_address
+    def operator_public_key(self) -> str:
+        return self.__operator_public_key
 
-    @dmn_voting_address.setter
-    def dmn_voting_address(self, address: str):
-        self.__dmn_voting_address = address
+    @operator_public_key.setter
+    def operator_public_key(self, key: str):
+        self.__operator_public_key = key
 
     @property
-    def dmn_owner_key_type(self) -> int:
-        return self.__dmn_owner_key_type
+    def voting_private_key(self) -> str:
+        return self.__voting_private_key
 
-    @dmn_owner_key_type.setter
-    def dmn_owner_key_type(self, type: int):
+    @voting_private_key.setter
+    def voting_private_key(self, voting_private_key: str):
+        if voting_private_key is None:
+            voting_private_key = ''
+        self.__voting_private_key = voting_private_key.strip()
+
+    @property
+    def voting_address(self) -> str:
+        return self.__voting_address
+
+    @voting_address.setter
+    def voting_address(self, address: str):
+        self.__voting_address = address
+
+    @property
+    def owner_key_type(self) -> int:
+        return self.__owner_key_type
+
+    @owner_key_type.setter
+    def owner_key_type(self, type: int):
         if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
             raise Exception('Invalid owner key type')
-        self.__dmn_owner_key_type = type
+        self.__owner_key_type = type
 
     @property
-    def dmn_operator_key_type(self) -> int:
-        return self.__dmn_operator_key_type
+    def operator_key_type(self) -> int:
+        return self.__operator_key_type
 
-    @dmn_operator_key_type.setter
-    def dmn_operator_key_type(self, type: int):
+    @operator_key_type.setter
+    def operator_key_type(self, type: int):
         if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
             raise Exception('Invalid operator key type')
-        self.__dmn_operator_key_type = type
+        self.__operator_key_type = type
 
     @property
-    def dmn_voting_key_type(self) -> int:
-        return self.__dmn_voting_key_type
+    def voting_key_type(self) -> int:
+        return self.__voting_key_type
 
-    @dmn_voting_key_type.setter
-    def dmn_voting_key_type(self, type: int):
+    @voting_key_type.setter
+    def voting_key_type(self, type: int):
         if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
             raise Exception('Invalid voting key type')
-        self.__dmn_voting_key_type = type
+        self.__voting_key_type = type
 
     def get_current_key_for_voting(self, app_config: AppConfig, dashd_intf) -> str:
-        return self.dmn_voting_private_key
+        return self.voting_private_key
 
     @property
     def masternode_type(self) -> MasternodeType:
@@ -1839,13 +1847,31 @@ class MasternodeConfig:
     @platform_node_id.setter
     def platform_node_id(self, node_id: str):
         if node_id:
-            pass
-            # todo: testing
-            # try:
-            #     int(node_id, 16)
-            # except ValueError:
-            #     raise Exception('Platform Node ID must be hexadecimal string')
+            if self.__platform_node_id_private_key:
+                # if the newly set platform id does not match the ed25519 private key associated with that platform id,
+                # reset this private key - they are no longer a pair
+                id_from_priv = dash_utils.ed25519_public_key_to_platform_id(self.__platform_node_id_private_key)
+                if id_from_priv != node_id:
+                    self.__platform_node_id_private_key = ''
+
         self.__platform_node_id = node_id
+
+    @property
+    def platform_node_id_private_key(self):
+        return self.__platform_node_id_private_key
+
+    @platform_node_id_private_key.setter
+    def platform_node_id_private_key(self, private_key: str):
+        if private_key:
+            pubkey_hex = dash_utils.ed25519_private_key_to_pubkey(private_key)
+            platform_id = dash_utils.ed25519_public_key_to_platform_id(pubkey_hex)
+            if self.__platform_node_id and self.__platform_node_id != platform_id:
+                logging.warning('When setting Ed25519 private key, platform_node_id had to be changed to match to '
+                                'a private key.')
+            self.__platform_node_id = platform_id
+            self.__platform_node_id_private_key = private_key
+        else:
+            self.__platform_node_id_private_key = private_key
 
     @property
     def platform_p2p_port(self) -> Optional[int]:
@@ -1867,25 +1893,25 @@ class MasternodeConfig:
             raise Exception("Platform HTTP port must be a valid TCP port [1-65535]")
         self.__platform_http_port = http_port
 
-    def get_dmn_owner_public_address(self, dash_network) -> Optional[str]:
-        if self.__dmn_owner_key_type == InputKeyType.PRIVATE:
-            if self.__dmn_owner_private_key:
+    def get_owner_public_address(self, dash_network) -> Optional[str]:
+        if self.__owner_key_type == InputKeyType.PRIVATE:
+            if self.__owner_private_key:
                 try:
-                    address = dash_utils.wif_privkey_to_address(self.__dmn_owner_private_key, dash_network)
+                    address = dash_utils.wif_privkey_to_address(self.__owner_private_key, dash_network)
                 except Exception as e:
                     logging.exception(str(e))
                     address = ''
                 return address
         else:
-            if self.__dmn_owner_address:
-                return self.__dmn_owner_address
+            if self.__owner_address:
+                return self.__owner_address
         return ''
 
-    def get_dmn_owner_pubkey_hash(self) -> Optional[str]:
-        if self.dmn_owner_key_type == InputKeyType.PRIVATE:
-            if self.__dmn_owner_private_key:
+    def get_owner_pubkey_hash(self) -> Optional[str]:
+        if self.owner_key_type == InputKeyType.PRIVATE:
+            if self.__owner_private_key:
                 try:
-                    pubkey = dash_utils.wif_privkey_to_pubkey(self.__dmn_owner_private_key)
+                    pubkey = dash_utils.wif_privkey_to_pubkey(self.__owner_private_key)
                     pubkey_bin = bytes.fromhex(pubkey)
                     pub_hash = bitcoin.bin_hash160(pubkey_bin)
                     pub_hash = pub_hash.hex()
@@ -1894,31 +1920,31 @@ class MasternodeConfig:
                     pub_hash = ''
                 return pub_hash
         else:
-            if self.__dmn_owner_address:
-                ret = dash_utils.address_to_pubkey_hash(self.__dmn_owner_address)
+            if self.__owner_address:
+                ret = dash_utils.address_to_pubkey_hash(self.__owner_address)
                 if ret:
                     return ret.hex()
         return ''
 
-    def get_dmn_voting_public_address(self, dash_network) -> Optional[str]:
-        if self.__dmn_voting_key_type == InputKeyType.PRIVATE:
-            if self.__dmn_voting_private_key:
+    def get_voting_public_address(self, dash_network) -> Optional[str]:
+        if self.__voting_key_type == InputKeyType.PRIVATE:
+            if self.__voting_private_key:
                 try:
-                    address = dash_utils.wif_privkey_to_address(self.__dmn_voting_private_key, dash_network)
+                    address = dash_utils.wif_privkey_to_address(self.__voting_private_key, dash_network)
                 except Exception as e:
                     logging.exception(str(e))
                     address = ''
                 return address
         else:
-            if self.__dmn_voting_address:
-                return self.__dmn_voting_address
+            if self.__voting_address:
+                return self.__voting_address
         return ''
 
-    def get_dmn_voting_pubkey_hash(self) -> Optional[str]:
-        if self.__dmn_voting_key_type == InputKeyType.PRIVATE:
-            if self.__dmn_voting_private_key:
+    def get_voting_pubkey_hash(self) -> Optional[str]:
+        if self.__voting_key_type == InputKeyType.PRIVATE:
+            if self.__voting_private_key:
                 try:
-                    pubkey = dash_utils.wif_privkey_to_pubkey(self.__dmn_voting_private_key)
+                    pubkey = dash_utils.wif_privkey_to_pubkey(self.__voting_private_key)
                     pubkey_bin = bytes.fromhex(pubkey)
                     pub_hash = bitcoin.bin_hash160(pubkey_bin)
                     pub_hash = pub_hash.hex()
@@ -1927,23 +1953,23 @@ class MasternodeConfig:
                     pub_hash = ''
                 return pub_hash
         else:
-            if self.__dmn_voting_address:
-                ret = dash_utils.address_to_pubkey_hash(self.__dmn_voting_address)
+            if self.__voting_address:
+                ret = dash_utils.address_to_pubkey_hash(self.__voting_address)
                 if ret:
                     return ret.hex()
         return ''
 
-    def get_dmn_operator_pubkey(self) -> Optional[str]:
-        if self.__dmn_operator_key_type == InputKeyType.PRIVATE:
-            if self.__dmn_operator_private_key:
+    def get_operator_pubkey(self) -> Optional[str]:
+        if self.__operator_key_type == InputKeyType.PRIVATE:
+            if self.__operator_private_key:
                 try:
-                    pubkey = dash_utils.bls_privkey_to_pubkey(self.__dmn_operator_private_key)
+                    pubkey = dash_utils.bls_privkey_to_pubkey(self.__operator_private_key)
                 except Exception as e:
                     logging.exception(str(e))
                     pubkey = ''
                 return pubkey
         else:
-            return self.__dmn_operator_public_key
+            return self.__operator_public_key
         return ''
 
 

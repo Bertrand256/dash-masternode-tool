@@ -171,7 +171,7 @@ def cancel_hw_thread_dialog(hw_client):
     except CancelException:
         raise
     except Exception as e:
-        logging.warning('Error when canceling hw session. Details: %s', str(e))
+        logging.exception('Error when canceling hw session. Details: %s', str(e))
         return True
 
 

@@ -744,15 +744,18 @@
           <property name="text">
            <string/>
           </property>
+          <property name="popupMode">
+           <enum>QToolButton::MenuButtonPopup</enum>
+          </property>
          </widget>
         </item>
         <item>
          <widget class="QToolButton" name="btnGetPlatformNodeIdFromPrivate">
           <property name="toolTip">
-           <string>Get Platform Node ID from ED25519 private key</string>
+           <string>Set Platform Node ID from Ed25519 private key</string>
           </property>
           <property name="text">
-           <string>Get from private</string>
+           <string>Convert from private</string>
           </property>
          </widget>
         </item>
@@ -778,6 +781,12 @@
         </item>
         <item>
          <widget class="QLineEdit" name="edtPlatformP2PPort">
+          <property name="maximumSize">
+           <size>
+            <width>100</width>
+            <height>16777215</height>
+           </size>
+          </property>
           <property name="clearButtonEnabled">
            <bool>true</bool>
           </property>
@@ -802,6 +811,12 @@
         </item>
         <item>
          <widget class="QLineEdit" name="edtPlatformHTTPPort">
+          <property name="maximumSize">
+           <size>
+            <width>100</width>
+            <height>16777215</height>
+           </size>
+          </property>
           <property name="clearButtonEnabled">
            <bool>true</bool>
           </property>

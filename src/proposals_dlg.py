@@ -340,7 +340,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         for idx, mn in enumerate(self.app_config.masternodes):
             mn_ident = mn.collateral_tx + '-' + str(mn.collateral_tx_index)
             if mn_ident not in mn_idents:
-                if mn.dmn_voting_key_type == InputKeyType.PRIVATE:
+                if mn.voting_key_type == InputKeyType.PRIVATE:
                     voting_key = mn.get_current_key_for_voting(self.app_config, self.dashd_intf)
                     if voting_key:
                         if dash_utils.validate_wif_privkey(voting_key, self.app_config.dash_network):
@@ -572,7 +572,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
             lbl = QtWidgets.QLabel(self.scrollAreaVotingContents)
             lbl.setText('<b>%s</b> (%s)' % (user_mn.masternode_config.name,
                                             user_mn.masternode_config.ip + ':' +
-                                            user_mn.masternode_config.port))
+                                            str(user_mn.masternode_config.tcp_port)))
             self.layoutUserVoting.addWidget(lbl, mn_index + 1, 0, 1, 1)
 
             user_mn.btn_vote_yes = QtWidgets.QPushButton(self.scrollAreaVotingContents)

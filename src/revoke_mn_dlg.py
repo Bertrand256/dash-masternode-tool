@@ -31,7 +31,7 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
         self.masternode = masternode
         self.app_config = app_config
         self.dashd_intf = dashd_intf
-        self.dmn_protx_hash = self.masternode.dmn_tx_hash
+        self.dmn_protx_hash = self.masternode.protx_hash
         self.dmn_actual_operator_pubkey = ""
         self.revocation_reason = 0
         self.show_manual_commands = False
@@ -92,7 +92,7 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
                 for protx in self.dashd_intf.protx('list', 'registered', True):
                     protx_state = protx.get('state')
                     if (protx_state and protx_state.get(
-                            'service') == self.masternode.ip + ':' + self.masternode.port) or \
+                            'service') == self.masternode.ip + ':' + str(self.masternode.tcp_port)) or \
                             (protx.get('collateralHash') == self.masternode.collateral_tx and
                              str(protx.get('collateralIndex')) == str(self.masternode.collateral_tx_index)):
                         self.dmn_protx_hash = protx.get("proTxHash")
@@ -136,10 +136,10 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
         self.update_ctrls_state()
 
     def validate_data(self):
-        if self.masternode.dmn_operator_key_type != InputKeyType.PRIVATE:
+        if self.masternode.operator_key_type != InputKeyType.PRIVATE:
             raise Exception('The operator private key is required.')
 
-        if self.masternode.get_dmn_operator_pubkey() != self.dmn_actual_operator_pubkey:
+        if self.masternode.get_operator_pubkey() != self.dmn_actual_operator_pubkey:
             raise Exception('The operator key from your configuration does not match the key published on the network.')
 
         self.revocation_reason = self.cboReason.currentIndex()
@@ -148,7 +148,7 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
         try:
             green_color = get_widget_font_color_green(self.lblIP)
             self.validate_data()
-            cmd = f'protx revoke "{self.dmn_protx_hash}" "{self.masternode.dmn_operator_private_key}" ' \
+            cmd = f'protx revoke "{self.dmn_protx_hash}" "{self.masternode.operator_private_key}" ' \
                 f'{self.revocation_reason} "<span style="color:{green_color}">feeSourceAddress</span>"'
             msg = '<ol>' \
                   '<li>Start a Dash Core wallet with sufficient funds to cover a transaction fee.</li>'
@@ -179,7 +179,7 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
 
             params = ['revoke',
                       self.dmn_protx_hash,
-                      self.masternode.dmn_operator_private_key,
+                      self.masternode.operator_private_key,
                       self.revocation_reason,
                       funding_address]
 

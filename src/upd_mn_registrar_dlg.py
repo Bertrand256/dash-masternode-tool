@@ -37,10 +37,10 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         self.app_config = app_config
         self.dashd_intf = dashd_intf
         self.on_upd_success_callback = on_upd_success_callback
-        self.dmn_operator_key_type = InputKeyType.PRIVATE
-        self.dmn_voting_key_type = InputKeyType.PRIVATE
-        self.dmn_protx_hash = self.masternode.dmn_tx_hash
-        self.dmn_owner_address = ""
+        self.operator_key_type = InputKeyType.PRIVATE
+        self.voting_key_type = InputKeyType.PRIVATE
+        self.dmn_protx_hash = self.masternode.protx_hash
+        self.owner_address = ""
         self.dmn_prev_operator_pubkey = ""
         self.dmn_prev_voting_address = ""
         self.dmn_prev_payout_address = ""
@@ -117,7 +117,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                 for protx in self.dashd_intf.protx('list', 'registered', True):
                     protx_state = protx.get('state')
                     if (protx_state and protx_state.get(
-                            'service') == self.masternode.ip + ':' + self.masternode.port) or \
+                            'service') == self.masternode.ip + ':' + str(self.masternode.tcp_port)) or \
                             (protx.get('collateralHash') == self.masternode.collateral_tx and
                              str(protx.get('collateralIndex')) == str(self.masternode.collateral_tx_index)):
                         self.dmn_protx_hash = protx.get("proTxHash")
@@ -140,7 +140,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
             self.dmn_prev_operator_pubkey = status.get('pubKeyOperator')
             self.dmn_prev_voting_address = status.get('votingAddress')
             self.dmn_prev_payout_address = status.get('payoutAddress')
-            self.dmn_owner_address = status.get('ownerAddress')
+            self.owner_address = status.get('ownerAddress')
 
         except Exception as e:
             logging.exception('An exception occurred while reading protx information')
@@ -150,22 +150,22 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         try:
             # if the operator key from the current mn configuration doesn't match the key stored on the network
             # use the key from the configuration as an initial value
-            if self.masternode.get_dmn_operator_pubkey() != self.dmn_prev_operator_pubkey:
-                if self.masternode.dmn_operator_key_type == InputKeyType.PRIVATE:
-                    self.edtOperatorKey.setText(self.masternode.dmn_operator_private_key)
+            if self.masternode.get_operator_pubkey() != self.dmn_prev_operator_pubkey:
+                if self.masternode.operator_key_type == InputKeyType.PRIVATE:
+                    self.edtOperatorKey.setText(self.masternode.operator_private_key)
                 else:
-                    self.edtOperatorKey.setText(self.masternode.dmn_operator_public_key)
-                self.dmn_operator_key_type = self.masternode.dmn_operator_key_type
+                    self.edtOperatorKey.setText(self.masternode.operator_public_key)
+                self.operator_key_type = self.masternode.operator_key_type
 
             # if the voting key from the current mn configuration doesn't match the key stored on the network
             # use the key from the configuration as an initial value
-            if self.masternode.get_dmn_voting_public_address(self.app_config.dash_network) != \
+            if self.masternode.get_voting_public_address(self.app_config.dash_network) != \
                     self.dmn_prev_voting_address:
-                if self.masternode.dmn_voting_key_type == InputKeyType.PRIVATE:
-                    self.edtVotingKey.setText(self.masternode.dmn_voting_private_key)
+                if self.masternode.voting_key_type == InputKeyType.PRIVATE:
+                    self.edtVotingKey.setText(self.masternode.voting_private_key)
                 else:
-                    self.edtVotingKey.setText(self.masternode.dmn_voting_address)
-                self.dmn_voting_key_type = self.masternode.dmn_voting_key_type
+                    self.edtVotingKey.setText(self.masternode.voting_address)
+                self.voting_key_type = self.masternode.voting_key_type
 
         except Exception as e:
             logging.exception('An exception occurred while processing the initial data')
@@ -190,7 +190,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
         self.edtPayoutAddress.setToolTip('Enter a new payout Dash address.')
 
-        if self.dmn_operator_key_type == InputKeyType.PRIVATE:
+        if self.operator_key_type == InputKeyType.PRIVATE:
             key_type, tooltip_anchor, placeholder_text = ('privkey', 'pubkey', 'Enter a new operator private key.')
             style = ''
         else:
@@ -199,7 +199,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         self.lblOperatorKey.setText(get_label_text('Operator', key_type, tooltip_anchor, style))
         self.edtOperatorKey.setToolTip(placeholder_text)
 
-        if self.dmn_voting_key_type == InputKeyType.PRIVATE:
+        if self.voting_key_type == InputKeyType.PRIVATE:
             key_type, tooltip_anchor, placeholder_text = ('privkey','address', 'Enter a new voting private key.')
             style = ''
         else:
@@ -214,11 +214,11 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         self.lblOperatorKey.setVisible(self.show_upd_operator)
         self.edtOperatorKey.setVisible(self.show_upd_operator)
         self.btnGenerateOperatorKey.setVisible(self.show_upd_operator and
-                                               self.dmn_operator_key_type == InputKeyType.PRIVATE)
+                                               self.operator_key_type == InputKeyType.PRIVATE)
 
         self.lblVotingKey.setVisible(self.show_upd_voting)
         self.edtVotingKey.setVisible(self.show_upd_voting)
-        self.btnGenerateVotingKey.setVisible(self.show_upd_voting and self.dmn_voting_key_type == InputKeyType.PRIVATE)
+        self.btnGenerateVotingKey.setVisible(self.show_upd_voting and self.voting_key_type == InputKeyType.PRIVATE)
 
         if self.show_manual_commands:
             self.lblManualCommands.setText('<a style="text-decoration:none" '
@@ -239,19 +239,19 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
     @pyqtSlot(str)
     def on_lblOperatorKey_linkActivated(self, link):
-        if self.dmn_operator_key_type == InputKeyType.PRIVATE:
-            self.dmn_operator_key_type = InputKeyType.PUBLIC
+        if self.operator_key_type == InputKeyType.PRIVATE:
+            self.operator_key_type = InputKeyType.PUBLIC
         else:
-            self.dmn_operator_key_type = InputKeyType.PRIVATE
+            self.operator_key_type = InputKeyType.PRIVATE
         self.edtOperatorKey.setText('')
         self.update_ctrls_state()
 
     @pyqtSlot(str)
     def on_lblVotingKey_linkActivated(self, link):
-        if self.dmn_voting_key_type == InputKeyType.PRIVATE:
-            self.dmn_voting_key_type = InputKeyType.PUBLIC
+        if self.voting_key_type == InputKeyType.PRIVATE:
+            self.voting_key_type = InputKeyType.PUBLIC
         else:
-            self.dmn_voting_key_type = InputKeyType.PRIVATE
+            self.voting_key_type = InputKeyType.PRIVATE
         self.edtVotingKey.setText('')
         self.update_ctrls_state()
 
@@ -297,7 +297,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
         key = self.edtOperatorKey.text().strip()
         if key:
-            if self.dmn_operator_key_type == InputKeyType.PRIVATE:
+            if self.operator_key_type == InputKeyType.PRIVATE:
                 self.dmn_new_operator_privkey = key
 
                 try:
@@ -329,7 +329,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
         key = self.edtVotingKey.text().strip()
         if key:
-            if self.dmn_voting_key_type == InputKeyType.PRIVATE:
+            if self.voting_key_type == InputKeyType.PRIVATE:
                 self.dmn_new_voting_privkey = key
                 if not validate_wif_privkey(self.dmn_new_voting_privkey, self.app_config.dash_network):
                     self.edtVotingKey.setFocus()
@@ -402,10 +402,10 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
     def send_upd_tx(self):
         # verify the owner key used in the configuration
-        if self.masternode.dmn_owner_key_type == InputKeyType.PRIVATE and self.masternode.dmn_owner_private_key:
-            owner_address = wif_privkey_to_address(self.masternode.dmn_owner_private_key,
+        if self.masternode.owner_key_type == InputKeyType.PRIVATE and self.masternode.owner_private_key:
+            owner_address = wif_privkey_to_address(self.masternode.owner_private_key,
                                                    self.app_config.dash_network)
-            if owner_address != self.dmn_owner_address:
+            if owner_address != self.owner_address:
                 raise Exception('Inconsistency of the owner key between the app configuration and the data '
                                 'on the Dash network.')
         else:
@@ -462,7 +462,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                                     "public RPC node and the funding address for the transaction fee will "
                                     "be estimated during the `update_registrar` call")
             else:
-                params.append(self.masternode.dmn_owner_private_key)
+                params.append(self.masternode.owner_private_key)
 
             upd_tx_hash = self.dashd_intf.rpc_call(True, False, 'protx', *params)
 
@@ -470,24 +470,24 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                 logging.info('update_registrar successfully executed, tx hash: ' + upd_tx_hash)
                 changed = False
                 if self.dmn_new_voting_address != self.dmn_prev_voting_address:
-                    changed = self.masternode.dmn_voting_key_type != self.dmn_voting_key_type
-                    self.masternode.dmn_voting_key_type = self.dmn_voting_key_type
-                    if self.dmn_voting_key_type == InputKeyType.PRIVATE:
-                        changed = changed or self.masternode.dmn_voting_private_key != self.dmn_new_voting_privkey
-                        self.masternode.dmn_voting_private_key = self.dmn_new_voting_privkey
+                    changed = self.masternode.voting_key_type != self.voting_key_type
+                    self.masternode.voting_key_type = self.voting_key_type
+                    if self.voting_key_type == InputKeyType.PRIVATE:
+                        changed = changed or self.masternode.voting_private_key != self.dmn_new_voting_privkey
+                        self.masternode.voting_private_key = self.dmn_new_voting_privkey
                     else:
-                        changed = changed or self.masternode.dmn_voting_address != self.dmn_new_voting_address
-                        self.masternode.dmn_voting_address = self.dmn_new_voting_address
+                        changed = changed or self.masternode.voting_address != self.dmn_new_voting_address
+                        self.masternode.voting_address = self.dmn_new_voting_address
 
                 if self.dmn_new_operator_pubkey != self.dmn_prev_operator_pubkey:
-                    changed = changed or self.masternode.dmn_operator_key_type != self.dmn_operator_key_type
-                    self.masternode.dmn_operator_key_type = self.dmn_operator_key_type
-                    if self.dmn_operator_key_type == InputKeyType.PRIVATE:
-                        changed = changed or self.masternode.dmn_operator_private_key != self.dmn_new_operator_privkey
-                        self.masternode.dmn_operator_private_key = self.dmn_new_operator_privkey
+                    changed = changed or self.masternode.operator_key_type != self.operator_key_type
+                    self.masternode.operator_key_type = self.operator_key_type
+                    if self.operator_key_type == InputKeyType.PRIVATE:
+                        changed = changed or self.masternode.operator_private_key != self.dmn_new_operator_privkey
+                        self.masternode.operator_private_key = self.dmn_new_operator_privkey
                     else:
-                        changed = changed or self.masternode.dmn_operator_public_key != self.dmn_new_operator_pubkey
-                        self.masternode.dmn_operator_public_key = self.dmn_new_operator_pubkey
+                        changed = changed or self.masternode.operator_public_key != self.dmn_new_operator_pubkey
+                        self.masternode.operator_public_key = self.dmn_new_operator_pubkey
 
                 if self.on_upd_success_callback:
                     self.on_upd_success_callback(self.masternode)
