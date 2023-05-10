@@ -1662,7 +1662,7 @@ class MasternodeStatus:
         self.messages.clear()
 
     def check_mismatch(self, masternode_cfg: MasternodeConfig, masternode_info: Masternode):
-        if not masternode_cfg.collateral_tx or not masternode_cfg.collateral_tx_index or \
+        if not masternode_cfg.collateral_tx or masternode_cfg.collateral_tx_index is None or \
                 str(masternode_cfg.collateral_tx) + '-' + str(masternode_cfg.collateral_tx_index) != \
                 masternode_info.ident:
             self.collateral_tx_mismatch = True

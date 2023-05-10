@@ -1455,9 +1455,9 @@ class DashdInterface(WndUtils):
                     protx = tx.get('proUpServTx')
                 if not protx:
                     protx = tx.get('proRegTx')
-                if protx and (protx.get('proTxHash') == protx_hash) or (ip_port and protx.get('service') == ip_port):
+                if protx and ((protx.get('proTxHash') == protx_hash) or (ip_port and protx.get('service') == ip_port)):
                     return True
             return False
-        except Exception:
+        except Exception as e:
             return False
 

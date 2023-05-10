@@ -421,12 +421,14 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
     def on_rbMNTypeRegular_toggled(self, checked):
         if checked:
             self.masternode_type = MasternodeType.REGULAR
+            self.update_fields_info(True)
             self.update_ctrls_visibility()
 
     @pyqtSlot(bool)
     def on_rbMNTypeHPMN_toggled(self, checked):
         if checked:
             self.masternode_type = MasternodeType.HPMN
+            self.update_fields_info(True)
             self.update_ctrls_visibility()
 
     @pyqtSlot(bool)
@@ -540,13 +542,13 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             self.edtPlatformHTTPPort.setText(str(DASH_PLATFORM_DEFAULT_HTTP_PORT))
 
     def set_ctrl_message(self, control, message: str, style: str):
+        control.setText(message)
         if message:
             control.setProperty('level', style)
-            control.setText(message)
             control.setStyleSheet(self.style)
-            control.setVisible(True)
+            control.show()
         else:
-            control.setVisible(False)
+            control.hide()
         if control not in self.styled_widgets:
             self.styled_widgets.append(control)
 
@@ -573,6 +575,10 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             self.edtPlatformP2PPort.hide()
             self.edtPlatformHTTPPort.hide()
             self.btnGeneratePlatformId.hide()
+            self.lblPlatformNodeIdMsg.hide()
+            self.btnPlatformP2PPortSetDefault.hide()
+            self.btnPlatformHTTPPortSetDefault.hide()
+            self.linePlatformNodeId.hide()
         else:
             self.lblPlatformNodeId.show()
             self.lblPlatformP2PPort.show()
@@ -582,6 +588,10 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             self.edtPlatformP2PPort.show()
             self.edtPlatformHTTPPort.show()
             self.btnGeneratePlatformId.show()
+            self.lblPlatformNodeIdMsg.show()
+            self.btnPlatformP2PPortSetDefault.show()
+            self.btnPlatformHTTPPortSetDefault.show()
+            self.linePlatformNodeId.show()
 
     def update_fields_info(self, show_invalid_data_msg: bool):
         """
@@ -694,18 +704,19 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
     def upd_platform_node_id_info(self, show_invalid_data_msg: bool):
         msg = ''
         style = ''
-        if show_invalid_data_msg and self.platform_node_id_validation_err_msg:
-            msg = self.platform_node_id_validation_err_msg
-            style = 'error'
-        else:
-            if self.show_field_hinds:
-                if self.platform_node_id_generated:
-                    msg = 'Platform Node Id was generated here. Once registration is comple, copy the associated ' \
-                          'Ed25519 private key into the Tenderdash configuration.'
-                else:
-                    msg = 'Enter the Platform Node Id generated from the Tenderdash private key, or generate it ' \
-                          'here and then copy the associated private key to Tenderdash configuration.'
-                style = 'info'
+        if self.masternode_type == MasternodeType.HPMN:
+            if show_invalid_data_msg and self.platform_node_id_validation_err_msg:
+                msg = self.platform_node_id_validation_err_msg
+                style = 'error'
+            else:
+                if self.show_field_hinds:
+                    if self.platform_node_id_generated:
+                        msg = 'Platform Node Id was generated here. Once registration is comple, copy the associated ' \
+                              'Ed25519 private key into the Tenderdash configuration.'
+                    else:
+                        msg = 'Enter the Platform Node Id generated from the Tenderdash private key, or generate it ' \
+                              'here and then copy the associated private key to Tenderdash configuration.'
+                    style = 'info'
 
         self.set_ctrl_message(self.lblPlatformNodeIdMsg, msg, style)
 

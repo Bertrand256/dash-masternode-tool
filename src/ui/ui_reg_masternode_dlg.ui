@@ -472,7 +472,7 @@
         </layout>
        </item>
        <item row="28" column="1">
-        <widget class="Line" name="line_8">
+        <widget class="Line" name="linePlatformNodeId">
          <property name="orientation">
           <enum>Qt::Horizontal</enum>
          </property>
