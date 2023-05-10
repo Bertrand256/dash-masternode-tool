@@ -22,7 +22,7 @@ from PyQt5.QtWidgets import QWidget, QMessageBox, QApplication, QTableView, QIte
 import app_cache
 import app_utils
 import hw_intf
-from app_config import AppConfig, MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING
+from app_config import AppConfig, MasternodeConfig, MasternodeType, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING
 from app_defs import COLOR_ERROR_STR, COLOR_WARNING_STR, COLOR_ERROR, COLOR_WARNING, \
     AppTextMessageType, SCREENSHOT_MODE
 from common import CancelException
@@ -110,7 +110,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         l.insertWidget(l.indexOf(self.btnMoveMnDown) + 1, self.loading_data_spinner)
         self.wdg_masternode.app_text_message_sent.connect(self.on_app_text_message_sent)
 
-        # setup the masternode list view
+        # set up the masternode list view
         self.viewMasternodes.setSortingEnabled(True)
         self.viewMasternodes.setItemDelegate(ReadOnlyTableCellDelegate(self.viewMasternodes))
         self.viewMasternodes.verticalHeader().setDefaultSectionSize(
@@ -157,7 +157,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
 
     def save_cache_config_config_dependent(self):
         """Save runtime configuration (stored in cache) that is dependent on the main configuration file.
-        Currently it's the configuration of the masternode list view columns (order, widths, visibility).
+        Currently, it's the configuration of the masternode list view columns (order, widths, visibility).
         """
         if self.mn_list_columns_cache_name:
             if self.mn_list_columns_resized_by_user:
@@ -784,7 +784,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 protx = self.dashd_intf.protx('info', masternode.protx_hash)
                 if protx:
                     protx_state = protx.get('state')
-            except Exception as e:
+            except Exception:
                 logging.exception('Cannot read protx info')
 
             if not protx:
@@ -793,7 +793,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                     tx = self.dashd_intf.getrawtransaction(masternode.protx_hash, 1, skip_cache=True)
                     confirmations = tx.get('confirmations', 0)
                     if confirmations < 3:
-                        # in this case dmn tx should have been found by the 'protx info' call above;
+                        # in this case, dmn tx should have been found by the 'protx info' call above;
                         # it hasn't been, so it is no longer valid a protx transaction
                         ptx = tx.get('proRegTx')
                         if ptx:
@@ -811,7 +811,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                             }
                         if protx:
                             protx_state = protx.get('state')
-                except Exception as e:
+                except Exception:
                     pass
 
         if not (protx_state and ((protx_state.get('service') == masternode.ip + ':' + str(masternode.tcp_port)) or
@@ -827,13 +827,13 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                                          (protx.get('collateralHash') == masternode.collateral_tx and
                                           str(protx.get('collateralIndex')) == str(masternode.collateral_tx_index)))):
                         return protx
-            except Exception as e:
+            except Exception:
                 pass
         else:
             return protx
         return None
 
-    def refresh_status_thread(self, ctrl):
+    def refresh_status_thread(self, _):
         def on_start():
             self.show_loading_animation()
             self.update_mn_preview()
@@ -846,42 +846,42 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             check_finishing()
             WndUtils.call_in_main_thread(on_start)
 
-            # check if any of the masternodes from config, had waiting protx transaction; if so, we will minimize
+            # check if any of the masternodes from config had waited protx transaction; if so, we will minimize
             # the cache max data age attribute
             cache_max_age = 60
-            for mn in self.mns_status:
-                ms = self.mns_status[mn]
-                if ms.protx_conf_pending:
+            for mn_cfg in self.mns_status:
+                mn_stat = self.mns_status[mn_cfg]
+                if mn_stat.protx_conf_pending:
                     cache_max_age = 1
 
-            self.dashd_intf.get_masternodelist('json', data_max_age=cache_max_age, protx_data_max_age=cache_max_age,
-                                               feedback_fun=check_finishing)
+            self.dashd_intf.get_masternodelist('json', data_max_age=cache_max_age, feedback_fun=check_finishing)
             check_finishing()
 
             block_height = self.dashd_intf.getblockcount()
             check_finishing()
 
-            mns = list(self.app_config.masternodes)
-            for mn in mns:
+            mns_cfg_list = list(self.app_config.masternodes)
+            for mn_cfg in mns_cfg_list:
+                assert isinstance(mn_cfg, MasternodeConfig)
                 check_finishing()
-                ms = self.mns_status.get(mn)
-                if not ms:
-                    ms = MasternodeStatus(self.app_config.dash_network)
-                    self.mns_status[mn] = ms
+                mn_stat = self.mns_status.get(mn_cfg)
+                if not mn_stat:
+                    mn_stat = MasternodeStatus(self.app_config.dash_network)
+                    self.mns_status[mn_cfg] = mn_stat
 
-                if mn.collateral_tx and str(mn.collateral_tx_index):
-                    collateral_id = mn.collateral_tx + '-' + str(mn.collateral_tx_index)
+                if mn_cfg.collateral_tx and str(mn_cfg.collateral_tx_index):
+                    collateral_id = mn_cfg.collateral_tx + '-' + str(mn_cfg.collateral_tx_index)
                 else:
                     collateral_id = None
-                if mn.ip and mn.tcp_port:
-                    ip_port = mn.ip + ':' + str(mn.tcp_port)
+                if mn_cfg.ip and mn_cfg.tcp_port:
+                    ip_port = mn_cfg.ip + ':' + str(mn_cfg.tcp_port)
                 else:
                     ip_port = None
 
-                ms.not_found = False
+                mn_stat.not_found = False
                 if not collateral_id and not ip_port:
-                    if not mn.collateral_tx:
-                        ms.not_found = True
+                    if not mn_cfg.collateral_tx:
+                        mn_stat.not_found = True
                         continue
 
                 if collateral_id:
@@ -892,55 +892,56 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                     mn_info = None
 
                 if not mn_info:
-                    ms.not_found = True
+                    mn_stat.not_found = True
                     continue
-                self.mn_info_by_mn_cfg[mn] = mn_info
+                self.mn_info_by_mn_cfg[mn_cfg] = mn_info
 
-                ms.status = mn_info.status
+                mn_stat.status = mn_info.status
                 if mn_info.queue_position:
-                    ms.next_payment_block = block_height + mn_info.queue_position + 1
-                    ms.next_payment_ts = int(time.time()) + (mn_info.queue_position * 2.5 * 60)
+                    mn_stat.next_payment_block = block_height + mn_info.queue_position + 1
+                    mn_stat.next_payment_ts = int(time.time()) + (mn_info.queue_position * 2.5 * 60)
                 else:
-                    ms.next_payment_block = None
-                    ms.next_payment_ts = None
+                    mn_stat.next_payment_block = None
+                    mn_stat.next_payment_ts = None
 
                 if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
-                    ms.status_warning = False
+                    mn_stat.status_warning = False
                 else:
-                    ms.status_warning = True
+                    mn_stat.status_warning = True
 
-                if mn_info.protx:
-                    if mn_info.protx.pose_penalty:
-                        ms.pose_penalty = mn_info.protx.pose_penalty
-                        ms.status_warning = True
-                    else:
-                        ms.pose_penalty = 0
+                mn_stat.masternode_type = {
+                    'HighPerformance': MasternodeType.HPMN,
+                    'Regular': MasternodeType.REGULAR
+                }.get(mn_info.type, MasternodeType.REGULAR)
 
-                    if re.match('^0+$', mn_info.protx.pubkey_operator):
-                        no_operator_pub_key = True
-                    else:
-                        no_operator_pub_key = False
-
-                    ms.operator_key_update_required = False
-                    ms.operator_service_update_required = False
-                    if mn_info.protx.service == '[0:0:0:0:0:0:0:0]:0':
-                        if no_operator_pub_key:
-                            ms.operator_key_update_required = True
-                        else:
-                            ms.operator_service_update_required = True
-                    ms.check_mismatch(mn, mn_info)
+                if mn_info.pose_penalty:
+                    mn_stat.pose_penalty = mn_info.pose_penalty
+                    mn_stat.status_warning = True
                 else:
-                    ms.pose_penalty = 0
-                    ms.no_operator_pub_key = False
-                    ms.operator_service_update_required = True
-                    ms.collateral_address_mismatch = False
-                    ms.owner_public_address_mismatch = False
-                    ms.operator_pubkey_mismatch = False
-                    ms.voting_public_address_mismatch = False
+                    mn_stat.pose_penalty = 0
+
+                if mn_info.pubkey_operator and re.match('^0+$', mn_info.pubkey_operator):
+                    no_operator_pub_key = True
+                else:
+                    no_operator_pub_key = False
+
+                mn_stat.operator_key_update_required = False
+                mn_stat.operator_service_update_required = False
+                if mn_info.ip_port in ('[0:0:0:0:0:0:0:0]:0', '[::]:0'):
+                    if no_operator_pub_key:
+                        mn_stat.operator_key_update_required = True
+                    else:
+                        mn_stat.operator_service_update_required = True
+
+                mn_stat.platform_node_id = mn_info.platform_node_id
+                mn_stat.platform_p2p_port = mn_info.platform_p2p_port
+                mn_stat.platform_http_port = mn_info.platform_http_port
+
+                mn_stat.check_mismatch(mn_cfg, mn_info)
 
             check_finishing()
-            WndUtils.call_in_main_thread(self.refresh_masternodes_view)  # in the mn list view show the data that has
-                                                                         # been read so far
+            # in the mn list view show the data that has been read so far
+            WndUtils.call_in_main_thread(self.refresh_masternodes_view)
 
             # fetch non-cachaed data
             check_finishing()
@@ -961,69 +962,69 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             check_finishing()
             self.network_status.mempool_entries_count = len(self.dashd_intf.mempool_txes)
             log.info('get address balances start')
-            for mn in mns:
+            for mn_cfg in mns_cfg_list:
                 check_finishing()
-                ms = self.mns_status.get(mn)
-                mn_info = self.mn_info_by_mn_cfg.get(mn)
+                mn_stat = self.mns_status.get(mn_cfg)
+                mn_info: Optional[Masternode] = self.mn_info_by_mn_cfg.get(mn_cfg)
                 if not mn_info:
                     continue
 
-                if int(time.time()) - ms.last_addr_balance_fetch_ts >= MN_BALANCE_FETCH_INTERVAL_SECONDS:
-                    if not ms.collateral_address_mismatch and mn.collateral_address:
+                if int(time.time()) - mn_stat.last_addr_balance_fetch_ts >= MN_BALANCE_FETCH_INTERVAL_SECONDS:
+                    if not mn_stat.collateral_address_mismatch and mn_cfg.collateral_address:
                         try:
-                            coll_bal = self.dashd_intf.getaddressbalance([mn.collateral_address])
-                            ms.collateral_addr_balance = round(coll_bal.get('balance') / 1e8, 5)
+                            coll_bal = self.dashd_intf.getaddressbalance([mn_cfg.collateral_address])
+                            mn_stat.collateral_addr_balance = round(coll_bal.get('balance') / 1e8, 5)
                         except Exception as e:
                             log.exception(str(e))
 
-                    if mn_info.protx and mn_info.protx.payout_address:
+                    if mn_info.payout_address:
                         try:
-                            ms.payout_address = mn_info.protx.payout_address
-                            payout_bal = self.dashd_intf.getaddressbalance([mn_info.protx.payout_address])
-                            ms.payout_addr_balance = round(payout_bal.get('balance') / 1e8, 5)
+                            mn_stat.payout_address = mn_info.payout_address
+                            payout_bal = self.dashd_intf.getaddressbalance([mn_info.payout_address])
+                            mn_stat.payout_addr_balance = round(payout_bal.get('balance') / 1e8, 5)
                         except Exception as e:
                             log.exception(str(e))
 
-                    if mn_info.protx and mn_info.protx.operator_payout_address:
+                    if mn_info.operator_payout_address:
                         try:
-                            ms.operator_payout_address = mn_info.protx.operator_payout_address
-                            if mn_info.protx.operator_payout_address != mn_info.protx.payout_address:
-                                payout_bal = self.dashd_intf.getaddressbalance([mn_info.protx.operator_payout_address])
-                                ms.operator_payout_addr_balance = round(payout_bal.get('balance') / 1e8, 5)
+                            mn_stat.operator_payout_address = mn_info.operator_payout_address
+                            if mn_info.operator_payout_address != mn_info.payout_address:
+                                payout_bal = self.dashd_intf.getaddressbalance([mn_info.operator_payout_address])
+                                mn_stat.operator_payout_addr_balance = round(payout_bal.get('balance') / 1e8, 5)
                             else:
-                                ms.operator_payout_addr_balance = ms.payout_addr_balance
+                                mn_stat.operator_payout_addr_balance = mn_stat.payout_addr_balance
                         except Exception as e:
                             log.exception(str(e))
-                    ms.last_addr_balance_fetch_ts = int(time.time())
+                    mn_stat.last_addr_balance_fetch_ts = int(time.time())
 
-                ms.last_paid_ts = 0
+                mn_stat.last_paid_ts = 0
                 if mn_info.lastpaidtime > time.time() - 3600 * 24 * 365:
                     # fresh dmns have lastpaidtime set to some day in the year 2014
-                    ms.last_paid_ts = mn_info.lastpaidtime
+                    mn_stat.last_paid_ts = mn_info.lastpaidtime
 
-                if mn_info.protx and mn_info.protx.last_paid_height and mn_info.protx.last_paid_height > 0:
-                    prev_last_paid_block = ms.last_paid_block
-                    if not prev_last_paid_block or prev_last_paid_block != mn_info.protx.last_paid_height:
-                        ms.last_paid_block = mn_info.protx.last_paid_height
-                        if not ms.last_paid_ts:
-                            ms.last_paid_ts = self.dashd_intf.get_block_timestamp(ms.last_paid_block)
+                if mn_info.lastpaidblock and mn_info.lastpaidblock > 0:
+                    prev_last_paid_block = mn_stat.last_paid_block
+                    if not prev_last_paid_block or prev_last_paid_block != mn_info.lastpaidblock:
+                        mn_stat.last_paid_block = mn_info.lastpaidblock
+                        if not mn_stat.last_paid_ts:
+                            mn_stat.last_paid_ts = self.dashd_intf.get_block_timestamp(mn_stat.last_paid_block)
 
-                if ms.last_paid_ts:
-                    ms.last_paid_dt = datetime.fromtimestamp(float(ms.last_paid_ts))
-                    ms.last_paid_ago = int(time.time()) - int(ms.last_paid_ts)
-                    ago_str = app_utils.seconds_to_human(ms.last_paid_ago, out_unit_auto_adjust=True)
-                    ms.last_paid_ago_str = ago_str + ' ago' if ago_str else ''
+                if mn_stat.last_paid_ts:
+                    mn_stat.last_paid_dt = datetime.fromtimestamp(float(mn_stat.last_paid_ts))
+                    mn_stat.last_paid_ago = int(time.time()) - int(mn_stat.last_paid_ts)
+                    ago_str = app_utils.seconds_to_human(mn_stat.last_paid_ago, out_unit_auto_adjust=True)
+                    mn_stat.last_paid_ago_str = ago_str + ' ago' if ago_str else ''
 
-                if ms.next_payment_block and ms.next_payment_ts:
-                    ms.next_payment_dt = datetime.fromtimestamp(float(ms.next_payment_ts))
-                    ms.next_payment_in = ms.next_payment_ts - int(time.time())
-                    in_str = app_utils.seconds_to_human(ms.next_payment_in, out_unit_auto_adjust=True)
-                    ms.next_payment_in_str = 'in ' + in_str if in_str else ''
+                if mn_stat.next_payment_block and mn_stat.next_payment_ts:
+                    mn_stat.next_payment_dt = datetime.fromtimestamp(float(mn_stat.next_payment_ts))
+                    mn_stat.next_payment_in = mn_stat.next_payment_ts - int(time.time())
+                    in_str = app_utils.seconds_to_human(mn_stat.next_payment_in, out_unit_auto_adjust=True)
+                    mn_stat.next_payment_in_str = 'in ' + in_str if in_str else ''
 
                 if self.dashd_intf.is_protx_update_pending(mn_info.protx_hash, mn_info.ip_port):
-                    ms.protx_conf_pending = True
+                    mn_stat.protx_conf_pending = True
                 else:
-                    ms.protx_conf_pending = False
+                    mn_stat.protx_conf_pending = False
             log.info('get address balances finish')
 
             self.refresh_status_count += 1
@@ -1039,7 +1040,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         finally:
             self.refresh_status_thread_ref = None
 
-    def refresh_price_thread(self, ctrl):
+    def refresh_price_thread(self, _):
         try:
             if self.app_config.show_dash_value_in_fiat and (self.app_config.is_mainnet or SCREENSHOT_MODE):
                 resp = requests.get('https://api.kraken.com/0/public/Ticker?pair=DASHUSD')
@@ -1084,7 +1085,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         gi = self.network_status
         try:
             palette = self.palette()
-            bg_color = palette.color(QPalette.Normal, palette.Window)
+            # bg_color = palette.color(QPalette.Normal, palette.Window)
             value_color = get_widget_font_color_blue(self)
 
             status = (
@@ -1211,34 +1212,50 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                     if st.operator_key_update_required:
                         errors.append('Operator key update required')
                     if st.ip_port_mismatch:
-                        warnings.append('Masternode IP/port mismatch (config)')
+                        warnings.append('Masternode IP/port mismatch between config and the network')
                     if st.collateral_tx_mismatch:
-                        warnings.append('Collateral tx mismatch between (config)')
+                        warnings.append('Collateral tx mismatch between config and the network')
                     if st.collateral_address_mismatch:
-                        warnings.append('Collateral address mismatch (config)')
+                        warnings.append('Collateral address mismatch between config and the network')
                     if st.protx_mismatch:
-                        warnings.append(f'Protx mismatch (<a href="copy_protx_to_config">use the value from the network in '
-                                        f'the configuration</a>)')
+                        warnings.append(f'Protx mismatch (<a href="copy_protx_to_config">use the value from '
+                                        f'the network in the configuration</a>)')
                     if st.owner_public_address_mismatch:
                         warnings.append(
                             f'Owner address mismatch (config: '
                             f'{short_address_str(mn.get_owner_public_address(self.app_config.dash_network), 6)} '
-                            f'(<a href="copy_owner_addr_cfg">copy</a>), '
+                            f'[<a href="copy_owner_addr_cfg">copy</a>], '
                             f'network: {short_address_str(st.network_owner_public_address, 6)} '
-                            f'(<a href="copy_owner_addr_net">copy</a>)')
+                            f'[<a href="copy_owner_addr_net">copy</a>])')
                     if st.operator_pubkey_mismatch:
                         warnings.append(
                             f'Operator public key mismatch (config: {short_address_str(mn.get_operator_pubkey(), 6)} '
-                            f'(<a href="copy_operator_key_cfg">copy</a>), '
+                            f'[<a href="copy_operator_key_cfg">copy</a>], '
                             f'network: {short_address_str(st.network_operator_public_key, 6)}'
-                            f'(<a href="copy_operator_key_net">copy</a>)')
+                            f'[<a href="copy_operator_key_net">copy</a>])')
                     if st.voting_public_address_mismatch:
                         warnings.append(
                             f'Voting address mismatch (config: '
                             f'{short_address_str(mn.get_voting_public_address(self.app_config.dash_network), 6)} '
-                            f'(<a href="copy_voting_addr_cfg">copy</a>), '
+                            f'[<a href="copy_voting_addr_cfg">copy</a>], '
                             f'network: {short_address_str(st.network_voting_public_address, 6)}'
-                            f'(<a href="copy_voting_addr_net">copy</a>)')
+                            f'[<a href="copy_voting_addr_net">copy</a>])')
+                    if st.masternode_type_mismatch:
+                        warnings.append(
+                            f'Masternode type mismatch (config: {mn.masternode_type.name}, '
+                            f'network: {st.masternode_type.name})')
+                    if st.platform_node_id_mismatch:
+                        warnings.append(
+                            f'Platform Node Id mismatch (config: {short_address_str(mn.platform_node_id, 6)}, '
+                            f'network: {short_address_str(st.platform_node_id, 6)})')
+                    if st.platform_p2p_port_mismatch:
+                        warnings.append(
+                            f'Platform P2P port mismatch (config: {mn.platform_p2p_port}, '
+                            f'network: {st.platform_p2p_port})')
+                    if st.platform_http_port_mismatch:
+                        warnings.append(
+                            f'Platform HTTP port mismatch (config: {mn.platform_http_port}, '
+                            f'network: {st.platform_http_port})')
 
                 for idx, val in enumerate(errors):
                     if idx == 0:
@@ -1574,6 +1591,8 @@ class MasternodeStatus:
         self.not_found = False
         self.status = ''
         self.status_warning = False
+        self.masternode_type: MasternodeType = MasternodeType.REGULAR
+        self.masternode_type_mismatch = False
         self.protx_conf_pending = False
         self.pose_penalty = 0
         self.operator_pub_key = ''
@@ -1594,6 +1613,12 @@ class MasternodeStatus:
         self.operator_payout_address: Optional[str] = None
         self.operator_payout_addr_balance = 0
         self.collateral_addr_balance = 0
+        self.platform_node_id: Optional[str] = None
+        self.platform_node_id_mismatch = False
+        self.platform_p2p_port: Optional[int] = None
+        self.platform_p2p_port_mismatch = False
+        self.platform_http_port: Optional[int] = None
+        self.platform_http_port_mismatch = False
         self.last_paid_block: Optional[int] = None
         self.last_paid_ts: Optional[int] = None
         self.last_paid_dt: Optional[datetime] = None
@@ -1644,7 +1669,7 @@ class MasternodeStatus:
         else:
             self.collateral_tx_mismatch = False
 
-        if masternode_info.protx and masternode_cfg.protx_hash != masternode_info.protx_hash:
+        if masternode_cfg.protx_hash != masternode_info.protx_hash:
             self.protx_mismatch = True
         else:
             self.protx_mismatch = False
@@ -1656,14 +1681,14 @@ class MasternodeStatus:
 
         if masternode_cfg.dmn_user_roles & DMN_ROLE_OWNER:
             if not masternode_cfg.collateral_address or masternode_cfg.collateral_address != \
-                    masternode_info.protx.collateral_address:
+                    masternode_info.collateral_address:
                 self.collateral_address_mismatch = True
             else:
                 self.collateral_address_mismatch = False
 
             owner_address_cfg = masternode_cfg.get_owner_public_address(self.dash_network)
-            self.network_owner_public_address = masternode_info.protx.owner_address
-            if not owner_address_cfg or masternode_info.protx.owner_address != owner_address_cfg:
+            self.network_owner_public_address = masternode_info.owner_address
+            if not owner_address_cfg or masternode_info.owner_address != owner_address_cfg:
                 self.owner_public_address_mismatch = True
             else:
                 self.owner_public_address_mismatch = False
@@ -1672,8 +1697,8 @@ class MasternodeStatus:
 
         if masternode_cfg.dmn_user_roles & DMN_ROLE_OPERATOR:
             operator_pubkey_cfg = masternode_cfg.get_operator_pubkey()
-            self.network_operator_public_key = masternode_info.protx.pubkey_operator
-            if not operator_pubkey_cfg or operator_pubkey_cfg != masternode_info.protx.pubkey_operator:
+            self.network_operator_public_key = masternode_info.pubkey_operator
+            if not operator_pubkey_cfg or operator_pubkey_cfg != masternode_info.pubkey_operator:
                 self.operator_pubkey_mismatch = True
             else:
                 self.operator_pubkey_mismatch = False
@@ -1682,13 +1707,29 @@ class MasternodeStatus:
 
         if masternode_cfg.dmn_user_roles & DMN_ROLE_VOTING:
             voting_address_cfg = masternode_cfg.get_voting_public_address(self.dash_network)
-            self.network_voting_public_address = masternode_info.protx.voting_address
-            if not voting_address_cfg or voting_address_cfg != masternode_info.protx.voting_address:
+            self.network_voting_public_address = masternode_info.voting_address
+            if not voting_address_cfg or voting_address_cfg != masternode_info.voting_address:
                 self.voting_public_address_mismatch = True
             else:
                 self.voting_public_address_mismatch = False
         else:
             self.voting_public_address_mismatch = False
+
+        if masternode_cfg.masternode_type != self.masternode_type:
+            self.masternode_type_mismatch = True
+        else:
+            self.masternode_type_mismatch = False
+
+        self.platform_node_id_mismatch = False
+        self.platform_p2p_port_mismatch = False
+        self.platform_http_port_mismatch = False
+        if masternode_cfg.masternode_type == MasternodeType.HPMN:
+            if masternode_cfg.platform_node_id != self.platform_node_id:
+                self.platform_node_id_mismatch = True
+            if masternode_cfg.platform_p2p_port != self.platform_p2p_port:
+                self.platform_p2p_port_mismatch = True
+            if masternode_cfg.platform_http_port != self.platform_http_port:
+                self.platform_http_port_mismatch = True
 
     def is_error(self):
         return self.not_found or re.match(r".*BAN.*", self.status, re.IGNORECASE)

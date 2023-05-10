@@ -8,7 +8,7 @@ from typing import Any
 
 class AttrsProtected(object):
     """
-    Class for protecting of attribute definition to only inside of a constructor.
+    Class for protecting of attribute definition to only an inside of a constructor.
     """
     def __init__(self):
         self.__allow_attr_definition = True

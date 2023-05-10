@@ -74,7 +74,7 @@
          <widget class="QLabel" name="lblUserRole">
           <property name="minimumSize">
            <size>
-            <width>144</width>
+            <width>170</width>
             <height>0</height>
            </size>
           </property>
@@ -137,7 +137,7 @@
          <widget class="QLabel" name="lblName">
           <property name="minimumSize">
            <size>
-            <width>144</width>
+            <width>170</width>
             <height>0</height>
            </size>
           </property>
@@ -163,7 +163,7 @@
          <widget class="QLabel" name="lblMasternodeType">
           <property name="minimumSize">
            <size>
-            <width>144</width>
+            <width>170</width>
             <height>0</height>
            </size>
           </property>
@@ -213,7 +213,7 @@
          <widget class="QLabel" name="lblIP">
           <property name="minimumSize">
            <size>
-            <width>144</width>
+            <width>170</width>
             <height>0</height>
            </size>
           </property>
@@ -310,7 +310,7 @@
          <widget class="QLabel" name="lblCollateral">
           <property name="minimumSize">
            <size>
-            <width>144</width>
+            <width>170</width>
             <height>0</height>
            </size>
           </property>
@@ -399,7 +399,7 @@
          <widget class="QLabel" name="lblCollateralTxHash">
           <property name="minimumSize">
            <size>
-            <width>144</width>
+            <width>170</width>
             <height>0</height>
            </size>
           </property>
@@ -443,7 +443,7 @@
          <widget class="QLabel" name="lblDMNTxHash">
           <property name="minimumSize">
            <size>
-            <width>144</width>
+            <width>170</width>
             <height>0</height>
            </size>
           </property>
@@ -486,7 +486,7 @@
          <widget class="QLabel" name="lblOwnerKey">
           <property name="minimumSize">
            <size>
-            <width>144</width>
+            <width>170</width>
             <height>0</height>
            </size>
           </property>
@@ -573,7 +573,7 @@
          <widget class="QLabel" name="lblOperatorKey">
           <property name="minimumSize">
            <size>
-            <width>144</width>
+            <width>170</width>
             <height>0</height>
            </size>
           </property>
@@ -660,7 +660,7 @@
          <widget class="QLabel" name="lblVotingKey">
           <property name="minimumSize">
            <size>
-            <width>144</width>
+            <width>170</width>
             <height>0</height>
            </size>
           </property>
@@ -747,7 +747,7 @@
          <widget class="QLabel" name="lblPlatformNodeId">
           <property name="minimumSize">
            <size>
-            <width>144</width>
+            <width>170</width>
             <height>0</height>
            </size>
           </property>
@@ -812,7 +812,7 @@
          <widget class="QLabel" name="lblPlatformP2PPort">
           <property name="minimumSize">
            <size>
-            <width>144</width>
+            <width>170</width>
             <height>0</height>
            </size>
           </property>

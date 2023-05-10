@@ -429,8 +429,6 @@ class AppConfig(QObject):
         self.set_log_level('INFO')
         logging.info(f'===========================================================================')
         logging.info(f'Application started (v {self.app_version})')
-        logging.info('Environment:')
-        logging.info(str(os.environ))
 
         self.restore_loggers_config()
 

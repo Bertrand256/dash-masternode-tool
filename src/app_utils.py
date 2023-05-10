@@ -61,7 +61,7 @@ def parse_version_str(version_str) -> Tuple[List[int], Optional[str]]:
                 else:
                     remainder = version_str[pos_begin:]
             break
-        elem = version_str[pos_begin : pos_end].strip()
+        elem = version_str[pos_begin: pos_end].strip()
         if not elem:
             break
 
@@ -77,7 +77,7 @@ def parse_version_str(version_str) -> Tuple[List[int], Optional[str]]:
 
 
 def version_str_to_number(version_str):
-    version_nrs,_ = parse_version_str(version_str)
+    version_nrs, _ = parse_version_str(version_str)
 
     ver_list = [str(n).zfill(4) for n in version_nrs]
     version_nr_str = ''.join(ver_list)
@@ -98,11 +98,11 @@ def is_version_greater(checked_version: str, ref_version: str) -> bool:
 
         if checked_suffix:
             if ref_suffix:
-                ref_match = re.match('(\d+)(\D+)', ref_suffix[::-1])
+                ref_match = re.match(r'(\d+)(\D+)', ref_suffix[::-1])
             else:
                 ref_match = None
 
-            verified_match = re.match('(\d+)(\D+)', checked_suffix[::-1])
+            verified_match = re.match(r'(\d+)(\D+)', checked_suffix[::-1])
             if verified_match and len(verified_match.groups()) == 2 and \
                     (not ref_match or (ref_match and len(ref_match.groups()) == 2 and
                                        ref_match.group(2) == verified_match.group(2))):
@@ -120,6 +120,7 @@ def is_version_greater(checked_version: str, ref_version: str) -> bool:
         logging.exception('Exception occurred while comparing app versions')
 
     return cmp
+
 
 def write_bytes_buf(data: ByteString) -> bytearray:
     return num_to_varint(len(data)) + data
@@ -330,7 +331,6 @@ def update_mru_menu_items(mru_file_list: List[str], mru_menu: QMenu,
                           file_open_action: Callable[[str], None],
                           current_file_name: str,
                           clear_all_actions: Callable[[None], None] = None):
-
     # look for a separator below the item list
     act_separator = None
     act_clear = None
@@ -389,7 +389,7 @@ def update_mru_menu_items(mru_file_list: List[str], mru_menu: QMenu,
 
 def str2bool(v):
     if isinstance(v, bool):
-       return v
+        return v
     if v.lower() in ('yes', 'true', '1'):
         return True
     elif v.lower() in ('no', 'false', '0'):

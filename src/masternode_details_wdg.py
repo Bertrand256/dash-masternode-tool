@@ -337,16 +337,19 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 color = 'color:#00802b'
             elif style == 'hl2':
                 color = 'color:#0047b3'
+            elif style == 'hl3':
+                color = 'color:#800000'
             else:
                 color = ''
             return color
 
-        def get_label_text(prefix: str, cur_key_type: str, tooltip_anchor: str, group: QActionGroup, style: str,
-                           error_msg: Optional[str] = None):
+        def get_label_text(prefix: str, cur_key_type: str, tooltip_anchor: str, group: Optional[QActionGroup],
+                           style: str, error_msg: Optional[str] = None):
             lbl = '???'
-            if self.edit_mode:
+            change_mode = ''
+            if self.edit_mode and tooltip_anchor:
                 change_mode = f'<td>(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)</td>'
-            else:
+            elif group:
                 a = group.checkedAction()
                 if a:
                     cur_key_type = a.data()
@@ -360,12 +363,17 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 lbl = prefix + ' public key'
             elif cur_key_type == 'pubkeyhash':
                 lbl = prefix + ' public key hash'
+            elif cur_key_type == 'platform_id_with_ed25519_privkey':
+                lbl = prefix + ' [+priv]'
+            else:
+                lbl = prefix
 
             if error_msg:
                 err = '<td style="color:red">' + error_msg + '</td>'
             else:
                 err = ''
-            return f'<table style="float:right;{style_to_color(style)}"><tr><td>{lbl}</td>{change_mode}{err}</tr></table>'
+            return f'<table style="float:right;{style_to_color(style)}"><tr><td>{lbl}</td>{change_mode}{err}' \
+                   f'</tr></table>'
 
         if self.masternode:
             style = ''
@@ -409,6 +417,17 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 'Voting', key_type, tooltip_anchor, self.ag_voting_key, style,
                 '[invalid key format]' if self.voting_key_invalid else ''))
             self.edtVotingKey.setPlaceholderText(placeholder_text)
+
+            style = ''
+            if self.masternode.platform_node_id_private_key:
+                style = 'hl3'
+                key_type, tooltip_anchor, placeholder_text = ('platform_id_with_ed25519_privkey', None, None)
+            else:
+                key_type, tooltip_anchor, placeholder_text = ('', '', None)
+
+            self.lblPlatformNodeId.setText(get_label_text(
+                'Platform Node Id', key_type, tooltip_anchor, None, style,
+                '[invalid key format]' if self.voting_key_invalid else ''))
 
             self.set_left_label_width(self.get_max_left_label_width())
 
@@ -671,7 +690,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 get_lbl_text_width(self.lblDMNTxHash),
                 get_lbl_text_width(self.lblOwnerKey),
                 get_lbl_text_width(self.lblOperatorKey),
-                get_lbl_text_width(self.lblVotingKey))
+                get_lbl_text_width(self.lblVotingKey),
+                get_lbl_text_width(self.lblPlatformNodeId),
+                get_lbl_text_width(self.lblPlatformNodeId),
+                get_lbl_text_width(self.lblMasternodeType))
 
         return w
 
@@ -840,7 +862,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 return
 
             cache_max_age = 500
-            self.dashd_intf.get_masternodelist('json', data_max_age=cache_max_age, protx_data_max_age=cache_max_age)
+            self.dashd_intf.get_masternodelist('json', data_max_age=cache_max_age)
             mn = self.masternode
             updated_fields = []
 
