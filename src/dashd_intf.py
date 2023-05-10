@@ -6,6 +6,7 @@ from __future__ import annotations
 import decimal
 import functools
 import json
+from decimal import Decimal
 
 import os
 import re
@@ -562,6 +563,11 @@ class Masternode(AttrsProtected):
 
     def copy_from_protx_json(self, protx_json: Dict):
         state = protx_json.get('state')
+        operator_reward = protx_json.get('operatorReward')
+        if isinstance(operator_reward, Decimal):
+            self.operator_reward = float(operator_reward)
+        else:
+            self.operator_reward = operator_reward
         if state and isinstance(state, dict):
             self.set_check_attr_value('registered_height', state.get('registeredHeight'), -1)
             self.pose_penalty = state.get('PoSePenalty')
