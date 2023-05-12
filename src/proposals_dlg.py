@@ -34,7 +34,7 @@ import app_utils
 import base58
 import wnd_utils as wnd_utils
 import dash_utils
-from app_config import MasternodeConfig, InputKeyType
+from app_config import MasternodeConfig, InputKeyType, DMN_ROLE_VOTING
 from common import AttrsProtected
 from dashd_intf import DashdIndexException, Masternode
 from ext_item_model import TableModelColumn, ExtSortFilterItemModel
@@ -64,7 +64,6 @@ QCOLOR_YES = QColor(COLOR_YES)
 QCOLOR_NO = QColor(COLOR_NO)
 QCOLOR_ABSTAIN = QColor(COLOR_ABSTAIN)
 
-
 CACHE_ITEM_PROPOSALS_SPLITTER = 'ProposalsDlg_DetailsSplitter'
 CACHE_ITEM_VOTES_SPLITTER = 'ProposalsDlg_VotesSplitter'
 CACHE_ITEM_HIST_SHOW_ONLY_MY_VOTES = 'ProposalsDlg_VotesHistoryShowOnlyMyVotes'
@@ -75,7 +74,6 @@ CACHE_ITEM_PROPOSALS_COLUMNS = 'ProposalsDlg_ProposalsColumnsCfg'
 CACHE_ITEM_ONLY_ONLY_ACTIVE_PROPOSALS = 'ProposalsDlg_OnlyActiveProposals'
 CACHE_ITEM_ONLY_ONLY_NEW_PROPOSALS = 'ProposalsDlg_OnlyNewProposals'
 CACHE_ITEM_ONLY_ONLY_NOT_VOTED_PROPOSALS = 'ProposalsDlg_OnlyNotVotedProposals'
-
 
 log = logging.getLogger('dmt.proposals')
 
@@ -397,7 +395,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         self.vote_chart_view = QChartView(self.vote_chart)
         self.refresh_details_event = threading.Event()
         self.current_chart_type = -1  # converted from UI radio buttons:
-                                      #   1: incremental by date, 2: summary, 3: vote change
+        #   1: incremental by date, 2: summary, 3: vote change
         self.sending_votes = False
         self.reading_vote_data = False
         self.setupUi(self)
@@ -523,7 +521,8 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         self.chb_only_active.setChecked(app_cache.get_value(CACHE_ITEM_ONLY_ONLY_ACTIVE_PROPOSALS, True, bool))
         self.chb_only_new.setChecked(app_cache.get_value(CACHE_ITEM_ONLY_ONLY_NEW_PROPOSALS, False, bool))
         self.chb_not_voted.setChecked(app_cache.get_value(CACHE_ITEM_ONLY_ONLY_NOT_VOTED_PROPOSALS, False, bool))
-        self.tabsDetails.setCurrentIndex(app_cache.get_value(CACHE_ITEM_DETAILS_INDEX, self.tabsDetails.currentIndex(), int))
+        self.tabsDetails.setCurrentIndex(
+            app_cache.get_value(CACHE_ITEM_DETAILS_INDEX, self.tabsDetails.currentIndex(), int))
         self.votesProxyModel.set_only_my_votes(self.chbOnlyMyVotes.isChecked())
         self.propsModel.set_filter_only_active(self.chb_only_active.isChecked())
         self.propsModel.set_filter_only_new(self.chb_only_new.isChecked())
@@ -604,8 +603,8 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
             self.layoutUserVoting.addWidget(user_mn.lbl_last_vote, mn_index + 1, 4, 1, 1)
             mn_index += 1
         self.scrollAreaVotingContents.setStyleSheet('QPushButton[yes="true"]{color:%s} QPushButton[no="true"]{color:%s}'
-                                     'QPushButton[abstain="true"]{color:%s}' %
-                                     (COLOR_YES, COLOR_NO, COLOR_ABSTAIN))
+                                                    'QPushButton[abstain="true"]{color:%s}' %
+                                                    (COLOR_YES, COLOR_NO, COLOR_ABSTAIN))
         if len(self.users_masternodes) > 0:
             self.tabsDetails.setTabEnabled(1, True)
         self.controls_initialized = True
@@ -775,19 +774,24 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                 dl_diff = self.next_voting_deadline - time.time()
                 if dl_diff > 0:
                     if dl_diff < 3600:
-                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=True, out_hours=False,
+                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=True,
+                                                            out_hours=False,
                                                             out_days=False, out_weeks=False)
                     elif dl_diff < 3600 * 3:
-                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=True, out_hours=True,
+                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=True,
+                                                            out_hours=True,
                                                             out_days=False, out_weeks=False)
                     elif dl_diff < 3600 * 24:
-                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=False, out_hours=True,
+                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=False,
+                                                            out_hours=True,
                                                             out_days=False, out_weeks=False)
                     elif dl_diff < 3600 * 24 * 3:
-                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=False, out_hours=True,
+                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=False,
+                                                            out_hours=True,
                                                             out_days=True, out_weeks=False)
                     else:
-                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=False, out_hours=False,
+                        dl_str = app_utils.seconds_to_human(dl_diff, out_seconds=False, out_minutes=False,
+                                                            out_hours=False,
                                                             out_days=True, out_weeks=False)
                     dl_add_info = f'<span> ({dl_str})</span>'
 
@@ -850,7 +854,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                 if len(prop_data) >= 2 and prop_data[0] == 'proposal' and isinstance(prop_data[1], dict):
                     return prop_data[1]
                 elif len(prop_data) >= 1 and isinstance(prop_data[0], list):
-                    return find_prop_data(prop_data[0], level+1)
+                    return find_prop_data(prop_data[0], level + 1)
             elif isinstance(prop_data, dict):
                 return prop_data
             return None
@@ -872,7 +876,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
             begin_time = time.time()
             proposals_new = self.dashd_intf.gobject("list", "valid", "proposals")
             log.info('Read proposals from network (gobject list). Count: %s, operation time: %s' %
-                         (str(len(proposals_new)), str(time.time() - begin_time)))
+                     (str(len(proposals_new)), str(time.time() - begin_time)))
 
             rows_added = False
 
@@ -942,7 +946,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     errors += 1
 
             if len(proposals_new) > 0:
-                if errors < len(proposals_new)/10:
+                if errors < len(proposals_new) / 10:
                     try:
                         cur = self.db_intf.get_cursor()
 
@@ -963,48 +967,49 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                         cur.execute('UPDATE PROPOSALS set dmt_active=1, dmt_deactivation_time=NULL '
                                                     'WHERE id=?', (row[0],))
                                         log.info('Proposal "%s" (db_id: %d) exists int the DB. Re-activating.' %
-                                                     (hash, row[0]))
+                                                 (hash, row[0]))
 
                                 if not prop.db_id:
                                     log.info('Adding a new proposal to DB. Hash: ' + prop.get_value('hash'))
-                                    cur.execute("INSERT INTO PROPOSALS (name, payment_start, payment_end, payment_amount,"
-                                                " yes_count, absolute_yes_count, no_count, abstain_count, creation_time,"
-                                                " url, payment_address, type, hash, collateral_hash, f_blockchain_validity,"
-                                                " f_cached_valid, f_cached_delete, f_cached_funding, f_cached_endorsed, "
-                                                " object_type, is_valid_reason, dmt_active, dmt_create_time, "
-                                                " dmt_deactivation_time, dmt_voting_last_read_time)"
-                                                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)",
-                                                (prop.get_value('name'),
-                                                 prop.get_value('payment_start').strftime('%Y-%m-%d %H:%M:%S'),
-                                                 prop.get_value('payment_end').strftime('%Y-%m-%d %H:%M:%S'),
-                                                 prop.get_value('payment_amount'),
-                                                 prop.get_value('yes_count'),
-                                                 prop.get_value('absolute_yes_count'),
-                                                 prop.get_value('no_count'),
-                                                 prop.get_value('abstain_count'),
-                                                 prop.get_value('creation_time').strftime('%Y-%m-%d %H:%M:%S'),
-                                                 prop.get_value('url'),
-                                                 prop.get_value('payment_address'),
-                                                 prop.get_value('type'),
-                                                 prop.get_value('hash'),
-                                                 prop.get_value('collateral_hash'),
-                                                 prop.get_value('fBlockchainValidity'),
-                                                 prop.get_value('fCachedValid'),
-                                                 prop.get_value('fCachedDelete'),
-                                                 prop.get_value('fCachedFunding'),
-                                                 prop.get_value('fCachedEndorsed'),
-                                                 prop.get_value('ObjectType'),
-                                                 prop.get_value('IsValidReason'),
-                                                 1,
-                                                 datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                                 None))
+                                    cur.execute(
+                                        "INSERT INTO PROPOSALS (name, payment_start, payment_end, payment_amount,"
+                                        " yes_count, absolute_yes_count, no_count, abstain_count, creation_time,"
+                                        " url, payment_address, type, hash, collateral_hash, f_blockchain_validity,"
+                                        " f_cached_valid, f_cached_delete, f_cached_funding, f_cached_endorsed, "
+                                        " object_type, is_valid_reason, dmt_active, dmt_create_time, "
+                                        " dmt_deactivation_time, dmt_voting_last_read_time)"
+                                        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)",
+                                        (prop.get_value('name'),
+                                         prop.get_value('payment_start').strftime('%Y-%m-%d %H:%M:%S'),
+                                         prop.get_value('payment_end').strftime('%Y-%m-%d %H:%M:%S'),
+                                         prop.get_value('payment_amount'),
+                                         prop.get_value('yes_count'),
+                                         prop.get_value('absolute_yes_count'),
+                                         prop.get_value('no_count'),
+                                         prop.get_value('abstain_count'),
+                                         prop.get_value('creation_time').strftime('%Y-%m-%d %H:%M:%S'),
+                                         prop.get_value('url'),
+                                         prop.get_value('payment_address'),
+                                         prop.get_value('type'),
+                                         prop.get_value('hash'),
+                                         prop.get_value('collateral_hash'),
+                                         prop.get_value('fBlockchainValidity'),
+                                         prop.get_value('fCachedValid'),
+                                         prop.get_value('fCachedDelete'),
+                                         prop.get_value('fCachedFunding'),
+                                         prop.get_value('fCachedEndorsed'),
+                                         prop.get_value('ObjectType'),
+                                         prop.get_value('IsValidReason'),
+                                         1,
+                                         datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                         None))
                                     prop.db_id = cur.lastrowid
                                     self.proposals_by_db_id[prop.db_id] = prop
                                 else:
                                     # proposal's db record already exists, check if should be updated
                                     if prop.modified:
                                         log.debug('Updating proposal in the DB. Hash: %s, DB id: %d' %
-                                                      (prop.get_value('hash'), prop.db_id) )
+                                                  (prop.get_value('hash'), prop.db_id))
                                         cur.execute("UPDATE PROPOSALS set name=?, payment_start=?, payment_end=?, "
                                                     "payment_amount=?, yes_count=?, absolute_yes_count=?, no_count=?, "
                                                     "abstain_count=?, creation_time=?, url=?, payment_address=?, type=?,"
@@ -1046,7 +1051,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
                             if not prop.marker:
                                 log.info('Deactivating proposal in the cache. Hash: %s, DB id: %s' %
-                                              (prop.get_value('hash'), str(prop.db_id)))
+                                         (prop.get_value('hash'), str(prop.db_id)))
                                 cur.execute("UPDATE PROPOSALS set dmt_active=0, dmt_deactivation_time=? WHERE id=?",
                                             (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), prop.db_id))
 
@@ -1079,7 +1084,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
                     if errors > 0:
                         self.warn_msg('Problems encountered while processing some of the proposals data. '
-                                     'Look into the log file for details.')
+                                      'Look into the log file for details.')
                 else:
                     # error count > 10% of the proposals count
                     raise Exception('Errors while processing proposals data. Look into the log file for details.')
@@ -1123,10 +1128,12 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
             self.last_superblock_time = self.dashd_intf.get_block_timestamp(self.last_superblock)
             self.next_superblock_time = 0
             if 0 < self.cur_block_height <= self.next_superblock:
-                self.next_superblock_time = self.dashd_intf.get_block_timestamp(self.cur_block_height) + (self.next_superblock - self.cur_block_height) * 2.5 * 60
+                self.next_superblock_time = self.dashd_intf.get_block_timestamp(self.cur_block_height) + (
+                            self.next_superblock - self.cur_block_height) * 2.5 * 60
 
             if self.next_superblock_time == 0:
-                self.next_superblock_time = self.last_superblock_time + (self.next_superblock - self.last_superblock) * 2.5 * 60
+                self.next_superblock_time = self.last_superblock_time + (
+                            self.next_superblock - self.last_superblock) * 2.5 * 60
 
             deadline_block = self.next_superblock - sb_cycle
             self.voting_deadline_passed = deadline_block <= self.cur_block_height < self.next_superblock
@@ -1137,7 +1144,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         except Exception as e:
             log.exception('Exception while reading governance info.')
             self.error_msg("Couldn't read governance info from the Dash network. "
-                      "Some features may not work correctly because of this. Details: " + str(e))
+                           "Some features may not work correctly because of this. Details: " + str(e))
 
     def find_superblocks_for_timestamp(self, timestamp: int) -> Tuple[int, int]:
         """The method looks for two consecutive superblocks, the first with a smaller timestamp than given in
@@ -1246,8 +1253,9 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                         if mn_cfg:
                             if mn.ident not in self.users_masternodes_by_ident:
                                 vmn = VotingMasternode(mn, mn_cfg)
-                                self.users_masternodes.append(vmn)
-                                self.users_masternodes_by_ident[mn.ident] = vmn
+                                if mn_cfg.dmn_user_roles & DMN_ROLE_VOTING > 0:
+                                    self.users_masternodes.append(vmn)
+                                    self.users_masternodes_by_ident[mn.ident] = vmn
 
                     # sort user masternodes according to the order from the app's configuration
                     self.users_masternodes.sort(
@@ -1296,7 +1304,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                     cur_fix_upd.execute('DELETE FROM PROPOSALS WHERE id=?', (fix_row[0],))
                                     data_modified = True
                                     log.warning('Deleted duplicated proposal from DB. ID: %s, HASH: %s' %
-                                                    (str(fix_row[0]), row[12]))
+                                                (str(fix_row[0]), row[12]))
 
                                 log.debug('Reading proposal: ' + row[0])
                                 prop = Proposal(self.propsModel, self.vote_columns_by_mn_ident,
@@ -1307,7 +1315,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                 prop_name = row[0]
                                 prop.set_value('name', prop_name)
                                 prop.set_value('payment_start', datetime.datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S'))
-                                prop.set_value('payment_end',  datetime.datetime.strptime(row[2], '%Y-%m-%d %H:%M:%S'))
+                                prop.set_value('payment_end', datetime.datetime.strptime(row[2], '%Y-%m-%d %H:%M:%S'))
                                 prop.set_value('payment_amount', row[3])
                                 prop.set_value('yes_count', row[4])
                                 prop.set_value('absolute_yes_count', row[5])
@@ -1339,12 +1347,12 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                         # reload external attributes is the 'owner' and 'title' are empty
                                         prop.ext_attributes_loaded = False
                                     elif (time.time() - ext_attributes_load_time > 86400 * 3) and \
-                                        (prop.get_value('payment_end') > datetime.datetime.now()):
+                                            (prop.get_value('payment_end') > datetime.datetime.now()):
                                         # reload external attributes of the active proposals every x days in case
                                         # the proposal title changed
                                         prop.ext_attributes_loaded = False
                                     elif re.match(r'.*dashcentral\.org', prop_url.lower()) and \
-                                        prop_url.lower() != dc_url_assumed.lower():
+                                            prop_url.lower() != dc_url_assumed.lower():
                                         # possibly invalid DashCentral URL entered by the proposal owner; refetch it
                                         # from the DashCentral API, but not too often
                                         if time.time() - ext_attributes_load_time > 86400:
@@ -1360,7 +1368,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                 self.db_intf.commit()
 
                             log.info("Finished reading proposals' data from DB. Time: %s s" %
-                                         str(time.time() - tm_begin))
+                                     str(time.time() - tm_begin))
 
                             def disp():
                                 self.propsView.sortByColumn(self.propsModel.col_index_by_name('no'),
@@ -1397,7 +1405,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
             if not self.finishing:
                 if int(time.time()) - self.proposals_last_read_time > PROPOSALS_CACHE_VALID_SECONDS or \
-                   len(self.proposals) == 0:
+                        len(self.proposals) == 0:
                     # read proposals from network only after a configured time
                     self.read_proposals_from_network()
 
@@ -1416,7 +1424,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                 proposals = []
                 for prop in self.proposals:
                     if (((time.time() - prop.voting_last_read_time) > VOTING_RELOAD_TIME) and
-                       (prop.voting_in_progress or prop.voting_last_read_time == 0)):
+                            (prop.voting_in_progress or prop.voting_last_read_time == 0)):
                         proposals.append(prop)
 
                 if proposals and not self.finishing:
@@ -1463,7 +1471,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     if self.finishing:
                         raise CloseDialogException
                     self.display_message("Reading proposal external attributes (%d/%d), please wait..." %
-                                         (idx+1, len(proposals)))
+                                         (idx + 1, len(proposals)))
 
                     prop.modified = False
                     try:
@@ -1472,9 +1480,10 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                         prop_api_url = dc_api_url.replace('%HASH%', hash)
                         network_tm_begin = time.time()
                         contents = None
-                        for url_try in range(0, url_err_retries+1):
+                        for url_try in range(0, url_err_retries + 1):
                             try:
-                                response = urllib.request.urlopen(prop_api_url, context=ssl._create_unverified_context())
+                                response = urllib.request.urlopen(prop_api_url,
+                                                                  context=ssl._create_unverified_context())
                                 contents = response.read()
                                 break
                             except URLError:
@@ -1554,7 +1563,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
                     if exceptions_occurred:
                         self.error_msg('Error(s) occurred while retrieving proposals external data from '
-                                      'DashCentral.org.')
+                                       'DashCentral.org.')
 
         except CloseDialogException:
             log.info('Closing the dialog.')
@@ -1565,7 +1574,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         finally:
             time_diff = time.time() - begin_time
             log.info('Finished reading external attributes. Overall time: %s seconds, network time: %s.' %
-                         (str(time_diff), str(network_duration)))
+                     (str(time_diff), str(network_duration)))
             self.display_message('')
         return modified_ext_attributes
 
@@ -1655,7 +1664,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                 if self.finishing:
                                     raise CloseDialogException
 
-                                self.display_message('Reading voting data %d of %d' % (row_idx+1, len(proposals)))
+                                self.display_message('Reading voting data %d of %d' % (row_idx + 1, len(proposals)))
                                 tm_begin = time.time()
                                 try:
                                     votes = self.dashd_intf.rpc_call(False, False, 'gobject', 'getcurrentvotes',
@@ -1672,7 +1681,8 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                             raise CloseDialogException
 
                                         v = votes[v_key]
-                                        match = re.search("CTxIn\(COutPoint\(([A-Fa-f0-9]+)\s*,\s*(\d+).+:(\d+):(\w+)", v)  # v12.2
+                                        match = re.search("CTxIn\(COutPoint\(([A-Fa-f0-9]+)\s*,\s*(\d+).+:(\d+):(\w+)",
+                                                          v)  # v12.2
                                         if not match or len(match.groups()) != 4:
                                             match = re.search("([A-Fa-f0-9]+)-(\d+):(\d+):(\w+)", v)  # v12.3
 
@@ -1703,15 +1713,17 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                                 db_oper_duration += (time.time() - tm_begin)
                                                 db_oper_count += 1
                                                 if not found:
-                                                    votes_added.append((prop, mn, voting_time, voting_result, mn_ident, v_key))
+                                                    votes_added.append(
+                                                        (prop, mn, voting_time, voting_result, mn_ident, v_key))
                                             else:
                                                 # no chance to check whether record exists in the DB, so assume it's not
                                                 # to have it displayed on the grid
-                                                votes_added.append((prop, mn, voting_time, voting_result, mn_ident, v_key))
+                                                votes_added.append(
+                                                    (prop, mn, voting_time, voting_result, mn_ident, v_key))
 
                                         else:
                                             log.warning('Proposal %s, parsing unsuccessful for voting: %s' %
-                                                            (prop.get_value('hash'), v))
+                                                        (prop.get_value('hash'), v))
                                             errors += 1
                                     except Exception as e:
                                         log.error('Error while parsing vote data for vote hash: ' + v_key)
@@ -1753,10 +1765,10 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                 errors += 1
 
                         log.info('Network calls duration: %s for %d proposals' %
-                                     (str(network_duration), (len(proposals))))
+                                 (str(network_duration), (len(proposals))))
 
                         log.info('DB calls duration (stage 2): %s, SQL count: %d' % (str(db_oper_duration),
-                                                                                        db_oper_count))
+                                                                                     db_oper_count))
 
                         # save voting results to the database cache
                         for prop, mn, voting_time, voting_result, mn_ident, hash in votes_added:
@@ -1777,13 +1789,13 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                     if e.args and e.args[0].find('UNIQUE constraint failed') >= 0:
                                         # this vote is assigned to the same proposal but inactive one; correct this
                                         cur.execute("UPDATE VOTING_RESULTS"
-                                            " set proposal_id=?, masternode_ident=?,"
-                                            " voting_time=?, voting_result=? WHERE hash=?",
-                                            (prop.db_id,
-                                             mn_ident,
-                                             voting_time,
-                                             voting_result,
-                                             hash))
+                                                    " set proposal_id=?, masternode_ident=?,"
+                                                    " voting_time=?, voting_result=? WHERE hash=?",
+                                                    (prop.db_id,
+                                                     mn_ident,
+                                                     voting_time,
+                                                     voting_result,
+                                                     hash))
                                 db_modified = True
                                 db_oper_duration += (time.time() - tm_begin)
 
@@ -1827,7 +1839,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
                         if errors:
                             self.error_msg('Errors occurred while reading vote data. Look into the log file for '
-                                          'details.')
+                                           'details.')
 
                     except CloseDialogException:
                         raise
@@ -1946,13 +1958,14 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                 prop_name = prop.get_value('name')
                 dc_url_assumed = 'https://www.dashcentral.org/p/' + prop_name
                 if not prop.ext_attributes_loaded or \
-                        (re.match(r'.*dashcentral\.org', prop_url.lower()) and  # Force re-fetch of data from DashCentral
-                         prop_url.lower() != dc_url_assumed.lower()):           # upon the possible user error related to
-                                                                                # the 'url' field
+                        (re.match(r'.*dashcentral\.org',
+                                  prop_url.lower()) and  # Force re-fetch of data from DashCentral
+                         prop_url.lower() != dc_url_assumed.lower()):  # upon the possible user error related to
+                    # the 'url' field
                     proposals.append(prop)
         if proposals and not self.finishing:
             if self.read_external_attributes(proposals):
-                WndUtils.call_in_main_thread(self.display_proposals_data) # refresh display
+                WndUtils.call_in_main_thread(self.display_proposals_data)  # refresh display
 
         proposals = []  # refresh "live" proposals only
         for prop in self.proposals:
@@ -2036,6 +2049,23 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
             else:
                 vote_link = ''
 
+            html_head = f"""<head> 
+                <style type="text/css">
+                    td.first-col-label, td.padding {{padding-top:2px;padding-bottom:2px;}}
+                    td {{border-style: none}}
+                    a {{color: {link_color}}}
+                    .first-col-label {{font-weight: bold; text-align: right; padding-right:6px; white-space:nowrap}}
+                    .inter-label {{font-weight: bold; padding-right: 5px; padding-left: 5px; white-space:nowrap}}
+                    .status-1{{background-color:{COLOR_YES};color:white}}
+                    .status-2{{background-color:{COLOR_ABSTAIN};color:white}}
+                    .status-3{{color:{COLOR_YES}}}
+                    .status-4{{color:{COLOR_NO}}}
+                    .vo-active{{color:{green_color};font-weight: bold}}
+                    .vo-inactive{{color:gray;font-weight: bold}}
+                    td.voting{{padding-right:20px;padding-top:5px;padding-bottom:5px;color: red}}
+                </style>
+                </head>"""
+
             if self.current_proposal:
                 prop = self.current_proposal
                 url = self.current_proposal.get_value('url')
@@ -2089,82 +2119,66 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     class_voting_activity = 'vo-inactive'
                     voting_activity_str = 'Voting inactive'
 
-                details = f"""<html>
-<head>
-<style type="text/css">
-    td.first-col-label, td.padding {{padding-top:2px;padding-bottom:2px;}}
-    td {{border-style: none}}
-    a {{color: {link_color}}}
-    .first-col-label {{font-weight: bold; text-align: right; padding-right:6px; white-space:nowrap}}
-    .inter-label {{font-weight: bold; padding-right: 5px; padding-left: 5px; white-space:nowrap}}
-    .status-1{{background-color:{COLOR_YES};color:white}}
-    .status-2{{background-color:{COLOR_ABSTAIN};color:white}}
-    .status-3{{color:{COLOR_YES}}}
-    .status-4{{color:{COLOR_NO}}}
-    .vo-active{{color:{green_color};font-weight: bold}}
-    .vo-inactive{{color:gray;font-weight: bold}}
-    td.voting{{padding-right:20px;padding-top:5px;padding-bottom:5px;color: red}}
-</style>
-</head>
-<body>
-<table>
-    <tbody>
-        {vote_link}
-        <tr class="main-row">
-            <td class="first-col-label">Name:</td>
-            <td class="padding">{prop.get_value('name')}</td>
-        </tr>
-        <tr class="main-row">
-            <td class="first-col-label">Title:</td>
-            <td class="padding">{prop.get_value('title')}</td>
-        </tr>
-        <tr class="main-row">
-            <td class="first-col-label">Owner:</td>
-            <td class="padding">{owner}</td>
-        </tr>
-        <tr class="main-row">
-            <td class="first-col-label">URL:</td>
-            <td class="padding"><a href="{url}">{url}</a></td>
-        </tr>
-        {dc_entry}
-        <tr class="main-row">
-            <td class="first-col-label">Voting:</td>
-            <td>
-                <table>
-                    <tr >
-                        <td class="padding" style="white-space:nowrap"><span class="status-{status} padding">{prop.get_value('voting_status_caption')}</span>
-                        <br/><span class="{class_voting_activity}">{voting_activity_str}</span>
-                        <br/><span class="inter-label padding">Absolute yes count: </span>{prop.get_value('absolute_yes_count')}
-                        <span class="inter-label padding">&nbsp;&nbsp;Yes count: </span>{prop.get_value('yes_count')}
-                        <span class="inter-label padding">&nbsp;&nbsp;No count: </span>{prop.get_value('no_count')}
-                        <span class="inter-label padding">&nbsp;&nbsp;Abstain count: </span>{prop.get_value('abstain_count')}</td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-        <tr class="main-row">
-            <td class="first-col-label">Payment:</td>
-            <td class="padding" style="white-space:nowrap"><span>{app_utils.to_string(prop.get_value('payment_amount'))} Dash&#47;cycle ({cycles_str}, {app_utils.to_string(prop.get_value('payment_amount_total'))} Dash total)
-                <br/><span class="inter-label">start - end:</span>&nbsp;&nbsp;{get_date_str(prop.get_value('payment_start'))} - {get_date_str(prop.get_value('payment_end'))}</span>
-                <br/><span class="inter-label">address:</span>&nbsp;&nbsp;{payment_addr}
-            </td>
-        </tr>
-        <tr class="main-row">
-            <td class="first-col-label">Creation time:</td>
-            <td class="padding">{get_date_str(prop.get_value('creation_time'))}</td>
-        </tr>
-        <tr class="main-row">
-            <td class="first-col-label">Proposal hash:</td>
-            <td class="padding">{prop.get_value('hash')}</td>
-        </tr>
-        <tr class="main-row">
-            <td class="first-col-label">Collateral hash:</td>
-            <td class="padding">{col_hash}</td>
-        </tr>
-    </tbody>
-</table>
- </body>
-</html>"""
+                details = '<html>' + html_head + \
+                    f"""<body>
+                    <table>
+                        <tbody>
+                            {vote_link}
+                            <tr class="main-row">
+                                <td class="first-col-label">Name:</td>
+                                <td class="padding">{prop.get_value('name')}</td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">Title:</td>
+                                <td class="padding">{prop.get_value('title')}</td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">Owner:</td>
+                                <td class="padding">{owner}</td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">URL:</td>
+                                <td class="padding"><a href="{url}">{url}</a></td>
+                            </tr>
+                            {dc_entry}
+                            <tr class="main-row">
+                                <td class="first-col-label">Voting:</td>
+                                <td>
+                                    <table>
+                                        <tr >
+                                            <td class="padding" style="white-space:nowrap"><span class="status-{status} padding">{prop.get_value('voting_status_caption')}</span>
+                                            <br/><span class="{class_voting_activity}">{voting_activity_str}</span>
+                                            <br/><span class="inter-label padding">Absolute yes count: </span>{prop.get_value('absolute_yes_count')}
+                                            <span class="inter-label padding">&nbsp;&nbsp;Yes count: </span>{prop.get_value('yes_count')}
+                                            <span class="inter-label padding">&nbsp;&nbsp;No count: </span>{prop.get_value('no_count')}
+                                            <span class="inter-label padding">&nbsp;&nbsp;Abstain count: </span>{prop.get_value('abstain_count')}</td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">Payment:</td>
+                                <td class="padding" style="white-space:nowrap"><span>{app_utils.to_string(prop.get_value('payment_amount'))} Dash&#47;cycle ({cycles_str}, {app_utils.to_string(prop.get_value('payment_amount_total'))} Dash total)
+                                    <br/><span class="inter-label">start - end:</span>&nbsp;&nbsp;{get_date_str(prop.get_value('payment_start'))} - {get_date_str(prop.get_value('payment_end'))}</span>
+                                    <br/><span class="inter-label">address:</span>&nbsp;&nbsp;{payment_addr}
+                                </td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">Creation time:</td>
+                                <td class="padding">{get_date_str(prop.get_value('creation_time'))}</td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">Proposal hash:</td>
+                                <td class="padding">{prop.get_value('hash')}</td>
+                            </tr>
+                            <tr class="main-row">
+                                <td class="first-col-label">Collateral hash:</td>
+                                <td class="padding">{col_hash}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                     </body>
+                    </html>"""
 
                 self.edtDetails.setHtml(details)
                 self.refresh_details_event.set()
@@ -2181,47 +2195,33 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                             if p.voting_status == 1:
                                 total_amount_approved += p.get_value('payment_amount')
                     if self.next_budget_amount:
-                        total_pct_approved = ' (' + app_utils.to_string(round(total_amount_approved * 100 / self.next_budget_amount, 2)) + ' %)'
-                        total_pct_requested = ' (' + app_utils.to_string(round(total_amount_requested * 100 / self.next_budget_amount, 2)) + ' %)'
+                        total_pct_approved = ' (' + app_utils.to_string(
+                            round(total_amount_approved * 100 / self.next_budget_amount, 2)) + ' %)'
+                        total_pct_requested = ' (' + app_utils.to_string(
+                            round(total_amount_requested * 100 / self.next_budget_amount, 2)) + ' %)'
 
-                    text = f"""<html>
-<head>
-<style type="text/css">
-    td.first-col-label, td.padding {{padding-top:2px;padding-bottom:2px;}}
-    td {{border-style: solid; border-color:darkgray}}
-    a {{color: {link_color}}}
-    .first-col-label {{font-weight: bold; text-align: right; padding-right:6px; white-space:nowrap}}
-    .inter-label {{font-weight: bold; padding-right: 5px; padding-left: 5px; white-space:nowrap}}
-    .status-1{{background-color:{COLOR_YES};color:white}}
-    .status-2{{background-color:{COLOR_ABSTAIN};color:white}}
-    .status-3{{color:{COLOR_YES}}}
-    .status-4{{color:{COLOR_NO}}}
-    .vo-active{{color:{green_color};font-weight: bold}}
-    .vo-inactive{{color:gray;font-weight: bold}}
-    td.voting{{padding-right:20px;padding-top:5px;padding-bottom:5px;color: red}}
-</style>
-</head>
-<body>
-<table>
-    <tbody>
-        {vote_link}
-        <tr class="main-row">
-            <td class="first-col-label">Selected proposals:</td>
-            <td class="padding">{len(selected_props)}</td>
-        </tr>
-        <tr class="main-row">
-            <td class="first-col-label">Requested from the next budget:</td>
-            <td class="padding">{app_utils.to_string(total_amount_requested)} Dash{total_pct_requested}</td>
-        </tr>
-        <tr class="main-row">
-            <td class="first-col-label">Approved from the next budget:</td>
-            <td class="padding">{app_utils.to_string(total_amount_approved)} Dash{total_pct_approved}</td>
-        </tr>
-    </tbody>
-</table>
- </body>
-</html>"""
-                    self.edtDetails.setHtml(text)
+                    details = '<html>' + html_head + \
+                        f"""<body>
+                        <table>
+                            <tbody>
+                                {vote_link}
+                                <tr class="main-row">
+                                    <td class="first-col-label">Selected proposals:</td>
+                                    <td class="padding">{len(selected_props)}</td>
+                                </tr>
+                                <tr class="main-row">
+                                    <td class="first-col-label">Requested from the next budget:</td>
+                                    <td class="padding">{app_utils.to_string(total_amount_requested)} Dash{total_pct_requested}</td>
+                                </tr>
+                                <tr class="main-row">
+                                    <td class="first-col-label">Approved from the next budget:</td>
+                                    <td class="padding">{app_utils.to_string(total_amount_approved)} Dash{total_pct_approved}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                         </body>
+                        </html>"""
+                    self.edtDetails.setHtml(details)
                 else:
                     self.edtDetails.setHtml('')
                 self.refresh_details_event.set()
@@ -2264,7 +2264,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                 label = 'Last voted ' + user_votes[0] + ' on ' + app_utils.to_string(vote_dates[0])
             else:
                 if len(proposals) == 0:
-                    label = '' # no proposal selected
+                    label = ''  # no proposal selected
                 elif len(vote_dates) == 0:
                     label = 'Not voted'
                 elif len(vote_dates) == 1:
@@ -2316,7 +2316,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     prev_vd = None
                     max_y = 1
 
-                    for idx in range(len(self.votesModel.votes)-1, -1, -1):
+                    for idx in range(len(self.votesModel.votes) - 1, -1, -1):
                         v = self.votesModel.votes[idx]
                         ts = int(datetime.datetime(v[0].year, v[0].month, v[0].day, 0, 0, 0).timestamp()) * 1000
                         vd = votes_aggr.get(ts)
@@ -2422,7 +2422,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                         max_date += datetime.timedelta(days=1)
                     else:
                         min_date = datetime.datetime.fromtimestamp(dates[0] / 1000)
-                        max_date = datetime.datetime.fromtimestamp(dates[len(dates)-1] / 1000)
+                        max_date = datetime.datetime.fromtimestamp(dates[len(dates) - 1] / 1000)
 
                     self.vote_chart.axisX().setMin(min_date)
                     self.vote_chart.axisX().setMax(max_date)
@@ -2509,7 +2509,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     dates = []
                     max_y = 0
 
-                    for idx in range(len(self.votesModel.votes)-1, -1, -1):
+                    for idx in range(len(self.votesModel.votes) - 1, -1, -1):
                         v = self.votesModel.votes[idx]
                         ts = int(datetime.datetime(v[0].year, v[0].month, v[0].day, 0, 0, 0).timestamp()) * 1000
                         mn = v[2]
@@ -2546,7 +2546,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                             bs.setColor(QColor(vote_change_colors[change_type_idx]))
                             bs.setLabelColor(QColor(vote_change_colors[change_type_idx]))
                             for date in dates:
-                                bs.append(votes_change_by_date[date][change_type_idx] )
+                                bs.append(votes_change_by_date[date][change_type_idx])
                             ser.append(bs)
 
                     self.vote_chart.addSeries(ser)
@@ -2559,7 +2559,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
                     dates_str = []
                     for date in dates:
-                        d = QDateTime(datetime.datetime.fromtimestamp(date/1000))
+                        d = QDateTime(datetime.datetime.fromtimestamp(date / 1000))
                         ds = QLocale.toString(app_utils.get_default_locale(), d, 'dd MMM')
                         dates_str.append(ds)
                     axisX.clear()
@@ -2686,14 +2686,13 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                 if self.finishing:
                     break
                 ctrl.display_msg(f"Processing <b>{vote.upper()}</b> vote for the proposal <b>'{prop.get_value('name')}"
-                                     f"</b>'<br>on behalf of the masternode: {mn_info.masternode_config.name} "
-                                     f"({mn_info.masternode_config.ip})")
+                                 f"</b>'<br>on behalf of the masternode: {mn_info.masternode_config.name} "
+                                 f"({mn_info.masternode_config.ip})")
 
                 cur_ts = int(time.time())
                 sig_time = cur_ts
                 step = 1
                 vote_sig = ''
-                serialize_for_sig = ''
 
                 try:
 
@@ -2705,7 +2704,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
                     if self.app_config.add_random_offset_to_vote_time:
 
-                        if last_vote_ts is not None: # and cur_ts - last_vote_ts < 1800:
+                        if last_vote_ts is not None:  # and cur_ts - last_vote_ts < 1800:
                             # new vote's timestamp cannot be less than the last vote for this proposal-mn pair
                             min_bound = max(int(last_vote_ts), cur_ts + self.app_config.sig_time_offset_min)
                             max_bound = cur_ts + self.app_config.sig_time_offset_max
@@ -2722,17 +2721,14 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                         #     is voting a short time after the previous one
                         sig_time = last_vote_ts + 10
 
-                    serialize_for_sig = mn_info.masternode.ident + '|' + prop_hash + '|' + '1' + '|' + \
-                                        vote_code + '|' + str(sig_time)
-
-                    log.info('Vote message to sign: ' + serialize_for_sig)
+                    log.info(f'Voting on proposal {prop_hash} on beahlf of the masternode {mn_info.masternode.ident}')
                     step = 2
                     vote_key = mn_info.masternode_config.get_current_key_for_voting(self.app_config, self.dashd_intf)
 
-                    if self.app_config.is_testnet:
-                        vote_sig = dash_utils.ecdsa_sign(serialize_for_sig, vote_key, self.app_config.dash_network)
-                    else:
-                        vote_sig = dash_utils.ecdsa_sign(serialize_for_sig, vote_key, self.app_config.dash_network)
+                    gv = dash_utils.CGovernanceVote(mn_info.masternode.collateral_hash,
+                                                    mn_info.masternode.collateral_index, prop_hash, vote, sig_time)
+
+                    vote_sig = gv.get_signed_vote(vote_key, self.app_config.dash_network)
 
                     step = 3
                     v_res = self.dashd_intf.voteraw(
@@ -2746,6 +2742,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
                     step = 4
                     if v_res == 'Voted successfully':
+                        log.info(f'Voted successfully on proposal {prop_hash}')
                         prop.apply_vote(mn_ident=mn_info.masternode.ident,
                                         vote_timestamp=datetime.datetime.fromtimestamp(sig_time),
                                         vote_result=vote.upper())
@@ -2753,10 +2750,12 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                         if prop not in successful_proposal_list:
                             successful_proposal_list.append(prop)
                     else:
+                        log.info(f'Voted with errors on proposal {prop_hash}: ' + v_res)
                         vote_errors_out.append((prop, mn_info.masternode_config, v_res))
                         unsuccessful_votes += 1
 
                 except Exception as e:
+                    log.exception(str(e))
                     if step in (1, 4):
                         msg = 'Error: ' + str(e)
                     elif step == 2:
@@ -2765,13 +2764,13 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                         msg = "Error while broadcasting vote message: " + str(e)
                         # write some info to the log file for analysis in case of problems
                         log.info('masternode_pub_key: %s' %
-                                     str(dash_utils.wif_privkey_to_pubkey(
-                                         mn_info.masternode_config.get_current_key_for_voting(
-                                             self.app_config, self.dashd_intf))))
+                                 str(dash_utils.wif_privkey_to_pubkey(
+                                     mn_info.masternode_config.get_current_key_for_voting(
+                                         self.app_config, self.dashd_intf))))
                         log.info('masternode_pub_key_hash: %s' %
-                                     str(dash_utils.pubkey_to_address(dash_utils.wif_privkey_to_pubkey(
-                                         mn_info.masternode_config.get_current_key_for_voting(
-                                             self.app_config, self.dashd_intf)), self.app_config.dash_network)))
+                                 str(dash_utils.pubkey_to_address(dash_utils.wif_privkey_to_pubkey(
+                                     mn_info.masternode_config.get_current_key_for_voting(
+                                         self.app_config, self.dashd_intf)), self.app_config.dash_network)))
                         log.info('masternode_tx_hash: %s' % str(mn_info.masternode_config.collateral_tx))
                         log.info('masternode_tx_index: %s' % str(mn_info.masternode_config.collateral_tx_index))
                         log.info('governance_hash: %s' % prop_hash)
@@ -2779,9 +2778,8 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                         log.info('sig_time: %s' % str(sig_time))
                         t = time.time()
                         log.info('cur_time: timestamp: %s, timestr local: %s, timestr UTC: %s' %
-                                     (str(t), str(datetime.datetime.fromtimestamp(t)),
-                                      str(datetime.datetime.utcfromtimestamp(t))))
-                        log.info('serialize_for_sig: %s' % str(serialize_for_sig))
+                                 (str(t), str(datetime.datetime.fromtimestamp(t)),
+                                  str(datetime.datetime.utcfromtimestamp(t))))
                     vote_errors_out.append((prop, mn_info.masternode_config, msg))
 
                     unsuccessful_votes += 1
@@ -2900,7 +2898,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                 with codecs.open(file_name, 'w', 'utf-8') as f_ptr:
                     elems = [col.caption for col in self.propsModel.columns()]
                     self.write_csv_row(f_ptr, elems)
-                    for prop in sorted(self.proposals, key = lambda p: p.initial_order_no):
+                    for prop in sorted(self.proposals, key=lambda p: p.initial_order_no):
                         elems = [prop.get_value(col.name) for col in self.propsModel.columns()]
                         self.write_csv_row(f_ptr, elems)
                 self.info_msg('Proposals data successfully saved.')
@@ -3276,7 +3274,7 @@ class VotesModel(QAbstractTableModel):
                 vote = self.votes[row_idx]
                 if vote:
                     if role == Qt.DisplayRole:
-                        if col_idx == 0:    # vote timestamp
+                        if col_idx == 0:  # vote timestamp
                             value = vote[0]
                             if value is not None:
                                 return app_utils.to_string(value)

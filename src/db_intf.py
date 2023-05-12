@@ -141,7 +141,7 @@ class DBCache(object):
                         " dmt_active INTEGER, dmt_create_time TEXT, dmt_deactivation_time TEXT, "
                         " protx_hash TEXT, queue_position INTEGER, registered_height INTEGER, "
                         " operator_reward REAL, pose_penalty INTEGER, pose_revived_height INTEGER, "
-                        " pose_ban_height INTEGER, operator_payout_address TEXT)")
+                        " pose_ban_height INTEGER, operator_payout_address TEXT, pose_ban_timestamp INTEGER)")
 
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_DMT_ACTIVE ON masternodes(dmt_active)")
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_IDENT ON masternodes(ident)")
@@ -308,12 +308,8 @@ class DBCache(object):
                 cur.execute("ALTER TABLE masternodes ADD COLUMN pose_ban_height INTEGER")
             if 'operator_payout_address' not in columns:
                 cur.execute("ALTER TABLE masternodes ADD COLUMN operator_payout_address TEXT")
-
-            # todo: cols to delete from protx
-            # "collateral_hash TEXT, collateral_index INTEGER, collateral_address TEXT, "
-            # last_paid_height INTEGER,
-            # "owner_address TEXT, voting_address TEXT, payout_address TEXT, pubkey_operator TEXT,"
-
+            if 'pose_ban_timestamp' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN pose_ban_timestamp INTEGER")
         except Exception:
             log.exception('Exception while initializing database.')
             raise

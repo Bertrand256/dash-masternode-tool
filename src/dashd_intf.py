@@ -469,7 +469,7 @@ class Masternode(AttrsProtected):
         self.type: Optional[str] = None  # HighPerformance or Regular
         self.payout_address: Optional[str] = None
         self.lastpaidtime: int = 0
-        self.lastpaidblock: int = 0
+        self._lastpaidblock: int = -1
         self.ip_port = None
         self.protx_hash: Optional[str] = None
         self.db_id = None
@@ -487,53 +487,40 @@ class Masternode(AttrsProtected):
         self.platform_p2p_port: Optional[int] = None
         self.platform_http_port: Optional[int] = None
         self.operator_reward: float = 0.0
-        self.registered_height: int = -1
+        self._registered_height: int = -1
         self.pose_penalty: int = 0
-        self.pose_revived_height: int = -1
-        self.pose_ban_height: int = -1
+        self._pose_revived_height: int = -1
+        self._pose_ban_height: int = -1
+        self._pose_ban_timestamp: int = 0
         self.operator_payout_address: str = ''
         self.set_attr_protection()
 
     def copy_from(self, src: Masternode):
-        if self.ident != src.ident or self.status != src.ident or self.payout_address != src.payout_address or \
-                self.lastpaidtime != src.lastpaidtime or self.lastpaidblock != src.lastpaidblock or \
-                self.ip_port != src.ip_port or self.protx_hash != src.protx_hash or \
-                self.queue_position != src.queue_position or self.type != src.type or \
-                self.collateral_hash != src.collateral_hash or self.collateral_index != src.collateral_index or \
-                self.collateral_address != src.collateral_address or self.owner_address != src.owner_address or \
-                self.voting_address != src.voting_address or \
-                self.pubkey_operator != src.pubkey_operator or self.platform_node_id != src.platform_node_id or \
-                self.platform_p2p_port != src.platform_p2p_port or \
-                self.platform_http_port != self.platform_http_port or self.operator_reward != src.operator_reward or \
-                self.registered_height != src.registered_height or self.pose_penalty != src.pose_penalty or \
-                self.pose_revived_height != src.pose_revived_height or self.pose_ban_height != src.pose_ban_height or \
-                self.operator_payout_address != src.operator_payout_address:
-
-            self.ident = src.ident
-            self.status = src.status
-            self.payout_address = src.payout_address
-            self.lastpaidtime = src.lastpaidtime
-            self.set_check_attr_value('lastpaidblock', src.lastpaidblock, -1)
-            self.ip_port = src.ip_port
-            self.protx_hash = src.protx_hash
-            self.queue_position = src.queue_position
-            self.type = src.type
-            self.collateral_hash = src.collateral_hash
-            self.collateral_index = src.collateral_index
-            self.collateral_address = src.collateral_address
-            self.owner_address = src.owner_address
-            self.voting_address = src.voting_address
-            self.pubkey_operator = src.pubkey_operator
-            self.platform_node_id = src.platform_node_id
-            self.platform_p2p_port = src.platform_p2p_port
-            self.platform_http_port = src.platform_http_port
-            self.operator_reward: float = src.operator_reward
-            self.set_check_attr_value('registered_height', src.registered_height, -1)
-            self.pose_penalty: int = src.pose_penalty
-            self.set_check_attr_value('pose_revived_height', src.pose_revived_height, -1)
-            self.set_check_attr_value('pose_ban_height', src.pose_ban_height, -1)
-            self.operator_payout_address: str = src.operator_payout_address
-            self.modified = True
+        self.ident = src.ident
+        self.status = src.status
+        self.payout_address = src.payout_address
+        self.lastpaidtime = src.lastpaidtime
+        self.lastpaidblock = src.lastpaidblock
+        self.ip_port = src.ip_port
+        self.protx_hash = src.protx_hash
+        self.queue_position = src.queue_position
+        self.type = src.type
+        self.collateral_hash = src.collateral_hash
+        self.collateral_index = src.collateral_index
+        self.collateral_address = src.collateral_address
+        self.owner_address = src.owner_address
+        self.voting_address = src.voting_address
+        self.pubkey_operator = src.pubkey_operator
+        self.platform_node_id = src.platform_node_id
+        self.platform_p2p_port = src.platform_p2p_port
+        self.platform_http_port = src.platform_http_port
+        self.operator_reward = src.operator_reward
+        self.registered_height = src.registered_height
+        self.pose_penalty = src.pose_penalty
+        self.pose_ban_timestamp = src.pose_ban_timestamp
+        self.pose_revived_height = src.pose_revived_height
+        self.pose_ban_height = src.pose_ban_height
+        self.operator_payout_address = src.operator_payout_address
 
     def copy_from_json(self, mn_ident: str, mn_json: Dict):
         m = re.match(r'([a-zA-F0-9]+)-(\d+)', mn_ident, re.IGNORECASE)
@@ -548,7 +535,7 @@ class Masternode(AttrsProtected):
         self.status = mn_json.get('status')
         self.payout_address = mn_json.get('payee')
         self.lastpaidtime = mn_json.get('lastpaidtime', 0)
-        self.set_check_attr_value('lastpaidblock', mn_json.get('lastpaidblock'), -1)
+        self.lastpaidblock = mn_json.get('lastpaidblock')
         self.ip_port = mn_json.get('address')
         self.protx_hash = mn_json.get('proTxHash')
         self.collateral_hash = coll_hash
@@ -569,18 +556,18 @@ class Masternode(AttrsProtected):
         else:
             self.operator_reward = operator_reward
         if state and isinstance(state, dict):
-            self.set_check_attr_value('registered_height', state.get('registeredHeight'), -1)
+            self.registered_height = state.get('registeredHeight')
             self.pose_penalty = state.get('PoSePenalty')
-            self.set_check_attr_value('pose_revived_height', state.get('PoSeRevivedHeight'), -1)
-            self.set_check_attr_value('pose_ban_height', state.get('PoSeBanHeight'), -1)
+            self.pose_revived_height = state.get('PoSeRevivedHeight')
+            self.pose_ban_height = state.get('PoSeBanHeight')
             self.operator_payout_address = state.get('operatorPayoutAddress')
 
-    def set_check_attr_value(self, field_name: str, new_value: Optinal[int], default_value: int):
+    def set_check_attr_value(self, field_name: str, new_value: Optional[int], default_value: int):
         """
-        Set a new value to an attribute, checking if the new value is not None. If it is, then set the default value.
+        Set a new value to an attribute, checking if it is not None. If it is, then set the default value.
         """
         if new_value is None:
-            new_value = -1
+            new_value = default_value
         self.__setattr__(field_name, new_value)
 
     def update_in_db(self, cursor):
@@ -592,15 +579,15 @@ class Masternode(AttrsProtected):
                     " registered_height, dmt_active, dmt_create_time, queue_position, type, collateral_hash, "
                     " collateral_index, collateral_address, owner_address, voting_address, pubkey_operator,"
                     " platform_node_id, platform_p2p_port, platform_http_port, operator_reward, pose_penalty,"
-                    " pose_revived_height, pose_ban_height, operator_payout_address) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " pose_revived_height, pose_ban_height, operator_payout_address, pose_ban_timestamp) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (self.ident, self.status, self.payout_address, self.lastpaidtime, self.lastpaidblock,
                      self.ip_port, self.protx_hash, self.registered_height, 1,
                      datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), self.queue_position, self.type,
                      self.collateral_hash, self.collateral_index, self.collateral_address, self.owner_address,
                      self.voting_address, self.pubkey_operator, self.platform_node_id, self.platform_p2p_port,
                      self.platform_http_port, self.operator_reward, self.pose_penalty, self.pose_revived_height,
-                     self.pose_ban_height, self.operator_payout_address))
+                     self.pose_ban_height, self.operator_payout_address, self.pose_ban_timestamp))
                 self.db_id = cursor.lastrowid
             else:
                 cursor.execute(
@@ -609,14 +596,14 @@ class Masternode(AttrsProtected):
                     " registered_height=?, queue_position=?, type=?, collateral_hash=?, "
                     " collateral_index=?, collateral_address=?, owner_address=?, voting_address=?, pubkey_operator=?,"
                     " platform_node_id=?, platform_p2p_port=?, platform_http_port=?, operator_reward=?, pose_penalty=?,"
-                    " pose_revived_height=?, pose_ban_height=?, operator_payout_address=? "
+                    " pose_revived_height=?, pose_ban_height=?, operator_payout_address=?, pose_ban_timestamp=? "
                     " WHERE id=?",
                     (self.ident, self.status, self.payout_address, self.lastpaidtime, self.lastpaidblock,
                      self.ip_port, self.protx_hash, self.registered_height, self.queue_position, self.type,
                      self.collateral_hash, self.collateral_index, self.collateral_address, self.owner_address,
                      self.voting_address, self.pubkey_operator, self.platform_node_id, self.platform_p2p_port,
                      self.platform_http_port, self.operator_reward, self.pose_penalty, self.pose_revived_height,
-                     self.pose_ban_height, self.operator_payout_address, self.db_id))
+                     self.pose_ban_height, self.operator_payout_address, self.pose_ban_timestamp, self.db_id))
         except Exception as e:
             log.exception(str(e))
 
@@ -630,6 +617,46 @@ class Masternode(AttrsProtected):
             if self.monitor_changes and getattr(self, name) != value:
                 self.modified = True
         super().__setattr__(name, value)
+
+    @property
+    def lastpaidblock(self):
+        return self._lastpaidblock
+
+    @lastpaidblock.setter
+    def lastpaidblock(self, new_lastpaidblock: Optional[int]):
+        self.set_check_attr_value('_lastpaidblock', new_lastpaidblock, -1)
+
+    @property
+    def registered_height(self):
+        return self._registered_height
+
+    @registered_height.setter
+    def registered_height(self, new_registered_height: Optional[int]):
+        self.set_check_attr_value('_registered_height', new_registered_height, -1)
+
+    @property
+    def pose_revived_height(self):
+        return self._pose_revived_height
+
+    @pose_revived_height.setter
+    def pose_revived_height(self, new_pose_revived_height: Optional[int]):
+        self.set_check_attr_value('_pose_revived_height', new_pose_revived_height, -1)
+
+    @property
+    def pose_ban_height(self):
+        return self._pose_ban_height
+
+    @pose_ban_height.setter
+    def pose_ban_height(self, new_pose_ban_height):
+        self.set_check_attr_value('_pose_ban_height', new_pose_ban_height, -1)
+
+    @property
+    def pose_ban_timestamp(self):
+        return self._pose_ban_timestamp
+
+    @pose_ban_timestamp.setter
+    def pose_ban_timestamp(self, new_ban_timestamp: Optional[int]):
+        self.set_check_attr_value('_pose_ban_timestamp', new_ban_timestamp, 0)
 
 
 def json_cache_wrapper(func, intf, cache_file_ident, skip_cache=False,
@@ -749,7 +776,7 @@ class DashdInterface(WndUtils):
                         "protx_hash, type, collateral_hash, collateral_index, collateral_address,"
                         "owner_address, voting_address, pubkey_operator, platform_node_id, platform_p2p_port,"
                         "platform_http_port, registered_height, operator_reward, pose_penalty, "
-                        "pose_revived_height, pose_ban_height, operator_payout_address "
+                        "pose_revived_height, pose_ban_height, operator_payout_address, pose_ban_timestamp "
                         "from MASTERNODES where dmt_active=1")
             for row in cur.fetchall():
                 db_id = row[0]
@@ -793,6 +820,7 @@ class DashdInterface(WndUtils):
                 mn.pose_revived_height = row[22]
                 mn.pose_ban_height = row[23]
                 mn.operator_payout_address = row[24]
+                mn.pose_ban_timestamp = row[25]
 
                 self.masternodes.append(mn)
                 self.masternodes_by_ident[mn.ident] = mn
@@ -1111,13 +1139,17 @@ class DashdInterface(WndUtils):
         payment_queue = []
         for mn in masternodes:
             if mn.status == 'ENABLED':
-                if mn.lastpaidblock > 0:
-                    mn.queue_position = mn.lastpaidblock
-                else:
-                    mn.queue_position = mn.registered_height
+                try:
+                    if mn.lastpaidblock > 0:
+                        mn.queue_position = mn.lastpaidblock
+                    else:
+                        mn.queue_position = mn.registered_height
 
-                if mn.pose_revived_height > 0 and mn.pose_revived_height > mn.lastpaidblock:
-                    mn.queue_position = mn.pose_revived_height
+                    if mn.pose_revived_height is not None and mn.pose_revived_height > 0 and \
+                            mn.pose_revived_height > mn.lastpaidblock:
+                        mn.queue_position = mn.pose_revived_height
+                except Exception as e:
+                    log.exception(str(e))
 
                 payment_queue.append(mn)
             else:
@@ -1146,7 +1178,7 @@ class DashdInterface(WndUtils):
                 if self.masternodes and data_max_age > 0 and int(time.time()) - last_read_time < data_max_age:
                     return self.masternodes
                 else:
-                    log.info('Fetching protx data from network')
+                    log.info('Fetching protx data from the network')
                     protx_list = self.proxy.protx('list', 'registered', True)
                     protx_by_hash = {}
                     for protx_json in protx_list:
@@ -1155,15 +1187,17 @@ class DashdInterface(WndUtils):
                         protx_hash = protx_json.get('proTxHash')
                         if protx_hash:
                             protx_by_hash[protx_hash] = protx_json
-                    log.info('Finished fetching protx data from network')
+                    log.info('Finished fetching protx data from the network')
 
                     for mn in self.masternodes:
                         # mark to delete masternode existing in cache but no longer existing on the network
                         mn.marker = False
                         mn.modified = False
 
+                    log.info('Fetching masternode data from the network')
                     mns_json = self.proxy.masternodelist(*args)
                     app_cache.set_value(f'MasternodesLastReadTime_{self.app_config.dash_network}', int(time.time()))
+                    log.info('Finished fetching masternode data from the network')
 
                     for mn_id in mns_json.keys():
                         if feedback_fun:
@@ -1171,6 +1205,7 @@ class DashdInterface(WndUtils):
                         mn_json = mns_json.get(mn_id)
                         mn = self.masternodes_by_ident.get(mn_id)
                         protx_json = protx_by_hash.get(mn_json.get('proTxHash'))
+                        old_pose_ban_height = mn.pose_ban_height if mn else -1
                         if not mn:
                             mn = Masternode()
                             self.masternodes.append(mn)
@@ -1181,8 +1216,12 @@ class DashdInterface(WndUtils):
                         mn.copy_from_json(mn_id, mn_json)
                         if protx_json:
                             mn.copy_from_protx_json(protx_json)
+                        if mn.pose_ban_height > 0 and (old_pose_ban_height != mn.pose_ban_height or
+                                                       mn.pose_ban_timestamp is None or mn.pose_ban_timestamp <= 0):
+                            mn.pose_ban_timestamp = self.get_block_timestamp(mn.pose_ban_height)
                         mn.marker = True
                     self._update_mn_queue_values(self.masternodes)
+                    log.info('Finished processing masternode data')
 
                     # save masternodes to the db cache
                     db_modified = False

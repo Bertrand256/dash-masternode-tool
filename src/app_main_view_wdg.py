@@ -917,6 +917,8 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 if mn_info.pose_penalty:
                     mn_stat.pose_penalty = mn_info.pose_penalty
                     mn_stat.status_warning = True
+                    mn_stat.pose_ban_height = mn_info.pose_ban_height
+                    mn_stat.pose_ban_timestamp = mn_info.pose_ban_timestamp
                 else:
                     mn_stat.pose_penalty = 0
 
@@ -1165,6 +1167,9 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 status_text = st.get_status()
                 if st.pose_penalty:
                     status_text += ', PoSePenalty: ' + str(st.pose_penalty)
+                    if st.pose_ban_timestamp is not None and st.pose_ban_timestamp > 0:
+                        status_text += ', PoSeBan time: ' + \
+                                       app_utils.to_string(datetime.fromtimestamp(st.pose_ban_timestamp))
                 add_status_line('Status', status_text, status_color)
 
                 if st.payout_address:
@@ -1595,6 +1600,8 @@ class MasternodeStatus:
         self.masternode_type_mismatch = False
         self.protx_conf_pending = False
         self.pose_penalty = 0
+        self.pose_ban_height: int = -1
+        self.pose_ban_timestamp: int = 0
         self.operator_pub_key = ''
         self.operator_key_update_required = False
         self.operator_service_update_required = False

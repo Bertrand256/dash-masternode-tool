@@ -15,6 +15,7 @@ from random import randint
 import bitcoin
 from bip32utils import Base58
 import base58
+from typing import Literal, cast
 from blspy import (PrivateKey, Util, AugSchemeMPL, PopSchemeMPL, G1Element, G2Element)
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import cryptography.hazmat.primitives.serialization
@@ -63,7 +64,7 @@ class ChainParamsTestNet(ChainParams):
     BIP44_COIN_TYPE = 1
 
 
-def get_chain_params(dash_network: str) -> typing.ClassVar[ChainParams]:
+def get_chain_params(dash_network: str):
     if dash_network == 'MAINNET':
         return ChainParamsMainNet
     elif dash_network == 'TESTNET':
@@ -557,168 +558,81 @@ def ed25519_public_key_to_platform_id(public_key: str) -> str:
     hashed = hashlib.sha256(pub_bytes)
     return hashed.digest()[0:20].hex()
 
+
 class COutPoint(object):
-    def __init__(self, hash: bytes, index: int):
-        self.hash: bytes = hash
+    def __init__(self, hash: str, index: int):
+        self.hash: bytes = bytes.fromhex(hash)
         self.index: int = index
 
-    def serialize(self) -> str:
-        ser_str = self.hash[::-1].hex()
-        ser_str += int(self.index).to_bytes(4, byteorder='little').hex()
+    def serialize_for_sig(self, dash_network: Literal['MAINNET', 'TESTNET']) -> str:
+        if dash_network == 'MAINNET':
+            ser_str = self.hash.hex() + '-' + str(self.index)
+        else:
+            ser_str = self.hash[::-1].hex()
+            ser_str += int(self.index).to_bytes(4, byteorder='little').hex()
         return ser_str
 
 
-class CTxIn(object):
-    def __init__(self, prevout: COutPoint):
-        self.prevout: COutPoint = prevout
-        self.script = ''
-        self.sequence = 0xffffffff
+class CGovernanceVote(object):
+    def __init__(self, mn_collateral_hash: str, mn_collateral_index: int, proposal_hash: str, vote: str, time: int):
+        vote_outcome_dict = {
+            'none': 0,
+            'yes': 1,
+            'no': 2,
+            'abstain': 3
+        }
+
+        self.outpoint = COutPoint(mn_collateral_hash, mn_collateral_index)
+        self.proposal_hash: bytes = bytes.fromhex(proposal_hash)
+        self.vote_signal: int = 1  # VOTE_SIGNAL_FUNDING
+        self.vote_outcome: int = vote_outcome_dict.get(vote)
+        self.time: int = time
 
     def serialize(self):
-        return self.prevout.serialize() + '00' + self.sequence.to_bytes(4, byteorder='little').hex()
+        ser_str = self.outpoint.serialize_for_sig()
+        ser_str += '00' + 0xffffffff.to_bytes(4, byteorder='little').hex()
+        ser_str += self.proposal_hash[::-1].hex()
+        ser_str += self.vote_signal.to_bytes(4, byteorder='little').hex()
+        ser_str += self.vote_outcome.to_bytes(4, byteorder='little').hex()
+        ser_str += self.time.to_bytes(8, byteorder='little').hex()
+        return ser_str
 
-
-class CMasternodePing(object):
-    def __init__(self, mn_outpoint: COutPoint, block_hash: bytes, sig_time: int, rpc_node_protocol_version: int):
-        self.mn_outpoint: COutPoint = mn_outpoint  # protocol >= 70209
-        self.mn_tx_in = CTxIn(mn_outpoint)  # protocol <= 70208
-        self.block_hash: bytes = block_hash
-        self.sig_time: int = sig_time
-        self.rpc_node_protocol_version: int = rpc_node_protocol_version
-        self.sig = None
-        self.sig_message = ''
-        self.sentinel_is_current = 0
-        self.sentinel_version = DEFAULT_SENTINEL_VERSION
-        self.daemon_version = DEFAULT_DAEMON_VERSION
+    def serialize_for_sig(self, dash_network: Literal['MAINNET', 'TESTNET']):
+        ser_str = self.outpoint.serialize_for_sig(dash_network)
+        if dash_network == 'MAINNET':
+            ser_str += '|' + self.proposal_hash.hex() + '|' + str(self.vote_signal) + '|' + str(self.vote_outcome) + \
+                       '|' + str(self.time)
+        else:
+            ser_str += self.proposal_hash[::-1].hex()
+            ser_str += self.vote_outcome.to_bytes(4, byteorder='little').hex()
+            ser_str += self.vote_signal.to_bytes(4, byteorder='little').hex()
+            ser_str += self.time.to_bytes(8, byteorder='little').hex()
+        return ser_str
 
     def get_hash(self):
-        self.sig_message = self.mn_outpoint.serialize()
-        self.sig_message += self.block_hash[::-1].hex()
-        self.sig_message += self.sig_time.to_bytes(8, "little").hex()
-        self.sig_message += self.sentinel_is_current.to_bytes(1, "little").hex()
-        self.sig_message += self.sentinel_version.to_bytes(4, "little").hex()
-        self.sig_message += self.daemon_version.to_bytes(4, "little").hex()
-        hash = bitcoin.bin_dbl_sha256(bytes.fromhex(self.sig_message))
-        return hash
+        ser_str = self.serialize()
+        hash = bitcoin.bin_dbl_sha256(bytes.fromhex(ser_str))
+        return hash.hex()
 
-    def sign_message(self, priv_key, dash_network):
-        self.sig_message = f'CTxIn(COutPoint({self.mn_outpoint.hash.hex()}, {self.mn_outpoint.index}), ' \
-                           f'scriptSig=){self.block_hash.hex()}{str(self.sig_time)}'
-        r = ecdsa_sign(self.sig_message, priv_key, dash_network)
-        self.sig = base64.b64decode(r)
-        return self.sig
-
-    def sign(self, priv_key, dash_network, is_spork6_active: bool):
-        if is_spork6_active:
-            hash = self.get_hash()
-            r = ecdsa_sign_raw(hash, priv_key, dash_network)
-            self.sig = base64.b64decode(r)
+    def get_data_for_signing(self, dash_network: Literal['MAINNET', 'TESTNET']) -> bytes:
+        ser_str = self.serialize_for_sig(dash_network)
+        if dash_network == 'TESTNET':
+            data_for_sig = bitcoin.bin_dbl_sha256(bytes.fromhex(ser_str))
         else:
-            self.sig = self.sign_message(priv_key, dash_network)
-        return self.sig
+            data_for_sig = ser_str.encode('ascii')
+        return data_for_sig
 
-    def serialize(self):
-        if self.rpc_node_protocol_version <= 70208:
-            ser_str = self.mn_tx_in.serialize()
+    def get_signed_vote(self, priv_key: str, dash_network: Literal['MAINNET', 'TESTNET']) -> str:
+        """
+        Sign a vote object.
+        :param priv_key: Private key for voting.
+        :param dash_network: TESTNET or MAINNET
+        :return: Base64-encoded signature
+        """
+        ser_str = self.serialize_for_sig(dash_network)
+        if dash_network == 'TESTNET':
+            data_for_sig = bitcoin.bin_dbl_sha256(bytes.fromhex(ser_str))
+            sig_base64 = ecdsa_sign_raw(data_for_sig, priv_key, dash_network)
         else:
-            ser_str = self.mn_outpoint.serialize()
-
-        ser_str += self.block_hash[::-1].hex()
-        ser_str += self.sig_time.to_bytes(8, byteorder='little').hex()
-        ser_str += num_to_varint(len(self.sig)).hex() + self.sig.hex()
-
-        if self.rpc_node_protocol_version >= 70209:
-            ser_str += self.sentinel_is_current.to_bytes(1, "little").hex()
-            ser_str += self.sentinel_version.to_bytes(4, "little").hex()
-            ser_str += self.daemon_version.to_bytes(4, "little").hex()
-        else:
-            ser_str += '0001000100'
-
-        return ser_str
-
-    def __str__(self):
-        ret = f'CMasternodePing(\n' \
-              f'  mn_outpoint.hash: {self.mn_outpoint.hash.hex()}\n' \
-              f'  mn_outpoint.index: {self.mn_outpoint.index}\n' \
-              f'  block_hash: {self.block_hash.hex()}\n' \
-              f'  sig_time: {self.sig_time}\n' \
-              f'  sig_message: {self.sig_message}\n' \
-              f'  sig: {self.sig.hex() if self.sig else "None"}\n' \
-              f'  serialized: {self.serialize()}\n)'
-        return ret
-
-
-class CMasternodeBroadcast(object):
-    def __init__(self, mn_ip: str,
-                 mn_port: int,
-                 pubkey_collateral: bytes,
-                 pubkey_masternode: bytes,
-                 collateral_tx: bytes,
-                 collateral_tx_index: int,
-                 block_hash: bytes,
-                 sig_time: int,
-                 protocol_version: int,
-                 rpc_node_protocol_version: int,
-                 spork6_active: bool):
-
-        self.mn_ip: str = mn_ip
-        self.mn_port: int = mn_port
-        self.pubkey_collateral: bytes = pubkey_collateral
-        self.pubkey_masternode: bytes = pubkey_masternode
-        self.sig = None
-        self.sig_time: int = sig_time
-        self.protocol_version: int = protocol_version
-        self.collateral_outpoint = COutPoint(collateral_tx, int(collateral_tx_index))
-        self.rpc_node_protocol_version = rpc_node_protocol_version
-        self.spork6_active = spork6_active
-        self.mn_ping: CMasternodePing = CMasternodePing(self.collateral_outpoint, block_hash, sig_time,
-                                                        rpc_node_protocol_version)
-
-    def get_message_to_sign(self):
-        str_for_serialize = self.mn_ip + ':' + str(self.mn_port) + str(self.sig_time) + \
-            binascii.unhexlify(bitcoin.hash160(self.pubkey_collateral))[::-1].hex() + \
-            binascii.unhexlify(bitcoin.hash160(self.pubkey_masternode))[::-1].hex() + \
-            str(self.protocol_version)
-        return str_for_serialize
-
-    def sign(self, collateral_bip32_path: str, hw_sign_message_fun: typing.Callable, hw_session,
-             mn_privkey_wif: str, dash_network: str):
-
-        self.mn_ping.sign(mn_privkey_wif, dash_network, is_spork6_active=self.spork6_active)
-
-        str_for_serialize = self.get_message_to_sign()
-        self.sig = hw_sign_message_fun(hw_session, collateral_bip32_path, str_for_serialize)
-
-        return self.sig
-
-    def serialize(self):
-        if not self.sig:
-            raise Exception('Message not signed.')
-
-        if self.rpc_node_protocol_version <= 70208:
-            ser_str = self.mn_ping.mn_tx_in.serialize()
-        else:
-            ser_str = self.mn_ping.mn_outpoint.serialize()
-
-        addr = '00000000000000000000ffff'
-        ip_elems = map(int, self.mn_ip.split('.'))
-        for i in ip_elems:
-            addr += i.to_bytes(1, byteorder='big').hex()
-        addr += int(self.mn_port).to_bytes(2, byteorder='big').hex()
-
-        ser_str += addr
-        ser_str += num_to_varint(len(self.pubkey_collateral)).hex() + self.pubkey_collateral.hex()
-        ser_str += num_to_varint(len(self.pubkey_masternode)).hex() + self.pubkey_masternode.hex()
-        ser_str += num_to_varint(len(self.sig.signature)).hex() + self.sig.signature.hex()
-        ser_str += self.sig_time.to_bytes(8, byteorder='little').hex()
-        ser_str += int(self.protocol_version).to_bytes(4, byteorder='little').hex()
-        ser_str += self.mn_ping.serialize()
-
-        return ser_str
-
-    def __str__(self):
-        ret = f'\nCMasternodeBroadcast(\n' \
-              f'  pubkey_collateral: {self.pubkey_collateral.hex()}\n' \
-              f'  pubkey_masternode: {self.pubkey_masternode.hex()}\n' \
-              f'{str(self.mn_ping)})'
-        return ret
+            sig_base64 = ecdsa_sign(ser_str, priv_key, dash_network)
+        return sig_base64
