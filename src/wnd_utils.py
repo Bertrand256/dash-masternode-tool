@@ -126,8 +126,9 @@ class WndUtils:
             ui.wait_for_worker_completion()
             ret = ui.get_result()
             ret_exception = ui.worker_exception
-            del ui
-            QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)  # wait until dialog hides
+            # QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)  # wait until dialog hides
+            if close_after_finish:
+                ui.close()
             if ret_exception:
                 # if there was an exception in the worker function, pass it to the caller
                 raise ret_exception

@@ -4,12 +4,14 @@
 # Created on: 2017-04
 from __future__ import annotations
 
+import logging
 import time
+import threading
 from typing import Optional, Callable, Any
 
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import QThread
-from PyQt5.QtCore import Qt, QPoint
+from PyQt5.QtCore import Qt, QPoint, QTimer
 from PyQt5.QtWidgets import QDialog, QLabel, QLayout
 
 from common import CancelException
@@ -19,7 +21,7 @@ from ui import ui_thread_fun_dlg
 class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
     """
     Some of the DMT features require quite a long time to complete. Performing this in a main thread
-    causes the app to behave as if it hung. In such situations it is better to display a dialog with
+    causes the app to behave as if it hung. In such situations, it is better to display a dialog with
     some information about the progress of the task.
     This class is such a dialog window - it takes a reference to function/method performing a long-running task. 
     That function is executed inside a thread, controlled by a dialog and has the possibility of updating dialog's 
@@ -91,6 +93,7 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         """
         QtWidgets.QDialog.__init__(self, parent=center_by_window)
         ui_thread_fun_dlg.Ui_ThreadFunDlg.__init__(self)
+        self.finish_event = threading.Event()
         self.worker_fun = worker_fun
         self.worker_args = worker_args
         self.close_after_finish = close_after_finish
@@ -170,13 +173,6 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
             self.layout().setSizeConstraint(QLayout.SetFixedSize)
             self.set_text_called = True
         self.lblText.setText(text)
-
-        # width = self.lblText.fontMetrics().boundingRect(text).width()
-        # if self.max_width and width > self.max_width:
-        #     width = self.max_width
-        # self.lblText.setFixedWidth(width)
-
-        # QtWidgets.qApp.processEvents(QEventLoop.ExcludeUserInputEvents)
         self.center_by_widget(self.center_by_window)
 
     def set_progress_value(self, value):
@@ -230,9 +226,7 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
         self.thread_running = False
         work = self.worker_thread
         self.worker_thread = None
-        del work
-        if self.close_after_finish:
-            self.accept()
+        self.finish_event.set()
 
     def wait_for_terminate(self):
         if self.thread_running:
@@ -275,7 +269,7 @@ class ThreadFunDlg(QtWidgets.QDialog, ui_thread_fun_dlg.Ui_ThreadFunDlg):
                 shown = True
             QtWidgets.qApp.processEvents()
             if self.worker_thread:
-                self.worker_thread.wait(100)
+                self.finish_event.wait(0.1)
             else:
                 break
 

@@ -52,6 +52,7 @@ VOTING_RELOAD_TIME = 3600
 VOTE_CODE_YES = '1'
 VOTE_CODE_NO = '2'
 VOTE_CODE_ABSTAIN = '3'
+VOTE_CODE_TO_STR = {VOTE_CODE_YES: 'yes', VOTE_CODE_NO: 'no', VOTE_CODE_ABSTAIN: 'abstain'}
 
 # definition of symbols' for DB live configuration (table LIVE_CONFIG)
 CFG_PROPOSALS_LAST_READ_TIME = 'proposals_last_read_time'
@@ -2671,7 +2672,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
     def vote_thread(self, ctrl, proposal_list: List[Proposal], masternodes: List[VotingMasternode],
                     vote_code: str, vote_errors_out: List[Tuple[Proposal, MasternodeConfig, str]]):
 
-        vote = {VOTE_CODE_YES: 'yes', VOTE_CODE_NO: 'no', VOTE_CODE_ABSTAIN: 'abstain'}[vote_code]
+        vote = VOTE_CODE_TO_STR[vote_code]
         successful_proposal_list = []
         successful_votes = 0
         unsuccessful_votes = 0
@@ -2830,7 +2831,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
             self.error_msg('Dash daemon not connected')
         else:
             props = self.get_selected_proposals(active_voting_only=True)
-            vote_str = {VOTE_CODE_YES: 'YES', VOTE_CODE_NO: 'NO', VOTE_CODE_ABSTAIN: 'ABSTAIN'}[vote_code]
+            vote_str = VOTE_CODE_TO_STR[vote_code]
 
             if not masternodes:
                 masternodes = []
@@ -2846,8 +2847,9 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
                     if len(props) > 0:
                         self.sending_votes = True
-                        self.run_thread_dialog(self.vote_thread, (props, masternodes, vote_code, vote_errors), True,
-                                               center_by_window=self)
+                        WndUtils.run_thread_dialog(self.vote_thread, (props, masternodes, vote_code, vote_errors), True,
+                                                   text='Sending voting info to the network...', center_by_window=self,
+                                                   show_window_delay_ms=2000)
                         on_vote_thread_finished(vote_errors)
                     else:
                         raise Exception('No selected proposals to vote')
