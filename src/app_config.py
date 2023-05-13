@@ -44,7 +44,7 @@ from encrypted_files import read_file_encrypted, write_file_encrypted
 from hw_common import HWType, HWNotConnectedException
 from wnd_utils import WndUtils, get_widget_font_color_blue, get_widget_font_color_green
 
-CURRENT_CFG_FILE_VERSION = 5
+CURRENT_CFG_FILE_VERSION = 6
 CACHE_ITEM_LOGGERS_LOGLEVEL = 'LoggersLogLevel'
 CACHE_ITEM_LOG_FORMAT = 'LogFormat'
 GLOBAL_SETTINGS_FILE_NAME = 'dmt_global_settings.json'
@@ -218,7 +218,10 @@ class AppConfig(QObject):
     @staticmethod
     def get_default_user_data_dir():
         user_home_dir = os.path.expanduser('~')
-        app_user_data_dir = os.path.join(user_home_dir, APP_DATA_DIR_NAME + '-v' + str(CURRENT_CFG_FILE_VERSION))
+
+        # below: let's currently stick to v5 dir; in the future we're going to migrate to a new configuraion file
+        # format that will stop using the configuration version number in the directory name
+        app_user_data_dir = os.path.join(user_home_dir, APP_DATA_DIR_NAME + '-v5')
         return app_user_data_dir
 
     @staticmethod
@@ -708,7 +711,8 @@ class AppConfig(QObject):
                     self.display_app_message.emit(1002,
                                                   'The configuration file is created by a newer app version. '
                                                   'If you save any changes, you may lose some settings '
-                                                  'that are not supported in this version.',
+                                                  'that are not supported in this version. It is suggested to save '
+                                                  'the configuration under a different file name.',
                                                   app_defs.AppTextMessageType.WARN)
 
                 log_level_str = config.get(section, 'log_level', fallback='WARNING')
