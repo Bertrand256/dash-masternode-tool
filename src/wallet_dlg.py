@@ -488,10 +488,13 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def hw_call_wrapper(self, func):
         def call(*args, **kwargs):
             try:
+                log.info('Before call ' + func.__name__)
                 ret = func(*args, **kwargs)
             except HWNotConnectedException:
                 self.on_hardware_wallet_disconnected()
                 raise
+            finally:
+                log.info('After call ' + func.__name__)
             return ret
 
         return call
@@ -823,18 +826,24 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     def on_accountsListView_selectionChanged(self):
         """Selected BIP44 account or address changed. """
-        self.reflect_ui_account_selection()
-        self.display_thread_event.set()
+        try:
+            self.reflect_ui_account_selection()
+            self.display_thread_event.set()
+        except Exception as e:
+            log.exception(str(e))
 
     def on_viewMasternodes_selectionChanged(self):
-        with self.mn_model:
-            self.selected_mns.clear()
-            for mni in self.mn_model.selected_data_items():
-                if mni.address:
-                    self.selected_mns.append(mni)
-            self.on_utxo_src_hash_changed()
-            self.display_thread_event.set()
-            self.update_details_tab()
+        try:
+            with self.mn_model:
+                self.selected_mns.clear()
+                for mni in self.mn_model.selected_data_items():
+                    if mni.address:
+                        self.selected_mns.append(mni)
+                self.on_utxo_src_hash_changed()
+                self.display_thread_event.set()
+                self.update_details_tab()
+        except Exception as e:
+            log.exception(str(e))
 
     def update_context_actions(self):
 
@@ -1667,13 +1676,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         addr_str = addr.address
                         balance = addr.balance
                         received = addr.received
-
-                        # for security reasons get the address from hardware wallet and compare it to the one
-                        # read from db cache
-                        addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, addr.bip32_path, False)
-                        if addr_hw != addr.address:
-                            addr_str = 'Address inconsistency. Please clear the wallet cache.'
-
             elif self.hw_selected_account_id:
                 addr_lbl = 'XPUB'
                 addr = self.account_list_model.account_by_id(self.hw_selected_account_id)

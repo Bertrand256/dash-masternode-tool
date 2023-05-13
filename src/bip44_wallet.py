@@ -52,7 +52,6 @@ class SwitchedHDIdentityException(Exception):
 class Bip44Wallet(QObject):
     blockheight_changed = QtCore.pyqtSignal(int)
 
-    # todo: adapt do hw code refactorings
     def __init__(self, coin_name: str, hw_session: 'HwSessionInfo', db_intf: DBCache, dashd_intf: DashdInterface,
                  dash_network: str):
         QObject.__init__(self)

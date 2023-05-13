@@ -588,8 +588,8 @@ class CGovernanceVote(object):
         self.vote_outcome: int = vote_outcome_dict.get(vote)
         self.time: int = time
 
-    def serialize(self):
-        ser_str = self.outpoint.serialize_for_sig()
+    def serialize(self, dash_network: Literal['MAINNET', 'TESTNET']):
+        ser_str = self.outpoint.serialize_for_sig(dash_network)
         ser_str += '00' + 0xffffffff.to_bytes(4, byteorder='little').hex()
         ser_str += self.proposal_hash[::-1].hex()
         ser_str += self.vote_signal.to_bytes(4, byteorder='little').hex()

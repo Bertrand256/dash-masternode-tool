@@ -1,16 +1,16 @@
 import ipaddress
 import logging
-from typing import Callable
+from typing import Callable, Optional
 
 from PyQt5.QtCore import pyqtSlot, QTimer
-from PyQt5.QtWidgets import QDialog, QMessageBox
+from PyQt5.QtWidgets import QDialog
 from bitcoinrpc.authproxy import JSONRPCException
 
 import app_cache
 from app_config import MasternodeConfig, AppConfig, InputKeyType, MasternodeType
 from app_defs import FEE_DUFF_PER_BYTE
-from dash_utils import wif_privkey_to_address, generate_wif_privkey, generate_bls_privkey, validate_address, \
-    bls_privkey_to_pubkey, validate_wif_privkey, generate_ed25519_private_key, ed25519_private_key_to_pubkey, \
+from dash_utils import validate_address, \
+    generate_ed25519_private_key, ed25519_private_key_to_pubkey, \
     ed25519_public_key_to_platform_id, DASH_PLATFORM_DEFAULT_P2P_PORT, DASH_PLATFORM_DEFAULT_HTTP_PORT
 from dashd_intf import DashdInterface
 from ui import ui_upd_mn_service_dlg

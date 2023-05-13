@@ -1038,7 +1038,7 @@ class HwSessionInfo(HWSessionBase):
 
     def initiate_hw_session(self):
         """
-        Read this information from the hw device, that will cause it to ask the user for a BIP39 passphrase, if
+        Read this information from the hw device that will cause it to ask the user for a BIP39 passphrase, if
         necessary. The point is to make sure that the device is fully initiated and ready for next calls.
         """
 
@@ -1059,6 +1059,23 @@ class HwSessionInfo(HWSessionBase):
 
             if pub:
                 self.set_base_info(path_, pub)
+            else:
+                raise Exception('Couldn\'t read data from the hardware wallet.')
+
+        def get_session_info_ledger(path: str, hw_device_):
+            def call_get_public_node(_, path_):
+                ap = ledger.get_address_and_pubkey(self, path_)
+                return ap
+
+            # show a message for Ledger device while waiting for the user to choose the passphrase input method
+            ap = WndUtils.run_thread_dialog(
+                call_get_public_node, (path,),
+                title=DEFAULT_HW_BUSY_TITLE, text=DEFAULT_HW_BUSY_MESSAGE,
+                force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_device_.hw_client),
+                show_window_delay_ms=1000)
+
+            if ap:
+                self.set_base_info(path, ap['publicKey'])
             else:
                 raise Exception('Couldn\'t read data from the hardware wallet.')
 
@@ -1085,8 +1102,9 @@ class HwSessionInfo(HWSessionBase):
 
             elif hw_device.hw_type == HWType.ledger_nano:
                 path = dash_utils.get_default_bip32_base_path(self.__runtime_data.dash_network)
-                ap = ledger.get_address_and_pubkey(self, path)
-                self.set_base_info(path, ap['publicKey'])
+                # ap = ledger.get_address_and_pubkey(self, path)
+                # self.set_base_info(path, ap['publicKey'])
+                get_session_info_ledger(path, hw_device)
 
         except CancelException:
             cancel_hw_operation(hw_device.hw_client)
@@ -1482,58 +1500,61 @@ def hw_sign_message(hw_session: HwSessionInfo, hw_coin_name: str, bip32path, mes
 
 @control_hw_call
 def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool = False,
-                message_to_display: str = None):
+                message_to_display: str = None, asynchr: bool = True):
     def _get_address(ctrl):
         nonlocal hw_session, bip32_path, show_display, message_to_display
-        if ctrl:
-            ctrl.dlg_config(dlg_title=DEFAULT_HW_BUSY_TITLE, show_progress_bar=False)
-            if message_to_display:
-                ctrl.display_msg(message_to_display)
+        try:
+            if ctrl:
+                ctrl.dlg_config(dlg_title=DEFAULT_HW_BUSY_TITLE, show_progress_bar=False)
+                if message_to_display:
+                    ctrl.display_msg(message_to_display)
+                else:
+                    ctrl.display_msg('<b>Click the confirmation button on your hardware wallet to exit...</b>')
+
+            client = hw_session.hw_client
+            if client:
+                if isinstance(bip32_path, str):
+                    bip32_path.strip()
+                    if bip32_path.lower().find('m/') >= 0:
+                        # removing m/ prefix because of keepkey library
+                        bip32_path = bip32_path[2:]
+
+                if hw_session.hw_type == HWType.trezor:
+
+                    try:
+                        if isinstance(bip32_path, str):
+                            bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
+                        ret = trezorlib.btc.get_address(client, hw_session.runtime_data.hw_coin_name, bip32_path,
+                                                        show_display)
+                        return ret
+                    except (CancelException, trezorlib.exceptions.Cancelled):
+                        raise CancelException()
+
+                elif hw_session.hw_type == HWType.keepkey:
+
+                    try:
+                        if isinstance(bip32_path, str):
+                            bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
+                        return client.get_address(hw_session.runtime_data.hw_coin_name, bip32_path, show_display)
+                    except keepkeylib.client.CallException as e:
+                        if isinstance(e.args, tuple) and len(e.args) >= 2 and isinstance(e.args[1], str) and \
+                                e.args[1].find('cancel') >= 0:
+                            raise CancelException('Cancelled')
+
+                elif hw_session.hw_type == HWType.ledger_nano:
+
+                    if isinstance(bip32_path, list):
+                        # ledger requires bip32 path argument as a string
+                        bip32_path = bip32_path_n_to_string(bip32_path)
+
+                    adr_pubkey = ledger.get_address_and_pubkey(hw_session, bip32_path, show_display)
+                    return adr_pubkey.get('address')
+                else:
+                    raise Exception('Unknown hardware wallet type: ' + str(hw_session.hw_type))
             else:
-                ctrl.display_msg('<b>Click the confirmation button on your hardware wallet to exit...</b>')
-
-        client = hw_session.hw_client
-        if client:
-            if isinstance(bip32_path, str):
-                bip32_path.strip()
-                if bip32_path.lower().find('m/') >= 0:
-                    # removing m/ prefix because of keepkey library
-                    bip32_path = bip32_path[2:]
-
-            if hw_session.hw_type == HWType.trezor:
-
-                try:
-                    if isinstance(bip32_path, str):
-                        bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
-                    ret = trezorlib.btc.get_address(client, hw_session.runtime_data.hw_coin_name, bip32_path,
-                                                    show_display)
-                    return ret
-                except (CancelException, trezorlib.exceptions.Cancelled):
-                    raise CancelException()
-
-            elif hw_session.hw_type == HWType.keepkey:
-
-                try:
-                    if isinstance(bip32_path, str):
-                        bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
-                    return client.get_address(hw_session.runtime_data.hw_coin_name, bip32_path, show_display)
-                except keepkeylib.client.CallException as e:
-                    if isinstance(e.args, tuple) and len(e.args) >= 2 and isinstance(e.args[1], str) and \
-                            e.args[1].find('cancel') >= 0:
-                        raise CancelException('Cancelled')
-
-            elif hw_session.hw_type == HWType.ledger_nano:
-
-                if isinstance(bip32_path, list):
-                    # ledger requires bip32 path argument as a string
-                    bip32_path = bip32_path_n_to_string(bip32_path)
-
-                adr_pubkey = ledger.get_address_and_pubkey(hw_session, bip32_path, show_display)
-                return adr_pubkey.get('address')
-            else:
-                raise Exception('Unknown hardware wallet type: ' + str(hw_session.hw_type))
-        else:
-            raise Exception('HW client not open.')
+                raise Exception('HW client not open.')
+        finally:
+            pass
 
     if message_to_display or show_display:
         msg_delay = 0
@@ -1541,8 +1562,12 @@ def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool =
         msg_delay = 1000
         message_to_display = DEFAULT_HW_BUSY_MESSAGE
 
-    return WndUtils.run_thread_dialog(_get_address, (), True, show_window_delay_ms=msg_delay,
-                                      force_close_dlg_callback=partial(cancel_hw_thread_dialog, hw_session.hw_client))
+    if asynchr:
+        return WndUtils.run_thread_dialog(_get_address, (), True, show_window_delay_ms=msg_delay,
+                                          force_close_dlg_callback=partial(cancel_hw_thread_dialog,
+                                                                           hw_session.hw_client))
+    else:
+        return _get_address(None)
 
 
 @control_hw_call

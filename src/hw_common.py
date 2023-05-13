@@ -19,7 +19,7 @@ import hw_word_dlg
 from wnd_utils import WndUtils
 
 
-DEFAULT_HW_BUSY_MESSAGE = '<b>Complete the action on your hardware wallet device</b>'
+DEFAULT_HW_BUSY_MESSAGE = '<b>Complete the action on your hardware wallet device if necessary.</b>'
 DEFAULT_HW_BUSY_TITLE = 'Please confirm'
 
 PASSPHRASE_ON_DEVICE = object()
