@@ -170,8 +170,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         ui_wallet_dlg.Ui_WalletDlg.setupUi(self, self)
         self.setWindowTitle('Wallet')
         self.chbHideCollateralTx.setChecked(True)
-        WndUtils.set_icon(self.main_ui, self.btnSelectUtxos, 'check.png')
-        WndUtils.set_icon(self.main_ui, self.btnUncheckAll, 'uncheck.png')
         self.restore_cache_settings()
         self.splitterMain.setStretchFactor(0, 0)
         self.splitterMain.setStretchFactor(1, 1)
@@ -306,14 +304,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.act_hide_account.triggered.connect(self.on_act_hide_account_triggered)
         WndUtils.set_icon(self.main_ui, self.act_hide_account, 'eye-crossed-out@16px.png', force_color_change='#0066cc')
         self.accountsListView.addAction(self.act_hide_account)
-
-        # select UTXO-s popup menu
-        self.act_select_utxos_by_value_down = QAction('.. by Dash value (consecutively, down from the selected one)',
-                                                      self)
-        self.act_select_utxos_by_value_down.triggered.connect(self.on_select_utxos_by_value_own_triggered)
-        self.act_select_all_utxos = QAction('.. all UTXOs', self)
-        self.act_select_all_utxos.triggered.connect(self.on_select_all_utxos_triggered)
-        self.btnSelectUtxos.addActions((self.act_select_utxos_by_value_down, self.act_select_all_utxos))
 
         # for testing:
         # self.act_delete_account_data = QAction('Clear account data in cache', self)
@@ -537,12 +527,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def on_btnUncheckAll_clicked(self):
         self.utxoTableView.clearSelection()
 
-    # @pyqtSlot(bool)
-    # def on_btnSelectUtxos_clicked(self):
-    #     self.btnSelectUtxos.
-
     @pyqtSlot(bool)
-    def on_select_all_utxos_triggered(self):
+    def on_btnSelectAllUtxos_clicked(self):
         sel = self.utxoTableView.selectionModel()
         sel_modified = False
         s = QItemSelection()
@@ -557,17 +543,17 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                 sel.select(s, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
 
     @pyqtSlot(bool)
-    def on_select_utxos_by_value_own_triggered(self):
+    def on_btnSelectUtxosByValue_clicked(self):
         try:
             sel = self.utxoTableView.selectionModel()
             sel_modified = False
             s = QItemSelection()
 
             with self.utxo_table_model:
-                row_indexes = list(self.utxo_table_model.selected_rows())
-                if row_indexes:
+                cur_idx = self.utxoTableView.currentIndex()
+                if cur_idx.isValid():
+                    first_row = cur_idx.row()
                     self.utxoTableView.clearSelection()
-                    first_row = row_indexes[0]
                 else:
                     if self.utxo_table_model.rowCount() == 0:
                         if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
@@ -579,7 +565,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                         elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
                             WndUtils.warn_msg("No coins (UTXOs) in the currently selected address.")
                         return
-
                     first_row = 0
 
                 self.rtm_last_dash_by_value, ok = QInputDialog.getDouble(
@@ -589,15 +574,22 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
                 if ok:
                     total_value = 0.0
-                    for row_idx, utxo in enumerate(self.utxo_table_model.utxos[first_row:]):
-                        index = self.utxo_table_model.index(row_idx + first_row, 0)
-                        if not utxo.coinbase_locked:
-                            if not sel.isSelected(index):
-                                sel_modified = True
-                                s.select(index, index)
-                                total_value += utxo.satoshis / 1e8
+                    cur_view_row = first_row
+                    while cur_view_row < self.utxo_table_model.proxy_model.rowCount():
+                        index_view = self.utxo_table_model.proxy_model.index(cur_view_row, 0)
+                        if index_view.isValid():
+                            index_model = self.utxo_table_model.mapToSource(index_view)
+                            if index_model.isValid():
+                                row_model = index_model.row()
+                                if 0 <= row_model < len(self.utxo_table_model.utxos):
+                                    utxo = self.utxo_table_model.utxos[row_model]
+                                    if not utxo.coinbase_locked:
+                                        s.select(index_view, index_view)
+                                        sel_modified = True
+                                        total_value += utxo.satoshis / 1e8
                         if total_value >= self.rtm_last_dash_by_value:
                             break
+                        cur_view_row += 1
 
                     if sel_modified:
                         sel.select(s, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
