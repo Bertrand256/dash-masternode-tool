@@ -17,6 +17,7 @@ from bip32utils import Base58
 import base58
 from typing import Literal, cast
 from blspy import (PrivateKey, Util, AugSchemeMPL, PopSchemeMPL, G1Element, G2Element)
+from bls_py import bls as bls_legacy
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import cryptography.hazmat.primitives.serialization
 
@@ -242,6 +243,36 @@ def validate_bls_pubkey(pubkey: str) -> bool:
         pk = G1Element.from_bytes(bytes.fromhex(pubkey))
         return True
     except Exception as e:
+        return False
+
+
+def bls_privkey_to_pubkey_legacy(privkey: str) -> str:
+    """
+    :param privkey: BLS privkey as a hex string
+    :return: BLS pubkey as a hex string.
+    """
+    pk_bin = bytes.fromhex(privkey)
+    if len(pk_bin) != 32:
+        raise Exception(f'Invalid private key length: {len(pk_bin)} (should be 32)')
+    pk = bls_legacy.PrivateKey.from_bytes(pk_bin)
+    pubkey = pk.get_public_key()
+    pubkey_bin = pubkey.serialize()
+    return pubkey_bin.hex()
+
+
+def validate_bls_privkey_legacy(privkey: str) -> bool:
+    try:
+        pub = bls_privkey_to_pubkey_legacy(privkey)
+        return True if pub else False
+    except Exception:
+        return False
+
+
+def validate_bls_pubkey_legacy(pubkey: str) -> bool:
+    try:
+        bls_legacy.PublicKey.from_bytes(bytes.fromhex(pubkey))
+        return True
+    except Exception:
         return False
 
 

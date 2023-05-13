@@ -9,7 +9,7 @@ import app_cache
 from app_config import MasternodeConfig, AppConfig, InputKeyType
 from app_defs import FEE_DUFF_PER_BYTE
 from dash_utils import wif_privkey_to_address, generate_wif_privkey, generate_bls_privkey, validate_address, \
-    bls_privkey_to_pubkey, validate_wif_privkey
+    bls_privkey_to_pubkey, bls_privkey_to_pubkey_legacy, validate_wif_privkey
 from dashd_intf import DashdInterface
 from ui import ui_upd_mn_registrar_dlg
 from wnd_utils import WndUtils, ProxyStyleNoFocusRect, QDetectThemeChange, get_widget_font_color_blue, \
@@ -38,6 +38,9 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         self.dashd_intf = dashd_intf
         self.on_upd_success_callback = on_upd_success_callback
         self.operator_key_type = InputKeyType.PRIVATE
+        self.operator_key_generated_here: bool = False
+        self.legacy_operator_key: bool = False
+        self.update_registrar_rpc_command: str = ''
         self.voting_key_type = InputKeyType.PRIVATE
         self.dmn_protx_hash = self.masternode.protx_hash
         self.owner_address = ""
@@ -65,6 +68,10 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
             self.setWindowTitle("Update voting key")
         elif self.show_upd_operator:
             self.setWindowTitle("Update operator key")
+        if self.show_upd_operator:
+            self.chbLegacyOperatorKey.show()
+        else:
+            self.chbLegacyOperatorKey.hide()
         self.restore_cache_settings()
         self.update_ctrls_state()
         self.minimize_dialog_height()
@@ -180,13 +187,13 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                 color = ''
             return color
 
-        def get_label_text(prefix:str, key_type: str, tooltip_anchor: str, style: str):
+        def get_label_text(prefix: str, key_type: str, tooltip_anchor: str, style: str):
             lbl = prefix + ' ' + \
                   {'privkey': 'private key', 'pubkey': 'public key', 'address': 'Dash address'}.get(key_type, '???')
 
             change_mode = f'(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)'
             return f'<table style="float:right;{style_to_color(style)}"><tr><td><b>{lbl}</b></td><td>{change_mode}' \
-                f'</td></tr></table>'
+                   f'</td></tr></table>'
 
         self.edtPayoutAddress.setToolTip('Enter a new payout Dash address.')
 
@@ -200,7 +207,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         self.edtOperatorKey.setToolTip(placeholder_text)
 
         if self.voting_key_type == InputKeyType.PRIVATE:
-            key_type, tooltip_anchor, placeholder_text = ('privkey','address', 'Enter a new voting private key.')
+            key_type, tooltip_anchor, placeholder_text = ('privkey', 'address', 'Enter a new voting private key.')
             style = ''
         else:
             key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter a new voting Dash address.')
@@ -278,12 +285,26 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
     @pyqtSlot(bool)
     def on_btnGenerateOperatorKey_clicked(self, active):
-        self.edtOperatorKey.setText(generate_bls_privkey())
+        try:
+            self.edtOperatorKey.setText(generate_bls_privkey())
+            self.operator_key_generated_here = True
+            self.chbLegacyOperatorKey.setChecked(False)
+            self.update_manual_cmd_info()
+        except Exception as e:
+            self.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnGenerateVotingKey_clicked(self, active):
         k = generate_wif_privkey(self.app_config.dash_network, compressed=True)
         self.edtVotingKey.setText(k)
+
+    @pyqtSlot(bool)
+    def on_chbLegacyOperatorKey_toggled(self, checked):
+        try:
+            self.legacy_operator_key = checked
+            self.update_manual_cmd_info()
+        except Exception as e:
+            self.error_msg(str(e), True)
 
     def validate_data(self):
         payout_address = self.edtPayoutAddress.text()
@@ -294,6 +315,12 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                 self.dmn_new_payout_address = payout_address
         else:
             self.dmn_new_payout_address = self.dmn_prev_payout_address
+
+        self.legacy_operator_key = self.show_upd_operator and self.chbLegacyOperatorKey.isChecked()
+        if self.legacy_operator_key:
+            self.update_registrar_rpc_command = 'update_registrar_legacy'
+        else:
+            self.update_registrar_rpc_command = 'update_registrar'
 
         key = self.edtOperatorKey.text().strip()
         if key:
@@ -309,7 +336,10 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                     raise Exception('Invalid operator private key: ' + str(e))
 
                 try:
-                    self.dmn_new_operator_pubkey = bls_privkey_to_pubkey(self.dmn_new_operator_privkey)
+                    if self.legacy_operator_key:
+                        self.dmn_new_operator_pubkey = bls_privkey_to_pubkey_legacy(self.dmn_new_operator_privkey)
+                    else:
+                        self.dmn_new_operator_pubkey = bls_privkey_to_pubkey(self.dmn_new_operator_privkey)
                 except Exception as e:
                     self.edtOperatorKey.setFocus()
                     raise Exception('Invalid operator private key: ' + str(e))
@@ -357,9 +387,9 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
             green_color = get_widget_font_color_green(self.lblVotingKey)
 
             if changed:
-                cmd = f'protx update_registrar "{self.dmn_protx_hash}" "{self.dmn_new_operator_pubkey}" ' \
-                    f'"{self.dmn_new_voting_address}" "{self.dmn_new_payout_address}" ' \
-                    f'"<span style="color:{green_color}">feeSourceAddress</span>"'
+                cmd = f'protx {self.update_registrar_rpc_command} "{self.dmn_protx_hash}" "{self.dmn_new_operator_pubkey}" ' \
+                      f'"{self.dmn_new_voting_address}" "{self.dmn_new_payout_address}" ' \
+                      f'"<span style="color:{green_color}">feeSourceAddress</span>"'
                 msg = "<ol>" \
                       "<li>Start a Dash Core wallet with sufficient funds to cover a transaction fee.</li>"
                 msg += "<li>Import the owner private key into the Dash Core wallet if you haven't done this " \
@@ -373,7 +403,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                 msg = '<span style="">No data has been changed yet.</span>'
 
         except Exception as e:
-            msg = '<span style="color:red">Error: ' + str(e) +'</span>'
+            msg = '<span style="color:red">Error: ' + str(e) + '</span>'
 
         self.edtManualCommands.setHtml(msg)
 
@@ -394,8 +424,8 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         self.read_data_from_network()
         self.validate_data()
         if self.dmn_prev_payout_address == self.dmn_new_payout_address and \
-            self.dmn_prev_operator_pubkey == self.dmn_new_operator_pubkey and \
-            self.dmn_prev_voting_address == self.dmn_new_voting_address:
+                self.dmn_prev_operator_pubkey == self.dmn_new_operator_pubkey and \
+                self.dmn_prev_voting_address == self.dmn_new_voting_address:
             WndUtils.warn_msg('Nothing is changed compared to the data stored in the Dash network.')
         else:
             self.send_upd_tx()
@@ -414,7 +444,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
         try:
             funding_address = ''
-            params = ['update_registrar',
+            params = [self.update_registrar_rpc_command,
                       self.dmn_protx_hash,
                       self.dmn_new_operator_pubkey,
                       self.dmn_new_voting_address,
@@ -422,21 +452,22 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                       funding_address]
 
             try:
-                upd_reg_support = self.dashd_intf.checkfeaturesupport('protx_update_registrar',
+                upd_reg_support = self.dashd_intf.checkfeaturesupport('protx_' + self.update_registrar_rpc_command,
                                                                       self.app_config.app_version)
                 if not upd_reg_support.get('enabled'):
                     if upd_reg_support.get('message'):
                         raise Exception(upd_reg_support.get('message'))
                     else:
-                        raise Exception('The \'protx_update_registrar\' function is not supported by the RPC node '
-                                        'you are connected to.')
+                        raise Exception(f'The \'protx_{self.update_registrar_rpc_command}\' function is not '
+                                        f'supported by the RPC node you are connected to.')
                 public_proxy_node = True
 
                 active = self.app_config.feature_update_registrar_automatic.get_value()
                 if not active:
                     msg = self.app_config.feature_update_registrar_automatic.get_message()
                     if not msg:
-                        msg = 'The functionality of the automatic execution of the update_registrar command on the ' \
+                        msg = f'The functionality of the automatic execution of the ' \
+                              f'{self.update_registrar_rpc_command} command on the ' \
                               '"public" RPC nodes is inactive. Use the manual method or contact the program author ' \
                               'for details.'
                     raise Exception(msg)
@@ -467,7 +498,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
             upd_tx_hash = self.dashd_intf.rpc_call(True, False, 'protx', *params)
 
             if upd_tx_hash:
-                logging.info('update_registrar successfully executed, tx hash: ' + upd_tx_hash)
+                logging.info(f'{self.update_registrar_rpc_command} successfully executed, tx hash: ' + upd_tx_hash)
                 changed = False
                 if self.dmn_new_voting_address != self.dmn_prev_voting_address:
                     changed = self.masternode.voting_key_type != self.voting_key_type
@@ -505,10 +536,10 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                     url = url.replace('%TXID%', upd_tx_hash)
                     upd_tx_hash = f'<a href="{url}">{upd_tx_hash}</a>'
 
-                msg = 'The update_registrar transaction has been successfully sent. ' \
-                     f'Tx hash: {upd_tx_hash}. <br><br>' \
-                     f'The new values ​​will be visible on the network after the transaction is confirmed, i.e. in ' \
-                     f'about 2.5 minutes.'
+                msg = f'The {self.update_registrar_rpc_command} transaction has been successfully sent. ' \
+                      f'Tx hash: {upd_tx_hash}. <br><br>' \
+                      f'The new values ​​will be visible on the network after the transaction is confirmed, ' \
+                      f'i.e. in about 2.5 minutes.'
 
                 if changed:
                     msg += '<br><br>The app configuration has been updated accordingly.'
@@ -517,7 +548,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         except Exception as e:
             if str(e).find('protx-dup') >= 0:
                 WndUtils.error_msg('The previous protx transaction has not been confirmed yet. Wait until it is '
-                         'confirmed before sending a new transaction.')
+                                   'confirmed before sending a new transaction.')
             else:
                 logging.error('Exception occurred while sending protx update_registrar.')
                 WndUtils.error_msg(str(e))

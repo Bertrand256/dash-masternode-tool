@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>671</width>
-    <height>348</height>
+    <height>400</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -67,7 +67,7 @@
         <verstretch>0</verstretch>
        </sizepolicy>
       </property>
-      <layout class="QGridLayout" name="gridLayout" rowstretch="0,0,0,0,0">
+      <layout class="QGridLayout" name="gridLayout" rowstretch="0,0,0,0,0,0">
        <property name="sizeConstraint">
         <enum>QLayout::SetMinimumSize</enum>
        </property>
@@ -86,6 +86,23 @@
        <property name="verticalSpacing">
         <number>8</number>
        </property>
+       <item row="1" column="1">
+        <layout class="QHBoxLayout" name="layPayoutAddress">
+         <property name="spacing">
+          <number>8</number>
+         </property>
+         <item>
+          <widget class="QLineEdit" name="edtPayoutAddress">
+           <property name="placeholderText">
+            <string>&lt;unchanged&gt;</string>
+           </property>
+           <property name="clearButtonEnabled">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
        <item row="2" column="1">
         <layout class="QHBoxLayout" name="layOperatorKey">
          <property name="spacing">
@@ -105,33 +122,6 @@
           <widget class="QToolButton" name="btnGenerateOperatorKey">
            <property name="text">
             <string>Generate new</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item row="3" column="0">
-        <widget class="QLabel" name="lblVotingKey">
-         <property name="text">
-          <string>&lt;b&gt;Voting private key&lt;/b&gt;</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="1">
-        <layout class="QHBoxLayout" name="layPayoutAddress">
-         <property name="spacing">
-          <number>8</number>
-         </property>
-         <item>
-          <widget class="QLineEdit" name="edtPayoutAddress">
-           <property name="placeholderText">
-            <string>&lt;unchanged&gt;</string>
-           </property>
-           <property name="clearButtonEnabled">
-            <bool>true</bool>
            </property>
           </widget>
          </item>
@@ -163,6 +153,9 @@
          </property>
         </widget>
        </item>
+       <item row="4" column="1">
+        <layout class="QHBoxLayout" name="layLegacyMode"/>
+       </item>
        <item row="3" column="1">
         <layout class="QHBoxLayout" name="layVotingKey">
          <property name="spacing">
@@ -186,6 +179,26 @@
           </widget>
          </item>
         </layout>
+       </item>
+       <item row="3" column="0">
+        <widget class="QLabel" name="lblVotingKey">
+         <property name="text">
+          <string>&lt;b&gt;Voting private key&lt;/b&gt;</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="0">
+        <widget class="QCheckBox" name="chbLegacyOperatorKey">
+         <property name="toolTip">
+          <string>Check this for masternodes registered prior to the v19 hard fork</string>
+         </property>
+         <property name="text">
+          <string>Legacy Operator Key</string>
+         </property>
+        </widget>
        </item>
       </layout>
      </widget>

@@ -19,6 +19,7 @@ setuptools==65.3.0
 btchip-python
 ledgerwallet==0.1.4
 blspy==1.0.16
+python-bls==0.1.10
 construct==2.10.68
 protobuf==3.20.3
 QDarkStyle>=3.0.2

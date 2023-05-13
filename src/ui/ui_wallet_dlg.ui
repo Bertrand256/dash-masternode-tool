@@ -386,12 +386,22 @@
                      <number>8</number>
                     </property>
                     <item>
-                     <widget class="QToolButton" name="btnSelectUtxos">
+                     <widget class="QToolButton" name="btnSelectUtxosByValue">
                       <property name="toolTip">
-                       <string/>
+                       <string>Select UTXOs by the Dash value</string>
                       </property>
                       <property name="text">
-                       <string>Select...</string>
+                       <string>Select by Value</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QToolButton" name="btnSelectAllUtxos">
+                      <property name="toolTip">
+                       <string>Select All UTXOs</string>
+                      </property>
+                      <property name="text">
+                       <string>Select All</string>
                       </property>
                       <property name="iconSize">
                        <size>
