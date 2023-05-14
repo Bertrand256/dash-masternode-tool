@@ -1,13 +1,13 @@
 {
-  "appCurrentVersion": "0.9.32",
+  "appCurrentVersion": "0.9.33",
   "exeDownloads": {
-    "mac": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.32/DashMasternodeTool_0.9.32.mac.dmg",
-    "win64": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.32/DashMasternodeTool_0.9.32.win64.zip",
-    "linux": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.32/DashMasternodeTool_0.9.32.linux.tar.gz"
+    "mac": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.33/DashMasternodeTool_0.9.33.mac.dmg",
+    "win64": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.33/DashMasternodeTool_0.9.33.win64.zip",
+    "linux": "https://github.com/Bertrand256/dash-masternode-tool/releases/download/v0.9.33/DashMasternodeTool_0.9.33.linux.tar.gz"
   },
   "defaultDashdProtocol": {
-    "mainnet": 70223,
-    "testnet": 70223
+    "mainnet": 70227,
+    "testnet": 70227
   },
   "sporks": [
     {
