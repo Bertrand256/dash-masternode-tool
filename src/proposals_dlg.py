@@ -43,7 +43,7 @@ from wnd_utils import WndUtils, CloseDialogException
 
 # Definition of how long the cached proposals information is valid. If it's valid, dialog
 # will display data from cache, instead of requesting them from a dash daemon, which is
-# more time consuming.
+# more time-consuming.
 PROPOSALS_CACHE_VALID_SECONDS = 3600
 
 # Number of seconds after which voting will be reloaded for active proposals:
@@ -99,14 +99,16 @@ class ProposalColumn(TableModelColumn):
 
 
 class Vote(AttrsProtected):
-    def __init__(self, voting_masternode, voting_time, voting_result, voting_masternode_ident):
+    def __init__(self, voting_masternode_label: str, voting_time: datetime, voting_result: str, signal: str,
+                 weight: int,
+                 user_masternode_label: str):
         super().__init__()
-        self.voting_masternode = voting_masternode
-
-        # use voting_masternode_ident only for non existing masternodes' vote:
-        self.voting_masternode_ident = voting_masternode_ident if voting_masternode is None else None
-        self.voting_time = voting_time
-        self.voting_result = voting_result
+        self.voting_masternode_label = voting_masternode_label
+        self.user_masternode_label: str = user_masternode_label if voting_masternode_label is None else None
+        self.voting_time: datetime = voting_time
+        self.voting_result: str = voting_result
+        self.signal: str = signal
+        self.weight: int = weight
         self.set_attr_protection()
 
 
@@ -204,7 +206,7 @@ class Proposal(AttrsProtected):
         return self.votes_by_masternode_ident.get(mn_ident)
 
     def apply_vote(self, mn_ident, vote_timestamp, vote_result):
-        """ Apply vote result if a masternode is in the column list or is a user's masternode. """
+        """ Apply a vote result if a masternode is in the column list or is a user's masternode. """
         modified = False
         if mn_ident in self.votes_by_masternode_ident:
             if vote_timestamp > self.votes_by_masternode_ident[mn_ident][0]:
@@ -226,7 +228,7 @@ class Proposal(AttrsProtected):
                 self.set_value(mn_ident, None)
 
     def apply_values(self, masternodes, last_superblock_time, next_superblock_datetime):
-        """ Calculate auto-calculated columns (eg. voting_in_progress and voting_status values). """
+        """ Calculate auto-calculated columns (e.g. voting_in_progress and voting_status values). """
         try:
             gi = self.get_governance_info()
             cycle_blocks = gi.get('superblockcycle', 16616)
@@ -258,7 +260,7 @@ class Proposal(AttrsProtected):
 
             payment_cycles = int((end_sb - start_sb) / cycle_blocks) + 1
 
-            # calculate number of payment-months that passed already for the proposal
+            # calculate the number of payment-months that passed already for the proposal
             if start_sb > last_superblock:
                 cur_cycle = 0
             else:
@@ -271,7 +273,7 @@ class Proposal(AttrsProtected):
                 self.set_value('payment_amount_total', amt * payment_cycles)
 
             if not self.get_value('title'):
-                # if title value is not set (it's an external attribute, from dashcentral) then copy value from the
+                # if the title value is not set (it's an external attribute, from dashcentral) then copy value from the
                 # name column
                 self.set_value('title', self.get_value('name'))
 
@@ -326,7 +328,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         self.db_intf = self.app_config.db_intf
         self.vote_columns_by_mn_ident = {}
         self.proposals = []
-        self.proposals_by_hash = {}  # dict of Proposal object indexed by proposal hash
+        self.proposals_by_hash = {}  # dict of a Proposal object indexed by proposal hash
         self.proposals_by_db_id = {}
         self.masternodes: List[Masternode] = []
         self.masternodes_by_ident = {}
@@ -376,7 +378,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         self.next_superblock = None
         self.last_superblock_time = None
         self.next_superblock_time = None
-        self.voting_deadline_passed = True  # True when current block number is >= next superblock - 1662
+        self.voting_deadline_passed = True  # True when the current block number is >= next superblock - 1662
         self.next_budget_amount = None
         self.next_budget_requested = None
         self.next_budget_approved = None
@@ -451,7 +453,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
             self.layoutVotesChart.addWidget(self.vote_chart_view)
             self.vote_chart_view.setRenderHint(QPainter.Antialiasing)
 
-            # disable voting tab until we make sure the user has voting masternodes configured
+            # disable the voting tab until we make sure the user has voting masternodes configured
             self.tabsDetails.setTabEnabled(1, False)
             self.btnProposalsRefresh.setEnabled(False)
             self.btnVotesRefresh.setEnabled(False)
@@ -474,7 +476,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
             # run thread reloading proposal details when the selected proposal changes
             self.run_thread(self, self.refresh_preview_panel_thread, ())
-        except:
+        except Exception:
             log.exception('Exception occurred')
             raise
 
@@ -971,7 +973,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                                  (hash, row[0]))
 
                                 if not prop.db_id:
-                                    log.info('Adding a new proposal to DB. Hash: ' + prop.get_value('hash'))
+                                    log.debug('Adding a new proposal to DB. Hash: ' + prop.get_value('hash'))
                                     cur.execute(
                                         "INSERT INTO PROPOSALS (name, payment_start, payment_end, payment_amount,"
                                         " yes_count, absolute_yes_count, no_count, abstain_count, creation_time,"
@@ -1130,11 +1132,11 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
             self.next_superblock_time = 0
             if 0 < self.cur_block_height <= self.next_superblock:
                 self.next_superblock_time = self.dashd_intf.get_block_timestamp(self.cur_block_height) + (
-                            self.next_superblock - self.cur_block_height) * 2.5 * 60
+                        self.next_superblock - self.cur_block_height) * 2.5 * 60
 
             if self.next_superblock_time == 0:
                 self.next_superblock_time = self.last_superblock_time + (
-                            self.next_superblock - self.last_superblock) * 2.5 * 60
+                        self.next_superblock - self.last_superblock) * 2.5 * 60
 
             deadline_block = self.next_superblock - sb_cycle
             self.voting_deadline_passed = deadline_block <= self.cur_block_height < self.next_superblock
@@ -1457,6 +1459,9 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         """Method reads additional proposal attributes from an external source such as DashCentral.org/DashNexus.org
         :return True if proposals' external attributes has been updated.
         """
+        if self.app_config.dash_network == 'TESTNET':
+            return
+
         self.display_message("Reading proposal external attributes, please wait...")
         begin_time = time.time()
         network_duration = 0
@@ -1682,16 +1687,15 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                             raise CloseDialogException
 
                                         v = votes[v_key]
-                                        match = re.search("CTxIn\(COutPoint\(([A-Fa-f0-9]+)\s*,\s*(\d+).+:(\d+):(\w+)",
-                                                          v)  # v12.2
-                                        if not match or len(match.groups()) != 4:
-                                            match = re.search("([A-Fa-f0-9]+)-(\d+):(\d+):(\w+)", v)  # v12.3
+                                        match = re.search(r"([A-Fa-f0-9]+)-(\d+):(\d+):(\w+):(\w+):(\d+)", v)
 
-                                        if match and len(match.groups()) == 4:
+                                        if match and len(match.groups()) == 6:
                                             mn_ident = match.group(1) + '-' + match.group(2)
                                             voting_timestamp = int(match.group(3))
                                             voting_time = datetime.datetime.fromtimestamp(voting_timestamp)
                                             voting_result = match.group(4)
+                                            vote_signal = match.group(5)
+                                            vote_weight = int(match.group(6))
                                             if voting_result:
                                                 voting_result = voting_result.upper()
                                             mn = self.masternodes_by_ident.get(mn_ident)
@@ -1699,28 +1703,36 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                             if voting_timestamp > cur_vote_max_date:
                                                 cur_vote_max_date = voting_timestamp
 
-                                            # check if vote exists in the database
+                                            # check if a vote exists in the database
                                             if cur:
                                                 tm_begin = time.time()
-                                                cur.execute("SELECT id, proposal_id from VOTING_RESULTS "
-                                                            "WHERE hash=?", (v_key,))
+                                                cur.execute("SELECT id, proposal_id, signal, weight "
+                                                            "from VOTING_RESULTS WHERE hash=?", (v_key,))
 
                                                 found = False
                                                 for row in cur.fetchall():
                                                     if row[1] == prop.db_id:
                                                         found = True
+                                                        if row[2] != vote_signal or row[3] != vote_weight:
+                                                            # "signal" and "weight" are new columns introduced in
+                                                            # DMT v0.9.34; we need to update the data read by the
+                                                            # older version
+                                                            cur.execute("UPDATE VOTING_RESULTS set signal=?, weight=? "
+                                                                        "WHERE hash=?",
+                                                                        (vote_signal, vote_weight, v_key,))
+                                                            db_modified = True
                                                         break
 
                                                 db_oper_duration += (time.time() - tm_begin)
                                                 db_oper_count += 1
                                                 if not found:
-                                                    votes_added.append(
-                                                        (prop, mn, voting_time, voting_result, mn_ident, v_key))
+                                                    votes_added.append((prop, mn, voting_time, voting_result,
+                                                                        mn_ident, vote_signal, vote_weight, v_key))
                                             else:
-                                                # no chance to check whether record exists in the DB, so assume it's not
-                                                # to have it displayed on the grid
-                                                votes_added.append(
-                                                    (prop, mn, voting_time, voting_result, mn_ident, v_key))
+                                                # no chance to check whether the record exists in the DB, so
+                                                # assume it's not to have it displayed on the grid
+                                                votes_added.append((prop, mn, voting_time, voting_result,
+                                                                    mn_ident, vote_signal, vote_weight, v_key))
 
                                         else:
                                             log.warning('Proposal %s, parsing unsuccessful for voting: %s' %
@@ -1730,7 +1742,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                         log.error('Error while parsing vote data for vote hash: ' + v_key)
                                         raise
 
-                                log.info('DB calls duration (stage 1): %s, SQL count: %d' % (str(db_oper_duration),
+                                log.debug('DB calls duration (stage 1): %s, SQL count: %d' % (str(db_oper_duration),
                                                                                              db_oper_count))
 
                                 # remove all votes from the db cache that no longer exist on the network
@@ -1768,11 +1780,12 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                         log.info('Network calls duration: %s for %d proposals' %
                                  (str(network_duration), (len(proposals))))
 
-                        log.info('DB calls duration (stage 2): %s, SQL count: %d' % (str(db_oper_duration),
+                        log.debug('DB calls duration (stage 2): %s, SQL count: %d' % (str(db_oper_duration),
                                                                                      db_oper_count))
 
                         # save voting results to the database cache
-                        for prop, mn, voting_time, voting_result, mn_ident, hash in votes_added:
+                        for prop, mn, voting_time, voting_result, mn_ident, vote_signal, vote_weight, hash in \
+                                votes_added:
                             if self.finishing:
                                 raise CloseDialogException
 
@@ -1780,22 +1793,27 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                 tm_begin = time.time()
                                 try:
                                     cur.execute("INSERT INTO VOTING_RESULTS(proposal_id, masternode_ident,"
-                                                " voting_time, voting_result, hash) VALUES(?,?,?,?,?)",
+                                                " voting_time, voting_result, signal, weight, hash) "
+                                                " VALUES(?,?,?,?,?,?,?)",
                                                 (prop.db_id,
                                                  mn_ident,
                                                  voting_time,
                                                  voting_result,
+                                                 vote_signal,
+                                                 vote_weight,
                                                  hash))
                                 except sqlite3.IntegrityError as e:
                                     if e.args and e.args[0].find('UNIQUE constraint failed') >= 0:
                                         # this vote is assigned to the same proposal but inactive one; correct this
                                         cur.execute("UPDATE VOTING_RESULTS"
                                                     " set proposal_id=?, masternode_ident=?,"
-                                                    " voting_time=?, voting_result=? WHERE hash=?",
+                                                    " voting_time=?, voting_result=?, signal=?, weight=?, WHERE hash=?",
                                                     (prop.db_id,
                                                      mn_ident,
                                                      voting_time,
                                                      voting_result,
+                                                     vote_signal,
+                                                     vote_weight,
                                                      hash))
                                 db_modified = True
                                 db_oper_duration += (time.time() - tm_begin)
@@ -1827,7 +1845,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                 db_modified = True
                                 db_oper_duration += (time.time() - tm_begin)
 
-                            log.info('DB calls duration (stage 3): %s' % str(db_oper_duration))
+                            log.debug('DB calls duration (stage 3): %s' % str(db_oper_duration))
 
                             if cur_vote_max_date > last_vote_max_date:
                                 # save max vot date to the DB
@@ -2121,7 +2139,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     voting_activity_str = 'Voting inactive'
 
                 details = '<html>' + html_head + \
-                    f"""<body>
+                          f"""<body>
                     <table>
                         <tbody>
                             {vote_link}
@@ -2202,7 +2220,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                             round(total_amount_requested * 100 / self.next_budget_amount, 2)) + ' %)'
 
                     details = '<html>' + html_head + \
-                        f"""<body>
+                              f"""<body>
                         <table>
                             <tbody>
                                 {vote_link}
@@ -2292,7 +2310,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                 self.error_msg(str(e), True)
 
     def draw_chart(self):
-        """Draws a voting chart if proposal has changed.
+        """Draws a voting chart if a proposal has changed.
         """
         try:
             new_chart_type = self.current_chart_type
@@ -2307,7 +2325,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
             if self.votesModel:
                 if new_chart_type == 1:
-                    # draw chart - incremental votes count by date
+                    # draw chart-incremental votes count by date
 
                     # key: vote day, type: timestamp, value, type: 3-element tuple of mn voting
                     votes_aggr = {}
@@ -2318,11 +2336,16 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     max_y = 1
 
                     for idx in range(len(self.votesModel.votes) - 1, -1, -1):
-                        v = self.votesModel.votes[idx]
-                        ts = int(datetime.datetime(v[0].year, v[0].month, v[0].day, 0, 0, 0).timestamp()) * 1000
+                        vote: Vote = self.votesModel.votes[idx]
+
+                        if vote.signal != 'funding':
+                            continue
+
+                        ts = int(datetime.datetime(vote.voting_time.year, vote.voting_time.month,
+                                                   vote.voting_time.day, 0, 0, 0).timestamp()) * 1000
                         vd = votes_aggr.get(ts)
-                        mn = v[2]
-                        vote = v[1].upper()
+                        mn = vote.voting_masternode_label
+                        vote_result = vote.voting_result.upper()
                         if not vd:
                             # there is no entry for this date yet - add and copy vote counts from the previous
                             # one if any
@@ -2335,15 +2358,15 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                             dates.append(ts)
 
                         last_mn_vote = mn_last_votes.get(mn)
-                        if last_mn_vote != vote:
+                        if last_mn_vote != vote_result:
                             if last_mn_vote is not None:
                                 last_mn_vote = last_mn_vote.upper()
                                 # subtract votes count for last mn vote type (yes, no, abstain), because
-                                # changing vote by the mn
-                                vd[vote_mapper[last_mn_vote]] -= 1
-                            vd[vote_mapper[vote]] += 1
-                            mn_last_votes[mn] = vote  # save the last mn vote
-                            max_y = max(max_y, vd[vote_mapper[vote]])
+                                # changing a vote by the mn
+                                vd[vote_mapper[last_mn_vote]] -= vote.weight
+                            vd[vote_mapper[vote_result]] += vote.weight
+                            mn_last_votes[mn] = vote_result  # save the last mn vote
+                            max_y = max(max_y, vd[vote_mapper[vote_result]])
 
                     ser_abs_yes = QLineSeries()
                     ser_abs_yes.setName('Absolute Yes')
@@ -2511,25 +2534,26 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     max_y = 0
 
                     for idx in range(len(self.votesModel.votes) - 1, -1, -1):
-                        v = self.votesModel.votes[idx]
-                        ts = int(datetime.datetime(v[0].year, v[0].month, v[0].day, 0, 0, 0).timestamp()) * 1000
-                        mn = v[2]
-                        vote = v[1]
+                        vote: Vote = self.votesModel.votes[idx]
+                        ts = int(datetime.datetime(vote.voting_time.year, vote.voting_time.month,
+                                                   vote.voting_time.day, 0, 0, 0).timestamp()) * 1000
+                        mn = vote.voting_masternode_label
+                        vote_result = vote.voting_result
 
                         last_mn_vote = mn_last_votes.get(mn)
-                        if last_mn_vote and last_mn_vote != vote:
+                        if last_mn_vote and last_mn_vote != vote_result:
                             vd = votes_change_by_date.get(ts)
                             if not vd:
                                 # there is no entry for this date yet
                                 vd = [0] * 6
                                 votes_change_by_date[ts] = vd
                                 dates.append(ts)
-                            change_type = last_mn_vote.capitalize() + '->' + vote.capitalize()
+                            change_type = last_mn_vote.capitalize() + '->' + vote_result.capitalize()
                             change_type_idx = vote_change_mapper[change_type]
                             vd[change_type_idx] += 1
                             change_existence[change_type_idx] = True
                             max_y = max(max_y, vd[change_type_idx])
-                        mn_last_votes[mn] = vote  # save the last mn vote
+                        mn_last_votes[mn] = vote_result  # save the last mn vote
 
                     ser = QBarSeries()
                     ser.setLabelsVisible(True)
@@ -2918,11 +2942,13 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
             if file_name:
                 try:
                     with codecs.open(file_name, 'w', 'utf-8') as f_ptr:
-                        elems = ['Vote date/time', 'Vote', 'Masternode', 'User\'s masternode']
+                        elems = ['Vote date/time', 'Vote', 'Masternode', 'Signal', 'Weight', 'User\'s masternode']
                         self.write_csv_row(f_ptr, elems)
 
                         for v in self.votesModel.votes:
-                            self.write_csv_row(f_ptr, v)
+                            row = [v.voting_time, v.voting_result, v.voting_masternode_label, v.signal, v.weight,
+                                   v.user_masternode_label]
+                            self.write_csv_row(f_ptr, row)
 
                     self.info_msg('Votes of the proposal "%s" successfully saved.' %
                                   self.current_proposal.get_value('name'))
@@ -3248,10 +3274,10 @@ class VotesModel(QAbstractTableModel):
         self.only_my_votes = False
         self.proposal = None
         self.votes = []  # list of tuples: voting time (datetime), vote, masternode_label, users_masternode_name
-        self.columns = ['Vote timestamp', 'Vote', 'Masternode', "User's Masternode"]
+        self.columns = ['Vote time', 'Vote', 'Masternode', "Signal", "Weight", "User's MN"]
 
     def columnCount(self, parent=None, *args, **kwargs):
-        return 4
+        return 5
 
     def rowCount(self, parent=None, *args, **kwargs):
         return len(self.votes)
@@ -3269,39 +3295,49 @@ class VotesModel(QAbstractTableModel):
         return ret
 
     def data(self, index, role=None):
-        if index.isValid():
-            col_idx = index.column()
-            row_idx = index.row()
-            if row_idx < len(self.votes) and col_idx < len(self.columns):
-                vote = self.votes[row_idx]
-                if vote:
-                    if role == Qt.DisplayRole:
-                        if col_idx == 0:  # vote timestamp
-                            value = vote[0]
-                            if value is not None:
-                                return app_utils.to_string(value)
-                            else:
-                                return ''
-                        elif col_idx == 1:  # YES/NO/ABSTAIN
-                            return vote[1]
-                        elif col_idx == 2:  # voting masternode label
-                            return vote[2]
-                        elif col_idx == 3:  # voting masternode config-name if exists in the user's configuration
-                            return vote[3]
-                    elif role == Qt.ForegroundRole:
-                        if col_idx == 1:
-                            if vote[1] == 'YES':
-                                return QCOLOR_YES
-                            elif vote[1] == 'NO':
-                                return QCOLOR_NO
-                            elif vote[1] == 'ABSTAIN':
-                                return QCOLOR_ABSTAIN
-                    elif role == Qt.FontRole:
-                        if col_idx == 1:
-                            font = QtGui.QFont()
-                            font.setBold(True)
-                            return font
+        try:
+            if index.isValid():
+                col_idx = index.column()
+                row_idx = index.row()
+                if row_idx < len(self.votes) and col_idx < len(self.columns):
+                    vote = self.votes[row_idx]
+                    if vote:
+                        if role == Qt.DisplayRole:
+                            if col_idx == 0:  # vote timestamp
+                                if vote.voting_time is not None:
+                                    return app_utils.to_string(vote.voting_time)
+                                else:
+                                    return ''
+                            elif col_idx == 1:  # YES/NO/ABSTAIN
+                                return vote.voting_result
+                            elif col_idx == 2:  # voting masternode label
+                                return vote.voting_masternode_label
+                            elif col_idx == 3:
+                                return vote.signal
+                            elif col_idx == 4:
+                                return vote.weight
+                            elif col_idx == 5:
+                                # voting masternode config-name if exists in the user's configuration
+                                return vote.user_masternode_label
+                        elif role == Qt.ForegroundRole:
+                            if col_idx == 1:
+                                if vote.voting_result == 'YES':
+                                    return QCOLOR_YES
+                                elif vote.voting_result == 'NO':
+                                    return QCOLOR_NO
+                                elif vote.voting_result == 'ABSTAIN':
+                                    return QCOLOR_ABSTAIN
+                        elif role == Qt.BackgroundRole:
+                            if vote.signal != 'funding':
+                                return QColor('lightgray')
 
+                        elif role == Qt.FontRole:
+                            if col_idx == 1:
+                                font = QtGui.QFont()
+                                font.setBold(True)
+                                return font
+        except Exception as e:
+            log.exception(str(e))
         return QVariant()
 
     def read_votes(self):
@@ -3311,26 +3347,25 @@ class VotesModel(QAbstractTableModel):
             cur = self.db_intf.get_cursor()
             if self.proposal:
                 log.debug('Get votes fot proposal id: ' + str(self.proposal.db_id))
-                cur.execute("SELECT voting_time, voting_result, masternode_ident, m.ip "
+                cur.execute("SELECT voting_time, voting_result, masternode_ident, m.ip, signal, weight "
                             "FROM VOTING_RESULTS v "
                             "LEFT OUTER JOIN masternodes m on m.ident = v.masternode_ident "
                             "WHERE proposal_id=? order by voting_time desc", (self.proposal.db_id,))
 
-                for row in cur.fetchall():
+                for vote_time, vote_result, mn_ident, mn_ip, vote_signal, vote_weight in cur.fetchall():
                     if self.proposals_dlg.finishing:
                         raise CloseDialogException
                     users_mn_name = ''
-                    mn_label = row[3]
-                    if not mn_label:
-                        mn_label = row[2]
+                    mn_label = mn_ip if mn_ip else mn_ident
 
                     # check if this masternode is in the user's configuration
-                    users_mn = self.users_masternodes_by_ident.get(row[2])
+                    users_mn = self.users_masternodes_by_ident.get(mn_ident)
                     if users_mn:
                         users_mn_name = users_mn.masternode_config.name
 
-                    self.votes.append((datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S'),
-                                       row[1], mn_label, users_mn_name))
+                    vote_ts = datetime.datetime.strptime(vote_time, '%Y-%m-%d %H:%M:%S')
+                    v = Vote(mn_label, vote_ts, vote_result, vote_signal, vote_weight, users_mn_name)
+                    self.votes.append(v)
                 log.debug('Reading votes time from DB: %s' % str(time.time() - tm_begin))
 
         except CloseDialogException:

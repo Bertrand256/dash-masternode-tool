@@ -236,7 +236,7 @@
      </widget>
      <widget class="QTabWidget" name="tabsDetails">
       <property name="currentIndex">
-       <number>0</number>
+       <number>2</number>
       </property>
       <widget class="QWidget" name="tabDetails">
        <property name="styleSheet">
@@ -309,8 +309,8 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>409</width>
-             <height>66</height>
+             <width>908</width>
+             <height>362</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -493,7 +493,11 @@
                </widget>
               </item>
               <item>
-               <widget class="QLineEdit" name="edtVotesViewFilter"/>
+               <widget class="QLineEdit" name="edtVotesViewFilter">
+                <property name="clearButtonEnabled">
+                 <bool>true</bool>
+                </property>
+               </widget>
               </item>
               <item>
                <widget class="QPushButton" name="btnApplyVotesViewFilter">

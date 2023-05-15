@@ -156,7 +156,7 @@ class DBCache(object):
                         " dmt_create_time TEXT, dmt_deactivation_time TEXT, dmt_voting_last_read_time INTEGER,"
                         " ext_attributes_loaded INTEGER, owner TEXT, title TEXT, ext_attributes_load_time INTEGER)")
 
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_PROPOSALS_HASH ON PROPOSALS(hash)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_proposals_hash ON proposals(hash)")
 
             # structure for protx info
             cur.execute("CREATE TABLE IF NOT EXISTS protx(id INTEGER PRIMARY KEY, protx_hash TEXT, "
@@ -165,7 +165,7 @@ class DBCache(object):
                         "operator_payout_address TEXT)")
 
             # upgrade schema do v 0.9.11:
-            cur.execute("PRAGMA table_info(PROPOSALS)")
+            cur.execute("PRAGMA table_info(proposals)")
             columns = cur.fetchall()
             prop_owner_exists = False
             prop_title_exists = False
@@ -187,34 +187,29 @@ class DBCache(object):
             if not ext_attributes_loaded_exists:
                 # column for saving information whether additional attributes has been read from external sources
                 # like DashCentral.org (1: yes, 0: no)
-                cur.execute("ALTER TABLE PROPOSALS ADD COLUMN ext_attributes_loaded INTEGER")
+                cur.execute("ALTER TABLE proposals ADD COLUMN ext_attributes_loaded INTEGER")
             if not prop_owner_exists:
                 # proposal's owner from an external source like DashCentral.org
-                cur.execute("ALTER TABLE PROPOSALS ADD COLUMN owner TEXT")
+                cur.execute("ALTER TABLE proposals ADD COLUMN owner TEXT")
             if not prop_title_exists:
                 # proposal's title from an external source like DashCentral.org
-                cur.execute("ALTER TABLE PROPOSALS ADD COLUMN title TEXT")
+                cur.execute("ALTER TABLE proposals ADD COLUMN title TEXT")
             if not ext_attributes_load_time_exists:
                 # proposal's title from an external source like DashCentral.org
-                cur.execute("ALTER TABLE PROPOSALS ADD COLUMN ext_attributes_load_time INTEGER")
+                cur.execute("ALTER TABLE proposals ADD COLUMN ext_attributes_load_time INTEGER")
 
-            cur.execute("CREATE TABLE IF NOT EXISTS VOTING_RESULTS(id INTEGER PRIMARY KEY, proposal_id INTEGER,"
-                        " masternode_ident TEXT, voting_time TEXT, voting_result TEXT,"
-                        "hash TEXT)")
+            cur.execute("CREATE TABLE IF NOT EXISTS voting_results(id INTEGER PRIMARY KEY, proposal_id INTEGER,"
+                        " masternode_ident TEXT, voting_time TEXT, voting_result TEXT, signal TEXT, weight INTEGER,"
+                        " hash TEXT)")
 
-            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_HASH ON VOTING_RESULTS(hash)")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_voting_results_hash ON voting_results(hash)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_voting_results_1 ON voting_results(proposal_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_voting_results_2 ON voting_results(masternode_ident)")
 
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_1 ON VOTING_RESULTS(proposal_id)")
-
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_2 ON VOTING_RESULTS(masternode_ident)")
-
-            # Create table for storing live data for example last read time of proposals
+            # Create table for storing live data, for example, last read time of proposals
             cur.execute("CREATE TABLE IF NOT EXISTS LIVE_CONFIG(symbol text PRIMARY KEY, value TEXT)")
-
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_LIVE_CONFIG_SYMBOL ON LIVE_CONFIG(symbol)")
-
             cur.execute("CREATE TABLE IF NOT EXISTS hd_tree(id INTEGER PRIMARY KEY, ident TEXT, label TEXT)")
-
             cur.execute("CREATE INDEX IF NOT EXISTS idx_hd_tree_1 ON hd_tree(ident)")
 
             if not self.table_columns_exist('address', ['parent_id', 'xpub_hash', 'balance', 'address_index',
@@ -310,6 +305,10 @@ class DBCache(object):
                 cur.execute("ALTER TABLE masternodes ADD COLUMN operator_payout_address TEXT")
             if 'pose_ban_timestamp' not in columns:
                 cur.execute("ALTER TABLE masternodes ADD COLUMN pose_ban_timestamp INTEGER")
+            if not self.table_columns_exist('voting_results', ['signal']):
+                cur.execute("ALTER TABLE voting_results ADD COLUMN signal TEXT")
+            if not self.table_columns_exist('voting_results', ['weight']):
+                cur.execute("ALTER TABLE voting_results ADD COLUMN weight INTEGER")
         except Exception:
             log.exception('Exception while initializing database.')
             raise

@@ -16,7 +16,7 @@ from app_config import MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_
 from app_defs import DispMessage, AppTextMessageType
 from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException
 from common import CancelException
-from dashd_intf import DashdInterface
+from dashd_intf import DashdInterface, Masternode
 from find_coll_tx_dlg import WalletUtxosListDlg
 from thread_fun_dlg import CtrlObject
 from ui import ui_masternode_details_wdg
@@ -37,7 +37,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.app_config = app_config
         self.dashd_intf = dashd_intf
         self.hw_session = hw_session
-        self.masternode = MasternodeConfig()  # temporary object to avoid changing attributes of the global
+        self.masternode: MasternodeConfig = MasternodeConfig()  # temporary object to avoid changing attributes of the global
         # mn object, since user has the ability to cancel editing
         self.updating_ui = False
         self.edit_mode = False
@@ -856,84 +856,82 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
     @pyqtSlot(bool)
     def on_btnGetMNDataByIP_clicked(self, _):
-        if self.masternode and not self.updating_ui:
-            if not (self.masternode.ip and self.masternode.tcp_port):
-                WndUtils.error_msg('Enter the masternode IP address and TCP port number.')
-                return
+        try:
+            if self.masternode and not self.updating_ui:
+                if not (self.masternode.ip and self.masternode.tcp_port):
+                    WndUtils.error_msg('Enter the masternode IP address and TCP port number.')
+                    return
 
-            cache_max_age = 500
-            self.dashd_intf.get_masternodelist('json', data_max_age=cache_max_age)
-            mn = self.masternode
-            updated_fields = []
+                cache_max_age = 500
+                self.dashd_intf.get_masternodelist('json', data_max_age=cache_max_age)
+                mn_cfg = self.masternode
+                updated_fields = []
 
-            ip_port = mn.ip + ':' + str(mn.tcp_port)
-            mn_info = self.dashd_intf.masternodes_by_ip_port.get(ip_port)
-            modified = False
-            keys_modified = []
-            if mn_info:
-                if mn_info.protx:
-                    protx = mn_info.protx
-                    if mn.collateral_address != protx.collateral_address:
+                ip_port = mn_cfg.ip + ':' + str(mn_cfg.tcp_port)
+                mn_info: Masternode = self.dashd_intf.masternodes_by_ip_port.get(ip_port)
+                modified = False
+                keys_modified = []
+                if mn_info:
+                    if mn_cfg.collateral_address != mn_info.collateral_address:
                         updated_fields.append('collateral address')
-                        # self.edtCollateralAddress.setText(protx.collateral_address)
-                        mn.collateral_address = protx.collateral_address
+                        mn_cfg.collateral_address = mn_info.collateral_address
                         modified = True
 
-                    if mn.protx_hash != protx.protx_hash:
+                    if mn_cfg.protx_hash != mn_info.protx_hash:
                         updated_fields.append('protx hash')
-                        # self.edtDMNTxHash.setText(protx.protx_hash)
-                        self.masternode.protx_hash = protx.protx_hash
+                        self.masternode.protx_hash = mn_info.protx_hash
                         modified = True
 
-                    if mn.collateral_tx != protx.collateral_hash or str(mn.collateral_tx_index) != \
-                            str(protx.collateral_index):
+                    if mn_cfg.collateral_tx != mn_info.collateral_hash or str(mn_cfg.collateral_tx_index) != \
+                            str(mn_info.collateral_index):
                         updated_fields.append('collateral hash/index')
-                        # self.edtCollateralTxHash.setVisible(protx.collateral_hash)
-                        mn.collateral_tx = protx.collateral_hash
-                        # self.edtCollateralTxIndex.setText(str(protx.collateral_index))
-                        mn.collateral_tx_index = str(protx.collateral_index)
+                        mn_cfg.collateral_tx = mn_info.collateral_hash
+                        mn_cfg.collateral_tx_index = str(mn_info.collateral_index)
                         modified = True
 
-                    if mn.dmn_user_roles & DMN_ROLE_OWNER > 0 and \
-                            ((not mn.owner_private_key and mn.owner_key_type == InputKeyType.PRIVATE) or
-                             (not mn.owner_address and mn.owner_key_type == InputKeyType.PUBLIC)):
-                        mn.owner_key_type = InputKeyType.PUBLIC
-                        mn.owner_address = protx.owner_address
+                    if mn_cfg.dmn_user_roles & DMN_ROLE_OWNER > 0 and \
+                            ((not mn_cfg.owner_private_key and mn_cfg.owner_key_type == InputKeyType.PRIVATE) or
+                             (not mn_cfg.owner_address and mn_cfg.owner_key_type == InputKeyType.PUBLIC)):
+                        mn_cfg.owner_key_type = InputKeyType.PUBLIC
+                        mn_cfg.owner_address = mn_info.owner_address
                         modified = True
                         keys_modified.append('owner')
 
-                    if mn.dmn_user_roles & DMN_ROLE_OPERATOR > 0 and \
-                            ((not mn.operator_private_key and mn.operator_key_type == InputKeyType.PRIVATE) or
-                             (not mn.operator_public_key and mn.operator_key_type == InputKeyType.PUBLIC)):
-                        mn.operator_key_type = InputKeyType.PUBLIC
-                        mn.operator_public_key = protx.pubkey_operator
+                    if mn_cfg.dmn_user_roles & DMN_ROLE_OPERATOR > 0 and \
+                            ((not mn_cfg.operator_private_key and mn_cfg.operator_key_type == InputKeyType.PRIVATE) or
+                             (not mn_cfg.operator_public_key and mn_cfg.operator_key_type == InputKeyType.PUBLIC)):
+                        mn_cfg.operator_key_type = InputKeyType.PUBLIC
+                        mn_cfg.operator_public_key = mn_info.pubkey_operator
                         modified = True
                         keys_modified.append('operator')
 
-                    if mn.dmn_user_roles & DMN_ROLE_VOTING > 0 and \
-                            ((not mn.voting_private_key and mn.voting_key_type == InputKeyType.PRIVATE) or
-                             (not mn.voting_address and mn.voting_key_type == InputKeyType.PUBLIC)):
-                        mn.voting_key_type = InputKeyType.PUBLIC
-                        mn.voting_address = protx.voting_address
+                    if mn_cfg.dmn_user_roles & DMN_ROLE_VOTING > 0 and \
+                            ((not mn_cfg.voting_private_key and mn_cfg.voting_key_type == InputKeyType.PRIVATE) or
+                             (not mn_cfg.voting_address and mn_cfg.voting_key_type == InputKeyType.PUBLIC)):
+                        mn_cfg.voting_key_type = InputKeyType.PUBLIC
+                        mn_cfg.voting_address = mn_info.voting_address
                         modified = True
                         keys_modified.append('voting')
 
-                if modified:
-                    self.masternode_data_to_ui()
-                    self.on_mn_data_modified()
-                    self.app_text_message_sent.emit(
-                        DispMessage.OTHER_1, 'The following mn data has been set: ' + ', '.join(updated_fields),
-                        AppTextMessageType.INFO)
-
-                    if keys_modified:
+                    if modified:
+                        self.masternode_data_to_ui()
+                        self.on_mn_data_modified()
                         self.app_text_message_sent.emit(
-                            DispMessage.OTHER_2,
-                            'We\'ve set <b>public</b> keys for ' + ', '.join(keys_modified) +
-                            '. You need to enter <b>private</b> keys instead, to have access to some of the features.',
-                            AppTextMessageType.WARN)
-            else:
-                WndUtils.warn_msg(
-                    'Couldn\'t find this masternode in the list of registered deterministic masternodes.')
+                            DispMessage.OTHER_1, 'The following mn data has been set: ' + ', '.join(updated_fields),
+                            AppTextMessageType.INFO)
+
+                        if keys_modified:
+                            self.app_text_message_sent.emit(
+                                DispMessage.OTHER_2,
+                                'We\'ve set <b>public</b> keys for ' + ', '.join(keys_modified) +
+                                '. You need to enter <b>private</b> keys instead, to have access to some of '
+                                'the features.',
+                                AppTextMessageType.WARN)
+                else:
+                    WndUtils.warn_msg(
+                        'Couldn\'t find this masternode in the list of registered deterministic masternodes.')
+        except Exception as e:
+            WndUtils.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_btnBip32PathToAddress_clicked(self, checked):

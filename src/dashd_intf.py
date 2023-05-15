@@ -1208,12 +1208,15 @@ class DashdInterface(WndUtils):
                         old_pose_ban_height = mn.pose_ban_height if mn else -1
                         if not mn:
                             mn = Masternode()
+                            mn.monitor_changes = True
+                            mn.copy_from_json(mn_id, mn_json)
                             self.masternodes.append(mn)
                             self.masternodes_by_ident[mn_id] = mn
                             self.masternodes_by_ip_port[mn.ip_port] = mn
+                        else:
+                            mn.monitor_changes = True
+                            mn.copy_from_json(mn_id, mn_json)
 
-                        mn.monitor_changes = True
-                        mn.copy_from_json(mn_id, mn_json)
                         if protx_json:
                             mn.copy_from_protx_json(protx_json)
                         if mn.pose_ban_height > 0 and (old_pose_ban_height != mn.pose_ban_height or
