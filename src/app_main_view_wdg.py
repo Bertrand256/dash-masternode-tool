@@ -1705,7 +1705,9 @@ class MasternodeStatus:
         if masternode_cfg.dmn_user_roles & DMN_ROLE_OPERATOR:
             operator_pubkey_cfg = masternode_cfg.get_operator_pubkey()
             self.network_operator_public_key = masternode_info.pubkey_operator
-            if not operator_pubkey_cfg or operator_pubkey_cfg != masternode_info.pubkey_operator:
+            if not operator_pubkey_cfg or operator_pubkey_cfg[2:] != masternode_info.pubkey_operator[2:]:
+                # don't compare the first byte to overcome the difference being the result of the new-old BLS
+                # public key generation scheme
                 self.operator_pubkey_mismatch = True
             else:
                 self.operator_pubkey_mismatch = False
