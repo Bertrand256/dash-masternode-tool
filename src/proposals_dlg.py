@@ -17,6 +17,8 @@ import threading
 import time
 import codecs
 from functools import partial
+import datetime
+
 import bitcoin
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtChart import QChart, QChartView, QLineSeries, QDateTimeAxis, QValueAxis, QBarSet, QBarSeries, \
@@ -2737,6 +2739,10 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                         else:
                             sig_time += random.randint(self.app_config.sig_time_offset_min,
                                                        self.app_config.sig_time_offset_max)
+
+                        log.info('Setting the vote time to a random value of: ' +
+                                 app_utils.to_string(datetime.datetime.fromtimestamp(sig_time)))
+
 
                     if last_vote_ts is not None and sig_time < last_vote_ts:
                         # if the last vote timestamp is still grater than the current vote ts, correct the new one

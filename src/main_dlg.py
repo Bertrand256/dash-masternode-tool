@@ -31,6 +31,7 @@ import reg_masternode_dlg
 import revoke_mn_dlg
 import upd_mn_registrar_dlg
 import upd_mn_service_dlg
+import wnd_utils
 from app_main_view_wdg import WdgAppMainView
 from app_runtime_data import AppRuntimeData
 from bip44_wallet import find_wallet_addresses, Bip44Wallet
@@ -284,6 +285,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                 self.update_config_files_mru_menu_items()
                 if dash_network_sav != self.app_config.dash_network:
                     self.app_config.reset_network_dependent_dyn_params()
+            wnd_utils.set_app_config(self.app_config)
             self.display_window_title()
         except CancelException:
             self.update_config_files_mru_menu_items()
@@ -559,6 +561,13 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                         'Could not open "%s" folder using a default OS application.' % self.app_config.data_dir)
             except Exception as e:
                 self.error_msg(str(e), True)
+
+    @pyqtSlot(bool)
+    def on_action_show_contact_information_triggered(self, checked):
+        try:
+            WndUtils.show_contact_information()
+        except Exception as e:
+            self.error_msg(str(e), True)
 
     @pyqtSlot(bool)
     def on_action_clear_wallet_cache_triggered(self, checked):

@@ -261,7 +261,7 @@ class Ui_ProposalsDlg(object):
         self.verticalLayout.addWidget(self.buttonBox)
 
         self.retranslateUi(ProposalsDlg)
-        self.tabsDetails.setCurrentIndex(2)
+        self.tabsDetails.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(ProposalsDlg)
 
     def retranslateUi(self, ProposalsDlg):

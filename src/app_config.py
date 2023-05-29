@@ -24,6 +24,7 @@ import bitcoin
 from logging.handlers import RotatingFileHandler
 
 import qdarkstyle
+import simplejson
 from PyQt5 import QtCore
 from PyQt5.QtCore import QLocale, QObject
 from PyQt5.QtGui import QPalette
@@ -105,6 +106,16 @@ class AppFeatureStatus(QObject):
         self.__priority = None
 
 
+class AppDeveloperContact:
+    """
+    Stores contact information for the application developer.
+    """
+    def __init__(self, method_name: str, user_id: str, url: str):
+        self.method_name = method_name
+        self.user_id = user_id
+        self.url = url
+
+
 class AppConfig(QObject):
     display_app_message = QtCore.pyqtSignal(int, str, object)
 
@@ -118,9 +129,10 @@ class AppConfig(QObject):
         self.date_format = app_utils.get_default_locale().dateFormat(QLocale.ShortFormat)
         self.date_time_format = app_utils.get_default_locale().dateTimeFormat(QLocale.ShortFormat)
         self._internal_ui_dark_mode_activated = ui_dark_mode_activated
+        self.app_dev_contact: List[AppDeveloperContact] = []
 
         # List of Dash network configurations. Multiple conn configs advantage is to give the possibility to use
-        # another config if particular one is not functioning (when using "public" RPC service, it could be node's
+        # another config if a particular one is not functioning (when using "public" RPC service, it could be node's
         # maintenance)
         self.dash_net_configs = []
 
@@ -143,12 +155,13 @@ class AppConfig(QObject):
         self.feature_update_registrar_automatic = AppFeatureStatus(True, 0, '')
         self.feature_update_service_automatic = AppFeatureStatus(True, 0, '')
         self.feature_revoke_operator_automatic = AppFeatureStatus(True, 0, '')
+        self.feature_new_bls_scheme = AppFeatureStatus(True, 0, '')
 
         self.__hw_type: Optional[HWType] = None  # obsolete and will be removed in the future (we are leaving it to
-        # preserve compatibility of the config file with older versions)
+            # preserve compatibility of the config file with older versions)
         self.hw_keepkey_psw_encoding = 'NFC'  # Keepkey passphrase UTF8 chars encoding:
-        #  NFC: compatible with official Keepkey client app
-        #  NFKD: compatible with Trezor
+            #  NFC: compatible with official Keepkey client app
+            #  NFKD: compatible with Trezor
 
         self.dash_network = 'MAINNET'
 
@@ -443,6 +456,16 @@ class AppConfig(QObject):
         if not self.app_last_version or app_utils.is_version_greater(self.app_version, self.app_last_version):
             app_cache.save_data()
 
+        try:
+            app_params_json_file = os.path.join(self.app_dir, 'app-params.json')
+            if os.path.exists(app_params_json_file):
+                with open(app_params_json_file, 'rb') as fptr:
+                    strs = fptr.read()
+                    local_app_params = simplejson.loads(strs)
+                    self.set_remote_app_params(local_app_params)
+        except Exception as e:
+            logging.exception(str(e))
+
         self.initialized = True
 
     def close(self):
@@ -470,6 +493,9 @@ class AppConfig(QObject):
         if self.feature_revoke_operator_automatic.get_value() is not None:
             app_cache.set_value('FEATURE_REVOKE_OPERATOR_AUTOMATIC_' + self.dash_network,
                                 self.feature_revoke_operator_automatic.get_value())
+        if self.feature_new_bls_scheme.get_value() is not None:
+            app_cache.set_value('FEATURE_NEW_BLS_SCHEME_' + self.dash_network,
+                                self.feature_new_bls_scheme.get_value())
 
     def restore_cache_settings(self):
         ena = app_cache.get_value('FEATURE_REGISTER_AUTOMATIC_DMN_' + self.dash_network, True, bool)
@@ -480,6 +506,8 @@ class AppConfig(QObject):
         self.feature_update_service_automatic.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
         ena = app_cache.get_value('FEATURE_REVOKE_OPERATOR_AUTOMATIC_' + self.dash_network, True, bool)
         self.feature_revoke_operator_automatic.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
+        ena = app_cache.get_value('FEATURE_NEW_BLS_SCHEME_' + self.dash_network, True, bool)
+        self.feature_new_bls_scheme.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
 
     def copy_from(self, src_config):
         self.dash_network = src_config.dash_network
@@ -629,7 +657,7 @@ class AppConfig(QObject):
         self.trezor_udp = True
         self.trezor_hid = True
 
-    def simple_decrypt(self, str_to_decrypt: str, string_can_be_unencrypted: bool, validator: Callable = None) -> str:
+    def simple_decrypt(self, str_to_decrypt: str, string_can_be_unencrypted: bool = False, validator: Callable = None) -> str:
         """"
         :param string_can_be_unencrypted: passed True when importing data from the old config format where some
             data wasn't encrypted yet; we want to avoid clogging a log file with errors when actually
@@ -1178,6 +1206,19 @@ class AppConfig(QObject):
             self.feature_update_registrar_automatic.set_value(*get_feature_config_remote('UPDATE_REGISTRAR_AUTOMATIC'))
             self.feature_update_service_automatic.set_value(*get_feature_config_remote('UPDATE_SERVICE_AUTOMATIC'))
             self.feature_revoke_operator_automatic.set_value(*get_feature_config_remote('REVOKE_OPERATOR_AUTOMATIC'))
+            self.feature_new_bls_scheme.set_value(*get_feature_config_remote('NEW_BLS_SCHEME'))
+
+            if self._remote_app_params.get('appDeveloperContact') and \
+                    isinstance(self._remote_app_params.get('appDeveloperContact'), list):
+
+                self.app_dev_contact = []
+                for ci in self._remote_app_params.get('appDeveloperContact'):
+                    name = self.simple_decrypt(ci.get('name'))
+                    user_id = self.simple_decrypt(ci.get('userId'))
+                    url = self.simple_decrypt(ci.get('url'))
+                    if name and user_id:
+                        dci = AppDeveloperContact(name, user_id, url)
+                        self.app_dev_contact.append(dci)
 
     def read_dash_network_app_params(self, dashd_intf):
         """ Read parameters having impact on the app's behavior (sporks/dips) from the Dash network. Called

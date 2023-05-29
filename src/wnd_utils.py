@@ -6,6 +6,7 @@ import datetime
 import functools
 import logging
 import os
+import re
 import threading
 import traceback
 from functools import partial
@@ -16,15 +17,31 @@ import app_utils
 import thread_utils
 import time
 from PyQt5 import QtWidgets, QtCore, QtGui
-from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEvent, QPointF, QSize, QModelIndex, QRect
+from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEvent, QPointF, QSize, QModelIndex, QRect, \
+    QUrl
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap, QTextDocument, \
-    QAbstractTextDocumentLayout, QTransform, QShowEvent
+    QAbstractTextDocumentLayout, QTransform, QShowEvent, QDesktopServices
 from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit, \
     QAbstractItemView, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTableView, QAction, QMenu, QApplication, \
-    QProxyStyle, QWidgetItem, QLayout, QSpacerItem
+    QProxyStyle, QWidgetItem, QLayout, QSpacerItem, QLabel
 import math
 from common import CancelException
 from thread_fun_dlg import ThreadFunDlg, WorkerThread, CtrlObject
+
+app_config = None
+
+
+def set_app_config(new_app_config):
+    global app_config
+    app_config = new_app_config
+
+
+class MyUrlHandler(object):
+    def __init__(self):
+        object.__init__(self)
+
+    def handleUrl(self, url: QUrl):
+        pass
 
 
 class WndUtils:
@@ -37,28 +54,103 @@ class WndUtils:
         self.app_config = app_config
 
     @staticmethod
-    def display_message(type, message):
+    def display_message(icon, message: str, link_activated_handler: Optional[Callable] = None):
         msg = QMessageBox()
         msg.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard | Qt.LinksAccessibleByMouse)
-        msg.setIcon(type)
+        msg.setIcon(icon)
 
         # because of the bug: https://bugreports.qt.io/browse/QTBUG-48964
-        # we'll convert a message to HTML format to avoid bolded font on Mac platform
+        # we'll convert a message to HTML format to avoid bolded font on a Mac platform
         if message.find('<html') < 0:
             message = '<html style="font-weight:normal">' + message.replace('\n', '<br>') + '</html>'
 
         msg.setText(message)
-        return msg.exec_()
+        if link_activated_handler:
+            for e in msg.children():
+                if isinstance(e, QLabel):
+                    if e.text() == message:
+                        f = functools.partial(link_activated_handler, e)
+                        e.linkActivated.connect(f)
+                        e.setOpenExternalLinks(False)
+
+        ret = msg.exec_()
+        return ret
+
+    @staticmethod
+    def get_app_dev_contact_info_html(additional_message: str = None) -> Tuple[str, Callable]:
+        """
+        Returns contact information to the application developer, prepared to be shown in a message box
+        :return: tuple:
+           - [0] contact info string in HTML format
+           - [1] event handler for processing contact links (copying user id and openning external links);
+            it is to be assigned to the linkActivated slot of a QLabel control thet shows contact info text
+        """
+
+        def link_activated_handler(lbl: QLabel, link: str):
+            if link.startswith('copy_user_id|'):
+                idx = link.find('|')
+                user_id_str = link[idx + 1:]
+                if user_id_str:
+                    cl = QApplication.clipboard()
+                    cl.setText(user_id_str)
+                else:
+                    logging.warning('Empty the user_id string.')
+
+            elif re.match('http(s)?://', link, re.IGNORECASE):
+                QDesktopServices.openUrl(QUrl(link))
+
+        info = None
+
+        if app_config and app_config.app_dev_contact:
+            contact_str = '<tr><th class="app">Contact method</th><th class="user_id">User ID</th></tr>'
+            for c in app_config.app_dev_contact:
+                user_id = (c.user_id[:25] + '..') if len(c.user_id) > 25 else c.user_id
+                contact_str += f'<tr><td class="app"><a href="{c.url}">{c.method_name}</a></td>' \
+                               f'<td class="user_id"><span>{user_id}&nbsp;<a href="copy_user_id|' \
+                               f'{c.user_id}"><img src="img/content-copy@16px.png"/></a></span></td></tr>'
+
+            contact_str = '<table>' + contact_str + '</table>'
+            style = f'<style>.app {{white-space:nowrap}} .user_id {{white-space:nowrap}} ' \
+                    f'.user_id > span {{vertical-align: middle; display: block;}} ' \
+                    f'.user_id a {{margin-left: 6px}} body {{font-weight: normal}}</style>'
+
+            info = f'<html><head>{style}</head><body>{additional_message}' + \
+                   contact_str + '</body></html>'
+
+        return info, link_activated_handler
 
     @staticmethod
     def error_msg(message: str, log_as_exception: bool = False):
+        def link_activated_handler(lbl: QLabel, link: str):
+            if lbl:
+                if link == 'show_contact_info':
+                    new_msg, link_handler = WndUtils.get_app_dev_contact_info_html(f'<span>{message}</span><hr>')
+                    if new_msg:
+                        lbl.setText(new_msg)
+                        if link_handler:
+                            lbl.linkActivated.disconnect()
+                            lbl.linkActivated.connect(functools.partial(link_handler, lbl))
+
         if log_as_exception:
             logging.exception(str(message))
 
-        if threading.current_thread() != threading.main_thread():
-            return WndUtils.call_in_main_thread(WndUtils.display_message, QMessageBox.Critical, message)
+        if app_config and app_config.app_dev_contact:
+            # If there is contact information for the application developer, give the user the opportunity to view it
+            # in case he suspects that he has hit an application bug.
+            message_to_display = \
+                '<html><head><style>.contact_message {} body{font-weight:normal}</style></head><body>' + \
+                message + '<hr><small><div class="contact_message">If you think the problem is caused by an ' \
+                          'application bug you can report it to the app developer. Click <a href="show_contact_info">' \
+                          'here</a> to show contact information.</div></small>' + \
+                '</body></html>'
         else:
-            return WndUtils.display_message(QMessageBox.Critical, message)
+            message_to_display = message
+
+        if threading.current_thread() != threading.main_thread():
+            return WndUtils.call_in_main_thread(WndUtils.display_message, QMessageBox.Critical, message_to_display,
+                                                link_activated_handler)
+        else:
+            return WndUtils.display_message(QMessageBox.Critical, message_to_display, link_activated_handler)
 
     @staticmethod
     def warn_msg(message):
@@ -73,6 +165,17 @@ class WndUtils:
             return WndUtils.call_in_main_thread(WndUtils.display_message, QMessageBox.Information, message)
         else:
             return WndUtils.display_message(QMessageBox.Information, message)
+
+    @staticmethod
+    def show_contact_information():
+        message, link_handler = WndUtils.get_app_dev_contact_info_html('<h4>Contact information for the '
+                                                                       'application developer</h4><hr>')
+        if message and link_handler:
+            if threading.current_thread() != threading.main_thread():
+                return WndUtils.call_in_main_thread(WndUtils.display_message, QMessageBox.Critical, message,
+                                                    link_handler)
+            else:
+                return WndUtils.display_message(QMessageBox.Critical, message, link_handler)
 
     @staticmethod
     def query_dlg(message, buttons=QMessageBox.Ok | QMessageBox.Cancel, default_button=QMessageBox.Ok,
@@ -104,7 +207,7 @@ class WndUtils:
         self.move(parent.frameGeometry().topLeft() + parent.rect().center() - self.rect().center())
 
     @staticmethod
-    def run_thread_dialog(worker_fun: Callable[[CtrlObject, Any], Any], worker_fun_args: Tuple[Any,...],
+    def run_thread_dialog(worker_fun: Callable[[CtrlObject, Any], Any], worker_fun_args: Tuple[Any, ...],
                           close_after_finish=True, buttons=None, title='', text=None, center_by_window=None,
                           force_close_dlg_callback=None, show_window_delay_ms: Optional[int] = 0):
         """
@@ -116,6 +219,7 @@ class WndUtils:
         :param buttons: list of dialog button definitions; look at doc od whd_thread_fun.Ui_ThreadFunDialog class
         :return: value returned from worker_fun
         """
+
         def call(worker_fun, worker_fun_args, close_after_finish, buttons, title, text, center_by_window,
                  force_close_dlg_callback, show_window_delay_ms):
 
@@ -197,7 +301,7 @@ class WndUtils:
 
     @staticmethod
     def call_in_main_thread_ext(fun_to_call, skip_if_main_thread_locked: bool,
-                                callback_if_main_thread_locked: Optional[Callable]=False, *args, **kwargs):
+                                callback_if_main_thread_locked: Optional[Callable] = False, *args, **kwargs):
 
         return thread_wnd_utils.call_in_main_thread_ext(fun_to_call, skip_if_main_thread_locked,
                                                         callback_if_main_thread_locked, *args, **kwargs)
@@ -223,7 +327,7 @@ class WndUtils:
             color = QColor(force_color_change)
             for y in range(0, tmp.height()):
                 for x in range(0, tmp.width()):
-                    color.setAlpha(tmp.pixelColor(x,y).alpha())
+                    color.setAlpha(tmp.pixelColor(x, y).alpha())
                     tmp.setPixelColor(x, y, color)
 
             pixmap = QPixmap.fromImage(tmp)
@@ -565,7 +669,7 @@ class SpinnerWidget(QWidget):
     SPINNER_TO_TEXT_DISTANCE = 5
 
     def __init__(self, parent: QWidget, spinner_size: Optional[int] = None, message: Optional[str] = None,
-                 font_size = None):
+                 font_size=None):
         QWidget.__init__(self, parent)
         self.spinner_size = spinner_size
         self.message = message
@@ -633,7 +737,8 @@ class SpinnerWidget(QWidget):
                 painter.setFont(f)
 
             text_rect = QRect(content_rect)
-            text_rect.translate(spinner_rect.width() + SpinnerWidget.SPINNER_TO_TEXT_DISTANCE if self.timer_id else 0, 0)
+            text_rect.translate(spinner_rect.width() + SpinnerWidget.SPINNER_TO_TEXT_DISTANCE if self.timer_id else 0,
+                                0)
             painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, self.message)
         painter.end()
 
@@ -662,6 +767,7 @@ class ReadOnlyTableCellDelegate(QItemDelegate):
     """
     Used for enabling read-only and text selectable cells in QTableView widgets.
     """
+
     def __init__(self, parent):
         QItemDelegate.__init__(self, parent)
 
@@ -675,6 +781,7 @@ class LineEditTableCellDelegate(QItemDelegate):
     """
     Used for enabling read-only and text selectable cells in QTableView widgets.
     """
+
     def __init__(self, parent, img_dir: str):
         QItemDelegate.__init__(self, parent, )
         self.img_dir = img_dir
@@ -803,7 +910,7 @@ class HyperlinkItemDelegate(QStyledItemDelegate):
 
     def editorEvent(self, event, model, option, index):
         if event.type() not in [QEvent.MouseMove, QEvent.MouseButtonRelease] \
-            or not (option.state & QStyle.State_Enabled):
+                or not (option.state & QStyle.State_Enabled):
             return False
 
         pos = QPointF(event.pos() - option.rect.topLeft())
@@ -906,7 +1013,7 @@ class IconTextItemDelegate(QItemDelegate):
                         # align incon vertically if the text is aligned so
                         diff_height = r.height() - pix.height()
                         if diff_height > 2:
-                            diff_offs = int(diff_height/2)
+                            diff_offs = int(diff_height / 2)
                             if diff_offs:
                                 rp.adjust(0, diff_offs, 0, diff_offs)
                     painter.drawImage(rp, pix.toImage())
@@ -951,6 +1058,7 @@ class ProxyStyleNoFocusRect(QProxyStyle):
     controls like QTextBrowser.
     Usage: widget.setStyle(ProxyStyleNoFocusRect())
     """
+
     def styleHint(self, hint, option=None, widget=None, returnData=None):
         if hint == QProxyStyle.SH_TextControl_FocusIndicatorTextCharFormat:
             return False
@@ -963,6 +1071,7 @@ class QDetectThemeChange:
     It is used to adapt colors used in styles for widgets for which we use the Qt setStyleSheet method call.
     This class should be used as a parent class for visual widgets only.
     """
+
     def __init__(self):
         self.background_color = None
 

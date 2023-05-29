@@ -101,7 +101,7 @@
      <x>0</x>
      <y>0</y>
      <width>1027</width>
-     <height>22</height>
+     <height>24</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuTools">
@@ -123,6 +123,7 @@
     <addaction name="action_open_log_file"/>
     <addaction name="action_open_data_folder"/>
     <addaction name="menuClear"/>
+    <addaction name="action_show_contact_information"/>
    </widget>
    <widget class="QMenu" name="menuFile">
     <property name="title">
@@ -513,6 +514,11 @@
    </property>
    <property name="toolTip">
     <string>Creates a new configuration file</string>
+   </property>
+  </action>
+  <action name="action_show_contact_information">
+   <property name="text">
+    <string>Show contact information</string>
    </property>
   </action>
  </widget>
