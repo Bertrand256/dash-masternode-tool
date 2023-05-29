@@ -93,6 +93,18 @@
         "priority": 4,
         "message": ""
       }
+    },
+    "NEW_BLS_SCHEME": {
+      "mainnet": {
+        "status": "enabled",
+        "priority": 4,
+        "message": ""
+      },
+      "testnet": {
+        "status": "disabled",
+        "priority": 4,
+        "message": ""
+      }
     }
   }
 }
