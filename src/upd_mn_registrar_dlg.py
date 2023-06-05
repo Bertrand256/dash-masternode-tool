@@ -2,7 +2,7 @@ import logging
 from typing import Callable
 
 from PyQt5.QtCore import pyqtSlot, QTimer
-from PyQt5.QtWidgets import QDialog
+from PyQt5.QtWidgets import QDialog, QMessageBox
 from bitcoinrpc.authproxy import JSONRPCException
 
 import app_cache
@@ -39,7 +39,9 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         self.on_upd_success_callback = on_upd_success_callback
         self.operator_key_type = InputKeyType.PRIVATE
         self.operator_key_generated_here: bool = False
-        self.legacy_operator_key: bool = False
+        self.new_bls_scheme_active: bool = app_config.feature_new_bls_scheme.get_value()
+        self.legacy_operator_key: bool = False  # it's only used if self.new_bls_scheme_active is True,
+                                                # that is - the v19 fork is active
         self.update_registrar_rpc_command: str = ''
         self.voting_key_type = InputKeyType.PRIVATE
         self.dmn_protx_hash = self.masternode.protx_hash
@@ -72,6 +74,10 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
             self.chbLegacyOperatorKey.show()
         else:
             self.chbLegacyOperatorKey.hide()
+        if not self.new_bls_scheme_active:
+            self.chbLegacyOperatorKey.hide()
+        else:
+            self.chbLegacyOperatorKey.show()
         self.restore_cache_settings()
         self.update_ctrls_state()
         self.minimize_dialog_height()
@@ -155,9 +161,10 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
     def process_initial_data(self):
         try:
-            # if the operator key from the current mn configuration doesn't match the key stored on the network
+            # if the operator key from the current mn configuration doesn't match the key stored on the network,
             # use the key from the configuration as an initial value
-            if self.masternode.get_operator_pubkey() != self.dmn_prev_operator_pubkey:
+            if self.masternode.get_operator_pubkey(self.app_config.feature_new_bls_scheme.get_value()) != \
+                    self.dmn_prev_operator_pubkey:
                 if self.masternode.operator_key_type == InputKeyType.PRIVATE:
                     self.edtOperatorKey.setText(self.masternode.operator_private_key)
                 else:
@@ -316,10 +323,16 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         else:
             self.dmn_new_payout_address = self.dmn_prev_payout_address
 
-        self.legacy_operator_key = self.show_upd_operator and self.chbLegacyOperatorKey.isChecked()
-        if self.legacy_operator_key:
-            self.update_registrar_rpc_command = 'update_registrar_legacy'
+        if self.new_bls_scheme_active:
+            self.legacy_operator_key = self.chbLegacyOperatorKey.isChecked()
+            if self.legacy_operator_key:
+                # Use the "update_registrar_legacy" call only when v19 fork is active, otherwise the "update_registrar"
+                # call is used and basically does the same
+                self.update_registrar_rpc_command = 'update_registrar_legacy'
+            else:
+                self.update_registrar_rpc_command = 'update_registrar'
         else:
+            self.legacy_operator_key = True
             self.update_registrar_rpc_command = 'update_registrar'
 
         key = self.edtOperatorKey.text().strip()
@@ -336,10 +349,8 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                     raise Exception('Invalid operator private key: ' + str(e))
 
                 try:
-                    if self.legacy_operator_key:
-                        self.dmn_new_operator_pubkey = bls_privkey_to_pubkey_legacy(self.dmn_new_operator_privkey)
-                    else:
-                        self.dmn_new_operator_pubkey = bls_privkey_to_pubkey(self.dmn_new_operator_privkey)
+                    self.dmn_new_operator_pubkey = bls_privkey_to_pubkey(self.dmn_new_operator_privkey,
+                                                                         not self.legacy_operator_key)
                 except Exception as e:
                     self.edtOperatorKey.setFocus()
                     raise Exception('Invalid operator private key: ' + str(e))
@@ -385,10 +396,22 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                       (self.show_upd_voting and bool(self.edtVotingKey.text()))
 
             green_color = get_widget_font_color_green(self.lblVotingKey)
-
             if changed:
-                cmd = f'protx {self.update_registrar_rpc_command} "{self.dmn_protx_hash}" "{self.dmn_new_operator_pubkey}" ' \
-                      f'"{self.dmn_new_voting_address}" "{self.dmn_new_payout_address}" ' \
+                if self.show_upd_payout:
+                    payout_addr = self.dmn_new_payout_address
+                else:
+                    payout_addr = ''
+                if self.show_upd_operator:
+                    operator_key = self.dmn_new_operator_pubkey
+                else:
+                    operator_key = ''
+                if self.show_upd_voting:
+                    voting_addr = self.dmn_new_voting_address
+                else:
+                    voting_addr = ''
+
+                cmd = f'protx {self.update_registrar_rpc_command} "{self.dmn_protx_hash}" "{operator_key}" ' \
+                      f'"{voting_addr}" "{payout_addr}" ' \
                       f'"<span style="color:{green_color}">feeSourceAddress</span>"'
                 msg = "<ol>" \
                       "<li>Start a Dash Core wallet with sufficient funds to cover a transaction fee.</li>"
@@ -426,9 +449,12 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         if self.dmn_prev_payout_address == self.dmn_new_payout_address and \
                 self.dmn_prev_operator_pubkey == self.dmn_new_operator_pubkey and \
                 self.dmn_prev_voting_address == self.dmn_new_voting_address:
-            WndUtils.warn_msg('Nothing is changed compared to the data stored in the Dash network.')
-        else:
-            self.send_upd_tx()
+            if WndUtils.query_dlg('Nothing is changed compared to the data stored in the Dash network. Do you '
+                                  'really want to continue?',
+                                  buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                  default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Cancel:
+                return
+        self.send_upd_tx()
 
     def send_upd_tx(self):
         # verify the owner key used in the configuration
@@ -444,11 +470,24 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
         try:
             funding_address = ''
+            if self.show_upd_payout:
+                payout_addr = self.dmn_new_payout_address
+            else:
+                payout_addr = ''
+            if self.show_upd_operator:
+                operator_key = self.dmn_new_operator_pubkey
+            else:
+                operator_key = ''
+            if self.show_upd_voting:
+                voting_addr = self.dmn_new_voting_address
+            else:
+                voting_addr = ''
+
             params = [self.update_registrar_rpc_command,
                       self.dmn_protx_hash,
-                      self.dmn_new_operator_pubkey,
-                      self.dmn_new_voting_address,
-                      self.dmn_new_payout_address,
+                      operator_key,
+                      voting_addr,
+                      payout_addr,
                       funding_address]
 
             try:

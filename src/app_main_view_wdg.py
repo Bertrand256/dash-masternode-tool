@@ -64,6 +64,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         self.cur_masternode: Optional[MasternodeConfig] = None
         self.edited_masternode: Optional[MasternodeConfig] = None
         self.editing_enabled = False
+        self.cur_masternode_edited = False
         self.mns_status: Dict[MasternodeConfig, MasternodeStatus] = {}
         self.masternodes_table_model = MasternodesTableModel(self, self.app_config.masternodes, self.mns_status,
                                                              self.get_dash_amount_str)
@@ -310,7 +311,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             self.btnEditMn.setVisible(not editing)
             self.btnCancelEditingMn.setVisible(editing)
             self.btnApplyMnChanges.setVisible(editing)
-            self.btnApplyMnChanges.setEnabled(self.wdg_masternode.is_modified())
+            self.btnApplyMnChanges.setEnabled(self.cur_masternode_edited)
             self.btnEditMn.setEnabled(not self.editing_enabled and self.cur_masternode is not None)
             self.btnCancelEditingMn.setEnabled(self.editing_enabled)
 
@@ -378,6 +379,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
 
     def on_mn_data_changed(self):
         if self.cur_masternode:
+            self.cur_masternode_edited = True
             try:
                 mn_info = self.mn_info_by_mn_cfg.get(self.cur_masternode)
                 ms = self.mns_status.get(self.cur_masternode)
@@ -387,7 +389,6 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 pass
         self.refresh_masternodes_view()
         self.update_mn_preview()
-        self.app_config.set_modified()
         self.masternode_data_changed.emit()
         self.update_actions_state()
 
@@ -439,7 +440,6 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 if cur_idx > 0:
                     mns[cur_idx-1], mns[cur_idx] = mns[cur_idx], mns[cur_idx-1]
                     self.refresh_masternodes_view()
-                    self.app_config.set_modified()
                     self.masternode_data_changed.emit()
                     self.update_ui()
         except Exception as e:
@@ -459,7 +459,6 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 if cur_idx < len(mns) - 1:
                     mns[cur_idx+1], mns[cur_idx] = mns[cur_idx], mns[cur_idx+1]
                     self.refresh_masternodes_view()
-                    self.app_config.set_modified()
                     self.masternode_data_changed.emit()
                     self.update_ui()
         except Exception as e:
@@ -492,7 +491,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                     cl.setText(ms.network_owner_public_address)
 
             elif link == 'copy_operator_key_cfg':
-                cl.setText(self.cur_masternode.get_operator_pubkey())
+                cl.setText(self.cur_masternode.get_operator_pubkey(self.app_config.feature_new_bls_scheme.get_value()))
 
             elif link == 'copy_operator_key_net':
                 ms = self.mns_status.get(self.cur_masternode)
@@ -658,10 +657,10 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 self.app_config.add_mn(self.edited_masternode)
                 self.set_cur_masternode(self.edited_masternode)
                 is_new = True
-            self.app_config.modified = True
             self.on_mn_data_changed()
             if is_new:
                 self.goto_masternode_list()
+        self.cur_masternode_edited = False
         self.set_edit_mode(False)
 
     def cancel_masternode_changes(self):
@@ -671,6 +670,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         else:
             if self.wdg_masternode.is_modified():
                 self.wdg_masternode.set_masternode(self.cur_masternode)  # restore the original (non-modified) data
+        self.cur_masternode_edited = False
         self.set_edit_mode(False)
 
     def delete_masternode(self, masternode: MasternodeConfig):
@@ -681,7 +681,6 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                                   buttons=QMessageBox.Yes | QMessageBox.Cancel,
                                   default_button=QMessageBox.Cancel, icon=QMessageBox.Warning) == QMessageBox.Yes:
                     self.app_config.masternodes.remove(self.cur_masternode)
-                    self.app_config.modified = True
                     mn = None
                     if self.app_config.masternodes:
                         if idx > len(self.app_config.masternodes) - 1:
@@ -866,7 +865,8 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 check_finishing()
                 mn_stat = self.mns_status.get(mn_cfg)
                 if not mn_stat:
-                    mn_stat = MasternodeStatus(self.app_config.dash_network)
+                    mn_stat = MasternodeStatus(self.app_config.dash_network,
+                                               self.app_config.feature_new_bls_scheme.get_value())
                     self.mns_status[mn_cfg] = mn_stat
 
                 if mn_cfg.collateral_tx and str(mn_cfg.collateral_tx_index):
@@ -1216,7 +1216,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                         errors.append('Operator service update required')
                     if st.operator_key_update_required:
                         errors.append('Operator key update required')
-                    if st.ip_port_mismatch:
+                    if st.ip_port_mismatch and not st.operator_service_update_required:
                         warnings.append('Masternode IP/port mismatch between config and the network')
                     if st.collateral_tx_mismatch:
                         warnings.append('Collateral tx mismatch between config and the network')
@@ -1234,7 +1234,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                             f'[<a href="copy_owner_addr_net">copy</a>])')
                     if st.operator_pubkey_mismatch:
                         warnings.append(
-                            f'Operator public key mismatch (config: {short_address_str(mn.get_operator_pubkey(), 6)} '
+                            f'Operator public key mismatch (config: {short_address_str(mn.get_operator_pubkey(self.app_config.feature_new_bls_scheme.get_value()), 6)} '
                             f'[<a href="copy_operator_key_cfg">copy</a>], '
                             f'network: {short_address_str(st.network_operator_public_key, 6)}'
                             f'[<a href="copy_operator_key_net">copy</a>])')
@@ -1249,7 +1249,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                         warnings.append(
                             f'Masternode type mismatch (config: {mn.masternode_type.name}, '
                             f'network: {st.masternode_type.name})')
-                    if st.platform_node_id_mismatch:
+                    if st.platform_node_id_mismatch and not st.operator_service_update_required:
                         warnings.append(
                             f'Platform Node Id mismatch (config: {short_address_str(mn.platform_node_id, 6)}, '
                             f'network: {short_address_str(st.platform_node_id, 6)})')
@@ -1591,8 +1591,9 @@ class NetworkStatus:
 
 
 class MasternodeStatus:
-    def __init__(self, dash_network):
+    def __init__(self, dash_network, new_bls_scheme):
         self.dash_network = dash_network
+        self.new_bls_scheme = new_bls_scheme
         self.not_found = False
         self.status = ''
         self.status_warning = False
@@ -1703,7 +1704,7 @@ class MasternodeStatus:
             self.owner_public_address_mismatch = False
 
         if masternode_cfg.dmn_user_roles & DMN_ROLE_OPERATOR:
-            operator_pubkey_cfg = masternode_cfg.get_operator_pubkey()
+            operator_pubkey_cfg = masternode_cfg.get_operator_pubkey(self.new_bls_scheme)
             self.network_operator_public_key = masternode_info.pubkey_operator
             if not operator_pubkey_cfg or operator_pubkey_cfg[2:] != masternode_info.pubkey_operator[2:]:
                 # don't compare the first byte to overcome the difference being the result of the new-old BLS

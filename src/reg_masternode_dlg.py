@@ -89,7 +89,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.operator_key_type = InputKeyType.PRIVATE
         self.voting_key_type = InputKeyType.PRIVATE
         self.platform_node_id: str = self.masternode.platform_node_id
-        self.platform_node_id_private_key = self.masternode.platform_node_id_private_key
+        self.platform_node_id_private_key = self.masternode.platform_node_private_key
         self.platform_node_id_generated = False
         self.platform_p2p_port: Optional[int] = self.masternode.platform_p2p_port if \
             self.masternode.platform_p2p_port else DASH_PLATFORM_DEFAULT_P2P_PORT
@@ -128,7 +128,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         if self.masternode.collateral_tx:
             sz = self.edtCollateralTx.fontMetrics().size(0, self.masternode.collateral_tx + '000')
             self.edtCollateralTx.setMinimumWidth(sz.width())
-        self.edtCollateralIndex.setText(self.masternode.collateral_tx_index)
+        self.edtCollateralIndex.setText(str(self.masternode.collateral_tx_index))
         self.edtIP.setText(self.masternode.ip)
         self.edtPort.setText(str(self.masternode.tcp_port))
         self.edtPayoutAddress.setText(self.masternode.collateral_address)
@@ -359,7 +359,8 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                     protx_state.get('ownerAddress'):
                 gen_owner = True
 
-            if self.masternode.get_operator_pubkey() == protx_state.get('pubKeyOperator'):
+            if self.masternode.get_operator_pubkey(self.app_config.feature_new_bls_scheme.get_value()) == \
+                    protx_state.get('pubKeyOperator'):
                 gen_operator = True
 
             if self.masternode.get_voting_public_address(self.app_config.dash_network) == \
@@ -1089,7 +1090,8 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                         self.edtOperatorKey.setFocus()
                         self.operator_key_validation_err_msg = 'Invalid operator private key: ' + str(e)
 
-                    self.operator_pubkey = bls_privkey_to_pubkey(self.operator_privkey)
+                    new_scheme = self.app_config.feature_new_bls_scheme.get_value()
+                    self.operator_pubkey = bls_privkey_to_pubkey(self.operator_privkey, new_scheme)
                 except Exception as e:
                     self.edtOperatorKey.setFocus()
                     self.operator_key_validation_err_msg = 'Invalid operator private key: ' + str(e)
@@ -1675,12 +1677,12 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                       f'"{self.collateral_tx_index}" ' \
                       f'"{self.ip + ":" + str(self.tcp_port) if self.ip else "0"}" ' \
                       f'"{owner_key}" "{self.operator_pubkey}" "{self.voting_address}" ' \
-                      f'"{str(round(self.operator_reward, 2))}" "{self.owner_payout_addr}"'
+                      f'"{str(round(self.operator_reward, 2))}" "{self.owner_payout_addr}" '
 
                 if self.masternode_type == MasternodeType.HPMN:
                     cmd += f'"{self.platform_node_id}" "{str(self.platform_p2p_port)}" "{str(self.platform_http_port)}"'
 
-                cmd += " {addr}"
+                cmd += f' "{addr}"'
             else:
                 cmd = 'Enter the valid funding address in the exit box above'
         else:

@@ -43,7 +43,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
         self.new_ip = ''
         self.new_port: Optional[int] = None
         self.platform_node_id: str = self.masternode.platform_node_id
-        self.platform_node_id_private_key = self.masternode.platform_node_id_private_key
+        self.platform_node_id_private_key = self.masternode.platform_node_private_key
         self.platform_node_id_generated = False
         self.platform_p2p_port: Optional[int] = self.masternode.platform_p2p_port if \
             self.masternode.platform_p2p_port else DASH_PLATFORM_DEFAULT_P2P_PORT
@@ -208,9 +208,6 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
 
         if self.masternode.operator_key_type != InputKeyType.PRIVATE:
             raise Exception('The operator private key is required.')
-
-        if self.masternode.get_operator_pubkey() != self.actual_operator_pubkey:
-            raise Exception('The operator key from your configuration does not match the key published on the network.')
 
         self.new_ip = self.edtIP.text()
         if not self.new_ip:
@@ -424,7 +421,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
 
                     self.masternode.ip = self.new_ip
                     self.masternode.tcp_port = self.new_port
-                    self.masternode.platform_node_id_private_key = self.platform_node_id_private_key
+                    self.masternode.platform_node_private_key = self.platform_node_id_private_key
                     self.masternode.platform_node_id = self.platform_node_id
                     self.masternode.platform_p2p_port = self.platform_p2p_port
                     self.masternode.platform_http_port = self.platform_http_port

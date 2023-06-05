@@ -13,5 +13,5 @@ class WidgetTemplate(QWidget):
 
     def setupUi(self, dlg):
         WidgetTemplate.setupUi(self, self)
-        WidgetTemplate.setObjectName("WidgetTemplate")
-        WidgetTemplate.resize(640, 300)
+        WidgetTemplate.setObjectName(self, "WidgetTemplate")
+        WidgetTemplate.resize(self, 640, 300)

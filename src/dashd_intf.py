@@ -1416,6 +1416,7 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
+    @control_rpc_call
     def protx(self, *args):
         if self.open():
             return self.proxy.protx(*args)

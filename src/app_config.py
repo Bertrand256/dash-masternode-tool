@@ -25,12 +25,14 @@ from logging.handlers import RotatingFileHandler
 
 import qdarkstyle
 import simplejson
+import hashlib
 from PyQt5 import QtCore
 from PyQt5.QtCore import QLocale, QObject
 from PyQt5.QtGui import QPalette
 from PyQt5.QtWidgets import QMessageBox, QWidget
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import app_defs
 import dash_utils
@@ -45,7 +47,7 @@ from encrypted_files import read_file_encrypted, write_file_encrypted
 from hw_common import HWType, HWNotConnectedException
 from wnd_utils import WndUtils, get_widget_font_color_blue, get_widget_font_color_green
 
-CURRENT_CFG_FILE_VERSION = 6
+CURRENT_CFG_FILE_VERSION = 7
 CACHE_ITEM_LOGGERS_LOGLEVEL = 'LoggersLogLevel'
 CACHE_ITEM_LOG_FORMAT = 'LogFormat'
 GLOBAL_SETTINGS_FILE_NAME = 'dmt_global_settings.json'
@@ -124,6 +126,10 @@ class AppConfig(QObject):
         self.initialized = False
         self.app_dir = ''  # will be passed in the init method
         self.app_version = ''
+
+        # Hash of the configuration data, last saved to disk. If None, config isn't saved or read from disk yet.
+        self.config_file_data_hash: Optional[str] = None
+
         self.global_config = Optional[app_cache.AppCache]
         QLocale.setDefault(app_utils.get_default_locale())
         self.date_format = app_utils.get_default_locale().dateFormat(QLocale.ShortFormat)
@@ -134,7 +140,7 @@ class AppConfig(QObject):
         # List of Dash network configurations. Multiple conn configs advantage is to give the possibility to use
         # another config if a particular one is not functioning (when using "public" RPC service, it could be node's
         # maintenance)
-        self.dash_net_configs = []
+        self.dash_net_configs: List[DashNetworkConnectionCfg] = []
 
         # to distribute the load evenly over "public" RPC services, we choose random connection (from enabled ones)
         # if it is set to False, connections will be used according to its order in dash_net_configs list
@@ -157,14 +163,16 @@ class AppConfig(QObject):
         self.feature_revoke_operator_automatic = AppFeatureStatus(True, 0, '')
         self.feature_new_bls_scheme = AppFeatureStatus(True, 0, '')
 
-        self.__hw_type: Optional[HWType] = None  # obsolete and will be removed in the future (we are leaving it to
-            # preserve compatibility of the config file with older versions)
-        self.hw_keepkey_psw_encoding = 'NFC'  # Keepkey passphrase UTF8 chars encoding:
-            #  NFC: compatible with official Keepkey client app
-            #  NFKD: compatible with Trezor
+        # obsolete and will be removed in the future (we are leaving it to
+        # preserve compatibility of the config file with older versions)
+        self.__hw_type: Optional[HWType] = None
+
+        # Keepkey passphrase UTF8 chars encoding:
+        #  NFC: compatible with official Keepkey client app
+        #  NFKD: compatible with Trezor
+        self.hw_keepkey_psw_encoding = 'NFC'
 
         self.dash_network = 'MAINNET'
-
         self.block_explorer_tx_mainnet: str = ''
         self.block_explorer_addr_mainnet: str = ''
         self.block_explorer_tx_testnet: str = ''
@@ -191,7 +199,6 @@ class AppConfig(QObject):
         self.masternodes = []
         self.last_bip32_base_path = ''
         self.bip32_recursive_search = True
-        self.modified = False
         self.cache_dir = ''
         self.tx_cache_dir = ''
         self.app_config_file_name = ''
@@ -623,7 +630,6 @@ class AppConfig(QObject):
         self.defective_net_configs.clear()
         self.masternodes.clear()
         self.random_dash_net_config = True
-        self._remote_app_params.clear()
         self._dash_blockchain_info.clear()
         self.public_conns_mainnet.clear()
         self.public_conns_testnet.clear()
@@ -646,7 +652,6 @@ class AppConfig(QObject):
         self.sig_time_offset_min = -1800
         self.sig_time_offset_max = 1800
         self.csv_delimiter = ';'
-        self.modified = False
         self.app_config_file_name = ''
         self.encrypt_config_file = False
         self.config_file_encrypted = False
@@ -844,6 +849,9 @@ class AppConfig(QObject):
                                                                       fallback=str(InputKeyType.PRIVATE)).strip())
                                 mn.voting_key_type = int(config.get(section, 'dmn_voting_key_type',
                                                                     fallback=str(InputKeyType.PRIVATE)).strip())
+                                mn.platform_node_key_type = int(config.get(section, 'platform_node_key_type',
+                                                                    fallback=str(InputKeyType.PRIVATE)).strip())
+
                                 if mn.owner_key_type == InputKeyType.PRIVATE:
                                     mn.owner_private_key = self.simple_decrypt(
                                         config.get(section, 'dmn_owner_private_key', fallback='').strip(), False)
@@ -874,17 +882,21 @@ class AppConfig(QObject):
                                     mn.masternode_type = MasternodeType.REGULAR
                                     logging.error('Error reading masternode type from configuration file: ' + str(e))
 
-                                try:
-                                    mn.platform_node_id = config.get(section, 'platform_node_id', fallback='').strip()
-                                except Exception as e:
-                                    logging.error('Error reading platform_node_id from configuration file: ' + str(e))
-
-                                try:
-                                    mn.platform_node_id_private_key = config.get(
-                                        section, 'platform_node_id_private_key', fallback='').strip()
-                                except Exception as e:
-                                    logging.error('Error reading platform_node_id_private_key from configuration '
-                                                  'file: ' + str(e))
+                                if mn.platform_node_key_type == InputKeyType.PRIVATE:
+                                    try:
+                                        mn.platform_node_private_key = self.simple_decrypt(
+                                            config.get(section, 'platform_node_private_key', fallback='').strip(),
+                                            False)
+                                    except Exception as e:
+                                        logging.error('Error reading platform_node_private_key from configuration '
+                                                      'file: ' + str(e))
+                                else:
+                                    try:
+                                        mn.platform_node_id = config.get(section, 'platform_node_id',
+                                                                         fallback='').strip()
+                                    except Exception as e:
+                                        logging.error(
+                                            'Error reading platform_node_id from configuration file: ' + str(e))
 
                                 try:
                                     tmp_str = config.get(section, 'platform_p2p_port', fallback='')
@@ -900,6 +912,19 @@ class AppConfig(QObject):
                                 except Exception as e:
                                     logging.error('Error reading platform_http_port from configuration file: ' + str(e))
 
+                                if ini_version == 6:
+                                    if not mn.platform_node_private_key:
+                                        try:
+                                            platform_key = config.get(section, 'platform_node_id_private_key',
+                                                                      fallback='').strip()
+                                            if platform_key:
+                                                mn.platform_node_private_key = platform_key
+                                        except Exception as e:
+                                            logging.exception(
+                                                'Error reading platform_node_private_key from configuration '
+                                                'file: ' + str(e))
+
+                                mn.update_data_hash()
                                 self.masternodes.append(mn)
                             except Exception as e:
                                 logging.error('Error reading masternode configuration from file. '
@@ -980,6 +1005,7 @@ class AppConfig(QObject):
                 if was_error:
                     WndUtils.warn_msg('There was an error reading configuration file. '
                                       'Look into the log file for more details.')
+                self.update_config_data_hash()
 
             except CancelException:
                 raise
@@ -1007,13 +1033,13 @@ class AppConfig(QObject):
                         raise CancelException('Cancelled')
                 if update_current_file_name:
                     self.app_config_file_name = None
-                self.modified = True
+                self.config_file_data_hash = ''
 
         elif file_name:
             if not create_config_file:
                 raise Exception(f'The configuration file \'{file_name}\' does not exist.')
             else:
-                self.modified = True
+                self.config_file_data_hash = ''
 
         self.load_default_connections()
         self.configure_cache()
@@ -1023,9 +1049,6 @@ class AppConfig(QObject):
             if self.default_rpc_connections:
                 added, updated = self.import_connections(self.default_rpc_connections, force_import=False,
                                                          limit_to_network=None)
-                if added or updated:
-                    self.modified = True
-
                 for c in self.default_rpc_connections:
                     if c.mainnet:
                         self.public_conns_mainnet[c.get_conn_id()] = c
@@ -1114,11 +1137,12 @@ class AppConfig(QObject):
             config.set(section, 'dmn_operator_public_key', mn.operator_public_key)
             config.set(section, 'dmn_voting_address', mn.voting_address)
             config.set(section, 'masternode_type', str(mn.masternode_type.value))
+            config.set(section, 'platform_node_key_type', str(mn.platform_node_key_type))
             config.set(section, 'platform_node_id', mn.platform_node_id)
-            config.set(section, 'platform_node_id_private_key', mn.platform_node_id_private_key)
+            config.set(section, 'platform_node_private_key', self.simple_encrypt(mn.platform_node_private_key))
             config.set(section, 'platform_p2p_port', str(mn.platform_p2p_port) if mn.platform_p2p_port else '')
             config.set(section, 'platform_http_port', str(mn.platform_http_port) if mn.platform_http_port else '')
-            mn.modified = False
+            mn.update_data_hash()
 
         # save dash network connections
         for idx, cfg in enumerate(self.dash_net_configs):
@@ -1166,15 +1190,54 @@ class AppConfig(QObject):
 
         if update_current_file_name:
             self.config_file_encrypted = encrypted
-            self.modified = False
             self.app_config_file_name = file_name
             app_cache.set_value('AppConfig_ConfigFileName', self.app_config_file_name)
+        self.update_config_data_hash()
 
     def new_configuration(self):
         """ Creates a new configuration with defaults """
         self.reset_configuration()
         self.load_default_connections()
         self.configure_cache()
+        self.config_file_data_hash = ''
+
+    def get_cfg_data_str(self):
+        """
+        Returns saveable configuration data packed as a string. Used for hashing configuration data
+        to be used as a comparison method if configration has changed.
+        """
+        all_data = ''
+        all_data += str(self.log_level_str)
+        all_data += str(self.dash_network)
+        all_data += str(self.__hw_type.value) if self.__hw_type is not None else ''
+        all_data += str(self.hw_keepkey_psw_encoding)
+        all_data += str(self.last_bip32_base_path)
+        all_data += str(self.random_dash_net_config)
+        all_data += str(self.check_for_updates)
+        all_data += str(self.backup_config_file)
+        all_data += str(self.dont_use_file_dialogs)
+        all_data += str(self.read_proposals_external_attributes)
+        all_data += str(self.confirm_when_voting)
+        all_data += str(self.fetch_network_data_after_start)
+        all_data += str(self.show_dash_value_in_fiat)
+        all_data += str(self.add_random_offset_to_vote_time)
+        all_data += str(self.encrypt_config_file)
+
+        for mn in self.masternodes:
+            all_data += mn.get_data_str()
+
+        for cfg in self.dash_net_configs:
+            all_data += cfg.get_data_str()
+
+        return all_data
+
+    def get_config_data_hash(self):
+        data = self.get_cfg_data_str()
+        h = hashlib.sha256(data.encode('ascii', 'ignore'))
+        return h.hexdigest()
+
+    def update_config_data_hash(self):
+        self.config_file_data_hash = self.get_config_data_hash()
 
     def reset_network_dependent_dyn_params(self):
         self.apply_remote_app_params()
@@ -1183,6 +1246,7 @@ class AppConfig(QObject):
         """ Set the dictionary containing the app live parameters stored in the project repository
         (remote app-params.json).
         """
+        self._remote_app_params.clear()
         self._remote_app_params = params
         self.apply_remote_app_params()
 
@@ -1521,16 +1585,11 @@ class AppConfig(QObject):
                 raise Exception('Masternode with this name: ' + mn.name + ' already exists in configuration')
 
     def is_modified(self) -> bool:
-        modified = self.modified
-        if not modified:
-            for mn in self.masternodes:
-                if mn.modified:
-                    modified = True
-                    break
-        return modified
-
-    def set_modified(self):
-        self.modified = True
+        if self.config_file_data_hash is not None:
+            mod = self.config_file_data_hash != self.get_config_data_hash()
+        else:
+            mod = False
+        return mod
 
     @property
     def is_testnet(self) -> bool:
@@ -1615,20 +1674,20 @@ class AppConfig(QObject):
 
 class MasternodeConfig:
     def __init__(self):
-        self.name: str = ''
+        self.__name: str = ''
         self.__ip: str = ''
         self.__port: Optional[int] = 9999
         self.__collateral_bip32_path: str = ''
         self.__collateral_address: str = ''
         self.__collateral_tx: str = ''
         self.__collateral_tx_index: str = ''
-        self.use_default_protocol_version = True
         self.__protocol_version: str = ''
         self.__dmn_user_roles = DMN_ROLE_OWNER | DMN_ROLE_OPERATOR | DMN_ROLE_VOTING
         self.__tx_hash: str = ''
         self.__owner_key_type: int = InputKeyType.PRIVATE
         self.__operator_key_type: int = InputKeyType.PRIVATE
         self.__voting_key_type: int = InputKeyType.PRIVATE
+        self.__platform_node_key_type: int = InputKeyType.PRIVATE
         self.__owner_private_key: str = ''
         self.__operator_private_key: str = ''
         self.__voting_private_key: str = ''
@@ -1636,17 +1695,14 @@ class MasternodeConfig:
         self.__operator_public_key: str = ''
         self.__voting_address: str = ''
         self.__masternode_type: MasternodeType = MasternodeType.REGULAR
+        self.__platform_node_private_key: str = ''
         self.__platform_node_id: str = ''
-        self.__platform_node_id_private_key: str = ''  # private key as ed25519 hex string if a user provided such
         self.__platform_p2p_port: Optional[int] = None
         self.__platform_http_port: Optional[int] = None
+        self.use_default_protocol_version = True
         self.is_new = False  # True if this mn configuration entry isn't included in the app configuration yet
-        self.modified = False
+        self.saved_data_hash = ''
         self.lock_modified_change = False
-
-    def set_modified(self):
-        if not self.lock_modified_change:
-            self.modified = True
 
     def copy_from(self, src_mn: 'MasternodeConfig'):
         self.name = src_mn.name
@@ -1666,17 +1722,52 @@ class MasternodeConfig:
         self.owner_private_key = src_mn.owner_private_key
         self.operator_private_key = src_mn.operator_private_key
         self.voting_private_key = src_mn.voting_private_key
+        self.platform_node_key_type = src_mn.platform_node_key_type
         self.owner_address = src_mn.owner_address
         self.operator_public_key = src_mn.operator_public_key
         self.voting_address = src_mn.voting_address
         self.masternode_type = src_mn.masternode_type
         self.platform_node_id = src_mn.platform_node_id
-        self.platform_node_id_private_key = src_mn.platform_node_id_private_key
+        self.platform_node_private_key = src_mn.platform_node_private_key
         self.platform_p2p_port = src_mn.platform_p2p_port
         self.platform_http_port = src_mn.platform_http_port
         self.is_new = src_mn.is_new
         self.modified = True
         self.lock_modified_change = False
+        self.saved_data_hash = src_mn.saved_data_hash
+
+    def get_data_str(self) -> str:
+        """
+        Returns masternode data packed as string to be used for hashing.
+        """
+        all_attrs = ''
+        for attr, value in self.__dict__.items():
+            m = re.match('(_MasternodeConfig)?(.+)', attr)
+            if m:
+                name = m.group(2)
+                if name.startswith('__'):
+                    all_attrs += str(value)
+        return all_attrs
+
+    def get_hash(self) -> str:
+        data = self.get_data_str()
+        h = hashlib.sha256(data.encode('ascii', 'ignore'))
+        return h.hexdigest()
+
+    def update_data_hash(self):
+        self.saved_data_hash = self.get_hash()
+
+    def is_modified(self):
+        h = self.get_hash()
+        return self.saved_data_hash != h
+
+    @property
+    def name(self) -> str:
+        return self.__name
+
+    @name.setter
+    def name(self, new_name: str):
+        self.__name = new_name
 
     @property
     def ip(self) -> str:
@@ -1847,33 +1938,43 @@ class MasternodeConfig:
         return self.__owner_key_type
 
     @owner_key_type.setter
-    def owner_key_type(self, type: int):
-        if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
+    def owner_key_type(self, key_type: int):
+        if key_type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
             raise Exception('Invalid owner key type')
-        self.__owner_key_type = type
+        self.__owner_key_type = key_type
 
     @property
     def operator_key_type(self) -> int:
         return self.__operator_key_type
 
     @operator_key_type.setter
-    def operator_key_type(self, type: int):
-        if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
+    def operator_key_type(self, key_type: int):
+        if key_type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
             raise Exception('Invalid operator key type')
-        self.__operator_key_type = type
+        self.__operator_key_type = key_type
 
     @property
     def voting_key_type(self) -> int:
         return self.__voting_key_type
 
     @voting_key_type.setter
-    def voting_key_type(self, type: int):
-        if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
+    def voting_key_type(self, key_type: int):
+        if key_type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
             raise Exception('Invalid voting key type')
-        self.__voting_key_type = type
+        self.__voting_key_type = key_type
 
     def get_current_key_for_voting(self, app_config: AppConfig, dashd_intf) -> str:
         return self.voting_private_key
+
+    @property
+    def platform_node_key_type(self):
+        return self.__platform_node_key_type
+
+    @platform_node_key_type.setter
+    def platform_node_key_type(self, key_type: int):
+        if key_type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
+            raise Exception('Invalid voting key type')
+        self.__platform_node_key_type = key_type
 
     @property
     def masternode_type(self) -> MasternodeType:
@@ -1889,32 +1990,19 @@ class MasternodeConfig:
 
     @platform_node_id.setter
     def platform_node_id(self, node_id: str):
-        if node_id:
-            if self.__platform_node_id_private_key:
-                # if the newly set platform id does not match the ed25519 private key associated with that platform id,
-                # reset this private key - they are no longer a pair
-                id_from_priv = dash_utils.ed25519_public_key_to_platform_id(self.__platform_node_id_private_key)
-                if id_from_priv != node_id:
-                    self.__platform_node_id_private_key = ''
-
+        if node_id is None:
+            node_id = ''
         self.__platform_node_id = node_id
 
     @property
-    def platform_node_id_private_key(self):
-        return self.__platform_node_id_private_key
+    def platform_node_private_key(self):
+        return self.__platform_node_private_key
 
-    @platform_node_id_private_key.setter
-    def platform_node_id_private_key(self, private_key: str):
-        if private_key:
-            pubkey_hex = dash_utils.ed25519_private_key_to_pubkey(private_key)
-            platform_id = dash_utils.ed25519_public_key_to_platform_id(pubkey_hex)
-            if self.__platform_node_id and self.__platform_node_id != platform_id:
-                logging.warning('When setting Ed25519 private key, platform_node_id had to be changed to match to '
-                                'a private key.')
-            self.__platform_node_id = platform_id
-            self.__platform_node_id_private_key = private_key
-        else:
-            self.__platform_node_id_private_key = private_key
+    @platform_node_private_key.setter
+    def platform_node_private_key(self, private_key: str):
+        if private_key is None:
+            private_key = ''
+        self.__platform_node_private_key = private_key
 
     @property
     def platform_p2p_port(self) -> Optional[int]:
@@ -2002,11 +2090,11 @@ class MasternodeConfig:
                     return ret.hex()
         return ''
 
-    def get_operator_pubkey(self) -> Optional[str]:
+    def get_operator_pubkey(self, new_bls_scheme: bool) -> Optional[str]:
         if self.__operator_key_type == InputKeyType.PRIVATE:
             if self.__operator_private_key:
                 try:
-                    pubkey = dash_utils.bls_privkey_to_pubkey(self.__operator_private_key)
+                    pubkey = dash_utils.bls_privkey_to_pubkey(self.__operator_private_key, new_bls_scheme)
                 except Exception as e:
                     logging.exception(str(e))
                     pubkey = ''
@@ -2024,6 +2112,15 @@ class SSHConnectionCfg(object):
         self.__password = ''
         self.__auth_method = 'any'  # 'any', 'password', 'key_pair', 'ssh_agent'
         self.private_key_path = ''
+
+    def get_data_str(self) -> str:
+        all_data = str(self.__host)
+        all_data += str(self.__port)
+        all_data += str(self.__username)
+        all_data += str(self.__password)
+        all_data += str(self.__auth_method)
+        all_data += str(self.private_key_path)
+        return all_data
 
     @property
     def host(self):
@@ -2085,6 +2182,23 @@ class DashNetworkConnectionCfg(object):
         self.__testnet = False
         self.__rpc_encryption_pubkey_der = ''
         self.__rpc_encryption_pubkey_object = None
+
+    def get_data_str(self) -> str:
+        """
+        Returns data packed as string to be used for hashing.
+        """
+        all_attrs = str(self.__enabled)
+        all_attrs += str(self.__host)
+        all_attrs += str(self.__port)
+        all_attrs += str(self.__username)
+        all_attrs += str(self.__password)
+        all_attrs += str(self.__use_ssl)
+        all_attrs += str(self.__use_ssh_tunnel)
+        all_attrs += self.__ssh_conn_cfg.get_data_str()
+        all_attrs += str(self.__testnet)
+        all_attrs += str(self.__rpc_encryption_pubkey_der)
+
+        return all_attrs
 
     def get_description(self):
         if self.__use_ssh_tunnel:

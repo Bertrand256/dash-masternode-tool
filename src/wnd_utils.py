@@ -110,12 +110,16 @@ class WndUtils:
                                f'{c.user_id}"><img src="img/content-copy@16px.png"/></a></span></td></tr>'
 
             contact_str = '<table>' + contact_str + '</table>'
-            style = f'<style>.app {{white-space:nowrap}} .user_id {{white-space:nowrap}} ' \
+            style = f'<style>.app {{white-space:nowrap;text-align:right;padding-right: 10px}} .user_id {{white-space:nowrap;text-align:left}} ' \
                     f'.user_id > span {{vertical-align: middle; display: block;}} ' \
                     f'.user_id a {{margin-left: 6px}} body {{font-weight: normal}}</style>'
 
-            info = f'<html><head>{style}</head><body>{additional_message}' + \
-                   contact_str + '</body></html>'
+        else:
+            contact_str = '<h4>Sorry, there is currently no contact information for the developer.</h4>'
+            style = '<style>body {font-weight: normal}</style>'
+
+        info = f'<html><head>{style}</head><body>{additional_message}' + \
+               contact_str + '</body></html>'
 
         return info, link_activated_handler
 

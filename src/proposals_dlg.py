@@ -705,7 +705,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
             else:
                 col.my_masternode = my_masternode
 
-    def display_message(self, message):
+    def show_message(self, message: Optional[str]):
         def disp(msg):
             if msg:
                 self.lblMessage.setVisible(True)
@@ -876,7 +876,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
         try:
 
-            self.display_message('Reading proposals data, please wait...')
+            self.show_message('Reading proposals data, please wait...')
             log.info('Reading proposals from the Dash network.')
             begin_time = time.time()
             proposals_new = self.dashd_intf.gobject("list", "valid", "proposals")
@@ -1085,7 +1085,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     finally:
                         self.db_intf.commit()
                         self.db_intf.release_cursor()
-                        self.display_message('')
+                        self.show_message('')
 
                     if errors > 0:
                         self.warn_msg('Problems encountered while processing some of the proposals data. '
@@ -1104,7 +1104,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
         except Exception as e:
             log.exception('Exception wile reading proposals from Dash network.')
-            self.display_message('')
+            self.show_message('')
             self.error_msg('Error while reading proposals data from the Dash network: ' + str(e))
             raise
 
@@ -1113,7 +1113,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
     def read_governance_data(self):
         try:
-            self.display_message('Reading governance data, please wait...')
+            self.show_message('Reading governance data, please wait...')
 
             # get the date-time of the last superblock and calculate the date-time of the next one
             self.governanceinfo = self.dashd_intf.getgovernanceinfo()
@@ -1219,15 +1219,15 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         old_reading_state = self.reading_vote_data
         self.reading_vote_data = True
         try:
-            self.display_message('Connecting to Dash daemon, please wait...')
+            self.show_message('Connecting to Dash daemon, please wait...')
             if not self.dashd_intf.open():
                 self.error_msg('Dash daemon not connected')
             else:
                 try:
                     self.read_governance_data()
 
-                    # get list of all masternodes
-                    self.display_message('Reading masternode data, please wait...')
+                    # get a list of all masternodes
+                    self.show_message('Reading masternode data, please wait...')
 
                     # prepare a dict of user's masternodes configs (app_config.MasternodeConfig); key: masternode
                     # ident (transaction id-transaction index)
@@ -1268,7 +1268,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
                     if self.db_intf.db_active:
                         try:
-                            self.display_message('Reading proposals data from DB, please wait...')
+                            self.show_message('Reading proposals data from DB, please wait...')
 
                             # read all proposals from DB cache
                             cur = self.db_intf.get_cursor()
@@ -1451,9 +1451,9 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                         msgs += f'<div style="color:red">{msg}</div>'
                     msgs += ' (<a href="#close">close</a>)'
 
-                    self.display_message(msgs)
+                    self.show_message(msgs)
                 else:
-                    self.display_message("")
+                    self.show_message("")
 
             self.reading_vote_data = old_reading_state
 
@@ -1464,7 +1464,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         if self.app_config.dash_network == 'TESTNET':
             return
 
-        self.display_message("Reading proposal external attributes, please wait...")
+        self.show_message("Reading proposal external attributes, please wait...")
         begin_time = time.time()
         network_duration = 0
         modified_ext_attributes = False
@@ -1478,8 +1478,8 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                 for idx, prop in enumerate(proposals):
                     if self.finishing:
                         raise CloseDialogException
-                    self.display_message("Reading proposal external attributes (%d/%d), please wait..." %
-                                         (idx + 1, len(proposals)))
+                    self.show_message("Reading proposal external attributes (%d/%d), please wait..." %
+                                      (idx + 1, len(proposals)))
 
                     prop.modified = False
                     try:
@@ -1583,12 +1583,12 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
             time_diff = time.time() - begin_time
             log.info('Finished reading external attributes. Overall time: %s seconds, network time: %s.' %
                      (str(time_diff), str(network_duration)))
-            self.display_message('')
+            self.show_message('')
         return modified_ext_attributes
 
     def read_voting_from_db(self):
         """ Read voting results for specified voting columns """
-        self.display_message('Reading voting data from DB, please wait...')
+        self.show_message('Reading voting data from DB, please wait...')
         begin_time = time.time()
 
         try:
@@ -1672,7 +1672,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                 if self.finishing:
                                     raise CloseDialogException
 
-                                self.display_message('Reading voting data %d of %d' % (row_idx + 1, len(proposals)))
+                                self.show_message('Reading voting data %d of %d' % (row_idx + 1, len(proposals)))
                                 tm_begin = time.time()
                                 try:
                                     votes = self.dashd_intf.rpc_call(False, False, 'gobject', 'getcurrentvotes',
@@ -1884,7 +1884,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     if db_modified:
                         self.db_intf.commit()
                     self.db_intf.release_cursor()
-                self.display_message(None)
+                self.show_message(None)
 
             if refresh_preview_votes and not self.finishing:
                 self.refresh_details_event.set()
@@ -2839,7 +2839,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                 msg = f'Vote finished with errors'
             if msg:
                 msg += ' (<a href="#close">close</a>)'
-            self.display_message(msg)
+            self.show_message(msg)
 
     def vote_on_selected_proposals(self, vote_code, masternodes: Optional[List]):
         vote_errors: List[Tuple[Proposal, MasternodeConfig, str]] = []

@@ -215,11 +215,9 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
         p = self.palette()
         bg_color_active = p.color(QPalette.Normal, p.Base).name()
         bg_color_inactive = p.color(QPalette.Inactive, p.Window).name()
-        self.setStyleSheet("QLineEdit {\n"
-                           f"    background-color: {bg_color_active};\n"
-                           "} QLineEdit:read-only {\n"
-                           f"    background-color: {bg_color_inactive};\n"
-                           "}\n")
+        style = f"QLineEdit, QTextEdit {{background-color: {bg_color_active};}} " \
+                f"QLineEdit:read-only, QTextEdit[readonly=true] {{background-color: {bg_color_inactive};}} "
+        self.setStyleSheet(style)
 
         green_color = get_widget_font_color_green(self)
         style = f'QLabel[level="success"]{{color:{green_color}}} ' \
@@ -231,7 +229,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
 
     def configuration_to_ui(self):
         """
-        Show the information read from configuration file on the user interface.
+        Show the information read from the configuration file on the user interface.
         :return:
         """
         self.update_app_ui_theme()
@@ -278,7 +276,6 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
             self.editing_enabled = False
             self.configuration_to_ui()
             self.dashd_intf.reload_configuration()
-            self.app_config.modified = False
             file_name = self.app_config.app_config_file_name
             if file_name:
                 self.add_item_to_config_files_mru_list(file_name)
@@ -487,7 +484,6 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                 if os.path.exists(file_name):
                     self.load_configuration_from_file(file_name, ask_save_changes=False,
                                                       update_current_file_name=False)
-                    self.app_config.modified = True
                     self.update_edit_controls_state()
                     WndUtils.info_msg('Configuration has been imported.')
                 else:
@@ -544,7 +540,6 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                         _, _, file_name_to_restore = file_dates[idx]
                         self.load_configuration_from_file(file_name_to_restore, ask_save_changes=False,
                                                           update_current_file_name=False)
-                        self.app_config.modified = True
                         self.update_edit_controls_state()
             else:
                 self.error_msg("Couldn't find any backup file.")
@@ -618,7 +613,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
 
     def get_project_config_params_thread(self, ctrl, force_check):
         """
-        Thread function checking whether there is a new version of the application on Github page.
+        Thread function checking whether there is a new version of the application on GitHub page.
         :param ctrl: thread control structure (not used here) 
         :param force_check: True if version-check has been invoked by the user, not the app itself.
         :return: None
@@ -679,7 +674,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
             res = dlg.exec_()
             if res:
                 if dlg.get_global_options_modified():
-                    # user modified options not related to config file - stored in cache
+                    # user modified options are not related to config file - stored in cache
                     self.update_app_ui_theme()
 
                 if dlg.get_is_modified():
@@ -1219,7 +1214,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
 
                     cur_masternode.masternode_type = reg_dlg.masternode_type
                     cur_masternode.platform_node_id = reg_dlg.platform_node_id
-                    cur_masternode.platform_node_id_private_key = reg_dlg.platform_node_id_private_key
+                    cur_masternode.platform_node_private_key = reg_dlg.platform_node_id_private_key
                     cur_masternode.platform_p2p_port = reg_dlg.platform_p2p_port
                     cur_masternode.platform_http_port = reg_dlg.platform_http_port
                     cur_masternode.collateral_tx = reg_dlg.collateral_tx

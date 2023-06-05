@@ -223,16 +223,9 @@ def generate_bls_privkey() -> str:
     raise Exception("Could not generate BLS private key")
 
 
-def bls_privkey_to_pubkey(privkey: str) -> str:
-    pk_bin = bytes.fromhex(privkey)
-    pk = PrivateKey.from_bytes(pk_bin)
-    pubkey = bytes(pk.get_g1()).hex()
-    return pubkey
-
-
-def validate_bls_privkey(privkey: str) -> bool:
+def validate_bls_privkey(privkey: str, new_bls_scheme: bool) -> bool:
     try:
-        pub = bls_privkey_to_pubkey(privkey)
+        pub = bls_privkey_to_pubkey(privkey, new_bls_scheme)
         return True if pub else False
     except Exception:
         return False
@@ -244,6 +237,25 @@ def validate_bls_pubkey(pubkey: str) -> bool:
         return True
     except Exception as e:
         return False
+
+
+def bls_privkey_to_pubkey(privkey: str, new_bls_scheme: bool) -> str:
+    if new_bls_scheme:
+        return bls_privkey_to_pubkey_basic(privkey)
+    else:
+        return bls_privkey_to_pubkey_legacy(privkey)
+
+
+def bls_privkey_to_pubkey_basic(privkey: str) -> str:
+    """
+    Converts BLS private to a public key using the new BLS scheme introduced in Dash v19, referred to as "basic".
+    :param privkey:
+    :return:
+    """
+    pk_bin = bytes.fromhex(privkey)
+    pk = PrivateKey.from_bytes(pk_bin)
+    pubkey = bytes(pk.get_g1()).hex()
+    return pubkey
 
 
 def bls_privkey_to_pubkey_legacy(privkey: str) -> str:
@@ -590,6 +602,81 @@ def ed25519_public_key_to_platform_id(public_key: str) -> str:
     return hashed.digest()[0:20].hex()
 
 
+def ed25519_private_key_to_pkcs8_base64(private_key: str) -> str:
+    priv: Ed25519PrivateKey = parse_ed25519_private_key(private_key)
+    priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.DER,
+                                    cryptography.hazmat.primitives.serialization.PrivateFormat.PKCS8,
+                                    cryptography.hazmat.primitives.serialization.NoEncryption())
+    priv_str = base64.b64encode(priv_bytes).decode('ascii')
+    return priv_str
+
+
+def ed25519_private_key_to_pkcs8_der(private_key: str) -> str:
+    priv: Ed25519PrivateKey = parse_ed25519_private_key(private_key)
+    priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.DER,
+                                    cryptography.hazmat.primitives.serialization.PrivateFormat.PKCS8,
+                                    cryptography.hazmat.primitives.serialization.NoEncryption())
+    priv_str = priv_bytes.hex()
+    return priv_str
+
+
+def ed25519_private_key_to_pkcs8_pem(private_key: str) -> str:
+    priv: Ed25519PrivateKey = parse_ed25519_private_key(private_key)
+    priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.PEM,
+                                    cryptography.hazmat.primitives.serialization.PrivateFormat.PKCS8,
+                                    cryptography.hazmat.primitives.serialization.NoEncryption())
+    priv_str = priv_bytes.decode('ascii')
+    return priv_str
+
+
+def ed25519_private_key_to_raw_hex(private_key: str) -> str:
+    priv: Ed25519PrivateKey = parse_ed25519_private_key(private_key)
+    priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.Raw,
+                                    cryptography.hazmat.primitives.serialization.PrivateFormat.Raw,
+                                    cryptography.hazmat.primitives.serialization.NoEncryption())
+    priv_str = priv_bytes.hex()
+    return priv_str
+
+
+def ed25519_private_key_to_tenderdash(private_key: str) -> str:
+    """
+    Return a string in format used by Tenderdash, i.e., concatenated private and public keys, encoded as base64
+    """
+    priv: Ed25519PrivateKey = parse_ed25519_private_key(private_key)
+    priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.Raw,
+                                    cryptography.hazmat.primitives.serialization.PrivateFormat.Raw,
+                                    cryptography.hazmat.primitives.serialization.NoEncryption())
+    pub_bytes = priv.public_key().public_bytes(cryptography.hazmat.primitives.serialization.Encoding.Raw,
+                                               cryptography.hazmat.primitives.serialization.PublicFormat.Raw)
+    priv_str = base64.b64encode(priv_bytes + pub_bytes).decode('ascii')
+    return priv_str
+
+
+def ed25519_private_key_to_platform_id(private_key: str) -> str:
+    pub_key_hex = ed25519_private_key_to_pubkey(private_key)
+    node_id = ed25519_public_key_to_platform_id(pub_key_hex)
+    return node_id
+
+
+def validate_ed25519_privkey(private_key: str) -> bool:
+    try:
+        _ = parse_ed25519_private_key(private_key)
+        return True
+    except Exception as e:
+        return False
+
+
+def validate_platform_node_id(platform_id: str) -> bool:
+    try:
+        pub_bytes = bytes.fromhex(platform_id)
+        if len(pub_bytes) == 20:
+            return True
+        else:
+            return False
+    except Exception:
+        return False
+
+
 class COutPoint(object):
     def __init__(self, hash: str, index: int):
         self.hash: bytes = bytes.fromhex(hash)
@@ -640,8 +727,8 @@ class CGovernanceVote(object):
             ser_str += self.time.to_bytes(8, byteorder='little').hex()
         return ser_str
 
-    def get_hash(self):
-        ser_str = self.serialize()
+    def get_hash(self, dash_network: Literal['MAINNET', 'TESTNET']):
+        ser_str = self.serialize(dash_network)
         hash = bitcoin.bin_dbl_sha256(bytes.fromhex(ser_str))
         return hash.hex()
 

@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>784</width>
-    <height>406</height>
+    <width>700</width>
+    <height>433</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -760,7 +760,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="edtPlatformNodeId">
+         <widget class="QLineEdit" name="edtPlatformNodeKey">
           <property name="echoMode">
            <enum>QLineEdit::Normal</enum>
           </property>
@@ -770,7 +770,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QToolButton" name="btnCopyPlatformId">
+         <widget class="QToolButton" name="btnCopyPlatformNodeKey">
           <property name="maximumSize">
            <size>
             <width>16777215</width>
@@ -784,12 +784,31 @@
            <string/>
           </property>
           <property name="popupMode">
+           <enum>QToolButton::InstantPopup</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnShowPlatformNodeKey">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>21</height>
+           </size>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+          <property name="popupMode">
            <enum>QToolButton::MenuButtonPopup</enum>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QToolButton" name="btnGetPlatformNodeIdFromPrivate">
+         <widget class="QToolButton" name="btnGeneratePlatformNodePrivateKey">
           <property name="maximumSize">
            <size>
             <width>16777215</width>
@@ -800,7 +819,7 @@
            <string>Set Platform Node ID from Ed25519 private key</string>
           </property>
           <property name="text">
-           <string>Convert from private</string>
+           <string>Generate new</string>
           </property>
          </widget>
         </item>

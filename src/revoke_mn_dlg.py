@@ -139,9 +139,6 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
         if self.masternode.operator_key_type != InputKeyType.PRIVATE:
             raise Exception('The operator private key is required.')
 
-        if self.masternode.get_operator_pubkey() != self.dmn_actual_operator_pubkey:
-            raise Exception('The operator key from your configuration does not match the key published on the network.')
-
         self.revocation_reason = self.cboReason.currentIndex()
 
     def update_manual_cmd_info(self):

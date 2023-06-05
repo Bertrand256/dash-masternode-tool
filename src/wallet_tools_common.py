@@ -35,7 +35,7 @@ class ActionPageBase:
         self.fn_set_btn_continue_text: Optional[Callable[[str, str], None]] = None
         self.fn_set_hw_change_enabled: Optional[Callable[[bool], None]] = None
         self.fn_show_message_page: Optional[Callable[[Optional[str]], None]] = None
-        self.fn_show_action_page: Optional[Callable[[None], None]] = None
+        self.fn_show_action_page: Optional[Callable[[], None]] = None
 
     def set_control_functions(
             self,
