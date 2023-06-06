@@ -5,7 +5,7 @@ import bitcoin
 from PyQt5 import QtCore
 from PyQt5.QtCore import pyqtSlot, Qt, QTimer
 from PyQt5.QtGui import QTextDocument
-from PyQt5.QtWidgets import QWidget, QLineEdit, QInputDialog, QMessageBox, QAction, QApplication, QActionGroup
+from PyQt5.QtWidgets import QWidget, QLabel, QLineEdit, QInputDialog, QMessageBox, QAction, QApplication, QActionGroup
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import cryptography.hazmat.primitives.serialization
 
@@ -228,6 +228,9 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
         self.lblOwnerKey.setVisible(self.masternode is not None and
                                     (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
+        self.lblOwnerKeyMsg.setVisible(self.masternode is not None and
+                                       (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0) and
+                                       self.owner_key_invalid)
         self.edtOwnerKey.setVisible(self.masternode is not None and
                                     (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
         self.btnShowOwnerPrivateKey.setVisible(self.masternode is not None and
@@ -237,6 +240,9 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                                         (self.masternode.dmn_user_roles & DMN_ROLE_OWNER > 0))
         self.lblOperatorKey.setVisible(self.masternode is not None and
                                        (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
+        self.lblOperatorKeyMsg.setVisible(self.masternode is not None and
+                                         (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0) and
+                                          self.operator_key_invalid)
         self.edtOperatorKey.setVisible(self.masternode is not None and
                                        (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.btnShowOperatorPrivateKey.setVisible(self.masternode is not None and
@@ -246,6 +252,9 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                                            (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.lblVotingKey.setVisible(self.masternode is not None and
                                      (self.masternode.dmn_user_roles & DMN_ROLE_VOTING > 0))
+        self.lblVotingKeyMsg.setVisible(self.masternode is not None and
+                                        (self.masternode.dmn_user_roles & DMN_ROLE_VOTING > 0) and
+                                        self.voting_key_invalid)
         self.edtVotingKey.setVisible(self.masternode is not None and
                                      (self.masternode.dmn_user_roles & DMN_ROLE_VOTING > 0))
         self.btnShowVotingPrivateKey.setVisible(self.masternode is not None and
@@ -267,26 +276,38 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
         # Platform Node ID
         self.lblPlatformNodeId.setVisible(self.masternode is not None and
-                                          (self.masternode.masternode_type == MasternodeType.HPMN))
+                                          (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                          (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.edtPlatformNodeKey.setVisible(self.masternode is not None and
-                                           (self.masternode.masternode_type == MasternodeType.HPMN))
+                                           (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                           (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.btnCopyPlatformNodeKey.setVisible(self.masternode is not None and
-                                              (self.masternode.masternode_type == MasternodeType.HPMN))
+                                               (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                               (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.btnShowPlatformNodeKey.setVisible(self.masternode is not None and
                                                self.edit_mode is False and
-                                               (self.masternode.masternode_type == MasternodeType.HPMN))
+                                               (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                               (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
+        self.lblPlatformNodeMsg.setVisible(self.masternode is not None and
+                                           (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                           (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0) and
+                                           self.platform_node_key_invalid)
 
         # Platform P2P port
         self.lblPlatformP2PPort.setVisible(self.masternode is not None and
-                                           (self.masternode.masternode_type == MasternodeType.HPMN))
+                                           (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                           (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.edtPlatformP2PPort.setVisible(self.masternode is not None and
-                                           (self.masternode.masternode_type == MasternodeType.HPMN))
+                                           (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                           (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
 
         # Platform HTTP port
         self.lblPlatformHTTPPort.setVisible(self.masternode is not None and
-                                            (self.masternode.masternode_type == MasternodeType.HPMN))
+                                            (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                            (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.edtPlatformHTTPPort.setVisible(self.masternode is not None and
-                                            (self.masternode.masternode_type == MasternodeType.HPMN))
+                                            (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                            (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
 
         self.btnGenerateOwnerPrivateKey.setVisible(
             self.masternode is not None and self.edit_mode and
@@ -379,40 +400,45 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 color = ''
             return color
 
-        def get_label_text(prefix: str, cur_key_type: str, tooltip_anchor: str, group: Optional[QActionGroup],
-                           style: str, error_msg: Optional[str] = None):
-            lbl = '???'
+        def set_label_text(lbl_control: QLabel, msg_control: QLabel, key_desc_prefix: str, cur_key_type: str,
+                           tooltip_anchor: str, menu_group: Optional[QActionGroup], style: str,
+                           error_msg: Optional[str] = None):
             change_mode = ''
             if self.edit_mode and tooltip_anchor:
                 change_mode = f'<td>(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)</td>'
-            elif group:
-                a = group.checkedAction()
+            elif menu_group:
+                a = menu_group.checkedAction()
                 if a:
                     cur_key_type = a.data()
                 change_mode = ''
 
             if cur_key_type == 'privkey':
-                lbl = prefix + ' private key'
+                lbl = key_desc_prefix + ' private key'
             elif cur_key_type == 'address':
-                lbl = prefix + ' Dash address'
+                lbl = key_desc_prefix + ' Dash address'
             elif cur_key_type == 'pubkey':
-                lbl = prefix + ' public key'
+                lbl = key_desc_prefix + ' public key'
             elif cur_key_type == 'pubkeyhash':
-                lbl = prefix + ' public key hash'
+                lbl = key_desc_prefix + ' public key hash'
             elif cur_key_type in ('privkey_tenderdash', 'privkey_pkcs8_base64', 'privkey_pkcs8_pem',
                                   'privkey_pkcs8_der', 'privkey_raw'):
-                lbl = prefix + ' private key'
+                lbl = key_desc_prefix + ' private key'
             elif cur_key_type == 'platform_node_id':
-                lbl = prefix + ' id'
+                lbl = key_desc_prefix + ' id'
             else:
-                lbl = prefix
+                lbl = key_desc_prefix
 
             if error_msg:
-                err = '<td style="color:red">' + error_msg + '</td>'
+                err_text = '<span style="color:red">' + error_msg + '</span>'
             else:
-                err = ''
-            return f'<table style="float:right;{style_to_color(style)}"><tr><td>{lbl}</td>{change_mode}{err}' \
-                   f'</tr></table>'
+                err_text = ''
+
+            lbl_text = f'<table style="float:right;{style_to_color(style)}"><tr><td>{lbl}</td>{change_mode}' \
+                       f'</tr></table>'
+            lbl_control.setText(lbl_text)
+
+            if msg_control:
+                msg_control.setText(err_text)
 
         if self.masternode:
             style = ''
@@ -424,9 +450,15 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the owner Dash address')
                 if not self.edit_mode:
                     style = 'hl1' if self.act_view_as_owner_public_address.isChecked() else 'hl2'
-            self.lblOwnerKey.setText(get_label_text(
-                'Owner', key_type, tooltip_anchor, self.ag_owner_key, style,
-                '[invalid key format]' if self.owner_key_invalid else ''))
+
+            err_msg = ''
+            if self.owner_key_invalid:
+                if self.masternode.owner_key_type == InputKeyType.PRIVATE:
+                    err_msg = 'Invalid owner private key format'
+                else:
+                    err_msg = 'Invalid owner Dash address format'
+            set_label_text(self.lblOwnerKey, self.lblOwnerKeyMsg, 'Owner', key_type, tooltip_anchor,
+                           self.ag_owner_key, style, err_msg)
             self.edtOwnerKey.setPlaceholderText(placeholder_text)
 
             style = ''
@@ -438,9 +470,15 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 key_type, tooltip_anchor, placeholder_text = ('pubkey', 'privkey', 'Enter the operator public key')
                 if not self.edit_mode:
                     style = 'hl1' if self.act_view_as_operator_public_key.isChecked() else 'hl2'
-            self.lblOperatorKey.setText(get_label_text(
-                'Operator', key_type, tooltip_anchor, self.ag_operator_key,
-                style, '[invalid key format]' if self.operator_key_invalid else ''))
+
+            err_msg = ''
+            if self.operator_key_invalid:
+                if self.masternode.operator_key_type == InputKeyType.PRIVATE:
+                    err_msg = 'Invalid operator private key format'
+                else:
+                    err_msg = 'Invalid operator public key format'
+            set_label_text(self.lblOperatorKey, self.lblOperatorKeyMsg, 'Operator', key_type, tooltip_anchor,
+                           self.ag_operator_key, style, err_msg)
             self.edtOperatorKey.setPlaceholderText(placeholder_text)
 
             style = ''
@@ -452,9 +490,15 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 key_type, tooltip_anchor, placeholder_text = ('address', 'privkey', 'Enter the voting Dash address')
                 if not self.edit_mode:
                     style = 'hl1' if self.act_view_as_voting_public_address.isChecked() else 'hl2'
-            self.lblVotingKey.setText(get_label_text(
-                'Voting', key_type, tooltip_anchor, self.ag_voting_key, style,
-                '[invalid key format]' if self.voting_key_invalid else ''))
+
+            err_msg = ''
+            if self.voting_key_invalid:
+                if self.masternode.voting_key_type == InputKeyType.PRIVATE:
+                    err_msg = 'Invalid voting private key format'
+                else:
+                    err_msg = 'Invalid voting Dash address format'
+            set_label_text(self.lblVotingKey, self.lblVotingKeyMsg, 'Voting', key_type, tooltip_anchor,
+                           self.ag_voting_key, style, err_msg)
             self.edtVotingKey.setPlaceholderText(placeholder_text)
 
             style = ''
@@ -468,25 +512,31 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                                                               'Enter the Platform Node id')
                 if not self.edit_mode:
                     style = 'hl1' if self.act_view_as_platform_node_id.isChecked() else 'hl2'
-            self.lblPlatformNodeId.setText(get_label_text(
-                'Platform Node', key_type, tooltip_anchor, self.ag_platform_node_key, style,
-                '[invalid key format]' if self.platform_node_key_invalid else ''))
+
+            err_msg = ''
+            if self.platform_node_key_invalid:
+                if self.masternode.platform_node_key_type == InputKeyType.PRIVATE:
+                    err_msg = 'Invalid Platform Node private key format (sould be Ed25519)'
+                else:
+                    err_msg = 'Invalid Plarform Node Id format'
+            set_label_text(self.lblPlatformNodeId, self.lblPlatformNodeMsg, 'Platform Node', key_type,
+                           tooltip_anchor, self.ag_platform_node_key, style, err_msg)
             self.edtPlatformNodeKey.setPlaceholderText(placeholder_text)
 
             self.set_left_label_width(self.get_max_left_label_width())
 
     def update_key_controls_state(self):
         self.edtOwnerKey.setEchoMode(QLineEdit.Normal if self.btnShowOwnerPrivateKey.isChecked() or
-                                     self.edit_mode else QLineEdit.Password)
+                                                         self.edit_mode else QLineEdit.Password)
 
         self.edtOperatorKey.setEchoMode(QLineEdit.Normal if self.btnShowOperatorPrivateKey.isChecked() or
-                                        self.edit_mode else QLineEdit.Password)
+                                                            self.edit_mode else QLineEdit.Password)
 
         self.edtVotingKey.setEchoMode(QLineEdit.Normal if self.btnShowVotingPrivateKey.isChecked() or
-                                      self.edit_mode else QLineEdit.Password)
+                                                          self.edit_mode else QLineEdit.Password)
 
         self.edtPlatformNodeKey.setEchoMode(QLineEdit.Normal if self.btnShowPlatformNodeKey.isChecked() or
-                                                 self.edit_mode else QLineEdit.Password)
+                                                                self.edit_mode else QLineEdit.Password)
         self.update_dynamic_labels()
 
     def masternode_data_to_ui(self, reset_key_view_type: bool = False):
@@ -679,7 +729,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                                 ret = dash_utils.ed25519_private_key_to_tenderdash(
                                     self.masternode.platform_node_private_key)
                             elif self.act_view_as_platform_node_id.isChecked():
-                                ret = dash_utils.ed25519_private_key_to_platform_id(
+                                ret = dash_utils.ed25519_private_key_to_platform_node_id(
                                     self.masternode.platform_node_private_key)
                             elif self.act_view_as_platform_node_private_key_raw.isChecked():
                                 ret = dash_utils.ed25519_private_key_to_raw_hex(
@@ -724,6 +774,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                         self.edtOwnerKey.setText(self.masternode.owner_private_key)
                         self.act_view_as_owner_public_address.setChecked(True)
                     self.on_mn_data_modified()
+                    self.validate_keys()
                     self.update_ui_controls_state()
                 finally:
                     self.edtOwnerKey.blockSignals(state)
@@ -745,6 +796,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                         self.edtOperatorKey.setText(self.masternode.operator_private_key)
                         self.act_view_as_operator_public_key.setChecked(True)
                     self.on_mn_data_modified()
+                    self.validate_keys()
                     self.update_ui_controls_state()
                 finally:
                     self.edtOperatorKey.blockSignals(state)
@@ -766,6 +818,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                         self.edtVotingKey.setText(self.masternode.voting_private_key)
                         self.act_view_as_voting_public_address.setChecked(True)
                     self.on_mn_data_modified()
+                    self.validate_keys()
                     self.update_ui_controls_state()
                 finally:
                     self.edtVotingKey.blockSignals(state)
@@ -787,6 +840,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                         self.edtPlatformNodeKey.setText(self.masternode.platform_node_private_key)
                         self.act_view_as_platform_node_id.setChecked(True)
                     self.on_mn_data_modified()
+                    self.validate_keys()
                     self.update_ui_controls_state()
                 finally:
                     self.edtPlatformNodeKey.blockSignals(state)
@@ -963,9 +1017,12 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
     @pyqtSlot(str)
     def on_edtPort_textEdited(self, text):
-        if self.masternode and not self.updating_ui:
-            self.on_mn_data_modified()
-            self.masternode.tcp_port = int(text.strip()) if text.strip() else None
+        try:
+            if self.masternode and not self.updating_ui:
+                self.on_mn_data_modified()
+                self.masternode.tcp_port = int(text.strip()) if text.strip() else None
+        except Exception as e:
+            WndUtils.error_msg('Invalid TCP port number.')
 
     @pyqtSlot(str)
     def on_edtCollateralAddress_textEdited(self, text):
@@ -1121,6 +1178,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 self.masternode.owner_address = text.strip()
             self.validate_keys()
             self.update_dynamic_labels()
+            self.update_ui_controls_state()
             self.on_mn_data_modified()
 
     @pyqtSlot(str)
@@ -1132,6 +1190,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 self.masternode.operator_public_key = text.strip()
             self.validate_keys()
             self.update_dynamic_labels()
+            self.update_ui_controls_state()
             self.on_mn_data_modified()
 
     @pyqtSlot(str)
@@ -1143,6 +1202,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 self.masternode.voting_address = text.strip()
             self.validate_keys()
             self.update_dynamic_labels()
+            self.update_ui_controls_state()
             self.on_mn_data_modified()
 
     @pyqtSlot(str)
@@ -1154,6 +1214,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 self.masternode.platform_node_id = text.strip()
             self.validate_keys()
             self.update_dynamic_labels()
+            self.update_ui_controls_state()
             self.on_mn_data_modified()
 
     @pyqtSlot(str)

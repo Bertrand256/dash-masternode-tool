@@ -2103,6 +2103,18 @@ class MasternodeConfig:
             return self.__operator_public_key
         return ''
 
+    def get_platform_node_id(self) -> Optional[str]:
+        if self.__platform_node_key_type == InputKeyType.PRIVATE:
+            if self.__platform_node_private_key:
+                try:
+                    node_id = dash_utils.ed25519_private_key_to_platform_node_id(self.__platform_node_private_key)
+                except Exception as e:
+                    logging.exception(str(e))
+                    node_id = ''
+                return node_id
+        else:
+            return self.__platform_node_id
+        return ''
 
 class SSHConnectionCfg(object):
     def __init__(self):

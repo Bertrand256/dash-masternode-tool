@@ -652,7 +652,7 @@ def ed25519_private_key_to_tenderdash(private_key: str) -> str:
     return priv_str
 
 
-def ed25519_private_key_to_platform_id(private_key: str) -> str:
+def ed25519_private_key_to_platform_node_id(private_key: str) -> str:
     pub_key_hex = ed25519_private_key_to_pubkey(private_key)
     node_id = ed25519_public_key_to_platform_id(pub_key_hex)
     return node_id

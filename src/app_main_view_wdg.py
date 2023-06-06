@@ -1251,7 +1251,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                             f'network: {st.masternode_type.name})')
                     if st.platform_node_id_mismatch and not st.operator_service_update_required:
                         warnings.append(
-                            f'Platform Node Id mismatch (config: {short_address_str(mn.platform_node_id, 6)}, '
+                            f'Platform Node Id mismatch (config: {short_address_str(mn.get_platform_node_id(), 6)}, '
                             f'network: {short_address_str(st.platform_node_id, 6)})')
                     if st.platform_p2p_port_mismatch:
                         warnings.append(
@@ -1734,7 +1734,7 @@ class MasternodeStatus:
         self.platform_p2p_port_mismatch = False
         self.platform_http_port_mismatch = False
         if masternode_cfg.masternode_type == MasternodeType.HPMN:
-            if masternode_cfg.platform_node_id != self.platform_node_id:
+            if masternode_cfg.get_platform_node_id() != self.platform_node_id:
                 self.platform_node_id_mismatch = True
             if masternode_cfg.platform_p2p_port != self.platform_p2p_port:
                 self.platform_p2p_port_mismatch = True
