@@ -1,4 +1,5 @@
 import base64
+import logging
 from typing import Callable, Optional, Literal, cast
 
 import bitcoin
@@ -275,9 +276,9 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                                                       self.masternode.voting_key_type == InputKeyType.PRIVATE)
 
         # Platform Node ID
-        self.lblPlatformNodeId.setVisible(self.masternode is not None and
-                                          (self.masternode.masternode_type == MasternodeType.HPMN) and
-                                          (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
+        self.lblPlatformNodeKey.setVisible(self.masternode is not None and
+                                           (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                           (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.edtPlatformNodeKey.setVisible(self.masternode is not None and
                                            (self.masternode.masternode_type == MasternodeType.HPMN) and
                                            (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
@@ -519,7 +520,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                     err_msg = 'Invalid Platform Node private key format (sould be Ed25519)'
                 else:
                     err_msg = 'Invalid Plarform Node Id format'
-            set_label_text(self.lblPlatformNodeId, self.lblPlatformNodeMsg, 'Platform Node', key_type,
+            set_label_text(self.lblPlatformNodeKey, self.lblPlatformNodeMsg, 'Platform Node', key_type,
                            tooltip_anchor, self.ag_platform_node_key, style, err_msg)
             self.edtPlatformNodeKey.setPlaceholderText(placeholder_text)
 
@@ -718,7 +719,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         if self.masternode:
             if self.edit_mode:
                 if self.masternode.platform_node_key_type == InputKeyType.PRIVATE:
-                    ret = self.masternode.platform_node_private_key
+                    ret = self.masternode.get_platform_node_private_key_for_editing()
                 else:
                     ret = self.masternode.voting_address
             else:
@@ -837,7 +838,10 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                         self.act_view_as_platform_node_private_key_tenderdash.setChecked(True)
                     else:
                         self.masternode.platform_node_key_type = InputKeyType.PRIVATE
-                        self.edtPlatformNodeKey.setText(self.masternode.platform_node_private_key)
+                        try:
+                            self.edtPlatformNodeKey.setText(self.masternode.get_platform_node_private_key_for_editing())
+                        except Exception as e:
+                            logging.exception(str(e))
                         self.act_view_as_platform_node_id.setChecked(True)
                     self.on_mn_data_modified()
                     self.validate_keys()
@@ -877,7 +881,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             tt = 'Change input type to Platform Node id'
         else:
             tt = 'Change input type to private key'
-        self.lblPlatformNodeId.setToolTip(tt)
+        self.lblPlatformNodeKey.setToolTip(tt)
 
     def get_max_left_label_width(self):
         doc = QTextDocument(self)
@@ -898,8 +902,8 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 get_lbl_text_width(self.lblOwnerKey),
                 get_lbl_text_width(self.lblOperatorKey),
                 get_lbl_text_width(self.lblVotingKey),
-                get_lbl_text_width(self.lblPlatformNodeId),
-                get_lbl_text_width(self.lblPlatformNodeId),
+                get_lbl_text_width(self.lblPlatformNodeKey),
+                get_lbl_text_width(self.lblPlatformP2PPort),
                 get_lbl_text_width(self.lblMasternodeType))
 
         return w
@@ -918,7 +922,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.lblOwnerKey.setFixedWidth(width)
         self.lblOperatorKey.setFixedWidth(width)
         self.lblVotingKey.setFixedWidth(width)
-        self.lblPlatformNodeId.setFixedWidth(width)
+        self.lblPlatformNodeKey.setFixedWidth(width)
         self.lblPlatformP2PPort.setFixedWidth(width)
 
     def set_masternode(self, src_masternode: Optional[MasternodeConfig]):
@@ -1288,6 +1292,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             pk = dash_utils.generate_bls_privkey()
         elif pk_type == 'platform_node':
             pk = dash_utils.generate_ed25519_private_key()
+            pk = dash_utils.ed25519_private_key_to_tenderdash(pk)
         else:
             pk = dash_utils.generate_wif_privkey(self.app_config.dash_network, compressed=compressed)
         edit_control.setText(pk)

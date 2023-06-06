@@ -2116,6 +2116,18 @@ class MasternodeConfig:
             return self.__platform_node_id
         return ''
 
+    def get_platform_node_private_key_for_editing(self) -> Optional[str]:
+        if self.__platform_node_key_type == InputKeyType.PRIVATE:
+            if self.__platform_node_private_key:
+                try:
+                    key = dash_utils.ed25519_private_key_to_tenderdash(self.__platform_node_private_key)
+                except Exception as e:
+                    logging.exception(str(e))
+                    key = ''
+                return key
+        return ''
+
+
 class SSHConnectionCfg(object):
     def __init__(self):
         self.__host = ''

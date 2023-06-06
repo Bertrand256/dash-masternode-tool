@@ -23,9 +23,10 @@ from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException
 from common import CancelException
 from dash_utils import generate_bls_privkey, generate_wif_privkey, validate_address, wif_privkey_to_address, \
     validate_wif_privkey, bls_privkey_to_pubkey, MASTERNODE_TX_MINIMUM_CONFIRMATIONS, DASH_PLATFORM_DEFAULT_P2P_PORT, \
-    DASH_PLATFORM_DEFAULT_HTTP_PORT, generate_ed25519_private_key, ed25519_private_key_to_pubkey, \
-    ed25519_public_key_to_platform_id, parse_ed25519_private_key, DASH_PLATFORM_DEFAULT_P2P_PORT, \
-    DASH_PLATFORM_DEFAULT_HTTP_PORT
+    DASH_PLATFORM_DEFAULT_HTTP_PORT, generate_ed25519_private_key, \
+    parse_ed25519_private_key, DASH_PLATFORM_DEFAULT_P2P_PORT, \
+    DASH_PLATFORM_DEFAULT_HTTP_PORT, ed25519_private_key_to_tenderdash, validate_platform_node_id, \
+    validate_ed25519_privkey, ed25519_private_key_to_platform_node_id, ed25519_private_key_to_raw_hex
 from dashd_intf import DashdInterface
 from thread_fun_dlg import CtrlObject
 from ui import ui_reg_masternode_dlg
@@ -69,7 +70,6 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.current_step = STEP_MN_DATA
         self.step_stack: List[int] = []
         self.proregtx_prepare_thread_ref = None
-        self.deterministic_mns_spork_active = True
         self.masternode_type: MasternodeType = self.masternode.masternode_type
         self.collateral_tx: Optional[str] = None
         self.collateral_tx_index: Optional[int] = None
@@ -88,9 +88,10 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.owner_key_type = InputKeyType.PRIVATE
         self.operator_key_type = InputKeyType.PRIVATE
         self.voting_key_type = InputKeyType.PRIVATE
-        self.platform_node_id: str = self.masternode.platform_node_id
-        self.platform_node_id_private_key = self.masternode.platform_node_private_key
-        self.platform_node_id_generated = False
+        self.platform_node_key_type = InputKeyType.PRIVATE
+        self.platform_node_private_key: Optional[str] = None  # In this dialog, we are operating on Tenderdash pk format
+        self.platform_node_id: Optional[str] = None
+        self.platform_node_key_generated = False
         self.platform_p2p_port: Optional[int] = self.masternode.platform_p2p_port if \
             self.masternode.platform_p2p_port else DASH_PLATFORM_DEFAULT_P2P_PORT
         self.platform_http_port: Optional[int] = self.masternode.platform_http_port if \
@@ -135,7 +136,6 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.chbWholeMNReward.setChecked(True)
         self.lblProtxSummary2.linkActivated.connect(self.save_summary_info)
         self.lblCollateralTxMsg.sizePolicy().setHeightForWidth(True)
-        self.edtPlatformNodeId.setText(self.platform_node_id)
         self.edtPlatformP2PPort.setText(str(self.platform_p2p_port) if self.platform_p2p_port else '')
         self.edtPlatformHTTPPort.setText(str(self.platform_http_port) if self.platform_http_port else '')
         self.prepare_keys()
@@ -198,7 +198,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
     def set_buttons_height(self):
         h = self.edtCollateralTx.height()
         for btn in (self.btnGenerateOwnerKey, self.btnSelectCollateralUtxo, self.btnGenerateOperatorKey,
-                    self.btnGenerateVotingKey, self.btnGeneratePlatformId, self.btnManualFundingAddressPaste,
+                    self.btnGenerateVotingKey, self.btnGeneratePlatformNodeKey, self.btnManualFundingAddressPaste,
                     self.btnManualProtxPrepareCopy, self.btnManualProtxPrepareResultPaste,
                     self.btnManualProtxSubmitCopy, self.btnManualTxHashPaste, self.btnSummaryDMNOperatorKeyCopy,
                     self.btnPlatformHTTPPortSetDefault, self.btnPlatformP2PPortSetDefault):
@@ -233,10 +233,15 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
 
         def get_label_text(prefix: str, key_type: str, tooltip_anchor: str, style: str):
             lbl = prefix + ' ' + \
-                  {'privkey': 'private key', 'pubkey': 'public key', 'address': 'Dash address'}.get(key_type, '???')
+                  {'privkey': 'private key',
+                   'pubkey': 'public key',
+                   'address': 'Dash address',
+                   'platform_node_id': 'Node Id'}.get(key_type, '???')
 
             change_mode = f'(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)'
-            return f'<table style="float:right;{style_to_color(style)}"><tr><td><b>{lbl}</b></td><td>{change_mode}</td></tr></table>'
+            ret = f'<table style="float:right;{style_to_color(style)}"><tr><td><b>{lbl}</b></td><td>{change_mode}' \
+                  f'</td></tr></table>'
+            return ret
 
         if self.masternode:
 
@@ -267,8 +272,19 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             self.lblVotingKey.setText(get_label_text('Voting', key_type, tooltip_anchor, style))
             self.edtVotingKey.setPlaceholderText(placeholder_text)
 
+            if self.platform_node_key_type == InputKeyType.PRIVATE:
+                key_type, tooltip_anchor, placeholder_text = ('privkey', 'node id',
+                                                              'Enter the Platform Node private key')
+                style = ''
+            else:
+                key_type, tooltip_anchor, placeholder_text = ('platform_node_id', 'privkey',
+                                                              'Enter the Platform Node Id')
+                style = 'hl1'
+            self.lblPlatformNodeKey.setText(get_label_text('Platform Node', key_type, tooltip_anchor, style))
+            self.edtPlatformNodeKey.setPlaceholderText(placeholder_text)
+
     @pyqtSlot(str)
-    def on_lblOwnerKey_linkActivated(self, link):
+    def on_lblOwnerKey_linkActivated(self, _):
         if self.owner_key_type == InputKeyType.PRIVATE:
             self.owner_key_type = InputKeyType.PUBLIC
             self.owner_privkey = self.edtOwnerKey.text()
@@ -282,7 +298,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.upd_owner_key_info(False)
 
     @pyqtSlot(str)
-    def on_lblOperatorKey_linkActivated(self, link):
+    def on_lblOperatorKey_linkActivated(self, _):
         if self.operator_key_type == InputKeyType.PRIVATE:
             self.operator_key_type = InputKeyType.PUBLIC
             self.operator_privkey = self.edtOperatorKey.text()
@@ -296,7 +312,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.upd_operator_key_info(False)
 
     @pyqtSlot(str)
-    def on_lblVotingKey_linkActivated(self, link):
+    def on_lblVotingKey_linkActivated(self, _):
         if self.voting_key_type == InputKeyType.PRIVATE:
             self.voting_key_type = InputKeyType.PUBLIC
             self.voting_privkey = self.edtVotingKey.text()
@@ -308,6 +324,20 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.update_dynamic_labels()
         self.update_ctrls_visibility()
         self.upd_voting_key_info(False)
+
+    @pyqtSlot(str)
+    def on_lblPlatformNodeKey_linkActivated(self, _):
+        if self.platform_node_key_type == InputKeyType.PRIVATE:
+            self.platform_node_key_type = InputKeyType.PUBLIC
+            self.platform_node_private_key = self.edtPlatformNodeKey.text()
+            self.edtPlatformNodeKey.setText(self.platform_node_id)
+        else:
+            self.platform_node_key_type = InputKeyType.PRIVATE
+            self.platform_node_id = self.edtPlatformNodeKey.text()
+            self.edtPlatformNodeKey.setText(self.platform_node_private_key)
+        self.update_dynamic_labels()
+        self.update_ctrls_visibility()
+        self.upd_platform_node_key_info(False)
 
     @pyqtSlot(str)
     def on_lblOwnerKey_linkHovered(self, link):
@@ -332,6 +362,14 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         else:
             tt = 'Change input type to private key'
         self.lblVotingKey.setToolTip(tt)
+
+    @pyqtSlot(str)
+    def on_lblPlatformNodeKey_linkHovered(self, link):
+        if link == 'node id':
+            tt = 'Change input type to Platform Node Id'
+        else:
+            tt = 'Change input type to Ed25519 private key'
+        self.lblPlatformNodeKey.setToolTip(tt)
 
     def prepare_keys(self):
         gen_owner = False
@@ -408,15 +446,21 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                 self.edtOperatorKey.setText(self.masternode.operator_public_key)
             self.operator_key_type = self.masternode.operator_key_type
 
-        if self.deterministic_mns_spork_active:
-            if gen_voting:
-                self.voting_pkey_generated = generate_wif_privkey(self.app_config.dash_network, compressed=True)
-                self.edtVotingKey.setText(self.voting_pkey_generated)
+        if gen_voting:
+            self.voting_pkey_generated = generate_wif_privkey(self.app_config.dash_network, compressed=True)
+            self.edtVotingKey.setText(self.voting_pkey_generated)
+        else:
+            if self.voting_key_type == InputKeyType.PRIVATE:
+                self.edtVotingKey.setText(self.masternode.voting_private_key)
             else:
-                if self.voting_key_type == InputKeyType.PRIVATE:
-                    self.edtVotingKey.setText(self.masternode.voting_private_key)
-                else:
-                    self.edtVotingKey.setText(self.masternode.voting_address)
+                self.edtVotingKey.setText(self.masternode.voting_address)
+
+        self.platform_node_key_type = self.masternode.platform_node_key_type
+        if self.platform_node_key_type == InputKeyType.PRIVATE:
+            pk = self.masternode.get_platform_node_private_key_for_editing()
+            self.edtPlatformNodeKey.setText(pk)
+        else:
+            self.edtPlatformNodeKey.setText(self.masternode.platform_node_id)
 
     @pyqtSlot(bool)
     def on_rbMNTypeRegular_toggled(self, checked):
@@ -522,15 +566,12 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.edtVotingKey.repaint()
 
     @pyqtSlot(bool)
-    def on_btnGeneratePlatformId_clicked(self, active):
-        priv_key_hex = generate_ed25519_private_key()
-        pub_key_hex = ed25519_private_key_to_pubkey(priv_key_hex)
-        node_id = ed25519_public_key_to_platform_id(pub_key_hex)
-        self.platform_node_id_private_key = priv_key_hex
-        self.platform_node_id = node_id
-        self.platform_node_id_generated = True
-        self.edtPlatformNodeId.setText(node_id)
-        self.upd_platform_node_id_info(True)
+    def on_btnGeneratePlatformNodeKey_clicked(self, active):
+        if self.platform_node_key_type == InputKeyType.PRIVATE:
+            priv_key_hex = generate_ed25519_private_key()
+            priv_key_hex = ed25519_private_key_to_tenderdash(priv_key_hex)
+            self.platform_node_key_generated = True
+            self.edtPlatformNodeKey.setText(priv_key_hex)
 
     @pyqtSlot()
     def on_btnPlatformP2PPortSetDefault_clicked(self):
@@ -554,42 +595,32 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             self.styled_widgets.append(control)
 
     def update_ctrls_visibility(self):
-        if not self.deterministic_mns_spork_active:
-            # hide controls related to the voting key - if spork 15 is not active, voting key has to be the same
-            # as the owner key
-            self.lblVotingMsg.hide()
-            self.lblVotingKey.hide()
-            self.edtVotingKey.hide()
-            self.btnGenerateVotingKey.hide()
-        else:
-            self.btnGenerateVotingKey.setVisible(self.voting_key_type == InputKeyType.PRIVATE)
-
+        self.btnGenerateVotingKey.setVisible(self.voting_key_type == InputKeyType.PRIVATE)
         self.btnGenerateOwnerKey.setVisible(self.owner_key_type == InputKeyType.PRIVATE)
         self.btnGenerateOperatorKey.setVisible(self.operator_key_type == InputKeyType.PRIVATE)
+        self.btnGeneratePlatformNodeKey.setVisible(self.platform_node_key_type == InputKeyType.PRIVATE)
 
         if self.masternode_type == MasternodeType.REGULAR:
-            self.lblPlatformNodeId.hide()
+            self.lblPlatformNodeKey.hide()
             self.lblPlatformP2PPort.hide()
             self.lblPlatformHTTPPort.hide()
             self.lblPlatformPortsMsg.hide()
-            self.edtPlatformNodeId.hide()
+            self.edtPlatformNodeKey.hide()
             self.edtPlatformP2PPort.hide()
             self.edtPlatformHTTPPort.hide()
-            self.btnGeneratePlatformId.hide()
-            self.lblPlatformNodeIdMsg.hide()
+            self.lblPlatformNodeKeyMsg.hide()
             self.btnPlatformP2PPortSetDefault.hide()
             self.btnPlatformHTTPPortSetDefault.hide()
             self.linePlatformNodeId.hide()
         else:
-            self.lblPlatformNodeId.show()
+            self.lblPlatformNodeKey.show()
             self.lblPlatformP2PPort.show()
             self.lblPlatformHTTPPort.show()
             self.lblPlatformPortsMsg.show()
-            self.edtPlatformNodeId.show()
+            self.edtPlatformNodeKey.show()
             self.edtPlatformP2PPort.show()
             self.edtPlatformHTTPPort.show()
-            self.btnGeneratePlatformId.show()
-            self.lblPlatformNodeIdMsg.show()
+            self.lblPlatformNodeKeyMsg.show()
             self.btnPlatformP2PPortSetDefault.show()
             self.btnPlatformHTTPPortSetDefault.show()
             self.linePlatformNodeId.show()
@@ -607,7 +638,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.upd_owner_key_info(show_invalid_data_msg)
         self.upd_operator_key_info(show_invalid_data_msg)
         self.upd_voting_key_info(show_invalid_data_msg)
-        self.upd_platform_node_id_info(show_invalid_data_msg)
+        self.upd_platform_node_key_info(show_invalid_data_msg)
         self.upd_platform_ports_info(show_invalid_data_msg)
 
     def upd_collateral_tx_info(self, show_invalid_data_msg: bool):
@@ -702,7 +733,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
 
         self.set_ctrl_message(self.lblOwnerMsg, msg, style)
 
-    def upd_platform_node_id_info(self, show_invalid_data_msg: bool):
+    def upd_platform_node_key_info(self, show_invalid_data_msg: bool):
         msg = ''
         style = ''
         if self.masternode_type == MasternodeType.HPMN:
@@ -711,15 +742,19 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                 style = 'error'
             else:
                 if self.show_field_hinds:
-                    if self.platform_node_id_generated:
-                        msg = 'Platform Node Id was generated here. Once registration is comple, copy the associated ' \
-                              'Ed25519 private key into the Tenderdash configuration.'
+                    if self.platform_node_key_type == InputKeyType.PRIVATE:
+                        if self.platform_node_key_generated:
+                            msg = 'Platform Node private key was generated here. Once registration is complete, ' \
+                                  'copy the associated Ed25519 private key into the Tenderdash configuration.'
+                        else:
+                            msg = 'Enter the Platform Node private key generated by Tenderdash, or ' \
+                                  'generate it here, then copy it into the Tenderdash configuration.'
+                        style = 'info'
                     else:
-                        msg = 'Enter the Platform Node Id generated from the Tenderdash private key, or generate it ' \
-                              'here and then copy the associated private key to Tenderdash configuration.'
-                    style = 'info'
+                        msg = 'Enter the Platform Node Id generated from the Tenderdash private key.'
+                        style = 'info'
 
-        self.set_ctrl_message(self.lblPlatformNodeIdMsg, msg, style)
+        self.set_ctrl_message(self.lblPlatformNodeKeyMsg, msg, style)
 
     def upd_platform_ports_info(self, show_invalid_data_msg: bool):
         msg = ''
@@ -762,25 +797,24 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
     def upd_voting_key_info(self, show_invalid_data_msg: bool):
         msg = ''
         style = ''
-        if self.deterministic_mns_spork_active:
-            if show_invalid_data_msg and self.voting_key_validation_err_msg:
-                msg = self.voting_key_validation_err_msg
-                style = 'error'
-            else:
-                if self.show_field_hinds:
-                    if self.voting_key_type == InputKeyType.PRIVATE:
-                        if self.edtVotingKey.text().strip() == self.voting_pkey_generated:
-                            msg = 'This is an automatically generated private key for voting. You can enter your own or ' \
-                                  'generate a new one by pressing the button on the right.'
-                        elif not self.edtVotingKey.text().strip():
-                            msg = 'Enter the private key for voting or generate a new one by clicking the button on ' \
-                                  'the right.'
-                        style = 'info'
-                    else:
-                        msg = 'You can use Dash address if the related private key is stored elsewhere, eg in ' \
-                              'the Dash Core wallet.<br><span class="warning">Note, that providing an address instead of ' \
-                              'a private key will prevent you from voting on proposals in this program.</span>'
-                        style = 'info'
+        if show_invalid_data_msg and self.voting_key_validation_err_msg:
+            msg = self.voting_key_validation_err_msg
+            style = 'error'
+        else:
+            if self.show_field_hinds:
+                if self.voting_key_type == InputKeyType.PRIVATE:
+                    if self.edtVotingKey.text().strip() == self.voting_pkey_generated:
+                        msg = 'This is an automatically generated private key for voting. You can enter your own or ' \
+                              'generate a new one by pressing the button on the right.'
+                    elif not self.edtVotingKey.text().strip():
+                        msg = 'Enter the private key for voting or generate a new one by clicking the button on ' \
+                              'the right.'
+                    style = 'info'
+                else:
+                    msg = 'You can use Dash address if the related private key is stored elsewhere, eg in ' \
+                          'the Dash Core wallet.<br><span class="warning">Note, that providing an address instead of ' \
+                          'a private key will prevent you from voting on proposals in this program.</span>'
+                    style = 'info'
 
         self.set_ctrl_message(self.lblVotingMsg, msg, style)
 
@@ -853,6 +887,10 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
     @pyqtSlot(str)
     def on_edtVotingKey_textChanged(self, text):
         self.upd_voting_key_info(False)
+
+    @pyqtSlot(str)
+    def on_edtPlatformNodeKey_textChanged(self, text):
+        self.upd_platform_node_key_info(False)
 
     @pyqtSlot(str)
     def save_summary_info(self, link: str):
@@ -932,13 +970,15 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                      f'Platform P2P port\t{self.platform_p2p_port}',
                      f'Platform HTTP port\t{self.platform_http_port}'])
 
-                if self.platform_node_id_generated and self.platform_node_id_private_key:
-                    priv: Ed25519PrivateKey = parse_ed25519_private_key(self.platform_node_id_private_key)
-                    priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.PEM,
-                                                    cryptography.hazmat.primitives.serialization.PrivateFormat.PKCS8,
-                                                    cryptography.hazmat.primitives.serialization.NoEncryption())
-                    priv_str = priv_bytes.decode('ascii')
-                    self.summary_info.append(f'Platform Node private key\t{priv_str}')
+                if self.platform_node_key_type == InputKeyType.PRIVATE:
+                    if self.platform_node_private_key:
+                        priv_tenderdash = ed25519_private_key_to_tenderdash(self.platform_node_private_key)
+                        priv_hex = ed25519_private_key_to_raw_hex(self.platform_node_private_key)
+                        self.summary_info.append(f'Platform Node private key (Tenderdash)\t{priv_tenderdash}')
+                        self.summary_info.append(f'Platform Node private key (raw)\t{priv_hex}')
+                else:
+                    if self.platform_node_id:
+                        self.summary_info.append(f'Platform Node Id\t{self.platform_node_id}')
 
             text = '<table>'
             for l in self.summary_info:
@@ -1110,30 +1150,24 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             error_count += 1
 
         self.voting_key_validation_err_msg = ''
-        if self.deterministic_mns_spork_active:
-            key = self.edtVotingKey.text().strip()
-            if not key:
-                self.voting_key_validation_err_msg = 'Voting key/address is required.'
-            else:
-                if self.voting_key_type == InputKeyType.PRIVATE:
-                    self.voting_privkey = key
-                    if not validate_wif_privkey(self.voting_privkey, self.app_config.dash_network):
-                        self.edtVotingKey.setFocus()
-                        self.voting_key_validation_err_msg = 'Invalid voting private key.'
-                    else:
-                        self.voting_address = wif_privkey_to_address(self.voting_privkey,
-                                                                     self.app_config.dash_network)
-                else:
-                    self.voting_address = key
-                    self.voting_privkey = ''
-                    if not validate_address(self.voting_address, self.app_config.dash_network):
-                        self.edtVotingKey.setFocus()
-                        self.voting_key_validation_err_msg = 'Invalid voting Dash address.'
+        key = self.edtVotingKey.text().strip()
+        if not key:
+            self.voting_key_validation_err_msg = 'Voting key/address is required.'
         else:
-            # spork 15 not active - use the owner private key for voting
-            self.voting_address = self.owner_address
-            self.voting_privkey = self.owner_privkey
-            self.voting_key_type = self.owner_key_type
+            if self.voting_key_type == InputKeyType.PRIVATE:
+                self.voting_privkey = key
+                if not validate_wif_privkey(self.voting_privkey, self.app_config.dash_network):
+                    self.edtVotingKey.setFocus()
+                    self.voting_key_validation_err_msg = 'Invalid voting private key.'
+                else:
+                    self.voting_address = wif_privkey_to_address(self.voting_privkey,
+                                                                 self.app_config.dash_network)
+            else:
+                self.voting_address = key
+                self.voting_privkey = ''
+                if not validate_address(self.voting_address, self.app_config.dash_network):
+                    self.edtVotingKey.setFocus()
+                    self.voting_key_validation_err_msg = 'Invalid voting Dash address.'
 
         if self.voting_key_validation_err_msg:
             self.upd_voting_key_info(True)
@@ -1146,20 +1180,29 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
 
         self.platform_node_id_validation_err_msg = ''
         if self.masternode_type == MasternodeType.HPMN:
-            node_id = self.edtPlatformNodeId.text().strip()
-            if not node_id:
-                self.platform_node_id_validation_err_msg = 'Platform node id is required.'
+            node_key = self.edtPlatformNodeKey.text().strip()
+            if self.platform_node_key_type == InputKeyType.PRIVATE:
+                if not node_key:
+                    self.platform_node_id_validation_err_msg = 'Platform node private key or node id is required.'
+                else:
+                    if not validate_ed25519_privkey(node_key):
+                        self.platform_node_id_validation_err_msg = \
+                            'The Platform private key is invalid. It should be an Ed25519 private key.'
+                    else:
+                        self.platform_node_id = ed25519_private_key_to_platform_node_id(node_key)
+                        self.platform_node_private_key = node_key
             else:
-                try:
-                    node_id_bin = bytes.fromhex(node_id)
-                    if len(node_id_bin) != 20:
-                        raise Exception('Invalid format for Platform node id')
-                    self.platform_node_id = node_id
-                except Exception as e:
-                    self.platform_node_id_validation_err_msg = 'Platform node id should be a hexadecimal string of ' \
-                                                               '20 bytes in length.'
+                if not node_key:
+                    self.platform_node_id_validation_err_msg = 'Platform node id is required.'
+                else:
+                    if not validate_platform_node_id(node_key):
+                        self.platform_node_id_validation_err_msg = 'Platform node id should be a 20-byte hexadecimal ' \
+                                                                   'string.'
+                    else:
+                        self.platform_node_id = node_key
+
             if self.platform_node_id_validation_err_msg:
-                self.upd_platform_node_id_info(True)
+                self.upd_platform_node_key_info(True)
                 error_count += 1
 
             self.platform_ports_validation_err_msg = ''

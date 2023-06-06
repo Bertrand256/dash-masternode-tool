@@ -789,7 +789,7 @@
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_11">
         <item>
-         <widget class="QLabel" name="lblPlatformNodeId">
+         <widget class="QLabel" name="lblPlatformNodeKey">
           <property name="minimumSize">
            <size>
             <width>170</width>
@@ -797,7 +797,7 @@
            </size>
           </property>
           <property name="text">
-           <string>Platform Node ID</string>
+           <string>Platform Node private key</string>
           </property>
           <property name="alignment">
            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>

@@ -1156,84 +1156,64 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
     def on_action_register_masternode_triggered(self, enabled):
         reg_dlg = None
         cur_masternode = self.main_view.get_cur_masternode()
+        config_modified_before = False
 
         def on_proregtx_finished(masternode: MasternodeConfig):
             nonlocal reg_dlg, self, cur_masternode
             try:
-                if cur_masternode.protx_hash != reg_dlg.dmn_reg_tx_hash or \
-                        cur_masternode.owner_key_type != reg_dlg.owner_key_type or \
-                        (cur_masternode.owner_key_type == InputKeyType.PRIVATE and
-                         cur_masternode.owner_private_key != reg_dlg.owner_privkey) or \
-                        (cur_masternode.owner_key_type == InputKeyType.PUBLIC and
-                         cur_masternode.owner_address != reg_dlg.owner_address) or \
-                        cur_masternode.operator_key_type != reg_dlg.operator_key_type or \
-                        (cur_masternode.operator_key_type == InputKeyType.PRIVATE and
-                         cur_masternode.operator_private_key != reg_dlg.operator_privkey) or \
-                        (cur_masternode.operator_key_type == InputKeyType.PUBLIC and
-                         cur_masternode.operator_public_key != reg_dlg.operator_pubkey) or \
-                        cur_masternode.voting_key_type != reg_dlg.voting_key_type or \
-                        (cur_masternode.voting_key_type == InputKeyType.PRIVATE and
-                         cur_masternode.voting_private_key != reg_dlg.voting_privkey) or \
-                        (cur_masternode.voting_key_type == InputKeyType.PUBLIC and
-                         cur_masternode.voting_address != reg_dlg.voting_address) or \
-                        cur_masternode.masternode_type != reg_dlg.masternode_type or \
-                        (
-                                reg_dlg.masternode_type == MasternodeType.HPMN and
-                                (cur_masternode.platform_node_id != reg_dlg.platform_node_id or
-                                 cur_masternode.platform_p2p_port != reg_dlg.platform_p2p_port or
-                                 cur_masternode.platform_http_port != reg_dlg.platform_http_port)
-                        ) or \
-                        cur_masternode.collateral_tx != reg_dlg.collateral_tx or \
-                        cur_masternode.collateral_tx_index != reg_dlg.collateral_tx_index or \
-                        cur_masternode.collateral_address != reg_dlg.collateral_tx_address or \
-                        cur_masternode.collateral_bip32_path != reg_dlg.collateral_tx_address_path or \
-                        cur_masternode.ip != reg_dlg.ip or cur_masternode.tcp_port != reg_dlg.tcp_port:
+                cur_masternode.protx_hash = reg_dlg.dmn_reg_tx_hash
 
-                    cur_masternode.protx_hash = reg_dlg.dmn_reg_tx_hash
+                cur_masternode.owner_key_type = reg_dlg.owner_key_type
+                if cur_masternode.owner_key_type == InputKeyType.PRIVATE:
+                    cur_masternode.owner_private_key = reg_dlg.owner_privkey
+                else:
+                    cur_masternode.owner_address = reg_dlg.owner_address
+                    cur_masternode.owner_private_key = ''
 
-                    cur_masternode.owner_key_type = reg_dlg.owner_key_type
-                    if cur_masternode.owner_key_type == InputKeyType.PRIVATE:
-                        cur_masternode.owner_private_key = reg_dlg.owner_privkey
-                    else:
-                        cur_masternode.owner_address = reg_dlg.owner_address
-                        cur_masternode.owner_private_key = ''
+                cur_masternode.operator_key_type = reg_dlg.operator_key_type
+                if cur_masternode.operator_key_type == InputKeyType.PRIVATE:
+                    cur_masternode.operator_private_key = reg_dlg.operator_privkey
+                else:
+                    cur_masternode.operator_public_key = reg_dlg.operator_pubkey
+                    cur_masternode.operator_private_key = ''
 
-                    cur_masternode.operator_key_type = reg_dlg.operator_key_type
-                    if cur_masternode.operator_key_type == InputKeyType.PRIVATE:
-                        cur_masternode.operator_private_key = reg_dlg.operator_privkey
-                    else:
-                        cur_masternode.operator_public_key = reg_dlg.operator_pubkey
-                        cur_masternode.operator_private_key = ''
+                cur_masternode.voting_key_type = reg_dlg.voting_key_type
+                if cur_masternode.voting_key_type == InputKeyType.PRIVATE:
+                    cur_masternode.voting_private_key = reg_dlg.voting_privkey
+                else:
+                    cur_masternode.voting_address = reg_dlg.voting_address
+                    cur_masternode.voting_private_key = ''
 
-                    cur_masternode.voting_key_type = reg_dlg.voting_key_type
-                    if cur_masternode.voting_key_type == InputKeyType.PRIVATE:
-                        cur_masternode.voting_private_key = reg_dlg.voting_privkey
-                    else:
-                        cur_masternode.voting_address = reg_dlg.voting_address
-                        cur_masternode.voting_private_key = ''
-
-                    cur_masternode.masternode_type = reg_dlg.masternode_type
+                cur_masternode.platform_node_key_type = reg_dlg.platform_node_key_type
+                if cur_masternode.platform_node_key_type == InputKeyType.PRIVATE:
+                    if reg_dlg.platform_node_private_key:
+                        cur_masternode.platform_node_private_key = reg_dlg.platform_node_private_key
+                else:
                     cur_masternode.platform_node_id = reg_dlg.platform_node_id
-                    cur_masternode.platform_node_private_key = reg_dlg.platform_node_id_private_key
-                    cur_masternode.platform_p2p_port = reg_dlg.platform_p2p_port
-                    cur_masternode.platform_http_port = reg_dlg.platform_http_port
-                    cur_masternode.collateral_tx = reg_dlg.collateral_tx
-                    cur_masternode.collateral_tx_index = reg_dlg.collateral_tx_index
-                    cur_masternode.collateral_address = reg_dlg.collateral_tx_address
-                    cur_masternode.collateral_bip32_path = reg_dlg.collateral_tx_address_path
-                    cur_masternode.ip = reg_dlg.ip
-                    cur_masternode.tcp_port = reg_dlg.tcp_port
 
-                    if not self.app_config.is_modified():
-                        self.save_configuration()
-                    self.main_view.set_cur_masternode_modified()
-                    self.dashd_intf.reset_masternode_data_cache()
-                    self.main_view.refresh_network_data()
+                cur_masternode.masternode_type = reg_dlg.masternode_type
+                cur_masternode.platform_p2p_port = reg_dlg.platform_p2p_port
+                cur_masternode.platform_http_port = reg_dlg.platform_http_port
+                cur_masternode.collateral_tx = reg_dlg.collateral_tx
+                cur_masternode.collateral_tx_index = reg_dlg.collateral_tx_index
+                cur_masternode.collateral_address = reg_dlg.collateral_tx_address
+                cur_masternode.collateral_bip32_path = reg_dlg.collateral_tx_address_path
+                cur_masternode.ip = reg_dlg.ip
+                cur_masternode.tcp_port = reg_dlg.tcp_port
+
+                if not config_modified_before:
+                    # If the configuration was modified before starting the registration window, don't save
+                    # it to disk, otherwise do it.
+                    self.save_configuration()
+                self.main_view.set_cur_masternode_modified()
+                self.dashd_intf.reset_masternode_data_cache()
+                self.main_view.refresh_network_data()
             except Exception as e:
                 logging.exception(str(e))
 
         if cur_masternode:
             try:
+                config_modified_before = self.app_config.is_modified()
                 reg_dlg = reg_masternode_dlg.RegMasternodeDlg(self, self.app_config, self.dashd_intf, cur_masternode,
                                                               on_proregtx_success_callback=on_proregtx_finished)
                 reg_dlg.exec_()

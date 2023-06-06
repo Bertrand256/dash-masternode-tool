@@ -3,7 +3,7 @@ import logging
 from typing import Callable, Optional
 
 from PyQt5.QtCore import pyqtSlot, QTimer
-from PyQt5.QtWidgets import QDialog
+from PyQt5.QtWidgets import QDialog, QLabel
 from bitcoinrpc.authproxy import JSONRPCException
 
 import app_cache
@@ -11,7 +11,9 @@ from app_config import MasternodeConfig, AppConfig, InputKeyType, MasternodeType
 from app_defs import FEE_DUFF_PER_BYTE
 from dash_utils import validate_address, \
     generate_ed25519_private_key, ed25519_private_key_to_pubkey, \
-    ed25519_public_key_to_platform_id, DASH_PLATFORM_DEFAULT_P2P_PORT, DASH_PLATFORM_DEFAULT_HTTP_PORT
+    ed25519_public_key_to_platform_id, DASH_PLATFORM_DEFAULT_P2P_PORT, DASH_PLATFORM_DEFAULT_HTTP_PORT, \
+    validate_ed25519_privkey, ed25519_private_key_to_platform_node_id, validate_platform_node_id, \
+    ed25519_private_key_to_tenderdash
 from dashd_intf import DashdInterface
 from ui import ui_upd_mn_service_dlg
 from wnd_utils import WndUtils, ProxyStyleNoFocusRect, QDetectThemeChange, get_widget_font_color_green
@@ -40,15 +42,26 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
         self.actual_operator_reward = 0
         self.new_operator_payout_address = ''
         self.prev_ip_port = self.masternode.ip + ':' + str(self.masternode.tcp_port)
-        self.new_ip = ''
-        self.new_port: Optional[int] = None
-        self.platform_node_id: str = self.masternode.platform_node_id
-        self.platform_node_id_private_key = self.masternode.platform_node_private_key
-        self.platform_node_id_generated = False
+        self.ip = ''
+        self.tcp_port: Optional[int] = None
+        self.platform_node_key_type = self.masternode.platform_node_key_type
+        if self.masternode.platform_node_key_type == InputKeyType.PRIVATE:
+            self.platform_node_private_key = self.masternode.get_platform_node_private_key_for_editing()
+            self.platform_node_id = ''
+        else:
+            self.platform_node_id: str = self.masternode.platform_node_id
+            self.platform_node_private_key = ''
+        self.platform_node_key_generated = False
         self.platform_p2p_port: Optional[int] = self.masternode.platform_p2p_port if \
             self.masternode.platform_p2p_port else DASH_PLATFORM_DEFAULT_P2P_PORT
         self.platform_http_port: Optional[int] = self.masternode.platform_http_port if \
             self.masternode.platform_http_port else DASH_PLATFORM_DEFAULT_HTTP_PORT
+
+        self.ip_port_validation_err_msg = ''
+        self.payout_address_validation_err_msg = ''
+        self.platform_node_id_validation_err_msg = ''
+        self.platform_ports_validation_err_msg = ''
+
         self.upd_payout_active = False
         self.show_manual_commands = False
         self.setupUi(self)
@@ -62,12 +75,17 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
         self.restore_cache_settings()
         WndUtils.set_icon(self.parent, self.btnPlatformP2PPortSetDefault, 'restore@16px.png')
         WndUtils.set_icon(self.parent, self.btnPlatformHTTPPortSetDefault, 'restore@16px.png')
-        self.edtPlatformNodeId.setText(self.platform_node_id)
+        if self.masternode.masternode_type == MasternodeType.HPMN:
+            if self.platform_node_key_type == InputKeyType.PRIVATE:
+                self.edtPlatformNodeKey.setText(self.platform_node_private_key)
+            else:
+                self.edtPlatformNodeKey.setText(self.platform_node_id)
         self.edtPlatformP2PPort.setText(str(self.platform_p2p_port) if self.platform_p2p_port else '')
         self.edtPlatformHTTPPort.setText(str(self.platform_http_port) if self.platform_http_port else '')
-        platform_controls = (self.edtPlatformNodeId, self.edtPlatformP2PPort, self.edtPlatformHTTPPort,
-                             self.btnGeneratePlatformId, self.btnPlatformP2PPortSetDefault,
-                             self.btnPlatformHTTPPortSetDefault, self.lblPlatformNodeId, self.lblPlatformP2PPort,
+
+        platform_controls = (self.edtPlatformNodeKey, self.edtPlatformP2PPort, self.edtPlatformHTTPPort,
+                             self.btnGeneratePlatformNodeKey, self.btnPlatformP2PPortSetDefault,
+                             self.btnPlatformHTTPPortSetDefault, self.lblPlatformNodeKey, self.lblPlatformP2PPort,
                              self.lblPlatformHTTPPort)
         if self.masternode.masternode_type == MasternodeType.HPMN:
             for ctrl in platform_controls:
@@ -75,6 +93,11 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
         else:
             for ctrl in platform_controls:
                 ctrl.hide()
+        self.lblIPMsg.hide()
+        self.lblOperatorPayoutMsg.hide()
+        self.lblPlatformNodeKeyMsg.hide()
+        self.lblPlatformPortsMsg.hide()
+        self.update_dynamic_labels()
         self.update_ctrls_state()
         self.minimize_dialog_height()
         self.read_data_from_network()
@@ -99,7 +122,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
 
     def set_buttons_height(self):
         h = self.edtIP.height()
-        for btn in (self.btnGeneratePlatformId, self.btnPlatformHTTPPortSetDefault, self.btnPlatformP2PPortSetDefault):
+        for btn in (self.btnGeneratePlatformNodeKey, self.btnPlatformHTTPPortSetDefault, self.btnPlatformP2PPortSetDefault):
             btn.setFixedHeight(h)
 
     def minimize_dialog_height(self):
@@ -165,7 +188,6 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
             raise
 
     def update_ctrls_state(self):
-
         self.new_operator_payout_address = self.edtOperatorPayoutAddress.text()
         if not self.actual_operator_reward and self.new_operator_payout_address:
             self.lblOperatorPayoutMsg.setText('<span style="color:red">Separate reward for the operator has not '
@@ -184,8 +206,82 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                                            'href="show">Show commands for manual execution</a>')
 
         self.edtManualCommands.setVisible(self.show_manual_commands)
-
+        if self.masternode.masternode_type == MasternodeType.HPMN:
+            if self.platform_node_key_type == InputKeyType.PRIVATE:
+                self.btnGeneratePlatformNodeKey.setVisible(True)
+            else:
+                self.btnGeneratePlatformNodeKey.setVisible(False)
         self.minimize_dialog_height()
+
+    def update_dynamic_labels(self):
+        def style_to_color(style: str) -> str:
+            if style == 'hl1':
+                color = 'color:#00802b'
+            else:
+                color = ''
+            return color
+
+        def get_label_text(prefix: str, key_type: str, tooltip_anchor: str, style: str):
+            lbl = prefix + ' ' + \
+                  {'privkey': 'private key',
+                   'platform_node_id': 'Node Id'}.get(key_type, '???')
+
+            change_mode = f'(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)'
+            ret = f'<table style="float:right;{style_to_color(style)}"><tr><td><b>{lbl}</b></td><td>{change_mode}' \
+                  f'</td></tr></table>'
+            return ret
+
+        if self.masternode:
+            if self.platform_node_key_type == InputKeyType.PRIVATE:
+                key_type, tooltip_anchor, placeholder_text = ('privkey', 'node id',
+                                                              'Enter the Platform Node private key')
+                style = ''
+            else:
+                key_type, tooltip_anchor, placeholder_text = ('platform_node_id', 'privkey',
+                                                              'Enter the Platform Node Id')
+                style = 'hl1'
+            self.lblPlatformNodeKey.setText(get_label_text('Platform Node', key_type, tooltip_anchor, style))
+            self.edtPlatformNodeKey.setPlaceholderText(placeholder_text)
+
+    def set_ctrl_message(self, ctrl: QLabel, message_text: str, style: str):
+        if message_text:
+            ctrl.show()
+            ctrl.setText(f'<span style="background-color:red;color:white">{message_text}</span>')
+        else:
+            ctrl.hide()
+
+    def upd_ip_info(self):
+        msg = ''
+        style = ''
+        if self.ip_port_validation_err_msg:
+            msg = self.ip_port_validation_err_msg
+            style = 'error'
+        self.set_ctrl_message(self.lblIPMsg, msg, style)
+
+    def upd_payout_addr_info(self):
+        msg = ''
+        style = ''
+        if self.payout_address_validation_err_msg:
+            msg = self.payout_address_validation_err_msg
+            style = 'error'
+        self.set_ctrl_message(self.lblOperatorPayoutMsg, msg, style)
+
+    def upd_platform_node_key_info(self):
+        msg = ''
+        style = ''
+        if self.masternode.masternode_type == MasternodeType.HPMN:
+            if self.platform_node_id_validation_err_msg:
+                msg = self.platform_node_id_validation_err_msg
+                style = 'error'
+        self.set_ctrl_message(self.lblPlatformNodeKeyMsg, msg, style)
+
+    def upd_platform_ports_info(self):
+        msg = ''
+        style = ''
+        if self.platform_ports_validation_err_msg:
+            msg = self.platform_ports_validation_err_msg
+            style = 'error'
+        self.set_ctrl_message(self.lblPlatformPortsMsg, msg, style)
 
     @pyqtSlot(str)
     def on_lblManualCommands_linkActivated(self, link):
@@ -195,52 +291,137 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
         except Exception as e:
             logging.exception(str(e))
 
-    def validate_data(self):
-        if self.upd_payout_active:
-            payout_address = self.edtOperatorPayoutAddress.text()
-            if payout_address:
-                if not validate_address(payout_address, self.app_config.dash_network):
-                    raise Exception('Invalid payout Dash address')
-                else:
-                    self.new_operator_payout_address = payout_address
-            else:
-                self.new_operator_payout_address = ""
+    def validate_data(self) -> bool:
+        error_count = 0
 
         if self.masternode.operator_key_type != InputKeyType.PRIVATE:
             raise Exception('The operator private key is required.')
 
-        self.new_ip = self.edtIP.text()
-        if not self.new_ip:
-            raise Exception("The IP address cannot be empty.")
+        self.payout_address_validation_err_msg = ''
+        if self.upd_payout_active:
+            payout_address = self.edtOperatorPayoutAddress.text()
+            if payout_address:
+                if not validate_address(payout_address, self.app_config.dash_network):
+                    self.payout_address_validation_err_msg = 'Invalid payout Dash address'
+                    error_count += 1
+                else:
+                    self.new_operator_payout_address = payout_address
+            else:
+                self.new_operator_payout_address = ""
+        self.upd_payout_addr_info()
+
+        self.ip_port_validation_err_msg = ''
+        self.ip = self.edtIP.text()
+        if not self.ip:
+            self.ip_port_validation_err_msg = 'The IP address cannot be empty.'
+            error_count += 1
         try:
-            if self.new_ip:
-                ipaddress.ip_address(self.new_ip)
+            if self.ip:
+                ipaddress.ip_address(self.ip)
         except Exception as e:
             self.edtIP.setFocus()
-            raise Exception('Invalid masternode IP address: %s.' % str(e))
+            self.ip_port_validation_err_msg = 'Invalid masternode IP address: %s.' % str(e)
+            error_count += 1
 
         if not self.edtPort.text():
-            raise Exception("The TCP port cannot be empty.")
+            self.ip_port_validation_err_msg = "The TCP port cannot be empty."
+            error_count += 1
         try:
-            if self.new_ip:
-                self.new_port = int(self.edtPort.text())
+            if self.ip:
+                self.tcp_port = int(self.edtPort.text())
+                if not (1 <= self.tcp_port <= 65535):
+                    self.ip_port_validation_err_msg = 'Masternode TCP port is invalid.'
             else:
-                self.new_port = None
+                self.tcp_port = None
         except Exception:
             self.edtPort.setFocus()
-            raise Exception('Invalid TCP port: should be integer.')
+            self.ip_port_validation_err_msg = 'Invalid TCP port: should be integer.'
+            error_count += 1
+
+        self.upd_ip_info()
+
+        self.platform_node_id_validation_err_msg = ''
+        if self.masternode.masternode_type == MasternodeType.HPMN:
+            node_key = self.edtPlatformNodeKey.text().strip()
+            if self.platform_node_key_type == InputKeyType.PRIVATE:
+                if not node_key:
+                    self.platform_node_id_validation_err_msg = 'Platform node private key or node id is required.'
+                    error_count += 1
+                else:
+                    if not validate_ed25519_privkey(node_key):
+                        self.platform_node_id_validation_err_msg = \
+                            'The Platform private key is invalid. It should be an Ed25519 private key.'
+                        error_count += 1
+                    else:
+                        self.platform_node_id = ed25519_private_key_to_platform_node_id(node_key)
+                        self.platform_node_private_key = node_key
+            else:
+                if not node_key:
+                    self.platform_node_id_validation_err_msg = 'Platform node id is required.'
+                    error_count += 1
+                else:
+                    if not validate_platform_node_id(node_key):
+                        self.platform_node_id_validation_err_msg = 'Platform node id should be a 20-byte hexadecimal ' \
+                                                                   'string.'
+                        error_count += 1
+                    else:
+                        self.platform_node_id = node_key
+
+            if self.platform_node_id_validation_err_msg:
+                error_count += 1
+            self.upd_platform_node_key_info()
+
+            self.platform_ports_validation_err_msg = ''
+            p2p_port = self.edtPlatformP2PPort.text().strip()
+            if not p2p_port:
+                self.platform_ports_validation_err_msg = 'Platform P2P port is required.'
+            else:
+                try:
+                    p2p_port = int(p2p_port)
+                    if not (1 <= p2p_port <= 65535):
+                        self.platform_ports_validation_err_msg = 'Platform P2P port is invalid'
+                    self.platform_p2p_port = p2p_port
+                except Exception:
+                    self.platform_ports_validation_err_msg = 'Platform P2P port must be a valid TCP port [1-65535].'
+
+            http_port = self.edtPlatformHTTPPort.text().strip()
+            if not http_port:
+                if self.platform_ports_validation_err_msg:
+                    self.platform_ports_validation_err_msg += ' '
+                self.platform_ports_validation_err_msg += 'Platform HTTP port is required.'
+            else:
+                try:
+                    http_port = int(http_port)
+                    if not (1 <= http_port <= 65535):
+                        if self.platform_ports_validation_err_msg:
+                            self.platform_ports_validation_err_msg += ' '
+                        self.platform_ports_validation_err_msg = 'Platform HTTP port is invalid'
+                    self.platform_http_port = http_port
+                except Exception:
+                    if self.platform_ports_validation_err_msg:
+                        self.platform_ports_validation_err_msg += ' '
+                    self.platform_ports_validation_err_msg += 'Platform HTTP port must be a valid TCP port [1-65535].'
+
+            if self.platform_ports_validation_err_msg:
+                error_count += 1
+            self.upd_platform_ports_info()
+
+        if error_count:
+            return False
+        else:
+            return True
 
     def update_manual_cmd_info(self):
         try:
             green_color = get_widget_font_color_green(self.lblIP)
             self.validate_data()
             if self.masternode.masternode_type == MasternodeType.REGULAR:
-                cmd = f'protx update_service "{self.protx_hash}" "{self.new_ip}:{str(self.new_port)}" ' \
+                cmd = f'protx update_service "{self.protx_hash}" "{self.ip}:{str(self.tcp_port)}" ' \
                       f'"{self.masternode.operator_private_key}" "{self.new_operator_payout_address}" ' \
                       f'"<span style="color:{green_color}">feeSourceAddress</span>"'
             else:
                 # HPMN
-                cmd = f'protx update_service_hpmn "{self.protx_hash}" "{self.new_ip}:{str(self.new_port)}" ' \
+                cmd = f'protx update_service_hpmn "{self.protx_hash}" "{self.ip}:{str(self.tcp_port)}" ' \
                       f'"{self.masternode.operator_private_key}" "{self.platform_node_id}" {self.platform_p2p_port} ' \
                       f'{self.platform_http_port} "{self.new_operator_payout_address}" ' \
                       f'"<span style="color:{green_color}">feeSourceAddress</span>"'
@@ -259,16 +440,49 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
         self.edtManualCommands.setHtml(msg)
 
     @pyqtSlot(str)
-    def on_edtOperatorPayoutAddress_textChanged(self, text):
+    def on_lblPlatformNodeKey_linkActivated(self, _):
+        if self.platform_node_key_type == InputKeyType.PRIVATE:
+            self.platform_node_key_type = InputKeyType.PUBLIC
+            self.platform_node_private_key = self.edtPlatformNodeKey.text()
+            self.edtPlatformNodeKey.setText(self.platform_node_id)
+        else:
+            self.platform_node_key_type = InputKeyType.PRIVATE
+            self.platform_node_id = self.edtPlatformNodeKey.text()
+            self.edtPlatformNodeKey.setText(self.platform_node_private_key)
+        self.update_dynamic_labels()
+        self.update_ctrls_state()
+        self.update_manual_cmd_info()
+
+    @pyqtSlot(str)
+    def on_edtIP_textChanged(self, text):
         try:
+            self.validate_data()
             self.update_manual_cmd_info()
             self.update_ctrls_state()
         except Exception as e:
             logging.exception(str(e))
 
-    def on_edtPlatformNodeId_textChanged(self, text):
+    @pyqtSlot(str)
+    def on_edtPort_textChanged(self, text):
         try:
-            self.platform_node_id = text
+            self.validate_data()
+            self.update_manual_cmd_info()
+            self.update_ctrls_state()
+        except Exception as e:
+            logging.exception(str(e))
+
+    @pyqtSlot(str)
+    def on_edtOperatorPayoutAddress_textChanged(self, text):
+        try:
+            self.validate_data()
+            self.update_manual_cmd_info()
+            self.update_ctrls_state()
+        except Exception as e:
+            logging.exception(str(e))
+
+    def on_edtPlatformNodeKey_textChanged(self, text):
+        try:
+            self.validate_data()
             self.update_manual_cmd_info()
             self.update_ctrls_state()
         except Exception as e:
@@ -276,7 +490,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
 
     def on_edtPlatformP2PPort_textChanged(self, text):
         try:
-            self.platform_p2p_port = int(text)
+            self.validate_data()
             self.update_manual_cmd_info()
             self.update_ctrls_state()
         except Exception as e:
@@ -284,24 +498,19 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
 
     def on_edtPlatformHTTPPort_textChanged(self, text):
         try:
-            self.platform_http_port = int(text)
+            self.validate_data()
             self.update_manual_cmd_info()
             self.update_ctrls_state()
         except Exception as e:
             self.error_msg(str(e), True)
 
     @pyqtSlot(bool)
-    def on_btnGeneratePlatformId_clicked(self, active):
-        try:
+    def on_btnGeneratePlatformNodeKey_clicked(self, active):
+        if self.platform_node_key_type == InputKeyType.PRIVATE:
             priv_key_hex = generate_ed25519_private_key()
-            pub_key_hex = ed25519_private_key_to_pubkey(priv_key_hex)
-            node_id = ed25519_public_key_to_platform_id(pub_key_hex)
-            self.platform_node_id_private_key = priv_key_hex
-            self.platform_node_id = node_id
-            self.platform_node_id_generated = True
-            self.edtPlatformNodeId.setText(node_id)
-        except Exception as e:
-            self.error_msg(str(e), True)
+            priv_key_hex = ed25519_private_key_to_tenderdash(priv_key_hex)
+            self.platform_node_key_generated = True
+            self.edtPlatformNodeKey.setText(priv_key_hex)
 
     @pyqtSlot()
     def on_btnPlatformP2PPortSetDefault_clicked(self):
@@ -317,16 +526,16 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
     def on_btnSendUpdateTx_clicked(self, enabled):
         try:
             self.read_data_from_network()
-            self.validate_data()
-            self.send_upd_tx()
+            if self.validate_data():
+                self.send_upd_tx()
         except Exception as e:
             WndUtils.error_msg(str(e))
 
     def send_upd_tx(self):
         try:
             funding_address = ''
-            if self.new_ip:
-                dmn_new_ip_port = self.new_ip + ':' + str(self.new_port)
+            if self.ip:
+                dmn_new_ip_port = self.ip + ':' + str(self.tcp_port)
             else:
                 dmn_new_ip_port = '"0"'
 
@@ -395,10 +604,10 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                 self.edtOperatorPayoutAddress.setReadOnly(True)
                 self.edtIP.setReadOnly(True)
                 self.edtPort.setReadOnly(True)
-                self.edtPlatformNodeId.setReadOnly(True)
+                self.edtPlatformNodeKey.setReadOnly(True)
                 self.edtPlatformP2PPort.setReadOnly(True)
                 self.edtPlatformHTTPPort.setReadOnly(True)
-                self.btnGeneratePlatformId.setDisabled(True)
+                self.btnGeneratePlatformNodeKey.setDisabled(True)
                 self.btnPlatformHTTPPortSetDefault.setDisabled(True)
                 self.btnPlatformP2PPortSetDefault.setDisabled(True)
                 self.btnClose.show()
@@ -413,21 +622,18 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                       f'The new values will be visible on the network after the transaction is confirmed, i.e. in ' \
                       f'about 2.5 minutes.'
 
-                if self.masternode.ip != self.new_ip or self.masternode.tcp_port != self.new_port or \
-                        (self.masternode.masternode_type == MasternodeType.HPMN and
-                         (self.masternode.platform_node_id != self.platform_node_id or
-                          self.masternode.platform_p2p_port != self.platform_p2p_port or
-                          self.masternode.platform_http_port != self.platform_http_port)):
-
-                    self.masternode.ip = self.new_ip
-                    self.masternode.tcp_port = self.new_port
-                    self.masternode.platform_node_private_key = self.platform_node_id_private_key
-                    self.masternode.platform_node_id = self.platform_node_id
+                self.masternode.ip = self.ip
+                self.masternode.tcp_port = self.tcp_port
+                if self.masternode.masternode_type == MasternodeType.HPMN:
+                    if self.platform_node_key_type == InputKeyType.PRIVATE:
+                        self.masternode.platform_node_private_key = self.platform_node_private_key
+                    else:
+                        self.masternode.platform_node_id = self.platform_node_id
                     self.masternode.platform_p2p_port = self.platform_p2p_port
                     self.masternode.platform_http_port = self.platform_http_port
 
-                    if self.on_mn_config_updated_callback:
-                        self.on_mn_config_updated_callback(self.masternode)
+                if self.masternode.is_modified() and self.on_mn_config_updated_callback:
+                    self.on_mn_config_updated_callback(self.masternode)
 
                 WndUtils.info_msg(msg)
 
