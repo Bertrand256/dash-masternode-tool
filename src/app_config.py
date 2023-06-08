@@ -18,7 +18,7 @@ from configparser import ConfigParser
 from random import randint
 from shutil import copyfile
 import logging
-from typing import Optional, Callable, Dict, Tuple, List
+from typing import Optional, Callable, Dict, Tuple, List, Any
 from enum import Enum
 import bitcoin
 from logging.handlers import RotatingFileHandler
@@ -193,8 +193,10 @@ class AppConfig(QObject):
         self.dont_use_file_dialogs = False
         self.confirm_when_voting = True
         self.add_random_offset_to_vote_time = True  # To avoid identifying one user's masternodes by vote time
-        self.sig_time_offset_min: int = 0
-        self.sig_time_offset_max: int = 0
+        self.proposal_vote_time_offset_lower: int = -30  # in minutes
+        self.proposal_vote_time_offset_upper: int = 30
+        self.proposal_vote_time_offset_min: int = -60
+        self.proposal_vote_time_offset_max: int = 60
         self.csv_delimiter = ';'
         self.masternodes = []
         self.last_bip32_base_path = ''
@@ -278,27 +280,12 @@ class AppConfig(QObject):
                             dest='trezor_udp', default=True)
         parser.add_argument('--trezor-hid', type=app_utils.str2bool, help="Disable HidTransport for Trezor",
                             dest='trezor_hid', default=True)
-        parser.add_argument('--sig-time-offset-min', type=int,
-                            help="Number of seconds relative to the current time being the lower bound of the "
-                                 "time range from which a random sig_time offset is drawn (default -1800)",
-                            dest='sig_time_offset_min', default=-1800)
-        parser.add_argument('--sig-time-offset-max', type=int,
-                            help="Number of seconds relative to the current time being the upper bound of the "
-                                 "time range from which a random sig_time offset is drawn (default 1800)",
-                            dest='sig_time_offset_max', default=1800)
 
         args = parser.parse_args()
         self.trezor_webusb = args.trezor_webusb
         self.trezor_bridge = args.trezor_bridge
         self.trezor_udp = args.trezor_udp
         self.trezor_hid = args.trezor_hid
-        self.sig_time_offset_min = args.sig_time_offset_min
-        self.sig_time_offset_max = args.sig_time_offset_max
-        if not self.sig_time_offset_min < self.sig_time_offset_max:
-            WndUtils.error_msg('--sig-time-offset-min must be less than --sig-time-offset-max. Using the default '
-                               'values (-1800/1800).')
-            self.sig_time_offset_min = -1800
-            self.sig_time_offset_max = 1800
 
         app_user_dir = ''
         if args.data_dir:
@@ -533,6 +520,10 @@ class AppConfig(QObject):
         self.dont_use_file_dialogs = src_config.dont_use_file_dialogs
         self.confirm_when_voting = src_config.confirm_when_voting
         self.add_random_offset_to_vote_time = src_config.add_random_offset_to_vote_time
+        self.proposal_vote_time_offset_lower = src_config.proposal_vote_time_offset_lower
+        self.proposal_vote_time_offset_upper = src_config.proposal_vote_time_offset_upper
+        self.proposal_vote_time_offset_min = src_config.proposal_vote_time_offset_min
+        self.proposal_vote_time_offset_max = src_config.proposal_vote_time_offset_max
         self.fetch_network_data_after_start = src_config.fetch_network_data_after_start
         self.show_dash_value_in_fiat = src_config.show_dash_value_in_fiat
         self.csv_delimiter = src_config.csv_delimiter
@@ -649,8 +640,8 @@ class AppConfig(QObject):
         self.dont_use_file_dialogs = False
         self.confirm_when_voting = True
         self.add_random_offset_to_vote_time = True
-        self.sig_time_offset_min = -1800
-        self.sig_time_offset_max = 1800
+        self.proposal_vote_time_offset_lower = -30
+        self.proposal_vote_time_offset_upper = 30
         self.csv_delimiter = ';'
         self.app_config_file_name = ''
         self.encrypt_config_file = False
@@ -790,6 +781,37 @@ class AppConfig(QObject):
                                                                          fallback='1'))
                 self.add_random_offset_to_vote_time = \
                     self.value_to_bool(config.get(section, 'add_random_offset_to_vote_time', fallback='1'))
+
+                lower = config.get(section, 'proposal_vote_time_offset_lower', fallback='')
+                if lower:
+                    try:
+                        lower = int(lower)
+                        if lower < self.proposal_vote_time_offset_min:
+                            lower = self.proposal_vote_time_offset_min
+                        if lower > self.proposal_vote_time_offset_max:
+                            lower = self.proposal_vote_time_offset_max
+                    except Exception:
+                        logging.error('Invalid value for config attribute: "proposal_vote_time_offset_lower"')
+
+                upper = config.get(section, 'proposal_vote_time_offset_upper', fallback='')
+                if upper:
+                    try:
+                        upper = int(upper)
+                        if upper < self.proposal_vote_time_offset_min:
+                            upper = self.proposal_vote_time_offset_min
+                        if upper > self.proposal_vote_time_offset_max:
+                            upper = self.proposal_vote_time_offset_max
+                    except Exception:
+                        logging.error('Invalid value for config attribute: "proposal_vote_time_offset_upper"')
+
+                if isinstance(lower, int) and isinstance(upper, int):
+                    if lower > upper:
+                        lower = upper
+
+                if isinstance(lower, int):
+                    self.proposal_vote_time_offset_lower = lower
+                if isinstance(upper, int):
+                    self.proposal_vote_time_offset_upper = upper
 
                 self.encrypt_config_file = \
                     self.value_to_bool(config.get(section, 'encrypt_config_file', fallback='0'))
@@ -1108,6 +1130,8 @@ class AppConfig(QObject):
         config.set(section, 'fetch_network_data_after_start', '1' if self.fetch_network_data_after_start else '0')
         config.set(section, 'show_dash_value_in_fiat', '1' if self.show_dash_value_in_fiat else '0')
         config.set(section, 'add_random_offset_to_vote_time', '1' if self.add_random_offset_to_vote_time else '0')
+        config.set(section, 'proposal_vote_time_offset_lower', str(self.proposal_vote_time_offset_lower))
+        config.set(section, 'proposal_vote_time_offset_upper', str(self.proposal_vote_time_offset_upper))
         config.set(section, 'encrypt_config_file', '1' if self.encrypt_config_file else '0')
 
         # save mn configuration
@@ -1221,6 +1245,8 @@ class AppConfig(QObject):
         all_data += str(self.fetch_network_data_after_start)
         all_data += str(self.show_dash_value_in_fiat)
         all_data += str(self.add_random_offset_to_vote_time)
+        all_data += str(self.proposal_vote_time_offset_lower)
+        all_data += str(self.proposal_vote_time_offset_upper)
         all_data += str(self.encrypt_config_file)
 
         for mn in self.masternodes:
@@ -1265,12 +1291,26 @@ class AppConfig(QObject):
                             return True if status == 'enabled' else False, prio, message
             return None, None, None
 
+        def read_param_from_json(json_param_symbol: str, cfg_attr_name: str) -> Any:
+            params = self._remote_app_params.get('params')
+            if params:
+                value = params.get(json_param_symbol)
+                if value is not None:
+                    if hasattr(self, cfg_attr_name):
+                        self.__setattr__(cfg_attr_name, value)
+                    else:
+                        logging.error(f'Attribute {cfg_attr_name} does not exist.')
+            return
+
         if self._remote_app_params:
             self.feature_register_dmn_automatic.set_value(*get_feature_config_remote('REGISTER_DMN_AUTOMATIC'))
             self.feature_update_registrar_automatic.set_value(*get_feature_config_remote('UPDATE_REGISTRAR_AUTOMATIC'))
             self.feature_update_service_automatic.set_value(*get_feature_config_remote('UPDATE_SERVICE_AUTOMATIC'))
             self.feature_revoke_operator_automatic.set_value(*get_feature_config_remote('REVOKE_OPERATOR_AUTOMATIC'))
             self.feature_new_bls_scheme.set_value(*get_feature_config_remote('NEW_BLS_SCHEME'))
+
+            read_param_from_json('voteTimeRandomOffsetMin', 'proposal_vote_time_offset_min')
+            read_param_from_json('voteTimeRandomOffsetMax', 'proposal_vote_time_offset_max')
 
             if self._remote_app_params.get('appDeveloperContact') and \
                     isinstance(self._remote_app_params.get('appDeveloperContact'), list):

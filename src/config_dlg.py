@@ -64,6 +64,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         WndUtils.__init__(self, app_config)
         self.app_config = app_config
         self.main_window = parent
+        self.updating_ui = False
         self.local_config = AppConfig(app_config.internal_ui_dark_mode_activated)
         self.local_config.copy_from(app_config)
 
@@ -78,16 +79,17 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.is_modified = False
         self.global_options_modified = False  # user modified options not related to a config file
         self.setupUi(self)
+        self.local_config.update_config_data_hash()
 
     def setupUi(self, dialog: QDialog):
         Ui_ConfigDlg.setupUi(self, self)
+        self.updating_ui = True
         self.resize(app_cache.get_value('ConfigDlg_Width', self.size().width(), int),
                     app_cache.get_value('ConfigDlg_Height', self.size().height(), int))
 
         self.setWindowTitle("Configuration")
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
-        self.accepted.connect(self.on_accepted)
         self.tabWidget.setCurrentIndex(0)
 
         self.disable_cfg_update = True
@@ -215,7 +217,34 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.chbDownloadProposalExternalData.setChecked(self.local_config.read_proposals_external_attributes)
         self.chbDontUseFileDialogs.setChecked(self.local_config.dont_use_file_dialogs)
         self.chbConfirmWhenVoting.setChecked(self.local_config.confirm_when_voting)
+
         self.chbAddRandomOffsetToVotingTime.setChecked(self.local_config.add_random_offset_to_vote_time)
+        min = int(self.local_config.proposal_vote_time_offset_min)
+        max = int(self.local_config.proposal_vote_time_offset_max)
+        lower = int(self.local_config.proposal_vote_time_offset_lower)
+        upper = int(self.local_config.proposal_vote_time_offset_upper)
+        if lower < min:
+            lower = min
+        if lower > max:
+            lower = max
+        if upper < min:
+            upper = min
+        if upper > max:
+            upper = max
+        if lower > upper:
+            lower = upper
+        self.edtVoteTimeOffsetLower.setMinimum(min)
+        self.edtVoteTimeOffsetLower.setMaximum(max)
+        self.edtVoteTimeOffsetUpper.setMinimum(min)
+        self.edtVoteTimeOffsetUpper.setMaximum(max)
+        self.edtVoteTimeOffsetLower.setValue(lower)
+        self.edtVoteTimeOffsetUpper.setValue(upper)
+        self.edtVoteTimeOffsetLower.setToolTip(f"Lower range of voting time offset. "
+                                               f"It can be from {min} to {max} minutes.")
+        self.edtVoteTimeOffsetUpper.setToolTip(f"Upper range of voting time offset. "
+                                               f"It can be from {min} to {max} minutes.")
+        self.update_ctrls_state()
+
         self.chbEncryptConfigFile.setChecked(self.local_config.encrypt_config_file)
         self.chbFetchDataAfterStart.setChecked(self.local_config.fetch_network_data_after_start)
         self.chbShowDashFIATValue.setChecked(self.local_config.show_dash_value_in_fiat)
@@ -238,6 +267,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.update_connection_details_ui()
         self.disable_cfg_update = False
         self.splitter.setSizes(app_cache.get_value('ConfigDlg_ConnectionSplitter_Sizes', [100, 100], list))
+        self.updating_ui = False
 
     def closeEvent(self, event):
         self.on_close()
@@ -246,16 +276,17 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.rpc_cfg_widget.btnShowPassword.setFixedHeight(self.rpc_cfg_widget.edtRpcPassword.height())
 
     def done(self, result_code):
-        self.on_close()
+        if result_code == 1:
+            if self.apply_config_changes():
+                self.on_close()
+            else:
+                return
         QDialog.done(self, result_code)
 
     def on_close(self):
         app_cache.set_value('ConfigDlg_Width', self.size().width())
         app_cache.set_value('ConfigDlg_Height', self.size().height())
         app_cache.set_value('ConfigDlg_ConnectionSplitter_Sizes', self.splitter.sizes())
-
-    def on_accepted(self):
-        self.apply_config_changes()
 
     def display_connection_list(self):
         self.lstConns.clear()
@@ -265,6 +296,14 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             item.setCheckState(Qt.Checked if cfg.enabled else Qt.Unchecked)
             item.checkState()
             self.lstConns.addItem(item)
+
+    def update_ctrls_state(self):
+        if not self.local_config.add_random_offset_to_vote_time:
+            self.edtVoteTimeOffsetLower.setDisabled(True)
+            self.edtVoteTimeOffsetUpper.setDisabled(True)
+        else:
+            self.edtVoteTimeOffsetLower.setEnabled(True)
+            self.edtVoteTimeOffsetUpper.setEnabled(True)
 
     @pyqtSlot(int)
     def on_cboDashNetwork_currentIndexChanged(self, index):
@@ -714,6 +753,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
     @pyqtSlot(bool)
     def on_chbAddRandomOffsetToVotingTime_toggled(self, checked):
         self.local_config.add_random_offset_to_vote_time = checked
+        self.update_ctrls_state()
         self.set_modified()
 
     @pyqtSlot(bool)
@@ -747,6 +787,19 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.local_config.log_level_str = logging.getLevelName(level)
             self.set_modified()
 
+    @pyqtSlot(int)
+    def on_edtVoteTimeOffsetLower_valueChanged(self, value):
+        if not self.updating_ui:
+            self.local_config.proposal_vote_time_offset_lower = value
+            self.set_modified()
+
+    @pyqtSlot(int)
+    def on_edtVoteTimeOffsetUpper_valueChanged(self, value):
+        if not self.updating_ui:
+            self.local_config.proposal_vote_time_offset_upper = value
+            self.set_modified()
+
+    @pyqtSlot(bool)
     def on_btnSshReadRpcConfig_clicked(self):
         """Read the configuration of a remote RPC node from the node's dash.conf file."""
         if self.current_network_cfg:
@@ -854,12 +907,12 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
             self.is_modified = True
 
     def get_is_modified(self):
-        return self.is_modified
+        return self.local_config.is_modified()
 
     def get_global_options_modified(self):
         return self.global_options_modified
 
-    def apply_config_changes(self):
+    def apply_config_changes(self) -> bool:
         """
         Applies changes made by the user by moving the UI controls values to the appropriate
         fields in the self.app_config object.
@@ -877,6 +930,13 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         if self.local_config.ui_use_dark_mode != self.app_config.ui_use_dark_mode:
             self.global_options_modified = True
             self.app_config.ui_use_dark_mode = self.local_config.ui_use_dark_mode
+
+        if self.local_config.add_random_offset_to_vote_time:
+            if self.local_config.proposal_vote_time_offset_lower > self.local_config.proposal_vote_time_offset_upper:
+                WndUtils.warn_msg('The lower bound of the voting offset cannot be greater than the upper bound value.'
+                                  'You must correct the values before continuing.')
+                return False
+        return True
 
     def on_btnEncryptionPublicKey_clicked(self):
         updated = False

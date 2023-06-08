@@ -187,25 +187,24 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
     def process_initial_data(self):
         try:
-            # if the operator key from the current mn configuration doesn't match the key stored on the network,
-            # use the key from the configuration as an initial value
-            if self.masternode.get_operator_pubkey(self.app_config.feature_new_bls_scheme.get_value()) != \
-                    self.dmn_prev_operator_pubkey:
-                if self.masternode.operator_key_type == InputKeyType.PRIVATE:
-                    self.edtOperatorKey.setText(self.masternode.operator_private_key)
-                else:
-                    self.edtOperatorKey.setText(self.masternode.operator_public_key)
-                self.operator_key_type = self.masternode.operator_key_type
+            if self.dmn_prev_payout_address:
+                self.edtPayoutAddress.setText(self.dmn_prev_payout_address)
+
+            pub_operator = self.masternode.get_operator_pubkey(self.app_config.feature_new_bls_scheme.get_value())
+            if self.masternode.operator_key_type == InputKeyType.PRIVATE:
+                self.edtOperatorKey.setText(self.masternode.operator_private_key)
+            else:
+                self.edtOperatorKey.setText(pub_operator)
+            self.operator_key_type = self.masternode.operator_key_type
 
             # if the voting key from the current mn configuration doesn't match the key stored on the network
             # use the key from the configuration as an initial value
-            if self.masternode.get_voting_public_address(self.app_config.dash_network) != \
-                    self.dmn_prev_voting_address:
-                if self.masternode.voting_key_type == InputKeyType.PRIVATE:
-                    self.edtVotingKey.setText(self.masternode.voting_private_key)
-                else:
-                    self.edtVotingKey.setText(self.masternode.voting_address)
-                self.voting_key_type = self.masternode.voting_key_type
+            voting_addr = self.masternode.get_voting_public_address(self.app_config.dash_network)
+            if self.masternode.voting_key_type == InputKeyType.PRIVATE:
+                self.edtVotingKey.setText(self.masternode.voting_private_key)
+            else:
+                self.edtVotingKey.setText(voting_addr)
+            self.voting_key_type = self.masternode.voting_key_type
 
         except Exception as e:
             logging.exception('An exception occurred while processing the initial data')
@@ -556,9 +555,10 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
     def on_btnSendUpdateTx_clicked(self, enabled):
         try:
             if self.validate_data():
-                if self.dmn_prev_payout_address == self.dmn_new_payout_address and \
-                        self.dmn_prev_operator_pubkey == self.dmn_new_operator_pubkey and \
-                        self.dmn_prev_voting_address == self.dmn_new_voting_address:
+                if not ((self.show_upd_payout and self.dmn_prev_payout_address != self.dmn_new_payout_address) or
+                        (self.show_upd_operator and self.dmn_prev_operator_pubkey != self.dmn_new_operator_pubkey) or
+                        (self.show_upd_voting and self.dmn_prev_voting_address != self.dmn_new_voting_address)):
+
                     if WndUtils.query_dlg('Nothing is changed compared to the data stored in the Dash network. Do you '
                                           'really want to continue?',
                                           buttons=QMessageBox.Yes | QMessageBox.Cancel,

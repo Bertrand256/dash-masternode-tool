@@ -827,7 +827,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             WndUtils.error_msg(str(e), True)
 
     @pyqtSlot(str)
-    def on_lblPlatformNodeId_linkActivated(self, link):
+    def on_lblPlatformNodeKey_linkActivated(self, link):
         try:
             if self.masternode and self.edit_mode:
                 state = self.edtPlatformNodeKey.blockSignals(True)
@@ -876,7 +876,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.lblVotingKey.setToolTip(tt)
 
     @pyqtSlot(str)
-    def on_lblPlatformNodeId_linkHovered(self, link):
+    def on_lblPlatformNodeKey_linkHovered(self, link):
         if link == 'platform node id':
             tt = 'Change input type to Platform Node id'
         else:

@@ -1233,7 +1233,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     # ident (transaction id-transaction index)
                     users_mn_configs_by_ident = {}
                     for mn_cfg in self.masternodes_cfg:
-                        ident = mn_cfg.collateral_tx + '-' + mn_cfg.collateral_tx_index
+                        ident = mn_cfg.collateral_tx + '-' + str(mn_cfg.collateral_tx_index)
                         if not ident in users_mn_configs_by_ident:
                             users_mn_configs_by_ident[ident] = mn_cfg
 
@@ -2731,14 +2731,15 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
                     if self.app_config.add_random_offset_to_vote_time:
 
-                        if last_vote_ts is not None:  # and cur_ts - last_vote_ts < 1800:
+                        if last_vote_ts is not None:  # and cur_ts - last_vote_ts < min bound:
                             # new vote's timestamp cannot be less than the last vote for this proposal-mn pair
-                            min_bound = max(int(last_vote_ts), cur_ts + self.app_config.sig_time_offset_min)
-                            max_bound = cur_ts + self.app_config.sig_time_offset_max
+                            min_bound = max(int(last_vote_ts), cur_ts +
+                                            int(self.app_config.proposal_vote_time_offset_lower * 60))
+                            max_bound = cur_ts + int(self.app_config.proposal_vote_time_offset_upper * 60)
                             sig_time = random.randint(min_bound, max_bound)
                         else:
-                            sig_time += random.randint(self.app_config.sig_time_offset_min,
-                                                       self.app_config.sig_time_offset_max)
+                            sig_time += random.randint(int(self.app_config.proposal_vote_time_offset_lower * 60),
+                                                       int(self.app_config.proposal_vote_time_offset_upper * 60))
 
                         log.info('Setting the vote time to a random value of: ' +
                                  app_utils.to_string(datetime.datetime.fromtimestamp(sig_time)))

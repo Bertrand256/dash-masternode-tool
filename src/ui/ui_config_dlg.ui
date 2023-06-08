@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>667</width>
-    <height>445</height>
+    <width>625</width>
+    <height>480</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -317,7 +317,7 @@
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_2">
        <property name="spacing">
-        <number>12</number>
+        <number>8</number>
        </property>
        <item>
         <widget class="QWidget" name="wdgKeepkeyPassEncoding" native="true">
@@ -417,7 +417,7 @@
           <string>If checked, old config file will be saved when changing configuration</string>
          </property>
          <property name="text">
-          <string>Backup config file</string>
+          <string>Backup config file when saving</string>
          </property>
         </widget>
        </item>
@@ -431,9 +431,141 @@
        <item>
         <widget class="QCheckBox" name="chbAddRandomOffsetToVotingTime">
          <property name="text">
-          <string>Add random offset to a vote time to enhance privacy (proposals)</string>
+          <string>Add random offset to a proposal vote time to improve privacy</string>
          </property>
         </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_4">
+         <item>
+          <spacer name="horizontalSpacer_2">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeType">
+            <enum>QSizePolicy::Fixed</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_3">
+           <property name="text">
+            <string>offset lower bound:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="edtVoteTimeOffsetLower">
+           <property name="minimumSize">
+            <size>
+             <width>80</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>Lower range of voting time offset. It can be from -720 to + 720 minutes (-+ 12h).</string>
+           </property>
+           <property name="minimum">
+            <number>-720</number>
+           </property>
+           <property name="maximum">
+            <number>720</number>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_5">
+           <property name="text">
+            <string>minutes</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_6">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_5">
+         <item>
+          <spacer name="horizontalSpacer_8">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeType">
+            <enum>QSizePolicy::Fixed</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_4">
+           <property name="text">
+            <string>offset upper bound:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="edtVoteTimeOffsetUpper">
+           <property name="minimumSize">
+            <size>
+             <width>80</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>Lower range of voting time offset. It can be from -720 to + 720 minutes (-+ 12h).</string>
+           </property>
+           <property name="minimum">
+            <number>-720</number>
+           </property>
+           <property name="maximum">
+            <number>720</number>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_6">
+           <property name="text">
+            <string>minutes</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_7">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
        </item>
        <item>
         <widget class="QCheckBox" name="chbDownloadProposalExternalData">
