@@ -378,7 +378,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         self.mn_list_columns_resized_by_user = True
 
     def on_mn_data_changed(self):
-        if self.cur_masternode:
+        if self.cur_masternode or self.edited_masternode:
             self.cur_masternode_edited = True
             try:
                 mn_info = self.mn_info_by_mn_cfg.get(self.cur_masternode)
@@ -644,7 +644,6 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             self.goto_masternode_details()
             self.set_edit_mode(True)
             self.wdg_masternode.on_mn_data_modified()
-            # self.on_mn_data_changed()
         else:
             WndUtils.error_msg('Editing already enabled!')
 
