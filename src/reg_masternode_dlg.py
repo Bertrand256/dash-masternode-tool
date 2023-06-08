@@ -11,8 +11,6 @@ import ipaddress
 from PyQt5.QtCore import pyqtSlot, Qt, QTimerEvent, QTimer
 from PyQt5.QtWidgets import QDialog, QMessageBox, QApplication, QWidget
 from bitcoinrpc.authproxy import EncodeDecimal, JSONRPCException
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-import cryptography.hazmat.primitives.serialization
 
 import app_cache
 import app_defs
@@ -33,7 +31,7 @@ from ui import ui_reg_masternode_dlg
 from wnd_utils import WndUtils, QDetectThemeChange, get_widget_font_color_blue, \
     get_widget_font_color_green
 from find_coll_tx_dlg import WalletUtxosListDlg
-from wallet_dlg import WalletDlg
+from wallet_dlg import WalletDlg, WalletDisplayMode
 
 STEP_MN_DATA = 1
 STEP_DASHD_TYPE = 2
@@ -201,7 +199,8 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                     self.btnGenerateVotingKey, self.btnGeneratePlatformNodeKey, self.btnManualFundingAddressPaste,
                     self.btnManualProtxPrepareCopy, self.btnManualProtxPrepareResultPaste,
                     self.btnManualProtxSubmitCopy, self.btnManualTxHashPaste, self.btnSummaryDMNOperatorKeyCopy,
-                    self.btnPlatformHTTPPortSetDefault, self.btnPlatformP2PPortSetDefault):
+                    self.btnPlatformHTTPPortSetDefault, self.btnPlatformP2PPortSetDefault,
+                    self.btnChooseAddressFromWallet):
             btn.setFixedHeight(h)
 
     def onThemeChanged(self):
@@ -244,7 +243,6 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             return ret
 
         if self.masternode:
-
             if self.owner_key_type == InputKeyType.PRIVATE:
                 key_type, tooltip_anchor, placeholder_text = ('privkey', 'address', 'Enter the owner private key')
                 style = ''
@@ -549,6 +547,21 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.close()
 
     @pyqtSlot(bool)
+    def on_btnChooseAddressFromWallet_clicked(self, active):
+        try:
+            self.main_dlg.main_view.stop_threads()
+            ui = WalletDlg(self, self.main_dlg.hw_session, initial_mn_sel=None,
+                           display_mode=WalletDisplayMode.SELECT_ADDRESS)
+            if ui.exec_():
+                addr = ui.get_selected_wallet_address()
+                if addr:
+                    self.edtPayoutAddress.setText(addr)
+        except Exception as e:
+            self.error_msg(str(e), True)
+        finally:
+            self.main_dlg.main_view.resume_threads()
+
+    @pyqtSlot(bool)
     def on_btnGenerateOwnerKey_clicked(self, active):
         k = generate_wif_privkey(self.app_config.dash_network, compressed=True)
         self.edtOwnerKey.setText(k)
@@ -612,6 +625,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             self.btnPlatformP2PPortSetDefault.hide()
             self.btnPlatformHTTPPortSetDefault.hide()
             self.linePlatformNodeId.hide()
+            self.btnGeneratePlatformNodeKey.hide()
         else:
             self.lblPlatformNodeKey.show()
             self.lblPlatformP2PPort.show()
@@ -624,6 +638,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             self.btnPlatformP2PPortSetDefault.show()
             self.btnPlatformHTTPPortSetDefault.show()
             self.linePlatformNodeId.show()
+            self.btnGeneratePlatformNodeKey.show()
 
     def update_fields_info(self, show_invalid_data_msg: bool):
         """
@@ -669,12 +684,12 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         else:
             if self.show_field_hinds:
                 if self.edtIP.text().strip():
-                    msg = 'You can leave the IP address and port fields empty if you want to delegate the operator ' \
-                          'role to an external entity and you don\'t know their values in advance.'
+                    msg = "You can leave the IP address and port fields empty if you want to delegate the operator " \
+                          "role to an external entity and you don't know their values in advance."
                     style = 'info'
                 else:
-                    msg = 'If don\'t set the IP address and port fields, the masternode operator will ' \
-                          'have to issue a ProUpServTx transaction using Dash wallet.'
+                    msg = "If you do not set the IP address and TCP port fields, the masternode operator will " \
+                          "have to send a ProUpServTx transaction, e.g. by using the DMT 'Update Service' feature."
                     style = 'warning'
         self.set_ctrl_message(self.lblIPMsg, msg, style)
 

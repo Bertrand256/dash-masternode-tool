@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>808</width>
-    <height>659</height>
+    <width>763</width>
+    <height>707</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -126,33 +126,67 @@
            </property>
           </widget>
          </item>
+         <item>
+          <widget class="QToolButton" name="btnChooseAddressFromWallet">
+           <property name="toolTip">
+            <string>Choose a Dash address for masternode rewards from your hardware wallet</string>
+           </property>
+           <property name="text">
+            <string>Choose from hardware wallet</string>
+           </property>
+          </widget>
+         </item>
         </layout>
        </item>
        <item row="13" column="1">
-        <layout class="QHBoxLayout" name="layOperatorReward">
+        <layout class="QVBoxLayout" name="verticalLayout_7">
          <property name="spacing">
           <number>8</number>
          </property>
          <item>
           <widget class="QCheckBox" name="chbWholeMNReward">
            <property name="text">
-            <string>The entire masternode reward goes to the owner</string>
+            <string>The entire reward goes to the owner.</string>
            </property>
           </widget>
          </item>
          <item>
-          <widget class="QDoubleSpinBox" name="edtOperatorReward">
-           <property name="maximum">
-            <double>100.000000000000000</double>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLabel" name="label_16">
-           <property name="text">
-            <string>%</string>
-           </property>
-          </widget>
+          <layout class="QHBoxLayout" name="horizontalLayout_6">
+           <item>
+            <widget class="QLabel" name="label_7">
+             <property name="text">
+              <string>Otherwise choose a percentage for the operator:</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QDoubleSpinBox" name="edtOperatorReward">
+             <property name="maximum">
+              <double>100.000000000000000</double>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="label_16">
+             <property name="text">
+              <string>%</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="horizontalSpacer_6">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+          </layout>
          </item>
         </layout>
        </item>
@@ -1398,7 +1432,6 @@
   <tabstop>edtPort</tabstop>
   <tabstop>edtPayoutAddress</tabstop>
   <tabstop>chbWholeMNReward</tabstop>
-  <tabstop>edtOperatorReward</tabstop>
   <tabstop>edtOwnerKey</tabstop>
   <tabstop>btnGenerateOwnerKey</tabstop>
   <tabstop>edtOperatorKey</tabstop>

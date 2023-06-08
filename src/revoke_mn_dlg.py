@@ -44,7 +44,10 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
         self.restore_cache_settings()
         self.update_ctrls_state()
         self.minimize_dialog_height()
-        self.read_data_from_network()
+        try:
+            self.read_data_from_network()
+        except Exception as e:
+            WndUtils.error_msg(str(e))
         self.update_manual_cmd_info()
 
     def closeEvent(self, event):
@@ -118,7 +121,6 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
             raise
 
     def update_ctrls_state(self):
-
         if self.show_manual_commands:
             self.lblManualCommands.setText('<a style="text-decoration:none" '
                                            'href="hide">Hide commands for manual execution</a>')
@@ -166,9 +168,12 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
 
     @pyqtSlot(bool)
     def on_btnSendRevokeTx_clicked(self, enabled):
-        self.read_data_from_network()
-        self.validate_data()
-        self.send_revoke_tx()
+        try:
+            self.read_data_from_network()
+            self.validate_data()
+            self.send_revoke_tx()
+        except Exception as e:
+            WndUtils.error_msg(str(e))
 
     def send_revoke_tx(self):
         try:

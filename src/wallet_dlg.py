@@ -23,6 +23,7 @@ from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox, QSpli
     QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout, QAction, QAbstractItemView, QStatusBar, QCheckBox, \
     QApplication
 from cryptography.fernet import Fernet
+from enum import Enum
 
 import app_cache
 import app_utils
@@ -66,6 +67,12 @@ MAIN_VIEW_BIP44_ACCOUNTS = 1
 MAIN_VIEW_MASTERNODE_LIST = 2
 TX_SIZE_LIMIT_BYTES = 90000
 
+
+class WalletDisplayMode(Enum):
+    NORMAL = 0
+    SELECT_ADDRESS = 1
+
+
 log = logging.getLogger('dmt.wallet_dlg')
 
 
@@ -73,7 +80,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     error_signal = QtCore.pyqtSignal(str)
     thread_finished = QtCore.pyqtSignal()
 
-    def __init__(self, main_ui, hw_session: HwSessionInfo, initial_mn_sel: Optional[int]):
+    def __init__(self, main_ui, hw_session: HwSessionInfo, initial_mn_sel: Optional[int],
+                 display_mode: WalletDisplayMode = WalletDisplayMode.NORMAL):
         """
         :param initial_mn_sel:
           if the value is from 0 to len(masternodes), show utxos for the masternode
@@ -85,6 +93,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         WndUtils.__init__(self, main_ui.app_config)
 
         self.main_ui = main_ui
+        self.display_mode = display_mode
         self.hw_session: HwSessionInfo = hw_session
         self.rt_data: AppRuntimeData = AppRuntimeData.get_instance()
         self.hw_connection_established = False
@@ -214,7 +223,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.chbHideCollateralTx.toggled.connect(self.chbHideCollateralTxToggled)
 
         self.cboAddressSourceMode.blockSignals(True)
-        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS or self.display_mode == WalletDisplayMode.SELECT_ADDRESS:
             self.swAddressSource.setCurrentIndex(0)
             self.cboAddressSourceMode.setCurrentIndex(0)
         elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
@@ -242,11 +251,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
         self.utxoTableView.selectionModel().selectionChanged.connect(self.on_utxoTableView_selectionChanged)
         self.accountsListView.selectionModel().selectionChanged.connect(self.on_accountsListView_selectionChanged)
+        self.accountsListView.doubleClicked.connect(self.on_accountsListView_doubleClicked)
         self.accountsListView.setItemDelegateForColumn(0, WalletAccountItemDelegate(self.accountsListView))
         self.mnListView.selectionModel().selectionChanged.connect(self.on_viewMasternodes_selectionChanged)
         self.mnListView.setItemDelegateForColumn(0, WalletMnItemDelegate(self.mnListView))
 
-        # set up the options widget of the accounts list panel
+        # set up the options widget of the account list panel
         l = self.pageAccountsListView.layout()
         self.wdg_accounts_view_options = QtWidgets.QWidget()
         self.ui_accounts_view_options = Ui_WdgOptions1()
@@ -255,7 +265,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         l.insertWidget(0, self.wdg_accounts_view_options)
         self.wdg_accounts_view_options.hide()
 
-        # set up the filter widget of the transactions tab
+        # set up the filter widget of the transaction tab
         l = self.tabTransactions.layout()
         self.wdg_txes_filter = QtWidgets.QWidget()
         self.ui_txes_filter = Ui_WdgWalletTxesFilter()
@@ -304,6 +314,20 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.act_hide_account.triggered.connect(self.on_act_hide_account_triggered)
         WndUtils.set_icon(self.main_ui, self.act_hide_account, 'eye-crossed-out@16px.png', force_color_change='#0066cc')
         self.accountsListView.addAction(self.act_hide_account)
+
+        if self.display_mode == WalletDisplayMode.NORMAL:
+            self.btnClose.show()
+            self.btnChooseAddressAndExit.hide()
+            self.btnCancel.hide()
+        elif self.display_mode == WalletDisplayMode.SELECT_ADDRESS:
+            self.btnClose.hide()
+            self.btnChooseAddressAndExit.show()
+            self.btnCancel.show()
+            self.btnChooseAddressAndExit.setDisabled(True)
+            self.cboAddressSourceMode.setDisabled(True)  # don't allow changing the address source mode when selecting
+                                                         # Dash address
+            self.btnSend.hide()
+            self.dest_widget.hide()
 
         # for testing:
         # self.act_delete_account_data = QAction('Clear account data in cache', self)
@@ -456,6 +480,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.update_hw_info()
         if not self.display_thread_ref:
             self.display_thread_ref = self.run_thread(self, self.display_thread, ())
+
         if not self.data_thread_ref:
             self.data_thread_ref = self.run_thread(self, self.data_thread, ())
 
@@ -488,6 +513,20 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             return ret
 
         return call
+
+    @pyqtSlot()
+    def on_btnClose_clicked(self):
+        self.close()
+
+    @pyqtSlot()
+    def on_btnChooseAddressAndExit_clicked(self):
+        if self.hw_selected_address_id:
+            self.accept()
+            self.close()
+
+    @pyqtSlot()
+    def on_btnCancel_clicked(self):
+        self.reject()
 
     @pyqtSlot(int)
     def on_cboAddressSourceMode_currentIndexChanged(self, index):
@@ -777,10 +816,6 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.allow_fetch_transactions = True
             self.enable_synch_with_main_thread = True
 
-    @pyqtSlot()
-    def on_btnClose_clicked(self):
-        self.close()
-
     def reflect_ui_account_selection(self):
         view_index = self.accountsListView.currentIndex()
         if view_index and view_index.isValid():
@@ -816,6 +851,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                             index = self.account_list_model.index(idx, 0)
                             self.accountsListView.setCurrentIndex(index)
 
+    @pyqtSlot()
     def on_accountsListView_selectionChanged(self):
         """Selected BIP44 account or address changed. """
         try:
@@ -824,6 +860,16 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         except Exception as e:
             log.exception(str(e))
 
+    @pyqtSlot()
+    def on_accountsListView_doubleClicked(self):
+        try:
+            if self.display_mode == WalletDisplayMode.SELECT_ADDRESS:
+                self.accept()
+                self.close()
+        except Exception as e:
+            logging.exception(str(e))
+
+    @pyqtSlot()
     def on_viewMasternodes_selectionChanged(self):
         try:
             with self.mn_model:
@@ -861,6 +907,13 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                                             self.hw_selected_account_id is not None)
 
         self.act_show_account.setVisible(self.hw_connection_established)
+
+        if self.display_mode == WalletDisplayMode.SELECT_ADDRESS:
+            if self.hw_selected_address_id:
+                self.btnChooseAddressAndExit.setEnabled(True)
+            else:
+                self.btnChooseAddressAndExit.setDisabled(True)
+
 
         # self.act_delete_address_data.setVisible(visible)
         # if self.hw_selected_account_id is not None:
@@ -1610,6 +1663,16 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                     amount += utxo.satoshis
 
         return amount, utxos
+
+    def get_selected_wallet_address(self) -> str:
+        address = ''
+        if self.hw_selected_address_id:
+            acc = self.account_list_model.account_by_id(self.hw_selected_account_id)
+            if acc:
+                addr = acc.address_by_id(self.hw_selected_address_id)
+                if addr:
+                    address = addr.address
+        return address
 
     def update_recipient_area_utxos(self):
         total_amount, utxos = self.get_selected_utxos()

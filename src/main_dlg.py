@@ -188,16 +188,20 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
         QDetectThemeChange.showEvent(self, event)
 
     def closeEvent(self, event):
+        if self.app_config.is_modified():
+            res = self.query_dlg('Configuration modified. Save?',
+                                 buttons=QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+                                 default_button=QMessageBox.Yes, icon=QMessageBox.Information)
+            if res == QMessageBox.Yes:
+                self.save_configuration()
+            elif res == QMessageBox.Cancel:
+                event.ignore()
+                return
+
         self.save_cache_settings()
         self.finishing = True
         if self.dashd_intf:
             self.dashd_intf.disconnect()
-
-        if self.app_config.is_modified():
-            if self.query_dlg('Configuration modified. Save?',
-                              buttons=QMessageBox.Yes | QMessageBox.No,
-                              default_button=QMessageBox.Yes, icon=QMessageBox.Information) == QMessageBox.Yes:
-                self.save_configuration()
         self.main_view.on_close()
         self.app_config.close()
 
@@ -1243,9 +1247,11 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
             self.error_msg('No masternode selected')
 
     def update_service(self):
+        old_modified_state = self.app_config.is_modified()
+
         def on_mn_config_updated(masternode: MasternodeConfig):
             try:
-                if not self.app_config.is_modified():
+                if not old_modified_state and self.app_config.is_modified():
                     self.save_configuration()
                 self.main_view.set_cur_masternode_modified()
             except Exception as e:
