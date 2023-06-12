@@ -145,6 +145,7 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
             self.lblManualCommands.setText('<a style="text-decoration:none" '
                                            'href="show">Show commands for manual execution</a>')
 
+        self.btnCopyCommandText.setVisible(self.show_manual_commands)
         self.edtManualCommands.setVisible(self.show_manual_commands)
 
         self.minimize_dialog_height()

@@ -301,6 +301,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
             self.lblManualCommands.setText('<a style="text-decoration:none" '
                                            'href="show">Show commands for manual execution</a>')
 
+        self.btnCopyCommandText.setVisible(self.show_manual_commands)
         self.edtManualCommands.setVisible(self.show_manual_commands)
 
         self.lblMessage.setText('<span style="color:#ff6600">By clicking <span style="font-weight:800">&lt;Send '

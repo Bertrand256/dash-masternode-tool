@@ -265,6 +265,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                                            'href="show">Show commands for manual execution</a>')
 
         self.edtManualCommands.setVisible(self.show_manual_commands)
+        self.btnCopyCommandText.setVisible(self.show_manual_commands)
         if self.masternode.masternode_type == MasternodeType.HPMN:
             if self.platform_node_key_type == InputKeyType.PRIVATE:
                 self.btnGeneratePlatformNodeKey.setVisible(True)
