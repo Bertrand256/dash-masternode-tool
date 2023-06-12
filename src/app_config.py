@@ -193,8 +193,8 @@ class AppConfig(QObject):
         self.dont_use_file_dialogs = False
         self.confirm_when_voting = True
         self.add_random_offset_to_vote_time = True  # To avoid identifying one user's masternodes by vote time
-        self.proposal_vote_time_offset_lower: int = -30  # in minutes
-        self.proposal_vote_time_offset_upper: int = 30
+        self._proposal_vote_time_offset_lower: int = -30  # in minutes
+        self._proposal_vote_time_offset_upper: int = 30
         self.proposal_vote_time_offset_min: int = -60
         self.proposal_vote_time_offset_max: int = 60
         self.csv_delimiter = ';'
@@ -520,8 +520,8 @@ class AppConfig(QObject):
         self.dont_use_file_dialogs = src_config.dont_use_file_dialogs
         self.confirm_when_voting = src_config.confirm_when_voting
         self.add_random_offset_to_vote_time = src_config.add_random_offset_to_vote_time
-        self.proposal_vote_time_offset_lower = src_config.proposal_vote_time_offset_lower
-        self.proposal_vote_time_offset_upper = src_config.proposal_vote_time_offset_upper
+        self._proposal_vote_time_offset_lower = src_config._proposal_vote_time_offset_lower
+        self._proposal_vote_time_offset_upper = src_config._proposal_vote_time_offset_upper
         self.proposal_vote_time_offset_min = src_config.proposal_vote_time_offset_min
         self.proposal_vote_time_offset_max = src_config.proposal_vote_time_offset_max
         self.fetch_network_data_after_start = src_config.fetch_network_data_after_start
@@ -640,8 +640,8 @@ class AppConfig(QObject):
         self.dont_use_file_dialogs = False
         self.confirm_when_voting = True
         self.add_random_offset_to_vote_time = True
-        self.proposal_vote_time_offset_lower = -30
-        self.proposal_vote_time_offset_upper = 30
+        self._proposal_vote_time_offset_lower = -30
+        self._proposal_vote_time_offset_upper = 30
         self.csv_delimiter = ';'
         self.app_config_file_name = ''
         self.encrypt_config_file = False
@@ -786,10 +786,6 @@ class AppConfig(QObject):
                 if lower:
                     try:
                         lower = int(lower)
-                        if lower < self.proposal_vote_time_offset_min:
-                            lower = self.proposal_vote_time_offset_min
-                        if lower > self.proposal_vote_time_offset_max:
-                            lower = self.proposal_vote_time_offset_max
                     except Exception:
                         logging.error('Invalid value for config attribute: "proposal_vote_time_offset_lower"')
 
@@ -797,10 +793,6 @@ class AppConfig(QObject):
                 if upper:
                     try:
                         upper = int(upper)
-                        if upper < self.proposal_vote_time_offset_min:
-                            upper = self.proposal_vote_time_offset_min
-                        if upper > self.proposal_vote_time_offset_max:
-                            upper = self.proposal_vote_time_offset_max
                     except Exception:
                         logging.error('Invalid value for config attribute: "proposal_vote_time_offset_upper"')
 
@@ -809,9 +801,9 @@ class AppConfig(QObject):
                         lower = upper
 
                 if isinstance(lower, int):
-                    self.proposal_vote_time_offset_lower = lower
+                    self._proposal_vote_time_offset_lower = lower
                 if isinstance(upper, int):
-                    self.proposal_vote_time_offset_upper = upper
+                    self._proposal_vote_time_offset_upper = upper
 
                 self.encrypt_config_file = \
                     self.value_to_bool(config.get(section, 'encrypt_config_file', fallback='0'))
@@ -1130,8 +1122,8 @@ class AppConfig(QObject):
         config.set(section, 'fetch_network_data_after_start', '1' if self.fetch_network_data_after_start else '0')
         config.set(section, 'show_dash_value_in_fiat', '1' if self.show_dash_value_in_fiat else '0')
         config.set(section, 'add_random_offset_to_vote_time', '1' if self.add_random_offset_to_vote_time else '0')
-        config.set(section, 'proposal_vote_time_offset_lower', str(self.proposal_vote_time_offset_lower))
-        config.set(section, 'proposal_vote_time_offset_upper', str(self.proposal_vote_time_offset_upper))
+        config.set(section, 'proposal_vote_time_offset_lower', str(self._proposal_vote_time_offset_lower))
+        config.set(section, 'proposal_vote_time_offset_upper', str(self._proposal_vote_time_offset_upper))
         config.set(section, 'encrypt_config_file', '1' if self.encrypt_config_file else '0')
 
         # save mn configuration
@@ -1245,8 +1237,8 @@ class AppConfig(QObject):
         all_data += str(self.fetch_network_data_after_start)
         all_data += str(self.show_dash_value_in_fiat)
         all_data += str(self.add_random_offset_to_vote_time)
-        all_data += str(self.proposal_vote_time_offset_lower)
-        all_data += str(self.proposal_vote_time_offset_upper)
+        all_data += str(self._proposal_vote_time_offset_lower)
+        all_data += str(self._proposal_vote_time_offset_upper)
         all_data += str(self.encrypt_config_file)
 
         for mn in self.masternodes:
@@ -1364,6 +1356,44 @@ class AppConfig(QObject):
         else:
             v = default
         return v
+
+    @property
+    def proposal_vote_time_offset_lower(self):
+        value = self._proposal_vote_time_offset_lower
+        if isinstance(value, int):
+            try:
+                if value < self.proposal_vote_time_offset_min:
+                    value = self.proposal_vote_time_offset_min
+                if value > self.proposal_vote_time_offset_max:
+                    value = self.proposal_vote_time_offset_max
+                if value > self._proposal_vote_time_offset_upper:
+                    return self._proposal_vote_time_offset_upper
+            except Exception as e:
+                logging.exception(str(e))
+        return value
+
+    @proposal_vote_time_offset_lower.setter
+    def proposal_vote_time_offset_lower(self, value):
+        self._proposal_vote_time_offset_lower = value
+
+    @property
+    def proposal_vote_time_offset_upper(self):
+        value = self._proposal_vote_time_offset_upper
+        if isinstance(value, int):
+            try:
+                if value < self.proposal_vote_time_offset_min:
+                    value = self.proposal_vote_time_offset_min
+                if value > self.proposal_vote_time_offset_max:
+                    value = self.proposal_vote_time_offset_max
+                if value < self._proposal_vote_time_offset_lower:
+                    return self._proposal_vote_time_offset_lower
+            except Exception as e:
+                logging.exception(str(e))
+        return value
+
+    @proposal_vote_time_offset_upper.setter
+    def proposal_vote_time_offset_upper(self, value):
+        self._proposal_vote_time_offset_upper = value
 
     def set_log_level(self, new_log_level_str: str):
         """

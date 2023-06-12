@@ -102,6 +102,9 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
 
         self.cmd_console_dlg = None
         self.main_view: Optional[WdgAppMainView] = None
+        self.lblStatus1 = QtWidgets.QLabel(self)
+        self.lblStatus2 = QtWidgets.QLabel(self)
+        self.inside_setup_ui = True
         self.setupUi(self)
         ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -109,15 +112,12 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
         ui_main_dlg.Ui_MainWindow.setupUi(self, self)
         SshPassCache.set_parent_window(self)
         self.restore_cache_settings()
-        self.inside_setup_ui = True
         self.dashd_intf.window = self
-        self.lblStatus1 = QtWidgets.QLabel(self)
         self.lblStatus1.setAutoFillBackground(False)
         self.lblStatus1.setOpenExternalLinks(True)
         self.lblStatus1.setOpenExternalLinks(True)
         self.statusBar.addPermanentWidget(self.lblStatus1, 1)
         self.lblStatus1.setText('')
-        self.lblStatus2 = QtWidgets.QLabel(self)
         self.statusBar.addPermanentWidget(self.lblStatus2, 2)
         self.lblStatus2.setText('')
         self.lblStatus2.setOpenExternalLinks(True)
@@ -519,7 +519,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                     fpath = os.path.join(self.app_config.cfg_backup_dir, fname)
                     if os.path.isfile(fpath):
                         datetime.datetime.now().strftime('%Y-%m-%d %H_%M')
-                        m = re.match('config_(\d{4}-\d{2}-\d{2}\s\d{2}_\d{2})', fname)
+                        m = re.match(r'config_(\d{4}-\d{2}-\d{2}\s\d{2}_\d{2})', fname)
                         if m and len(m.groups()) == 1:
                             d = datetime.datetime.strptime(m.group(1), '%Y-%m-%d %H_%M')
                             file_dates.append((app_utils.to_string(d), d.timestamp(), fpath))
@@ -653,9 +653,11 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                             if exe_down:
                                 exe_url = exe_down.get(item_name)
                             if exe_url:
-                                msg = "New version (" + remote_version_str + ') available: <a href="' + exe_url + '">download</a>.'
+                                msg = "New version (" + remote_version_str + ') available: <a href="' + exe_url + \
+                                      '">download</a>.'
                             else:
-                                msg = "New version (" + remote_version_str + ') available. Go to the project website: <a href="' + \
+                                msg = "New version (" + remote_version_str + ') available. Go to the project ' \
+                                                                             'website: <a href="' + \
                                       PROJECT_URL + '">open</a>.'
 
                             self.add_app_message(DispMessage.NEW_VERSION, msg, AppTextMessageType.INFO)
@@ -1263,7 +1265,8 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                 on_mn_config_updated_callback=on_mn_config_updated)
             upd_dlg.exec_()
             self.dashd_intf.reset_masternode_data_cache()
-            self.main_view.refresh_network_data()
+            if self.app_config.fetch_network_data_after_start:
+                self.main_view.refresh_network_data()
         else:
             self.error_msg('No masternode selected')
 
@@ -1277,7 +1280,8 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                 self.save_configuration()
             self.main_view.set_cur_masternode_modified()
             self.dashd_intf.reset_masternode_data_cache()
-            self.main_view.refresh_network_data()
+            if self.app_config.fetch_network_data_after_start:
+                self.main_view.refresh_network_data()
         else:
             self.error_msg('No masternode selected')
 
