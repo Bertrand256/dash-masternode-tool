@@ -2,7 +2,7 @@ import logging
 from typing import Callable
 
 from PyQt5.QtCore import pyqtSlot, QTimer
-from PyQt5.QtWidgets import QDialog, QMessageBox, QLabel
+from PyQt5.QtWidgets import QDialog, QMessageBox, QLabel, QApplication
 from bitcoinrpc.authproxy import JSONRPCException
 
 import app_cache
@@ -73,6 +73,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         self.updating_ui = True
         self.btnClose.hide()
         self.edtManualCommands.setStyle(ProxyStyleNoFocusRect())
+        WndUtils.set_icon(self, self.btnCopyCommandText, 'content-copy@16px.png')
         if self.show_upd_payout:
             self.setWindowTitle("Update payout address")
         elif self.show_upd_voting:
@@ -96,6 +97,8 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         self.updating_ui = False
         self.update_ctrls_state()
         self.minimize_dialog_height()
+        cl = QApplication.clipboard()
+        cl.changed.connect(self.strip_clipboard_contents)
 
     def closeEvent(self, event):
         self.save_cache_settings()
@@ -131,6 +134,20 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
     def update_styles(self):
         self.update_manual_cmd_info()
+
+    def strip_clipboard_contents(self, _):
+        """ Remove leading/trailing spaces and newline characters from a text copied do clipboard."""
+        try:
+            cl = QApplication.clipboard()
+            t = cl.text()
+            if t:
+                cl.blockSignals(True)
+                try:
+                    cl.setText(t.strip())
+                finally:
+                    cl.blockSignals(False)
+        except Exception as e:
+            logging.exception(str(e))
 
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
@@ -183,7 +200,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
         except Exception as e:
             logging.exception('An exception occurred while reading protx information')
-            raise
+            self.general_err_msg = 'Error when verifying masternode protx hash.'
 
     def process_initial_data(self):
         try:
@@ -495,18 +512,24 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
         return not errors_occurred
 
+    def get_manual_cmd_text(self, fee_source_info=None) -> str:
+        cmd = f'protx {self.update_registrar_rpc_command} "{self.dmn_protx_hash}" ' \
+              f'"{self.dmn_new_operator_pubkey}" ' \
+              f'"{self.dmn_new_voting_address}" "{self.dmn_new_payout_address}" '
+
+        if fee_source_info:
+            cmd += fee_source_info
+        else:
+            cmd += '"feeSourceAddress"'
+        return cmd
+
     def update_manual_cmd_info(self):
         try:
             self.validate_data()
-            changed = (self.show_upd_payout and bool(self.edtPayoutAddress.text())) or \
-                      (self.show_upd_operator and bool(self.edtOperatorKey.text())) or \
-                      (self.show_upd_voting and bool(self.edtVotingKey.text()))
-
             green_color = get_widget_font_color_green(self.lblVotingKey)
-            cmd = f'protx {self.update_registrar_rpc_command} "{self.dmn_protx_hash}" ' \
-                  f'"{self.dmn_new_operator_pubkey}" ' \
-                  f'"{self.dmn_new_voting_address}" "{self.dmn_new_payout_address}" ' \
-                  f'"<span style="color:{green_color}">feeSourceAddress</span>"'
+            cmd = self.get_manual_cmd_text(
+                fee_source_info=f'"<span style="color:{green_color}">feeSourceAddress</span>"')
+
             msg = "<ol>" \
                   "<li>Start a Dash Core wallet with sufficient funds to cover a transaction fee.</li>"
             msg += "<li>Import the owner private key into the Dash Core wallet if you haven't done this " \
@@ -550,6 +573,12 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                 self.update_manual_cmd_info()
         except Exception as e:
             logging.exception(str(e))
+
+    @pyqtSlot(bool)
+    def on_btnCopyCommandText_clicked(self):
+        cmd = self.get_manual_cmd_text()
+        cl = QApplication.clipboard()
+        cl.setText(cmd)
 
     @pyqtSlot(bool)
     def on_btnSendUpdateTx_clicked(self, enabled):

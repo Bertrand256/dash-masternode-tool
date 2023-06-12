@@ -3,7 +3,7 @@ import logging
 from typing import Callable, Optional
 
 from PyQt5.QtCore import pyqtSlot, QTimer
-from PyQt5.QtWidgets import QDialog, QLabel
+from PyQt5.QtWidgets import QDialog, QLabel, QApplication
 from bitcoinrpc.authproxy import JSONRPCException
 
 import app_cache
@@ -19,7 +19,6 @@ from ui import ui_upd_mn_service_dlg
 from wnd_utils import WndUtils, ProxyStyleNoFocusRect, QDetectThemeChange, get_widget_font_color_green, \
     get_widget_font_color_blue
 from wallet_dlg import WalletDlg, WalletDisplayMode
-
 
 CACHE_ITEM_SHOW_COMMANDS = 'UpdMnServiceDlg_ShowCommands'
 
@@ -81,6 +80,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
         self.restore_cache_settings()
         WndUtils.set_icon(self.parent, self.btnPlatformP2PPortSetDefault, 'restore@16px.png')
         WndUtils.set_icon(self.parent, self.btnPlatformHTTPPortSetDefault, 'restore@16px.png')
+        WndUtils.set_icon(self, self.btnCopyCommandText, 'content-copy@16px.png')
         if self.masternode.masternode_type == MasternodeType.HPMN:
             if self.platform_node_key_type == InputKeyType.PRIVATE:
                 self.edtPlatformNodeKey.setText(self.platform_node_private_key)
@@ -110,6 +110,8 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
         self.read_data_from_network()
         self.update_manual_cmd_info()
         self.update_ctrls_state()
+        cl = QApplication.clipboard()
+        cl.changed.connect(self.strip_clipboard_contents)
 
     def closeEvent(self, event):
         self.save_cache_settings()
@@ -156,6 +158,20 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
     def update_styles(self):
         self.update_manual_cmd_info()
 
+    def strip_clipboard_contents(self, _):
+        """ Remove leading/trailing spaces and newline characters from a text copied do clipboard."""
+        try:
+            cl = QApplication.clipboard()
+            t = cl.text()
+            if t:
+                cl.blockSignals(True)
+                try:
+                    cl.setText(t.strip())
+                finally:
+                    cl.blockSignals(False)
+        except Exception as e:
+            logging.exception(str(e))
+
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
         self.close()
@@ -194,7 +210,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                         raise
         except Exception as e:
             logging.exception('An exception occurred while reading protx information')
-            raise
+            self.protx_not_found_err_msg = 'Error when verifying masternode protx hash.'
 
     def update_ctrls_state(self):
         blue_color = get_widget_font_color_blue(self.lblIPMsg)
@@ -436,20 +452,28 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
 
         return not errors_occurred
 
+    def get_manual_cmd_text(self, fee_source_info=None) -> str:
+        self.validate_data()
+        if self.masternode.masternode_type == MasternodeType.REGULAR:
+            cmd = f'protx update_service "{self.protx_hash}" "{self.ip}:{str(self.tcp_port)}" ' \
+                  f'"{self.masternode.operator_private_key}" "{self.new_operator_payout_address}" '
+        else:
+            # HPMN
+            cmd = f'protx update_service_hpmn "{self.protx_hash}" "{self.ip}:{str(self.tcp_port)}" ' \
+                  f'"{self.masternode.operator_private_key}" "{self.platform_node_id}" {self.platform_p2p_port} ' \
+                  f'{self.platform_http_port} "{self.new_operator_payout_address}" '
+        if fee_source_info:
+            cmd += fee_source_info
+        else:
+            cmd += '"feeSourceAddress"'
+        return cmd
+
     def update_manual_cmd_info(self):
         try:
             green_color = get_widget_font_color_green(self.lblIP)
             self.validate_data()
-            if self.masternode.masternode_type == MasternodeType.REGULAR:
-                cmd = f'protx update_service "{self.protx_hash}" "{self.ip}:{str(self.tcp_port)}" ' \
-                      f'"{self.masternode.operator_private_key}" "{self.new_operator_payout_address}" ' \
-                      f'"<span style="color:{green_color}">feeSourceAddress</span>"'
-            else:
-                # HPMN
-                cmd = f'protx update_service_hpmn "{self.protx_hash}" "{self.ip}:{str(self.tcp_port)}" ' \
-                      f'"{self.masternode.operator_private_key}" "{self.platform_node_id}" {self.platform_p2p_port} ' \
-                      f'{self.platform_http_port} "{self.new_operator_payout_address}" ' \
-                      f'"<span style="color:{green_color}">feeSourceAddress</span>"'
+            cmd = self.get_manual_cmd_text(
+                fee_source_info=f'"<span style="color:{green_color}">feeSourceAddress</span>"')
 
             msg = ''
             msg += '<ol>' \
@@ -577,6 +601,12 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                 WndUtils.error_msg("Unable to continue due to unmet conditions.")
         except Exception as e:
             WndUtils.error_msg(str(e))
+
+    @pyqtSlot(bool)
+    def on_btnCopyCommandText_clicked(self):
+        cmd = self.get_manual_cmd_text()
+        cl = QApplication.clipboard()
+        cl.setText(cmd)
 
     def send_upd_tx(self):
         try:

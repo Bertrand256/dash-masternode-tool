@@ -33,6 +33,7 @@ from wnd_utils import WndUtils, QDetectThemeChange, get_widget_font_color_blue, 
 from find_coll_tx_dlg import WalletUtxosListDlg
 from wallet_dlg import WalletDlg, WalletDisplayMode
 
+
 STEP_MN_DATA = 1
 STEP_DASHD_TYPE = 2
 STEP_AUTOMATIC_RPC_NODE = 3
@@ -164,6 +165,8 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.update_step_tab_ui()
         self.update_show_hints_label()
         self.minimize_dialog_height()
+        cl = QApplication.clipboard()
+        cl.changed.connect(self.strip_clipboard_contents)
 
     def closeEvent(self, event):
         self.finishing = True
@@ -220,6 +223,20 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             w.setStyleSheet(self.style)
 
         self.lblProtxSummary1.setStyleSheet(f'QLabel{{color:{green_color};font-weight: bold}}')
+
+    def strip_clipboard_contents(self, _):
+        """ Remove leading/trailing spaces and newline characters from a text copied do clipboard."""
+        try:
+            cl = QApplication.clipboard()
+            t = cl.text()
+            if t:
+                cl.blockSignals(True)
+                try:
+                    cl.setText(t.strip())
+                finally:
+                    cl.blockSignals(False)
+        except Exception as e:
+            logging.exception(str(e))
 
     def update_dynamic_labels(self):
 
@@ -1277,6 +1294,9 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         try:
             ret = WndUtils.run_thread_dialog(self.get_collateral_tx_address_thread, (check_break_scanning,), True,
                                              force_close_dlg_callback=do_break_scanning)
+        except CancelException:
+            ret = False
+
         except Exception as e:
             WndUtils.error_msg(str(e), True)
             ret = False
@@ -1315,66 +1335,75 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                 break_scanning = True
 
         try:
-            tx = self.dashd_intf.getrawtransaction(self.collateral_tx, 1, skip_cache=True)
-        except Exception as e:
-            raise Exception('Cannot get the collateral transaction due to the following error: ' + str(e))
-
-        confirmations = tx.get('confirmations', 0)
-        if confirmations < MASTERNODE_TX_MINIMUM_CONFIRMATIONS:
-            raise Exception(f'The collateral transaction does not yet have '
-                            f'the required number of {MASTERNODE_TX_MINIMUM_CONFIRMATIONS} confirmations. '
-                            f'You must wait for {MASTERNODE_TX_MINIMUM_CONFIRMATIONS - confirmations} more '
-                            f'confirmation(s) before continuing.')
-
-        vouts = tx.get('vout')
-        if vouts:
-            if self.collateral_tx_index < len(vouts):
-                vout = vouts[self.collateral_tx_index]
-                spk = vout.get('scriptPubKey')
-                if not spk:
-                    raise Exception(f'The collateral transaction ({self.collateral_tx}) output '
-                                    f'({self.collateral_tx_index}) doesn\'t have value in the scriptPubKey '
-                                    f'field.')
-                ads = spk.get('addresses')
-                if not ads or len(ads) < 0:
-                    raise Exception('The collateral transaction output doesn\'t have the Dash address assigned.')
-                if vout.get('valueSat') != collateral_value_needed:
-                    raise Exception(f'The value of the collateral transaction output is not equal to '
-                                    f'{round(collateral_value_needed / 1e8)} Dash, which it should be '
-                                    f'for this type of masternode.\n\nSelect another tx output.')
-
-                self.collateral_tx_address = ads[0]
-            else:
-                raise Exception(f'Transaction {self.collateral_tx} doesn\'t have output with index: '
-                                f'{self.collateral_tx_index}')
-        else:
-            raise Exception('Invalid collateral transaction')
-
-        ctrl.display_msg('Verifying the collateral transaction address on your hardware wallet.')
-        if not self.main_dlg.connect_hardware_wallet():
-            return False
-
-        if self.collateral_tx_address_path:
-            try:
-                addr = hw_intf.get_address(self.main_dlg.hw_session, self.collateral_tx_address_path)
-            except CancelException:
+            if not self.main_dlg.connect_hardware_wallet():
                 return False
 
-            msg = ''
-            if addr != self.collateral_tx_address:
-                log.warning(
-                    f'The address returned by the hardware wallet ({addr}) for the BIP32 path '
-                    f'{self.collateral_tx_address_path} differs from the address stored the mn configuration '
-                    f'(self.collateral_tx_address). Need to scan wallet for a correct BIP32 path.')
+            tx = self.dashd_intf.getrawtransaction(self.collateral_tx, 1, skip_cache=True)
 
-                msg = '<span style="color:red">The BIP32 path of the collateral address from your mn config is ' \
-                      'incorrect.<br></span>' \
-                      f'Trying to find the BIP32 path of the address {self.collateral_tx_address} in your wallet.' \
-                      f'<br>This may take a while (<a href="break">break</a>)...'
-                self.collateral_tx_address_path = ''
-        else:
-            msg = 'Looking for a BIP32 path of the Dash address related to the masternode collateral.<br>' \
-                  'This may take a while (<a href="break">break</a>)....'
+            confirmations = tx.get('confirmations', 0)
+            if confirmations < MASTERNODE_TX_MINIMUM_CONFIRMATIONS:
+                raise Exception(f'The collateral transaction does not yet have '
+                                f'the required number of {MASTERNODE_TX_MINIMUM_CONFIRMATIONS} confirmations. '
+                                f'You must wait for {MASTERNODE_TX_MINIMUM_CONFIRMATIONS - confirmations} more '
+                                f'confirmation(s) before continuing.')
+
+            vouts = tx.get('vout')
+            if vouts:
+                if self.collateral_tx_index < len(vouts):
+                    vout = vouts[self.collateral_tx_index]
+                    spk = vout.get('scriptPubKey')
+                    if not spk:
+                        raise Exception(f'The collateral transaction ({self.collateral_tx}) output '
+                                        f'({self.collateral_tx_index}) doesn\'t have value in the scriptPubKey '
+                                        f'field.')
+                    ads = spk.get('addresses')
+                    if not ads or len(ads) < 0:
+                        raise Exception('The collateral transaction output doesn\'t have the Dash address assigned.')
+                    if vout.get('valueSat') != collateral_value_needed:
+                        raise Exception(f'The value of the collateral transaction output is not equal to '
+                                        f'{round(collateral_value_needed / 1e8)} Dash, which it should be '
+                                        f'for this type of masternode.\n\nSelect another tx output.')
+
+                    self.collateral_tx_address = ads[0]
+                else:
+                    raise Exception(f'Transaction {self.collateral_tx} doesn\'t have output with index: '
+                                    f'{self.collateral_tx_index}')
+            else:
+                raise Exception('Invalid collateral transaction')
+
+            ctrl.display_msg('Verifying the collateral transaction address on your hardware wallet.')
+
+            if self.collateral_tx_address_path:
+                try:
+                    addr = hw_intf.get_address(self.main_dlg.hw_session, self.collateral_tx_address_path)
+                except CancelException:
+                    return False
+
+                msg = ''
+                if addr != self.collateral_tx_address:
+                    log.warning(
+                        f'The address returned by the hardware wallet ({addr}) for the BIP32 path '
+                        f'{self.collateral_tx_address_path} differs from the address stored the mn configuration '
+                        f'(self.collateral_tx_address). Need to scan wallet for a correct BIP32 path.')
+
+                    msg = '<span style="color:red">The BIP32 path of the collateral address from your mn config is ' \
+                          'incorrect.<br></span>' \
+                          f'Trying to find the BIP32 path of the address {self.collateral_tx_address} in your wallet.' \
+                          f'<br>This may take a while (<a href="break">break</a>)...'
+                    self.collateral_tx_address_path = ''
+            else:
+                msg = 'Looking for a BIP32 path of the Dash address related to the masternode collateral.<br>' \
+                      'This may take a while (<a href="break">break</a>)....'
+
+        except Exception as e:
+            res = self.query_dlg('Cannot verify the collateral transaction due to the following error: ' + str(e) +
+                                 '\n\nDo you rally want to continue?',
+                                 buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                 default_button=QMessageBox.Cancel, icon=QMessageBox.Warning)
+            if res == QMessageBox.Cancel:
+                raise CancelException('Cannot verify the collateral transaction due to the following error: ' + str(e))
+            self.collateral_tx_address = self.masternode.collateral_address
+            self.collateral_tx_address_path = self.masternode.collateral_bip32_path
 
         if not self.collateral_tx_address_path and not self.finishing:
             lbl = ctrl.get_msg_label_control()
@@ -1391,16 +1420,25 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
 
             # fetch the transactions that involved the addresses stored in the wallet - during this
             # all the used addresses are revealed
-            addr = self.bip44_wallet.scan_wallet_for_address(self.collateral_tx_address, check_break_scanning,
-                                                             fetch_txes_feedback)
-            if not addr:
-                if not break_scanning:
-                    WndUtils.error_msg(
-                        f'Couldn\'t find a BIP32 path of the collateral address ({self.collateral_tx_address}).')
-                return False
+            if self.collateral_tx_address:
+                try:
+                    addr = self.bip44_wallet.scan_wallet_for_address(self.collateral_tx_address, check_break_scanning,
+                                                                     fetch_txes_feedback)
+                    if not addr:
+                        if not break_scanning:
+                            WndUtils.error_msg(
+                                f'Couldn\'t find a BIP32 path of the collateral address '
+                                f'({self.collateral_tx_address}).')
+                        return False
+                    else:
+                        self.collateral_tx_address_path = addr.bip32_path
+                except Exception as e:
+                    WndUtils.error_msg('Couldn\'t find a BIP32 path of the collateral address due to the '
+                                       'following error: ' + str(e) + '. Cannot continue.')
+                    return False
             else:
-                self.collateral_tx_address_path = addr.bip32_path
-
+                WndUtils.error_msg('Empty collateral address. Cannot continue.')
+                return False
         return True
 
     def next_step(self):

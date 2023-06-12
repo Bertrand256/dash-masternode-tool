@@ -186,14 +186,28 @@
     </widget>
    </item>
    <item>
-    <widget class="QTextBrowser" name="edtManualCommands">
-     <property name="openExternalLinks">
-      <bool>true</bool>
-     </property>
-     <property name="openLinks">
-      <bool>true</bool>
-     </property>
-    </widget>
+    <layout class="QHBoxLayout" name="horizontalLayout_2">
+     <item>
+      <widget class="QTextBrowser" name="edtManualCommands">
+       <property name="openExternalLinks">
+        <bool>true</bool>
+       </property>
+       <property name="openLinks">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QToolButton" name="btnCopyCommandText">
+       <property name="toolTip">
+        <string>Copy the command text for manual execution</string>
+       </property>
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item>
     <widget class="QFrame" name="frame">
@@ -272,7 +286,6 @@
   </layout>
  </widget>
  <tabstops>
-  <tabstop>edtManualCommands</tabstop>
   <tabstop>btnSendRevokeTx</tabstop>
   <tabstop>btnClose</tabstop>
   <tabstop>btnCancel</tabstop>

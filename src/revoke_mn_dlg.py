@@ -3,7 +3,7 @@ import logging
 from typing import Callable
 
 from PyQt5.QtCore import pyqtSlot, QTimer
-from PyQt5.QtWidgets import QDialog, QMessageBox
+from PyQt5.QtWidgets import QDialog, QApplication
 from bitcoinrpc.authproxy import JSONRPCException
 
 import app_cache
@@ -40,6 +40,7 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
     def setupUi(self, dialog: QDialog):
         ui_revoke_mn_dlg.Ui_RevokeMnDlg.setupUi(self, self)
         self.btnClose.hide()
+        WndUtils.set_icon(self, self.btnCopyCommandText, 'content-copy@16px.png')
         self.edtManualCommands.setStyle(ProxyStyleNoFocusRect())
         self.restore_cache_settings()
         self.update_ctrls_state()
@@ -49,6 +50,8 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
         except Exception as e:
             WndUtils.error_msg(str(e))
         self.update_manual_cmd_info()
+        cl = QApplication.clipboard()
+        cl.changed.connect(self.strip_clipboard_contents)
 
     def closeEvent(self, event):
         self.save_cache_settings()
@@ -79,6 +82,20 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
 
     def update_styles(self):
         self.update_manual_cmd_info()
+
+    def strip_clipboard_contents(self, _):
+        """ Remove leading/trailing spaces and newline characters from a text copied do clipboard."""
+        try:
+            cl = QApplication.clipboard()
+            t = cl.text()
+            if t:
+                cl.blockSignals(True)
+                try:
+                    cl.setText(t.strip())
+                finally:
+                    cl.blockSignals(False)
+        except Exception as e:
+            logging.exception(str(e))
 
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
@@ -143,12 +160,22 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
 
         self.revocation_reason = self.cboReason.currentIndex()
 
+    def get_manual_cmd_text(self, fee_source_info=None) -> str:
+        cmd = f'protx revoke "{self.dmn_protx_hash}" "{self.masternode.operator_private_key}" ' \
+              f'{self.revocation_reason} '
+
+        if fee_source_info:
+            cmd += fee_source_info
+        else:
+            cmd += '"feeSourceAddress"'
+        return cmd
+
     def update_manual_cmd_info(self):
         try:
             green_color = get_widget_font_color_green(self.lblIP)
             self.validate_data()
-            cmd = f'protx revoke "{self.dmn_protx_hash}" "{self.masternode.operator_private_key}" ' \
-                f'{self.revocation_reason} "<span style="color:{green_color}">feeSourceAddress</span>"'
+            cmd = self.get_manual_cmd_text('<span style="color:{green_color}">feeSourceAddress</span>')
+
             msg = '<ol>' \
                   '<li>Start a Dash Core wallet with sufficient funds to cover a transaction fee.</li>'
             msg += '<li>Execute the following command in the Dash Core debug console:<br><br>'
@@ -165,6 +192,12 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
     @pyqtSlot(int)
     def on_cboReason_currentIndexChanged(self, index):
         self.update_manual_cmd_info()
+
+    @pyqtSlot(bool)
+    def on_btnCopyCommandText_clicked(self):
+        cmd = self.get_manual_cmd_text()
+        cl = QApplication.clipboard()
+        cl.setText(cmd)
 
     @pyqtSlot(bool)
     def on_btnSendRevokeTx_clicked(self, enabled):

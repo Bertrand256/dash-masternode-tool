@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>716</width>
-    <height>461</height>
+    <height>463</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -413,14 +413,28 @@
     </widget>
    </item>
    <item>
-    <widget class="QTextBrowser" name="edtManualCommands">
-     <property name="openExternalLinks">
-      <bool>true</bool>
-     </property>
-     <property name="openLinks">
-      <bool>true</bool>
-     </property>
-    </widget>
+    <layout class="QHBoxLayout" name="horizontalLayout_4">
+     <item>
+      <widget class="QTextBrowser" name="edtManualCommands">
+       <property name="openExternalLinks">
+        <bool>true</bool>
+       </property>
+       <property name="openLinks">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QToolButton" name="btnCopyCommandText">
+       <property name="toolTip">
+        <string>Copy the command text for manual execution</string>
+       </property>
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item>
     <widget class="QFrame" name="frame">
@@ -502,7 +516,6 @@
   <tabstop>edtIP</tabstop>
   <tabstop>edtPort</tabstop>
   <tabstop>edtOperatorPayoutAddress</tabstop>
-  <tabstop>edtManualCommands</tabstop>
   <tabstop>btnSendUpdateTx</tabstop>
   <tabstop>btnClose</tabstop>
   <tabstop>btnCancel</tabstop>
