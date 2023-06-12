@@ -23,7 +23,8 @@ with open(os.path.join(base_dir, 'version.txt')) as fptr:
 
 binary_files = []
 data_files = [
-    ('version.txt', '.')
+    ('version.txt', '.'),
+    ('app-params.json', '.')
 ]
 
 # source: https://github.com/akhavr/electrum-dash/blob/master/contrib/osx/osx.spec
