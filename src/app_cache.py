@@ -169,7 +169,7 @@ def restore_window_size(window, default_width:Optional[int] = None, default_heig
 def restore_splitter_sizes(window: QDialog, splitter: QSplitter):
     global cache
     if cache:
-        symbol = window.__class__.__name__  + '_' + splitter.objectName()
+        symbol = window.__class__.__name__ + '_' + splitter.objectName()
         sizes = cache.get_value(symbol, None, list)
         if not isinstance(sizes, list) or len(sizes) != 2:
             sizes = [100, 100]
@@ -184,6 +184,6 @@ def restore_splitter_sizes(window: QDialog, splitter: QSplitter):
 def save_splitter_sizes(window: QDialog, splitter: QSplitter):
     global cache
     if cache:
-        symbol = window.__class__.__name__  + '_' + splitter.objectName()
+        symbol = window.__class__.__name__ + '_' + splitter.objectName()
         cache.set_value(symbol, splitter.sizes())
 

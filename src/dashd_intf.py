@@ -6,6 +6,7 @@ from __future__ import annotations
 import decimal
 import functools
 import json
+import hashlib
 from decimal import Decimal
 
 import os
@@ -493,6 +494,9 @@ class Masternode(AttrsProtected):
         self._pose_ban_height: int = -1
         self._pose_ban_timestamp: int = 0
         self.operator_payout_address: str = ''
+        self.dmt_creation_time: Optional[int] = None
+        self.dmt_deactivation_time: Optional[int] = None
+        self.dmt_active: int = None
         self.set_attr_protection()
 
     def copy_from(self, src: Masternode):
@@ -521,6 +525,9 @@ class Masternode(AttrsProtected):
         self.pose_revived_height = src.pose_revived_height
         self.pose_ban_height = src.pose_ban_height
         self.operator_payout_address = src.operator_payout_address
+        self.dmt_creation_time = src.dmt_creation_time
+        self.dmt_deactivation_time = src.dmt_deactivation_time
+        self.dmt_active = src.dmt_active
 
     def copy_from_json(self, mn_ident: str, mn_json: Dict):
         m = re.match(r'([a-zA-F0-9]+)-(\d+)', mn_ident, re.IGNORECASE)
@@ -573,6 +580,10 @@ class Masternode(AttrsProtected):
     def update_in_db(self, cursor):
         try:
             if self.db_id is None:
+                self.dmt_creation_time = int(time.time())
+                dmt_creation_time_str = datetime.datetime.fromtimestamp(self.dmt_creation_time).\
+                    strftime('%Y-%m-%d %H:%M:%S')
+
                 cursor.execute(
                     "INSERT INTO MASTERNODES(ident, status, payee, "
                     " last_paid_time, last_paid_block, ip, protx_hash, "
@@ -583,7 +594,7 @@ class Masternode(AttrsProtected):
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (self.ident, self.status, self.payout_address, self.lastpaidtime, self.lastpaidblock,
                      self.ip_port, self.protx_hash, self.registered_height, 1,
-                     datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), self.queue_position, self.type,
+                     dmt_creation_time_str, self.queue_position, self.type,
                      self.collateral_hash, self.collateral_index, self.collateral_address, self.owner_address,
                      self.voting_address, self.pubkey_operator, self.platform_node_id, self.platform_p2p_port,
                      self.platform_http_port, self.operator_reward, self.pose_penalty, self.pose_revived_height,
@@ -721,6 +732,8 @@ class DashdInterface(WndUtils):
         self.masternodes: List[Masternode] = []
         self.masternodes_by_ident: Dict[str, Masternode] = {}
         self.masternodes_by_ip_port: Dict[str, Masternode] = {}
+        self.last_masternodes_read_params_hash: Optional[str] = None
+        self.masternodes_last_db_timestamp: int = 0
 
         self.ssh = None
         self.window = window
@@ -757,46 +770,51 @@ class DashdInterface(WndUtils):
             self.cur_conn_def = None
 
         if not for_testing_connections_only:
-            self.load_data_from_db_cache()
+            self.load_masternode_data_from_db_cache()
         self.initialized = True
 
-    def load_data_from_db_cache(self):
-        self.masternodes.clear()
-        self.masternodes_by_ident.clear()
-        self.masternodes_by_ip_port.clear()
-        self.block_timestamps.clear()
+    def read_masternode_data_from_db(self, masternodes: List[Masternode], where_condition: str,
+                                     updated: Optional[List[Masternode]], removed_dbids: Optional[List[int]]):
+        """
+        :param masternodes: Target masternode list
+        :param where_condition: A string with a where condition, to be appended to the SQL query.
+        :param updated: A list of the Masternode objects from the "masternodes" list, that: a) existed before in the
+            list and b) had some properties updated from the DB
+        :param removed_dbids: A list of db ids of the masternodes from the "masternodes" list, that have been removed
+            from the list
+        """
+        mn_by_db_id: Dict[int, Masternode] = {}
+        mn_by_db_id_current: Dict[int, Masternode] = {}
+        for mn in masternodes:
+            mn_by_db_id[mn.db_id] = mn
+
         cur = self.db_intf.get_cursor()
-        cur2 = self.db_intf.get_cursor()
-        db_modified = False
         try:
             tm_start = time.time()
-            db_correction_duration = 0.0
             log.debug("Reading masternode data from DB")
             cur.execute("SELECT id, ident, status, payee, last_paid_time, last_paid_block, IP, queue_position, "
                         "protx_hash, type, collateral_hash, collateral_index, collateral_address,"
                         "owner_address, voting_address, pubkey_operator, platform_node_id, platform_p2p_port,"
                         "platform_http_port, registered_height, operator_reward, pose_penalty, "
-                        "pose_revived_height, pose_ban_height, operator_payout_address, pose_ban_timestamp "
-                        "from MASTERNODES where dmt_active=1")
+                        "pose_revived_height, pose_ban_height, operator_payout_address, pose_ban_timestamp,"
+                        "dmt_create_time, dmt_deactivation_time, dmt_active "
+                        "from MASTERNODES where " + where_condition)
+
             for row in cur.fetchall():
                 db_id = row[0]
-                ident = row[1]
+                mn = mn_by_db_id.get(db_id)
+                if not mn:
+                    mn = Masternode()
+                    masternodes.append(mn)
+                    mn_by_db_id[db_id] = mn
+                    mn.db_id = db_id
+                    new_mn = True
+                else:
+                    new_mn = False
+                    mn.modified = False
+                mn_by_db_id_current[mn.db_id] = mn
 
-                # correct duplicated masternodes issue
-                mn_first = self.masternodes_by_ident.get(ident)
-                if mn_first is not None:
-                    continue
-
-                # delete duplicated (caused by breaking the app while loading)
-                tm_start_1 = time.time()
-                cur2.execute('DELETE from MASTERNODES where ident=? and id<>?', (ident, db_id))
-                if cur2.rowcount > 0:
-                    db_modified = True
-                db_correction_duration += (time.time() - tm_start_1)
-
-                mn = Masternode()
-                mn.db_id = db_id
-                mn.ident = ident
+                mn.ident = row[1]
                 mn.status = row[2]
                 mn.payout_address = row[3]
                 mn.lastpaidtime = row[4]
@@ -821,21 +839,48 @@ class DashdInterface(WndUtils):
                 mn.pose_ban_height = row[23]
                 mn.operator_payout_address = row[24]
                 mn.pose_ban_timestamp = row[25]
+                mn.dmt_creation_time = int(datetime.datetime.strptime(row[26], '%Y-%m-%d %H:%M:%S').timestamp()) if row[26] else None
+                mn.dmt_deactivation_time = int(datetime.datetime.strptime(row[27], '%Y-%m-%d %H:%M:%S').timestamp()) if row[27] else None
+                mn.dmt_active = row[28]
+                if not new_mn and updated is not None:
+                    updated.append(mn)
 
-                self.masternodes.append(mn)
+            tm_diff = time.time() - tm_start
+            log.info(f'DB read time of {len(masternodes)} MASTERNODES: {str(tm_diff)} s')
+
+            if removed_dbids is not None:
+                for mn_db_id in mn_by_db_id:
+                    if not mn_by_db_id_current.get(mn_db_id):
+                        removed_dbids.append(mn_db_id)
+                        mn = mn_by_db_id[mn_db_id]
+                        masternodes.remove(mn)
+        except Exception as e:
+            log.exception('Reading masternodes from DB error: ' + str(e))
+        finally:
+            self.db_intf.release_cursor()
+
+    def load_masternode_data_from_db_cache(self):
+        where_condition = 'dmt_active=1'
+        new_hash = self.get_masternode_db_query_hash(self.masternodes, where_condition)
+        if new_hash != self.last_masternodes_read_params_hash:
+            self.last_masternodes_read_params_hash = new_hash
+            self.masternodes.clear()
+            self.masternodes_by_ident.clear()
+            self.masternodes_by_ip_port.clear()
+            self.block_timestamps.clear()
+
+            self.read_masternode_data_from_db(self.masternodes, 'dmt_active=1', updated=None, removed_dbids=None)
+
+            for mn in self.masternodes:
                 self.masternodes_by_ident[mn.ident] = mn
                 self.masternodes_by_ip_port[mn.ip_port] = mn
 
-            tm_diff = time.time() - tm_start
-            log.info('DB read time of %d MASTERNODES: %s s, db fix time: %s' %
-                         (len(self.masternodes), str(tm_diff), str(db_correction_duration)))
-        except Exception:
-            log.exception('SQLite initialization error')
-        finally:
-            if db_modified:
-                self.db_intf.commit()
-            self.db_intf.release_cursor()
-            self.db_intf.release_cursor()
+            self.masternodes_last_db_timestamp = int(time.time())
+
+    def get_masternode_db_query_hash(self, masternode_list: List[Masternode], where_condition: str) -> str:
+        str_to_hash = str(self.db_intf.db_cache_file_name) + where_condition + str(id(masternode_list))
+        h = hashlib.sha256(str_to_hash.encode('ascii', 'ignore'))
+        return h.hexdigest()
 
     def reload_configuration(self):
         """Called after modification of connections' configuration or changes having impact on the file name
@@ -847,7 +892,7 @@ class DashdInterface(WndUtils):
         self.cur_conn_index = 0
         if len(self.connections):
             self.cur_conn_def = self.connections[self.cur_conn_index]
-            self.load_data_from_db_cache()
+            self.load_masternode_data_from_db_cache()
         else:
             self.cur_conn_def = None
 
@@ -1242,6 +1287,7 @@ class DashdInterface(WndUtils):
                                     mn.update_in_db(cur)
                                     mn.modified = False
                                     db_modified = True
+                                    self.masternodes_last_db_timestamp = int(time.time())
 
                         # remove non-existing masternodes from cache
                         for mn_index in reversed(range(len(self.masternodes))):
@@ -1251,10 +1297,12 @@ class DashdInterface(WndUtils):
 
                             if not mn.marker:
                                 if self.db_intf.db_active:
+                                    mn.dmt_deactivation_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                                     cur.execute("UPDATE MASTERNODES set dmt_active=0, dmt_deactivation_time=?"
                                                 "WHERE ID=?",
-                                                (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), mn.db_id))
+                                                (mn.dmt_deactivation_time, mn.db_id))
                                     db_modified = True
+                                    self.masternodes_last_db_timestamp = int(time.time())
                                 self.masternodes_by_ident.pop(mn.ident,0)
                                 del self.masternodes[mn_index]
                     finally:

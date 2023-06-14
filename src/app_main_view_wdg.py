@@ -34,6 +34,9 @@ from wnd_utils import WndUtils, ReadOnlyTableCellDelegate, SpinnerWidget, IconTe
     QDetectThemeChange, get_widget_font_color_blue, get_widget_font_color_green
 
 CACHE_ITEM_SHOW_MN_DETAILS_PANEL = 'MainWindow_ShowMNDetailsPanel'
+CACHE_ITEM_SHOW_ALL_MNS_FILTER_PANEL = 'MainWindow_ShowAllMNsFilterPanel'
+CACHE_ITEM_ALL_MNS_FILTER_CONDITION = 'MainWindow_AllMNsFilterCondition'
+CACHE_ITEM_ALL_MNS_FILTER_CTRL_PREFIX = 'MainWindow_AllMNsFilter_'
 DASH_PRICE_FETCH_INTERVAL_SECONDS = 120
 MN_BALANCE_FETCH_INTERVAL_SECONDS = 240
 
@@ -42,6 +45,12 @@ class Pages(Enum):
     PAGE_NETWORK_INFO = 0
     PAGE_MASTERNODE_LIST = 1
     PAGE_SINGLE_MASTERNODE = 2
+    PAGE_ALL_MASTERNODES = 3
+
+
+class FilterOperator(Enum):
+    OR = 0
+    AND = 1
 
 
 log = logging.getLogger('dmt.main')
@@ -66,10 +75,20 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         self.editing_enabled = False
         self.cur_masternode_edited = False
         self.mns_status: Dict[MasternodeConfig, MasternodeStatus] = {}
-        self.masternodes_table_model = MasternodesTableModel(self, self.app_config.masternodes, self.mns_status,
-                                                             self.get_dash_amount_str)
+        self.cfg_masternodes_model = MasternodesFromConfigTableModel(self, self.app_config.masternodes,
+                                                                     self.mns_status, self.get_dash_amount_str)
         self.mn_list_columns_cache_name: str = ''
         self.mn_list_columns_resized_by_user = False
+
+        self.all_masternodes: List[Masternode] = []
+        self.all_masternodes_model = MasternodesFromNetworkTableModel(self, self.all_masternodes)
+        self.last_masternodes_read_params_hash = ''
+        self.all_masternodes_filter_visible = False
+        self.masternodes_last_db_timestamp = 0
+        self.all_mn_list_columns_cache_name: str = ''
+        self.all_mn_list_columns_resized_by_user = False
+        self.all_mn_list_last_where_cond = ''
+
         self.refresh_status_thread_ref = None
         self.refresh_price_thread_ref = None
         self.refresh_status_count = 0
@@ -87,11 +106,11 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
 
     def setupUi(self, widget: QWidget):
         ui_app_main_view_wdg.Ui_WdgAppMainView.setupUi(self, self)
-        self.restore_cache_settings()
         self.lblNoMasternodeMessage.setVisible(False)
         self.lblNavigation1.linkActivated.connect(self.on_cur_tab_link_activated)
         self.lblNavigation2.linkActivated.connect(self.on_cur_tab_link_activated)
         self.lblNavigation3.linkActivated.connect(self.on_cur_tab_link_activated)
+        self.lblNavigation4.linkActivated.connect(self.on_cur_tab_link_activated)
         self.lblNoMasternodeMessage.linkActivated.connect(self.on_cur_tab_link_activated)
         WndUtils.set_icon(self, self.btnMoveMnUp, 'arrow-downward@16px.png', 180)
         WndUtils.set_icon(self, self.btnMoveMnDown, 'arrow-downward@16px.png')
@@ -111,16 +130,27 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         l.insertWidget(l.indexOf(self.btnMoveMnDown) + 1, self.loading_data_spinner)
         self.wdg_masternode.app_text_message_sent.connect(self.on_app_text_message_sent)
 
-        # set up the masternode list view
+        # set up the masternodes from config list view
         self.viewMasternodes.setSortingEnabled(True)
         self.viewMasternodes.setItemDelegate(ReadOnlyTableCellDelegate(self.viewMasternodes))
         self.viewMasternodes.verticalHeader().setDefaultSectionSize(
             self.viewMasternodes.verticalHeader().fontMetrics().height() + 10)
-        self.masternodes_table_model.set_sort_column('no', Qt.AscendingOrder)
-        self.masternodes_table_model.set_view(self.viewMasternodes)
+        self.cfg_masternodes_model.set_sort_column('no', Qt.AscendingOrder)
+        self.cfg_masternodes_model.set_view(self.viewMasternodes)
         self.viewMasternodes.horizontalHeader().sectionResized.connect(self.on_mn_list_column_resized)
         self.viewMasternodes.selectionModel().selectionChanged.connect(self.on_mn_view_selection_changed)
         self.viewMasternodes.setContextMenuPolicy(Qt.CustomContextMenu)
+
+        # set up the all masternodes list view
+        self.viewAllMasternodes.setSortingEnabled(True)
+        self.viewAllMasternodes.setItemDelegate(ReadOnlyTableCellDelegate(self.viewAllMasternodes))
+        self.viewAllMasternodes.verticalHeader().setDefaultSectionSize(
+            self.viewAllMasternodes.verticalHeader().fontMetrics().height() + 10)
+        self.all_masternodes_model.set_sort_column('id', Qt.AscendingOrder)
+        self.all_masternodes_model.set_view(self.viewAllMasternodes)
+        self.viewAllMasternodes.horizontalHeader().sectionResized.connect(self.on_all_mn_list_column_resized)
+        # self.viewAllMasternodes.selectionModel().selectionChanged.connect(self.on_mn_view_selection_changed)
+        self.viewAllMasternodes.setContextMenuPolicy(Qt.CustomContextMenu)
 
         # configure the masternode actions menu:
         self.mnu_masternode_actions.addAction(self.main_window.action_new_masternode_entry)
@@ -139,8 +169,17 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         self.mnu_masternode_actions.addAction(self.main_window.action_sign_message_with_voting_key)
         self.btnMnActions.setMenu(self.mnu_masternode_actions)
 
+        self.restore_cache_settings()
+
+        for ctrl in (self.edtAllMnsFilterIP, self.edtAllMnsFilterProtx, self.edtAllMnsFilterPayee,
+                     self.edtAllMnsFilterCollateralHash, self.edtAllMnsFilterCollateralAddress,
+                     self.edtAllMnsFilterOwnerAddress, self.edtAllMnsFilterVotingAddress,
+                     self.edtAllMnsFilterOperatorPubkey, self.edtAllMnsFilterPlatformNodeId):
+            ctrl.returnPressed.connect(self.apply_all_masternodes_filter)
+
         self.update_details_panel_controls()
         self.configure_mn_view_delegates()
+        self.update_all_masternodes_ui()
 
     def on_close(self):
         """closeEvent is not fired for widgets, so this method will be called from the closeEvent method of the
@@ -149,33 +188,99 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         self.stop_threads()
 
     def restore_cache_settings(self):
-        ena = app_cache.get_value(CACHE_ITEM_SHOW_MN_DETAILS_PANEL, True, bool)
-        self.mn_details_panel_visible = ena
+        try:
+            ena = app_cache.get_value(CACHE_ITEM_SHOW_MN_DETAILS_PANEL, True, bool)
+            self.mn_details_panel_visible = ena
+            ena = app_cache.get_value(CACHE_ITEM_SHOW_ALL_MNS_FILTER_PANEL, True, bool)
+            self.all_masternodes_filter_visible = ena
+            idx = app_cache.get_value(CACHE_ITEM_ALL_MNS_FILTER_CONDITION, 0, int)
+            if idx == 0:
+                self.rbFilterTypeAnd.setChecked(True)
+            else:
+                self.rbFilterTypeOr.setChecked(True)
+            idx = app_cache.get_value(CACHE_ITEM_ALL_MNS_FILTER_CTRL_PREFIX + 'cboAllMnsFilterType', 0, int)
+            if idx in (0, 1, 2):
+                self.cboAllMnsFilterType.setCurrentIndex(idx)
+            idx = app_cache.get_value(CACHE_ITEM_ALL_MNS_FILTER_CTRL_PREFIX + 'cboAllMnsFilterStatus', 0, int)
+            if idx in (0, 1, 2):
+                self.cboAllMnsFilterStatus.setCurrentIndex(idx)
+            ena = app_cache.get_value(CACHE_ITEM_ALL_MNS_FILTER_CTRL_PREFIX + 'chbAllMnsFilterWasActiveOn', False, bool)
+            self.chbAllMnsFilterWasActiveOn.setChecked(ena)
+            active_date_str = app_cache.get_value(CACHE_ITEM_ALL_MNS_FILTER_CTRL_PREFIX +
+                                                  'edtAllMnsFilterWasActiveOn', '', str)
+            if active_date_str:
+                active_date = datetime.strptime(active_date_str, '%Y-%m-%d')
+                self.edtAllMnsFilterWasActiveOn.setDate(active_date)
+            else:
+                self.edtAllMnsFilterWasActiveOn.setDate(datetime.now())
+
+            for ctrl in (self.edtAllMnsFilterIP, self.edtAllMnsFilterProtx, self.edtAllMnsFilterPayee,
+                         self.edtAllMnsFilterCollateralHash, self.edtAllMnsFilterCollateralAddress,
+                         self.edtAllMnsFilterOwnerAddress, self.edtAllMnsFilterVotingAddress,
+                         self.edtAllMnsFilterOperatorPubkey, self.edtAllMnsFilterPlatformNodeId):
+                t = app_cache.get_value(CACHE_ITEM_ALL_MNS_FILTER_CTRL_PREFIX + ctrl.objectName(), '', str)
+                ctrl.setText(t)
+
+        except Exception as e:
+            log.exception(str(e))
+
 
     def save_cache_settings(self):
         app_cache.set_value(CACHE_ITEM_SHOW_MN_DETAILS_PANEL, self.mn_details_panel_visible)
-        self.save_cache_config_config_dependent()
+        app_cache.set_value(CACHE_ITEM_SHOW_ALL_MNS_FILTER_PANEL, self.all_masternodes_filter_visible)
+        app_cache.set_value(CACHE_ITEM_ALL_MNS_FILTER_CONDITION, 0 if self.rbFilterTypeAnd.isChecked() else 1)
+        app_cache.set_value(CACHE_ITEM_ALL_MNS_FILTER_CTRL_PREFIX + 'cboAllMnsFilterType',
+                            self.cboAllMnsFilterType.currentIndex())
+        app_cache.set_value(CACHE_ITEM_ALL_MNS_FILTER_CTRL_PREFIX + 'cboAllMnsFilterStatus',
+                            self.cboAllMnsFilterStatus.currentIndex())
 
-    def save_cache_config_config_dependent(self):
+        app_cache.set_value(CACHE_ITEM_ALL_MNS_FILTER_CTRL_PREFIX + 'chbAllMnsFilterWasActiveOn',
+                            self.chbAllMnsFilterWasActiveOn.isChecked())
+        active_date = self.edtAllMnsFilterWasActiveOn.date()
+        active_date_str = datetime.strftime(datetime(*active_date.getDate()), '%Y-%m-%d')
+        app_cache.set_value(CACHE_ITEM_ALL_MNS_FILTER_CTRL_PREFIX + 'edtAllMnsFilterWasActiveOn', active_date_str)
+
+        # save text-related filter control values:
+        for ctrl in (self.edtAllMnsFilterIP, self.edtAllMnsFilterProtx, self.edtAllMnsFilterPayee,
+                     self.edtAllMnsFilterCollateralHash, self.edtAllMnsFilterCollateralAddress,
+                     self.edtAllMnsFilterOwnerAddress, self.edtAllMnsFilterVotingAddress,
+                     self.edtAllMnsFilterOperatorPubkey, self.edtAllMnsFilterPlatformNodeId):
+            app_cache.set_value(CACHE_ITEM_ALL_MNS_FILTER_CTRL_PREFIX + ctrl.objectName(), ctrl.text())
+
+        self.save_cache_config_dependent()
+
+    def save_cache_config_dependent(self):
         """Save runtime configuration (stored in cache) that is dependent on the main configuration file.
         Currently, it's the configuration of the masternode list view columns (order, widths, visibility).
         """
         if self.mn_list_columns_cache_name:
             if self.mn_list_columns_resized_by_user:
-                self.masternodes_table_model.save_col_defs(self.mn_list_columns_cache_name)
+                self.cfg_masternodes_model.save_col_defs(self.mn_list_columns_cache_name)
+        if self.all_mn_list_columns_cache_name:
+            if self.all_mn_list_columns_resized_by_user:
+                self.all_masternodes_model.save_col_defs(self.all_mn_list_columns_cache_name)
 
-    def restore_cache_config_config_dependent(self):
+    def restore_cache_config_dependent(self):
         """Save runtime configuration (stored in cache) that is dependent on the main configuration file."""
 
         old_block = self.viewMasternodes.horizontalHeader().blockSignals(True)
         try:
-            if not self.masternodes_table_model.restore_col_defs(self.mn_list_columns_cache_name):
+            if not self.cfg_masternodes_model.restore_col_defs(self.mn_list_columns_cache_name):
                 self.viewMasternodes.resizeColumnsToContents()
             else:
-                self.masternodes_table_model.set_view(self.viewMasternodes)
+                self.cfg_masternodes_model.set_view(self.viewMasternodes)
             self.configure_mn_view_delegates()
         finally:
             self.viewMasternodes.horizontalHeader().blockSignals(old_block)
+
+        old_block = self.viewAllMasternodes.horizontalHeader().blockSignals(True)
+        try:
+            if not self.all_masternodes_model.restore_col_defs(self.all_mn_list_columns_cache_name):
+                self.viewAllMasternodes.resizeColumnsToContents()
+            else:
+                self.all_masternodes_model.set_view(self.viewAllMasternodes)
+        finally:
+            self.viewAllMasternodes.horizontalHeader().blockSignals(old_block)
 
     def configure_mn_view_delegates(self):
         # delete old column delegates for viewMasternodes
@@ -185,7 +290,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             self.viewMasternodes.setItemDelegateForColumn(col_idx, None)
         self.mn_view_column_delegates.clear()
 
-        col_idx = self.masternodes_table_model.col_index_by_name('status')
+        col_idx = self.cfg_masternodes_model.col_index_by_name('status')
         if col_idx is not None:
             deleg = IconTextItemDelegate(self.viewMasternodes)
             self.mn_view_column_delegates[col_idx] = deleg
@@ -214,13 +319,16 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 self.refresh_status_count = 0
                 if self.cur_masternode and self.cur_masternode not in self.app_config.masternodes:
                     self.cur_masternode = None
-                self.masternodes_table_model.set_masternodes(self.app_config.masternodes, self.mns_status)
-                self.refresh_masternodes_view()
-                self.save_cache_config_config_dependent()
+                self.cfg_masternodes_model.set_masternodes(self.app_config.masternodes, self.mns_status)
+                self.refresh_cfg_masternodes_view()
+                self.refresh_all_masternodes_view()
+                self.save_cache_config_dependent()
                 h = hashlib.sha256(self.app_config.app_config_file_name.encode('ascii', 'ignore')).hexdigest()
                 self.mn_list_columns_cache_name = 'MainWindow_MnListColumns_' + h[0:8]
                 self.mn_list_columns_resized_by_user = False
-                self.restore_cache_config_config_dependent()
+                self.all_mn_list_columns_cache_name = 'MainWindow_AllMnListColumns_' + h[0:8]
+                self.all_mn_list_columns_resized_by_user = False
+                self.restore_cache_config_dependent()
 
                 if len(self.app_config.masternodes) and not self.cur_masternode:
                     self.set_cur_masternode(self.app_config.masternodes[0])
@@ -238,9 +346,9 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
     def is_editing_enabled(self):
         return self.editing_enabled
 
-    def refresh_masternodes_view(self):
-        self.masternodes_table_model.beginResetModel()
-        self.masternodes_table_model.endResetModel()
+    def refresh_cfg_masternodes_view(self):
+        self.cfg_masternodes_model.beginResetModel()
+        self.cfg_masternodes_model.endResetModel()
 
         # restore the focused row
         if self.get_cur_masternode_from_view() != self.cur_masternode:
@@ -253,8 +361,56 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
     def get_cur_masternode(self) -> Optional[MasternodeConfig]:
         return self.cur_masternode
 
+    def get_all_masternodes_where_cond(self) -> str:
+        if self.chbAllMnsFilterWasActiveOn.isChecked():
+            active_date = self.edtAllMnsFilterWasActiveOn.date()
+            active_date_str = datetime.strftime(datetime(*active_date.getDate()), '%Y-%m-%d')
+            cond = f"dmt_create_time < '{active_date_str}' and (dmt_deactivation_time is null or " \
+                   f"dmt_deactivation_time > '{active_date_str}')"
+        else:
+            cond = 'dmt_active=1'
+        return cond
+
+    def refresh_all_masternodes_view(self):
+        try:
+            updated = []
+            removed = []
+            self.all_mn_list_last_where_cond = self.get_all_masternodes_where_cond()
+            new_hash = self.dashd_intf.get_masternode_db_query_hash(self.all_masternodes,
+                                                                    self.all_mn_list_last_where_cond)
+
+            if new_hash != self.last_masternodes_read_params_hash or \
+                    self.masternodes_last_db_timestamp != self.dashd_intf.masternodes_last_db_timestamp:
+
+                tm_begin = time.time()
+                self.dashd_intf.read_masternode_data_from_db(self.all_masternodes, self.all_mn_list_last_where_cond,
+                                                             updated, removed)
+                self.last_masternodes_read_params_hash = new_hash
+                self.masternodes_last_db_timestamp = self.dashd_intf.masternodes_last_db_timestamp
+
+                diff1 = time.time() - tm_begin
+                tm_begin = time.time()
+                self.all_masternodes_model.beginResetModel()
+                self.all_masternodes_model.endResetModel()
+                self.apply_all_masternodes_filter()
+                diff2 = time.time() - tm_begin
+                self.update_all_masternodes_ui()
+
+                logging.info('Masternodes read time from db: ' + str(round(diff1, 2)) + 's')
+                logging.info('Masternodes UI refresh time: ' + str(round(diff2, 2)) + 's')
+        except Exception as e:
+            logging.exception(str(e))
+
+        # restore the focused row
+        # if self.get_cur_masternode_from_view() != self.cur_masternode:
+        #     old_state = self.viewAllMasternodes.selectionModel().blockSignals(True)
+            # try:
+            #     self.set_cur_masternode_in_list(self.cur_masternode)
+            # finally:
+            #     self.viewMasternodes.selectionModel().blockSignals(old_state)
+
     def set_cur_masternode_modified(self):
-        self.refresh_masternodes_view()
+        self.refresh_cfg_masternodes_view()
         self.update_mn_preview()
         self.masternode_data_changed.emit()
         self.wdg_masternode.set_masternode(self.cur_masternode)
@@ -285,6 +441,11 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             if self.cur_masternode:
                 self.btnMnActions.setVisible(True)
             self.btnMnListColumns.setVisible(False)
+        elif self.current_view == Pages.PAGE_ALL_MASTERNODES:
+            self.btnMoveMnUp.setVisible(False)
+            self.btnMoveMnDown.setVisible(False)
+            self.btnMnListColumns.setVisible(True)
+            self.btnMnActions.setVisible(False)
         else:
             self.btnMoveMnUp.setVisible(False)
             self.btnMoveMnDown.setVisible(False)
@@ -303,6 +464,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         self.update_details_panel_controls()
         self.wdg_masternode.masternode_data_to_ui()
         self.update_mn_preview()
+        self.update_all_masternodes_ui()
 
     def update_actions_state(self):
         def update_fun():
@@ -321,41 +483,83 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             update_fun()
 
     def update_navigation_panel(self):
+        tab_lbl_masternodes = 'Masternode list'
+        tab_lbl_mn_details = 'MN details'
+        tab_lbl_network = 'Network info'
+        tab_lbl_all_masternodes = 'All Masternodes'
+
         if self.current_view == Pages.PAGE_MASTERNODE_LIST:
-            mns_link = '<span style="color:black">\u25B6 <b>Masternode list</b></span>'
+            mns_link = f'<span style="color:black">\u25B6 <b>{tab_lbl_masternodes}</b></span>'
         else:
             if self.current_view == Pages.PAGE_SINGLE_MASTERNODE and self.editing_enabled:
                 # don't allow changing view when in edit mode
-                mns_link = '<span style="color:gray">Masternode list</span>'
+                mns_link = f'<span style="color:gray">{tab_lbl_masternodes}</span>'
             else:
-                mns_link = '<a style="text-decoration:none" href="masternodes">Masternode list</a>'
+                mns_link = f'<a style="text-decoration:none" href="masternodes">{tab_lbl_masternodes}</a>'
         mns_link = '<span>' + mns_link + '</span>'
         self.lblNavigation1.setText(mns_link)
 
         if self.current_view == Pages.PAGE_SINGLE_MASTERNODE:
-            mn_link = '<span style="color:black">\u25B6 <b>MN details</b></span>'
+            mn_link = f'<span style="color:black">\u25B6 <b>{tab_lbl_mn_details}</b></span>'
         else:
             if not self.cur_masternode:
-                mn_link = '<span style="color:gray">MN details</span>'
+                mn_link = f'<span style="color:gray">{tab_lbl_mn_details}</span>'
             else:
-                mn_link = '<a style="text-decoration:none" href="masternode_details">MN details</a>'
+                mn_link = f'<a style="text-decoration:none" href="masternode_details">{tab_lbl_mn_details}</a>'
         mn_link = '<span>' + mn_link + '</span>'
         self.lblNavigation2.setText(mn_link)
 
-        if self.current_view == Pages.PAGE_NETWORK_INFO:
-            network_info_link = '<span style="color:black">\u25B6 <b>Network info</b></span>'
+        if self.current_view == Pages.PAGE_ALL_MASTERNODES:
+            network_info_link = f'<span style="color:black">\u25B6 <b>{tab_lbl_all_masternodes}</b></span>'
         else:
             if self.current_view == Pages.PAGE_SINGLE_MASTERNODE and self.editing_enabled:
                 # don't allow changing view when in edit mode
-                network_info_link = '<span style="color:gray">Network info</span>'
+                network_info_link = f'<span style="color:gray">{tab_lbl_all_masternodes}</span>'
             else:
-                network_info_link = '<a style="text-decoration:none" href="netinfo">Network info</a>'
+                network_info_link = f'<a style="text-decoration:none" href="all-masternodes">{tab_lbl_all_masternodes}</a>'
         self.lblNavigation3.setText(network_info_link)
+
+        if self.current_view == Pages.PAGE_NETWORK_INFO:
+            network_info_link = f'<span style="color:black">\u25B6 <b>{tab_lbl_network}</b></span>'
+        else:
+            if self.current_view == Pages.PAGE_SINGLE_MASTERNODE and self.editing_enabled:
+                # don't allow changing view when in edit mode
+                network_info_link = f'<span style="color:gray">{tab_lbl_network}</span>'
+            else:
+                network_info_link = f'<a style="text-decoration:none" href="netinfo">{tab_lbl_network}</a>'
+        self.lblNavigation4.setText(network_info_link)
+
+    def update_all_masternodes_ui(self):
+        cnt = self.all_masternodes_model.proxy_model.rowCount()
+        if self.all_masternodes_filter_visible:
+            lbl = 'hide filter'
+        else:
+            lbl = 'show filter'
+        lbl = f'Masternodes in list: {cnt} <a href="toggle-filter">{lbl}</a>'
+        self.lblAllMasternodesInfo.setText(lbl)
+
+        if self.all_masternodes_filter_visible and not self.frameAllMnsTop.isVisible():
+            self.frameAllMnsTop.setVisible(True)
+            self.gbFilterCondType.setVisible(True)
+        elif not self.all_masternodes_filter_visible and self.frameAllMnsTop.isVisible():
+            self.frameAllMnsTop.setVisible(False)
+            self.gbFilterCondType.setVisible(False)
+
+        self.edtAllMnsFilterWasActiveOn.setEnabled(self.chbAllMnsFilterWasActiveOn.isChecked())
+
+    @pyqtSlot(str)
+    def on_lblAllMasternodesInfo_linkActivated(self, link):
+        self.all_masternodes_filter_visible = not self.all_masternodes_filter_visible
+        self.update_all_masternodes_ui()
 
     @pyqtSlot(int, str, object)
     def on_app_text_message_sent(self, msg_id: int, text: str, type: AppTextMessageType):
         # forward text message to the caller window (main dialog)
         self.app_text_message_sent.emit(msg_id, text, type)
+
+    @pyqtSlot(int)
+    def on_chbAllMnsFilterWasActiveOn_stateChanged(self, state):
+        self.update_all_masternodes_ui()
 
     @pyqtSlot(str)
     def on_cur_tab_link_activated(self, link):
@@ -366,6 +570,8 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 self.current_view = Pages.PAGE_MASTERNODE_LIST
             elif link == 'masternode_details':
                 self.current_view = Pages.PAGE_SINGLE_MASTERNODE
+            elif link == 'all-masternodes':
+                self.current_view = Pages.PAGE_ALL_MASTERNODES
             elif link == 'add_mn':
                 self.add_new_masternode(None)
                 return
@@ -377,6 +583,9 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
     def on_mn_list_column_resized(self, logical_index, old_size, new_size):
         self.mn_list_columns_resized_by_user = True
 
+    def on_all_mn_list_column_resized(self, logical_index, old_size, new_size):
+        self.all_mn_list_columns_resized_by_user = True
+
     def on_mn_data_changed(self):
         if self.cur_masternode or self.edited_masternode:
             self.cur_masternode_edited = True
@@ -387,7 +596,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                     ms.check_mismatch(self.cur_masternode, mn_info)
             except Exception:
                 pass
-        self.refresh_masternodes_view()
+        self.refresh_cfg_masternodes_view()
         self.update_mn_preview()
         self.masternode_data_changed.emit()
         self.update_actions_state()
@@ -415,12 +624,15 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
 
     @pyqtSlot(bool)
     def on_btnMnListColumns_clicked(self):
-        self.masternodes_table_model.exec_columns_dialog(self)
+        if self.current_view == Pages.PAGE_MASTERNODE_LIST:
+            self.cfg_masternodes_model.exec_columns_dialog(self)
+        elif self.current_view == Pages.PAGE_ALL_MASTERNODES:
+            self.all_masternodes_model.exec_columns_dialog(self)
 
     def verify_sorting_for_mn_reorder(self) -> bool:
-        col = self.masternodes_table_model.get_sort_column()
+        col = self.cfg_masternodes_model.get_sort_column()
         if col and col.name == 'no':
-            order = self.masternodes_table_model.get_sort_order()
+            order = self.cfg_masternodes_model.get_sort_order()
             if order == Qt.AscendingOrder:
                 return True
         else:
@@ -439,7 +651,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 cur_idx = mns.index(self.cur_masternode)
                 if cur_idx > 0:
                     mns[cur_idx-1], mns[cur_idx] = mns[cur_idx], mns[cur_idx-1]
-                    self.refresh_masternodes_view()
+                    self.refresh_cfg_masternodes_view()
                     self.masternode_data_changed.emit()
                     self.update_ui()
         except Exception as e:
@@ -458,7 +670,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 cur_idx = mns.index(self.cur_masternode)
                 if cur_idx < len(mns) - 1:
                     mns[cur_idx+1], mns[cur_idx] = mns[cur_idx], mns[cur_idx+1]
-                    self.refresh_masternodes_view()
+                    self.refresh_cfg_masternodes_view()
                     self.masternode_data_changed.emit()
                     self.update_ui()
         except Exception as e:
@@ -518,6 +730,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         link_color = self.app_config.get_hyperlink_font_color(self.lblMnStatusLabel)
         t = f'<style>a {{color: {link_color}}}</style>Masternode status details (<a href="{link_text}">{link_text}</a>)'
         self.lblMnStatusLabel.setText(t)
+        self.lblMnStatusLabel.setVisible(panel_visible)
         self.lblMnStatus.setVisible(panel_visible)
 
     @pyqtSlot(bool)
@@ -555,7 +768,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         mn: Optional[MasternodeConfig] = None
         cur_index = self.viewMasternodes.currentIndex()
         if cur_index:
-            source_row = self.masternodes_table_model.mapToSource(cur_index)
+            source_row = self.cfg_masternodes_model.mapToSource(cur_index)
             if source_row:
                 current_row = source_row.row()
                 if current_row is not None and 0 <= current_row < len(self.app_config.masternodes):
@@ -565,7 +778,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
     def set_cur_masternode_in_list(self, mn: MasternodeConfig):
         idx = self.app_config.masternodes.index(mn)
         if idx >= 0:
-            midx = self.masternodes_table_model.index(idx, 0)
+            midx = self.cfg_masternodes_model.index(idx, 0)
             if midx and midx.isValid():
                 self.viewMasternodes.setCurrentIndex(midx)
 
@@ -699,9 +912,11 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 self.hide_loading_animation()
             self.update_info_page()
             self.update_mn_preview()
-            self.refresh_masternodes_view()
+            self.refresh_cfg_masternodes_view()
+            self.refresh_all_masternodes_view()
 
         if not self.refresh_status_thread_ref:
+            logging.info('Starting thread "refresh_status_thread"')
             self.refresh_status_thread_ref = WndUtils.run_thread(self, self.refresh_status_thread, (),
                                                                  on_thread_finish=update)
 
@@ -709,7 +924,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             if not self.refresh_price_thread_ref and \
                     int(time.time()) - self.last_dash_price_fetch_ts >= DASH_PRICE_FETCH_INTERVAL_SECONDS:
                 self.refresh_price_thread_ref = WndUtils.run_thread(self, self.refresh_price_thread, (),
-                                                                    on_thread_finish=update)
+                                                                    on_thread_finish=self.update_info_page)
 
     def fetch_governance_info(self):
         gi = self.network_status
@@ -942,7 +1157,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
 
             check_finishing()
             # in the mn list view show the data that has been read so far
-            WndUtils.call_in_main_thread(self.refresh_masternodes_view)
+            WndUtils.call_in_main_thread(self.refresh_cfg_masternodes_view)
 
             # fetch non-cachaed data
             check_finishing()
@@ -1315,8 +1530,46 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         else:
             hide()
 
+    def apply_all_masternodes_filter(self):
+        m = self.all_masternodes_model
+        m.filter_type = FilterOperator.AND if self.rbFilterTypeAnd.isChecked() else FilterOperator.OR
+        m.filter_mn_type = {
+            0: None,
+            1: 'Regular',
+            2: 'HighPerformance'
+        }.get(self.cboAllMnsFilterType.currentIndex(), None)
+        m.filter_protx = self.edtAllMnsFilterProtx.text()
+        m.filter_ip_port = self.edtAllMnsFilterIP.text()
+        m.filter_payment_addr = self.edtAllMnsFilterPayee.text()
+        m.filter_collateral_hash = self.edtAllMnsFilterCollateralHash.text()
+        m.filter_collateral_address = self.edtAllMnsFilterCollateralAddress.text()
+        m.filter_owner_address = self.edtAllMnsFilterOwnerAddress.text()
+        m.filter_voting_address = self.edtAllMnsFilterVotingAddress.text()
+        m.filter_operator_pubkey = self.edtAllMnsFilterOperatorPubkey.text()
+        m.filter_platform_node_id = self.edtAllMnsFilterPlatformNodeId.text()
+        m.filter_mn_status = {
+            0: None,
+            1: 'ENABLED',
+            2: 'POSE_BANNED'
+        }.get(self.cboAllMnsFilterStatus.currentIndex())
 
-class MasternodesTableModel(ExtSortFilterItemModel):
+        if self.all_mn_list_last_where_cond == self.get_all_masternodes_where_cond():
+            m.invalidateFilter()
+            self.update_all_masternodes_ui()
+        else:
+            # control(s) impacting the way the masternode data is read from the database has changed
+            # so, instead of just applying filter, we need to re-fetch data from db
+            self.refresh_all_masternodes_view()
+
+    @pyqtSlot(bool)
+    def on_btnAllMnsApplyFilter_clicked(self, _):
+        try:
+            self.apply_all_masternodes_filter()
+        except Exception as e:
+            log.exception(str(e))
+
+
+class MasternodesFromConfigTableModel(ExtSortFilterItemModel):
     def __init__(self, parent, masternodes: List[MasternodeConfig],
                  mns_status: Dict[MasternodeConfig, MasternodeStatus],
                  get_dash_amount_str_fun: Callable[[float, bool, bool, Optional[bool], Optional[bool]], str]):
@@ -1565,6 +1818,277 @@ class MasternodesTableModel(ExtSortFilterItemModel):
 
     def filterAcceptsRow(self, source_row, source_parent):
         will_show = True
+        return will_show
+
+
+class MasternodesFromNetworkTableModel(ExtSortFilterItemModel):
+    def __init__(self, parent, masternodes: List[Masternode]):
+        ExtSortFilterItemModel.__init__(self, parent, [
+            TableModelColumn('id', 'Id', False, 25, horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('ip_port', 'IP/Port', True, 100),
+            TableModelColumn('ident', 'Ident', False, 150),
+            TableModelColumn('status', 'Status', True, 140),
+            TableModelColumn('type', 'Type', True, 100),
+            TableModelColumn('queue_position', 'Queue position', True, 150,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('payee', 'Peyee', False, 160),
+            TableModelColumn('last_paid_time', 'Last paid time', False, 100),
+            TableModelColumn('last_paid_block', 'Last paid block', False, 100,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('protx', 'Protx', False, 100),
+            TableModelColumn('dmt_active', 'DMT active', False, 100),
+            TableModelColumn('dmt_creation_time', 'DMT creation time', False, 150),
+            TableModelColumn('dmt_deactivation_time', 'DMT deactivation time', False, 150),
+            TableModelColumn('registered_height', 'Registered height', False, 100,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('platform_node_id', 'Platform Node Id', False, 150),
+            TableModelColumn('platform_p2p_port', 'Platform P2P port', False, 100,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('platform_http_port', 'Platform HTTP port', False, 100,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('collateral_hash', 'Collateral hash', False, 100),
+            TableModelColumn('collateral_index', 'Collateral index', False, 100,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('collateral_address', 'Collateral address', False, 100),
+            TableModelColumn('owner_address', 'Owner address', False, 100),
+            TableModelColumn('voting_address', 'Voting address', False, 100),
+            TableModelColumn('operator_pubkey', 'Operator pubkey', False, 100),
+            TableModelColumn('pose_penalty', 'PoSe penalty', True, 100,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('pose_ban_height', 'PoSe ban height', True, 100,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('pose_ban_time', 'PoSe ban time', True, 100),
+            TableModelColumn('pose_revived_height', 'PoSe revived height', True, 100,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('operator_reward', 'Operator reward', True, 100)
+        ], True, True)
+        self.masternodes = masternodes
+        self.background_color = QtGui.QColor('lightgray')
+
+        self.filter_type: FilterOperator = FilterOperator.AND
+        self.filter_mn_type = None
+        self.filter_protx = None
+        self.filter_ip_port = None
+        self.filter_payment_addr = None
+        self.filter_collateral_hash = None
+        self.filter_collateral_address = None
+        self.filter_owner_address = None
+        self.filter_voting_address = None
+        self.filter_operator_pubkey = None
+        self.filter_platform_node_id = None
+        self.filter_mn_status = None
+        self.filter_was_active_on_date = None
+
+        self.set_attr_protection()
+
+    def rowCount(self, parent=None, *args, **kwargs):
+        return len(self.masternodes)
+
+    def flags(self, index):
+        return Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable
+
+    def set_view(self, table_view: QTableView):
+        super().set_view(table_view)
+        h = table_view.horizontalHeader()
+        self.background_color = h.palette().color(QPalette.Active, h.palette().Background)
+
+    def data(self, index, role=None):
+        if index.isValid():
+            col_idx = index.column()
+            row_idx = index.row()
+            if row_idx < len(self.masternodes):
+                mn = self.masternodes[row_idx]
+                if mn:
+                    if role in (Qt.DisplayRole, Qt.EditRole):
+                        val = self.get_cell_value(row_idx, col_idx, for_sorting=False)
+                        if val is None:
+                            val = QVariant()
+                        return val
+
+                    elif role == Qt.TextAlignmentRole:
+                        col: TableModelColumn = self.col_by_index(col_idx)
+                        if col and col.horizontal_alignment:
+                            return Qt.AlignRight | Qt.AlignVCenter if col.horizontal_alignment == \
+                                                                      HorizontalAlignment.RIGHT else \
+                                   Qt.AlignLeft | Qt.AlignVCenter
+                        return None
+
+        return QVariant()
+
+    def get_cell_value(self, row_idx: int, col_idx: int, for_sorting: bool):
+        ret_val: Any = None
+        if row_idx < len(self.masternodes):
+            mn: Masternode = self.masternodes[row_idx]
+            col = self.col_by_index(col_idx)
+            if col:
+                col_name = col.name
+                if col_name == 'id':
+                    ret_val = mn.db_id
+                elif col_name == 'ident':
+                    ret_val = mn.ident
+                elif col_name == 'status':
+                    ret_val = mn.status
+                elif col_name == 'payee':
+                    ret_val = mn.payout_address
+                elif col_name == 'last_paid_time':
+                    if for_sorting:
+                        ret_val = mn.lastpaidtime
+                        if ret_val is None:
+                            ret_val = 0
+                    else:
+                        if mn.lastpaidtime:
+                            ret_val = app_utils.to_string(datetime.fromtimestamp(mn.lastpaidtime))
+                elif col_name == 'last_paid_block':
+                    ret_val = mn.lastpaidblock
+                elif col_name == 'ip_port':
+                    ret_val = mn.ip_port
+                elif col_name == 'protx':
+                    ret_val = mn.protx_hash
+                elif col_name == 'registered_height':
+                    ret_val = mn.registered_height
+                elif col_name == 'queue_position':
+                    ret_val = mn.queue_position
+                elif col_name == 'type':
+                    ret_val = mn.type
+                elif col_name == 'platform_node_id':
+                    ret_val = mn.platform_node_id
+                elif col_name == 'platform_p2p_port':
+                    ret_val = mn.platform_p2p_port
+                elif col_name == 'platform_http_port':
+                    ret_val = mn.platform_http_port
+                elif col_name == 'collateral_hash':
+                    ret_val = mn.collateral_hash
+                elif col_name == 'collateral_index':
+                    ret_val = mn.collateral_index
+                elif col_name == 'collateral_address':
+                    ret_val = mn.collateral_address
+                elif col_name == 'owner_address':
+                    ret_val = mn.owner_address
+                elif col_name == 'voting_address':
+                    ret_val = mn.voting_address
+                elif col_name == 'operator_pubkey':
+                    ret_val = mn.pubkey_operator
+                elif col_name == 'pose_penalty':
+                    ret_val = mn.pose_penalty
+                elif col_name == 'pose_revived_height':
+                    ret_val = mn.pose_revived_height
+                elif col_name == 'pose_ban_height':
+                    ret_val = mn.pose_ban_height
+                elif col_name == 'operator_payout_address':
+                    ret_val = mn.operator_payout_address
+                elif col_name == 'operator_reward':
+                    ret_val = mn.operator_reward
+                elif col_name == 'pose_ban_time':
+                    if for_sorting:
+                        ret_val = mn.pose_ban_timestamp
+                        if ret_val is None:
+                            ret_val = 0
+                    else:
+                        if mn.pose_ban_timestamp:
+                            ret_val = app_utils.to_string(datetime.fromtimestamp(mn.pose_ban_timestamp))
+                elif col_name == 'dmt_creation_time':
+                    if for_sorting:
+                        ret_val = mn.dmt_creation_time
+                        if ret_val is None:
+                            ret_val = 0
+                    else:
+                        if mn.dmt_creation_time:
+                            ret_val = app_utils.to_string(datetime.fromtimestamp(mn.dmt_creation_time))
+                elif col_name == 'dmt_deactivation_time':
+                    if for_sorting:
+                        ret_val = mn.dmt_deactivation_time
+                        if ret_val is None:
+                            ret_val = 0
+                    else:
+                        if mn.dmt_deactivation_time:
+                            ret_val = app_utils.to_string(datetime.fromtimestamp(mn.dmt_deactivation_time))
+                elif col_name == 'dmt_active':
+                    ret_val = mn.dmt_active
+            return ret_val
+
+    def lessThan(self, col_index, left_row_index, right_row_index):
+        col = self.col_by_index(col_index)
+        # if col:
+        #     reverse = False
+        #
+        #     left_value = self.get_cell_value(left_row_index, col_index, True)
+        #     right_value = self.get_cell_value(right_row_index, col_index, True)
+        #
+        #     if isinstance(left_value, (int, float)) and isinstance(right_value, (int, float)):
+        #         if not reverse:
+        #             return left_value < right_value
+        #         else:
+        #             return right_value < left_value
+        #     elif isinstance(left_value, str) and isinstance(right_value, str):
+        #         left_value = left_value.lower()
+        #         right_value = right_value.lower()
+        #         if not reverse:
+        #             return left_value < right_value
+        #         else:
+        #             return right_value < left_value
+        return False
+
+    def filterAcceptsRow(self, source_row, source_parent):
+        any_cond_met = False
+        any_cond_not_met = False
+        was_any_condition = False
+
+        def check_cond(cond) -> Optional[bool]:
+            nonlocal any_cond_met, any_cond_not_met, was_any_condition
+            if cond is False:
+                any_cond_not_met = False
+                was_any_condition = True
+                if self.filter_type == FilterOperator.AND:
+                    return False
+            elif cond is True:
+                any_cond_met = True
+                was_any_condition = True
+                if self.filter_type == FilterOperator.OR:
+                    return True
+            return None
+
+        will_show = True
+
+        if 0 <= source_row < len(self.masternodes):
+            mn = self.masternodes[source_row]
+
+            if self.filter_mn_type:
+                cond_met = mn.type == self.filter_mn_type
+                r = check_cond(cond_met)
+                if r is False:
+                    return False
+                elif r is True:
+                    return True
+
+            if self.filter_mn_status:
+                cond_met = mn.status == self.filter_mn_status
+                r = check_cond(cond_met)
+                if r is False:
+                    return False
+                elif r is True:
+                    return True
+
+            for cur_filter_text, cur_value in ((self.filter_protx, mn.protx_hash),
+                                               (self.filter_ip_port, mn.ip_port),
+                                               (self.filter_payment_addr, mn.payout_address),
+                                               (self.filter_collateral_hash, mn.collateral_hash),
+                                               (self.filter_collateral_address, mn.collateral_address),
+                                               (self.filter_owner_address, mn.owner_address),
+                                               (self.filter_voting_address, mn.voting_address),
+                                               (self.filter_operator_pubkey, mn.pubkey_operator),
+                                               (self.filter_platform_node_id, mn.platform_node_id)):
+                if cur_filter_text and cur_value:
+                    cond_met = cur_value.find(cur_filter_text) >= 0
+                    r = check_cond(cond_met)
+                    if r is False:
+                        return False
+                    elif r is True:
+                        return True
+
+            if was_any_condition:
+                if (self.filter_type == FilterOperator.OR and not any_cond_met) or \
+                        (self.filter_type == FilterOperator.AND and any_cond_not_met):
+                    will_show = False
         return will_show
 
 
