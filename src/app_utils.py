@@ -114,6 +114,11 @@ def is_version_greater(checked_version: str, ref_version: str) -> bool:
 
         if checked_version_str and ref_version_str:
             cmp = float(checked_version_str) > float(ref_version_str)
+            if not cmp and float(checked_version_str) == float(ref_version_str) and not checked_suffix \
+                and ref_suffix:
+                # if the ref version string has a version suffix (like "-rc1" ) and the checked version does not have
+                # one, it means, that the checked version is final (that is greater)
+                cmp = True
         else:
             cmp = False
     except Exception:
