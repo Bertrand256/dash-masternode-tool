@@ -109,7 +109,7 @@
   },
   "params": {
     "voteTimeRandomOffsetMin": -720,
-    "voteTimeRandomOffsetMax": 720
+    "voteTimeRandomOffsetMax": 60
   },
   "appDeveloperContact": [
     {
