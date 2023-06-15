@@ -9,7 +9,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>625</width>
+    <width>628</width>
     <height>480</height>
    </rect>
   </property>
@@ -591,6 +591,16 @@
          </property>
          <property name="text">
           <string>Use UI dark mode</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="chbShowNetworkMasternodes">
+         <property name="toolTip">
+          <string>Shows a tab in the main window with a list of all masternodes in the Dash network</string>
+         </property>
+         <property name="text">
+          <string>Show network masternodes tab</string>
          </property>
         </widget>
        </item>

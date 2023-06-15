@@ -249,6 +249,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.chbFetchDataAfterStart.setChecked(self.local_config.fetch_network_data_after_start)
         self.chbShowDashFIATValue.setChecked(self.local_config.show_dash_value_in_fiat)
         self.chbUIDarkMode.setChecked(self.local_config.ui_use_dark_mode)
+        self.chbShowNetworkMasternodes.setChecked(self.local_config.show_network_masternodes_tab)
 
         idx = {
                 'CRITICAL': 0,
@@ -640,6 +641,12 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
     def on_chbUIDarkMode_toggled(self, checked):
         if not self.disable_cfg_update:
             self.local_config.ui_use_dark_mode = checked
+
+    @pyqtSlot(bool)
+    def on_chbShowNetworkMasternodes_toggled(self, checked):
+        if not self.disable_cfg_update:
+            self.local_config.show_network_masternodes_tab = checked
+            self.set_modified()
 
     def update_ssh_ctrls_ui(self):
         index = self.ssh_tunnel_widget.cboAuthentication.currentIndex()

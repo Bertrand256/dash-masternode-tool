@@ -689,6 +689,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                     if dash_network_sav != self.app_config.dash_network:
                         self.disconnect_hardware_wallet()
                         self.app_config.reset_network_dependent_dyn_params()
+                    self.main_view.config_changed()
                     self.display_window_title()
                     self.update_edit_controls_state()
             del dlg
