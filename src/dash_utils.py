@@ -231,10 +231,13 @@ def validate_bls_privkey(privkey: str, new_bls_scheme: bool) -> bool:
         return False
 
 
-def validate_bls_pubkey(pubkey: str) -> bool:
+def validate_bls_pubkey(pubkey: str, new_bls_scheme: bool) -> bool:
     try:
-        pk = G1Element.from_bytes(bytes.fromhex(pubkey))
-        return True
+        if new_bls_scheme:
+            G1Element.from_bytes(bytes.fromhex(pubkey))
+            return True
+        else:
+            return validate_bls_pubkey_legacy(pubkey)
     except Exception as e:
         return False
 
