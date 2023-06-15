@@ -145,6 +145,9 @@ class DBCache(object):
 
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_DMT_ACTIVE ON masternodes(dmt_active)")
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_IDENT ON masternodes(ident)")
+            cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_DMT_CREATE_TIME ON masternodes(dmt_create_time)")
+            cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_DMT_DEACTIVATION_TIME ON "
+                        "masternodes(dmt_deactivation_time)")
 
             # create structures for proposals:
             cur.execute("CREATE TABLE IF NOT EXISTS proposals(id INTEGER PRIMARY KEY, name TEXT, payment_start TEXT,"

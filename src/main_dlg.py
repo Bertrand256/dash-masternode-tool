@@ -1211,7 +1211,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
                     # If the configuration was modified before starting the registration window, don't save
                     # it to disk, otherwise do it.
                     self.save_configuration()
-                self.main_view.set_cur_masternode_modified()
+                self.main_view.set_cur_cfg_masternode_modified()
                 self.dashd_intf.reset_masternode_data_cache()
                 self.main_view.refresh_network_data()
             except Exception as e:
@@ -1233,7 +1233,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
             try:
                 if not self.app_config.is_modified():
                     self.save_configuration()
-                self.main_view.set_cur_masternode_modified()
+                self.main_view.set_cur_cfg_masternode_modified()
                 self.dashd_intf.reset_masternode_data_cache()
                 self.main_view.refresh_network_data()
             except Exception as e:
@@ -1255,7 +1255,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
             try:
                 if not old_modified_state and self.app_config.is_modified():
                     self.save_configuration()
-                self.main_view.set_cur_masternode_modified()
+                self.main_view.set_cur_cfg_masternode_modified()
             except Exception as e:
                 logging.exception(str(e))
 
@@ -1278,7 +1278,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
 
             if not self.app_config.is_modified():
                 self.save_configuration()
-            self.main_view.set_cur_masternode_modified()
+            self.main_view.set_cur_cfg_masternode_modified()
             self.dashd_intf.reset_masternode_data_cache()
             if self.app_config.fetch_network_data_after_start:
                 self.main_view.refresh_network_data()

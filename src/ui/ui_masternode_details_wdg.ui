@@ -797,7 +797,7 @@
            </size>
           </property>
           <property name="text">
-           <string>Platform Node private key</string>
+           <string>Platform Node key</string>
           </property>
           <property name="alignment">
            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -865,7 +865,7 @@
                </size>
               </property>
               <property name="toolTip">
-               <string>Set Platform Node ID from Ed25519 private key</string>
+               <string>Generate a new Platform Node key (Ed25519 private key)</string>
               </property>
               <property name="text">
                <string>Generate new</string>

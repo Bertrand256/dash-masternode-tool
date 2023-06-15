@@ -462,7 +462,7 @@
           </item>
          </layout>
         </widget>
-        <widget class="QWidget" name="pageAllMasternodes">
+        <widget class="QWidget" name="pageNetMasternodes">
          <layout class="QVBoxLayout" name="verticalLayout_8">
           <property name="spacing">
            <number>6</number>
@@ -480,7 +480,7 @@
            <number>6</number>
           </property>
           <item>
-           <widget class="QLabel" name="lblAllMasternodesInfo">
+           <widget class="QLabel" name="lblNetMasternodesInfo">
             <property name="text">
              <string>...</string>
             </property>
@@ -537,9 +537,22 @@
               </widget>
              </item>
              <item>
-              <widget class="QPushButton" name="btnAllMnsApplyFilter">
+              <widget class="QPushButton" name="btnNetMnsApplyFilter">
+               <property name="toolTip">
+                <string>Apply filter conditions</string>
+               </property>
                <property name="text">
                 <string>Apply</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="btnNetMnsClearFilter">
+               <property name="toolTip">
+                <string>Clear all filter conditions</string>
+               </property>
+               <property name="text">
+                <string>Clear</string>
                </property>
               </widget>
              </item>
@@ -596,7 +609,7 @@
                  <number>0</number>
                 </property>
                 <item>
-                 <widget class="QFrame" name="frameAllMnsTop">
+                 <widget class="QFrame" name="frameNetMnsTop">
                   <property name="frameShape">
                    <enum>QFrame::StyledPanel</enum>
                   </property>
@@ -633,14 +646,14 @@
                     </widget>
                    </item>
                    <item row="1" column="5">
-                    <widget class="QLineEdit" name="edtAllMnsFilterPlatformNodeId">
+                    <widget class="QLineEdit" name="edtNetMnsFilterPlatformNodeId">
                      <property name="clearButtonEnabled">
                       <bool>true</bool>
                      </property>
                     </widget>
                    </item>
                    <item row="1" column="3">
-                    <widget class="QLineEdit" name="edtAllMnsFilterPayee">
+                    <widget class="QLineEdit" name="edtNetMnsFilterPayee">
                      <property name="clearButtonEnabled">
                       <bool>true</bool>
                      </property>
@@ -677,14 +690,14 @@
                     </widget>
                    </item>
                    <item row="3" column="1">
-                    <widget class="QLineEdit" name="edtAllMnsFilterIP">
+                    <widget class="QLineEdit" name="edtNetMnsFilterIP">
                      <property name="clearButtonEnabled">
                       <bool>true</bool>
                      </property>
                     </widget>
                    </item>
                    <item row="1" column="1">
-                    <widget class="QComboBox" name="cboAllMnsFilterStatus">
+                    <widget class="QComboBox" name="cboNetMnsFilterStatus">
                      <item>
                       <property name="text">
                        <string>Any</string>
@@ -705,7 +718,7 @@
                    <item row="1" column="2">
                     <widget class="QLabel" name="label_4">
                      <property name="text">
-                      <string>Payment address:</string>
+                      <string>Payout address:</string>
                      </property>
                      <property name="alignment">
                       <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -713,14 +726,14 @@
                     </widget>
                    </item>
                    <item row="4" column="1">
-                    <widget class="QLineEdit" name="edtAllMnsFilterProtx">
+                    <widget class="QLineEdit" name="edtNetMnsFilterProtx">
                      <property name="clearButtonEnabled">
                       <bool>true</bool>
                      </property>
                     </widget>
                    </item>
                    <item row="0" column="3">
-                    <widget class="QLineEdit" name="edtAllMnsFilterCollateralAddress">
+                    <widget class="QLineEdit" name="edtNetMnsFilterCollateralAddress">
                      <property name="clearButtonEnabled">
                       <bool>true</bool>
                      </property>
@@ -737,7 +750,7 @@
                     </widget>
                    </item>
                    <item row="0" column="1">
-                    <widget class="QComboBox" name="cboAllMnsFilterType">
+                    <widget class="QComboBox" name="cboNetMnsFilterType">
                      <item>
                       <property name="text">
                        <string>Any</string>
@@ -756,7 +769,7 @@
                     </widget>
                    </item>
                    <item row="0" column="5">
-                    <widget class="QLineEdit" name="edtAllMnsFilterCollateralHash">
+                    <widget class="QLineEdit" name="edtNetMnsFilterCollateralHash">
                      <property name="clearButtonEnabled">
                       <bool>true</bool>
                      </property>
@@ -793,7 +806,7 @@
                     </widget>
                    </item>
                    <item row="3" column="3">
-                    <widget class="QLineEdit" name="edtAllMnsFilterOwnerAddress">
+                    <widget class="QLineEdit" name="edtNetMnsFilterOwnerAddress">
                      <property name="clearButtonEnabled">
                       <bool>true</bool>
                      </property>
@@ -810,14 +823,18 @@
                     </widget>
                    </item>
                    <item row="4" column="3">
-                    <widget class="QLineEdit" name="edtAllMnsFilterVotingAddress">
+                    <widget class="QLineEdit" name="edtNetMnsFilterVotingAddress">
                      <property name="clearButtonEnabled">
                       <bool>true</bool>
                      </property>
                     </widget>
                    </item>
                    <item row="3" column="5">
-                    <widget class="QLineEdit" name="edtAllMnsFilterOperatorPubkey"/>
+                    <widget class="QLineEdit" name="edtNetMnsFilterOperatorPubkey">
+                     <property name="clearButtonEnabled">
+                      <bool>true</bool>
+                     </property>
+                    </widget>
                    </item>
                    <item row="3" column="4">
                     <widget class="QLabel" name="label_12">
@@ -830,7 +847,7 @@
                     </widget>
                    </item>
                    <item row="4" column="5">
-                    <widget class="QDateEdit" name="edtAllMnsFilterWasActiveOn">
+                    <widget class="QDateEdit" name="edtNetMnsFilterWasActiveOn">
                      <property name="calendarPopup">
                       <bool>true</bool>
                      </property>
@@ -840,7 +857,7 @@
                     </widget>
                    </item>
                    <item row="4" column="4">
-                    <widget class="QCheckBox" name="chbAllMnsFilterWasActiveOn">
+                    <widget class="QCheckBox" name="chbNetMnsFilterWasActiveOn">
                      <property name="sizePolicy">
                       <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
                        <horstretch>0</horstretch>
@@ -859,11 +876,13 @@
                  </widget>
                 </item>
                 <item>
-                 <widget class="QTableView" name="viewAllMasternodes"/>
-                </item>
-                <item>
-                 <widget class="QWidget" name="widget" native="true">
-                  <layout class="QVBoxLayout" name="verticalLayout_9"/>
+                 <widget class="QTableView" name="viewNetMasternodes">
+                  <property name="selectionMode">
+                   <enum>QAbstractItemView::SingleSelection</enum>
+                  </property>
+                  <property name="wordWrap">
+                   <bool>true</bool>
+                  </property>
                  </widget>
                 </item>
                </layout>

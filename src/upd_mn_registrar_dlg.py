@@ -412,7 +412,10 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
     def on_chbLegacyOperatorKey_toggled(self, checked):
         try:
             self.legacy_operator_key = checked
-            self.update_manual_cmd_info()
+            if not self.updating_ui:
+                self.validate_data()
+                self.update_ctrls_state()
+                self.update_manual_cmd_info()
         except Exception as e:
             self.error_msg(str(e), True)
 
@@ -463,14 +466,10 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                 else:
                     self.dmn_new_operator_pubkey = key
                     self.dmn_new_operator_privkey = ''
-                    if not self.legacy_operator_key and self.app_config.feature_new_bls_scheme.get_value():
-                        if not dash_utils.validate_bls_pubkey(self.dmn_new_operator_pubkey):
-                            self.operator_key_err_msg = 'Invalid operator public key'
-                            errors_occurred = True
-                    else:
-                        if not dash_utils.validate_bls_pubkey_legacy(self.dmn_new_operator_pubkey):
-                            self.operator_key_err_msg = 'Invalid operator public key'
-                            errors_occurred = True
+                    new_bls_scheme = not self.legacy_operator_key and self.app_config.feature_new_bls_scheme.get_value()
+                    if not dash_utils.validate_bls_pubkey(self.dmn_new_operator_pubkey, new_bls_scheme):
+                        self.operator_key_err_msg = 'Invalid operator public key'
+                        errors_occurred = True
             else:
                 self.dmn_new_operator_pubkey = self.dmn_prev_operator_pubkey
                 self.dmn_new_operator_privkey = ''

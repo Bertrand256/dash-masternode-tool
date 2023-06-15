@@ -44,6 +44,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.edit_mode = False
         self.owner_key_invalid = False
         self.operator_key_invalid = False
+        self.operator_pubkey_is_legacy = False
         self.voting_key_invalid = False
         self.platform_node_key_invalid = False
         self.setupUi(self)
@@ -243,7 +244,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                                        (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.lblOperatorKeyMsg.setVisible(self.masternode is not None and
                                          (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0) and
-                                          self.operator_key_invalid)
+                                          (self.operator_key_invalid or self.operator_pubkey_is_legacy))
         self.edtOperatorKey.setVisible(self.masternode is not None and
                                        (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.btnShowOperatorPrivateKey.setVisible(self.masternode is not None and
@@ -397,13 +398,17 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 color = 'color:#00802b'
             elif style == 'hl2':
                 color = 'color:#0047b3'
+            elif style == 'error':
+                color = 'color:red'
+            elif style == 'warning':
+                color = 'background-color:#ff9900'
             else:
                 color = ''
             return color
 
         def set_label_text(lbl_control: QLabel, msg_control: QLabel, key_desc_prefix: str, cur_key_type: str,
                            tooltip_anchor: str, menu_group: Optional[QActionGroup], style: str,
-                           error_msg: Optional[str] = None):
+                           error_msg: Optional[str] = None, error_msg_style: Optional[str] = 'error'):
             change_mode = ''
             if self.edit_mode and tooltip_anchor:
                 change_mode = f'<td>(<a href="{tooltip_anchor}">use {tooltip_anchor}</a>)</td>'
@@ -423,14 +428,14 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 lbl = key_desc_prefix + ' public key hash'
             elif cur_key_type in ('privkey_tenderdash', 'privkey_pkcs8_base64', 'privkey_pkcs8_pem',
                                   'privkey_pkcs8_der', 'privkey_raw'):
-                lbl = key_desc_prefix + ' private key'
+                lbl = key_desc_prefix + ' key'
             elif cur_key_type == 'platform_node_id':
                 lbl = key_desc_prefix + ' id'
             else:
                 lbl = key_desc_prefix
 
             if error_msg:
-                err_text = '<span style="color:red">' + error_msg + '</span>'
+                err_text = f'<span style="{style_to_color(error_msg_style)}">' + error_msg + '</span>'
             else:
                 err_text = ''
 
@@ -482,6 +487,12 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                            self.ag_operator_key, style, err_msg)
             self.edtOperatorKey.setPlaceholderText(placeholder_text)
 
+            if not err_msg and self.masternode.operator_key_type == InputKeyType.PUBLIC and \
+                    self.operator_pubkey_is_legacy:
+                err_msg = 'Legacy operator public key'
+                set_label_text(self.lblOperatorKey, self.lblOperatorKeyMsg, 'Operator', key_type, tooltip_anchor,
+                               self.ag_operator_key, style, err_msg, error_msg_style='warning')
+
             style = ''
             if self.masternode.voting_key_type == InputKeyType.PRIVATE:
                 key_type, tooltip_anchor, placeholder_text = ('privkey', 'address', 'Enter the voting private key')
@@ -505,7 +516,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             style = ''
             if self.masternode.platform_node_key_type == InputKeyType.PRIVATE:
                 key_type, tooltip_anchor, placeholder_text = ('privkey_tenderdash', 'node id',
-                                                              'Enter the Platform Node private key')
+                                                              'Enter the Platform Node key')
                 if not self.edit_mode and not self.act_view_as_platform_node_private_key_tenderdash.isChecked():
                     style = 'hl2'
             else:
@@ -517,7 +528,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             err_msg = ''
             if self.platform_node_key_invalid:
                 if self.masternode.platform_node_key_type == InputKeyType.PRIVATE:
-                    err_msg = 'Invalid Platform Node private key format (sould be Ed25519)'
+                    err_msg = 'Invalid Platform Node key format (sould be Ed25519)'
                 else:
                     err_msg = 'Invalid Plarform Node Id format'
             set_label_text(self.lblPlatformNodeKey, self.lblPlatformNodeMsg, 'Platform Node', key_type,
@@ -1238,6 +1249,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     def validate_keys(self):
         self.owner_key_invalid = False
         self.operator_key_invalid = False
+        self.operator_pubkey_is_legacy = False
         self.voting_key_invalid = False
         self.platform_node_key_invalid = False
 
@@ -1251,14 +1263,20 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                     self.owner_key_invalid = not dash_utils.validate_address(self.masternode.owner_address,
                                                                              self.app_config.dash_network)
 
+            new_bls_scheme = self.app_config.feature_new_bls_scheme.get_value()
             if self.masternode.operator_key_type == InputKeyType.PRIVATE:
                 if self.masternode.operator_private_key:
                     self.operator_key_invalid = not dash_utils.validate_bls_privkey(
-                        self.masternode.operator_private_key, self.app_config.feature_new_bls_scheme.get_value())
+                        self.masternode.operator_private_key, new_bls_scheme)
             else:
                 if self.masternode.operator_public_key:
                     self.operator_key_invalid = not dash_utils.validate_bls_pubkey(
-                        self.masternode.operator_public_key)
+                        self.masternode.operator_public_key, new_bls_scheme)
+
+                    if self.operator_key_invalid and new_bls_scheme:
+                        if dash_utils.validate_bls_pubkey_legacy(self.masternode.operator_public_key):
+                            self.operator_key_invalid = False
+                            self.operator_pubkey_is_legacy = True
 
             if self.masternode.voting_key_type == InputKeyType.PRIVATE:
                 if self.masternode.voting_private_key:

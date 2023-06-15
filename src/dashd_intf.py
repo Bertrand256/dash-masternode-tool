@@ -496,7 +496,7 @@ class Masternode(AttrsProtected):
         self.operator_payout_address: str = ''
         self.dmt_creation_time: Optional[int] = None
         self.dmt_deactivation_time: Optional[int] = None
-        self.dmt_active: int = None
+        self.dmt_active: Optional[int] = None
         self.set_attr_protection()
 
     def copy_from(self, src: Masternode):
