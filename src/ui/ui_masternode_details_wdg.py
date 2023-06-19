@@ -411,7 +411,7 @@ class Ui_WdgMasternodeDetails(object):
         self.lblName.setText(_translate("WdgMasternodeDetails", "Name"))
         self.lblMasternodeType.setText(_translate("WdgMasternodeDetails", "Masternode type"))
         self.rbMNTypeRegular.setText(_translate("WdgMasternodeDetails", "Regular (1000 Dash)"))
-        self.rbMNTypeHPMN.setText(_translate("WdgMasternodeDetails", " HPMN (4000 Dash)"))
+        self.rbMNTypeHPMN.setText(_translate("WdgMasternodeDetails", "Evolution (4000 Dash)"))
         self.lblIP.setText(_translate("WdgMasternodeDetails", "IP"))
         self.lblPort.setText(_translate("WdgMasternodeDetails", "port"))
         self.btnGetMNDataByIP.setToolTip(_translate("WdgMasternodeDetails", "Fetch public masternode data from network"))

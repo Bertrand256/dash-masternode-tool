@@ -722,7 +722,7 @@ class Ui_RegMasternodeDlg(object):
         self.lblOperatorRewardMsg.setText(_translate("RegMasternodeDlg", "..."))
         self.label_5.setText(_translate("RegMasternodeDlg", "Port"))
         self.rbMNTypeRegular.setText(_translate("RegMasternodeDlg", "Regular (1000 Dash)"))
-        self.rbMNTypeHPMN.setText(_translate("RegMasternodeDlg", " HPMN (4000 Dash)"))
+        self.rbMNTypeHPMN.setText(_translate("RegMasternodeDlg", "Evolution (4000 Dash)"))
         self.label_15.setText(_translate("RegMasternodeDlg", "Operator reward"))
         self.label_2.setText(_translate("RegMasternodeDlg", "TX index"))
         self.btnSelectCollateralUtxo.setToolTip(_translate("RegMasternodeDlg", "Select UTXO for collateral from wallet"))
