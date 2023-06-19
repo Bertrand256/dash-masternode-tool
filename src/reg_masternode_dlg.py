@@ -7,6 +7,7 @@ import json
 import logging
 from typing import List, Callable, Optional
 import ipaddress
+import time
 
 from PyQt5.QtCore import pyqtSlot, Qt, QTimerEvent, QTimer
 from PyQt5.QtWidgets import QDialog, QMessageBox, QApplication, QWidget
@@ -224,12 +225,14 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
 
         self.lblProtxSummary1.setStyleSheet(f'QLabel{{color:{green_color};font-weight: bold}}')
 
-    def strip_clipboard_contents(self, _):
+    def strip_clipboard_contents(self, mode):
         """ Remove leading/trailing spaces and newline characters from a text copied do clipboard."""
         try:
             cl = QApplication.clipboard()
             t = cl.text()
-            if t:
+            if t and t.strip() != t:
+                # QClipboard.blockSignals not working with QT 5.15 on Windows, so we need the above additional
+                # protection to avoid infinite loop when setting a new clipboard value
                 cl.blockSignals(True)
                 try:
                     cl.setText(t.strip())

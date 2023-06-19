@@ -83,12 +83,14 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
     def update_styles(self):
         self.update_manual_cmd_info()
 
-    def strip_clipboard_contents(self, _):
+    def strip_clipboard_contents(self, mode):
         """ Remove leading/trailing spaces and newline characters from a text copied do clipboard."""
         try:
             cl = QApplication.clipboard()
             t = cl.text()
-            if t:
+            if t and t.strip() != t:
+                # QClipboard.blockSignals not working with QT 5.15 on Windows, so we need the above additional
+                # protection to avoid infinite loop when setting a new clipboard value
                 cl.blockSignals(True)
                 try:
                     cl.setText(t.strip())
