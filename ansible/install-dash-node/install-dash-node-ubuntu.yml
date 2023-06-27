@@ -10,8 +10,58 @@
   vars:
     swap_file: "/var/swapfile"
     ssh_pubkeys_used: false
+    dash_network:
 
   tasks:
+    - name: Check the OS distribution
+      fail:
+        msg: "Unsupported the OS distribution {{ ansible_distribution }} (should be Debian or Ubuntu)"
+      when: ansible_distribution != 'Ubuntu' and ansible_distribution != 'Debian'
+
+    - block:
+      - pause:
+          prompt: "Choose the Dash network: mainnet | testnet"
+        register: ret
+
+      - set_fact:
+          dash_network: "{{ ret.user_input }}"
+      when: dash_network is not defined or not dash_network
+
+    - fail:
+        msg: "Dash network is not valid. Should be mainnet or testnet"
+      when: dash_network != 'mainnet' and dash_network != 'testnet'
+
+    - block:
+      - pause:
+          prompt: "Choose the Unix user for Dash software owner"
+        register: ret
+
+      - set_fact:
+          dashuser: "{{ ret.user_input }}"
+      when: dashuser is not defined or not dashuser
+
+    - fail:
+        msg: "dashuser is not defined"
+      when: dashuser is not defined or not dashuser
+
+    - block:
+      - pause:
+          prompt: "Enter the password for {{ dashuser }}"
+        register: ret
+
+      - set_fact:
+          dashuser_password: "{{ ret.user_input }}"
+      when: dashuser_password is not defined or not dashuser_password
+
+    - block:
+      - pause:
+          prompt: "Enter additional SSH public key to add to {{ dashuser }}/.ssh/authorized_keys or Enter if none"
+        register: ret
+
+      - set_fact:
+          ssh_additional_pubkey: "{{ ret.user_input }}"
+      when: ssh_additional_pubkey is not defined or not ssh_additional_pubkey
+
     - name: Update and upgrade packages
       apt:
         upgrade: "yes"
@@ -164,7 +214,6 @@
         cmd: "{{ item }}"
       become_user: "{{ dashuser }}"
       loop:
-        - "curl https://keybase.io/codablock/pgp_keys.asc | gpg --import"
         - "curl https://keybase.io/pasta/pgp_keys.asc | gpg --import"
 
     - name: Create .dashcore dir
@@ -220,7 +269,7 @@
         line: 'export PATH=$PATH:~/.dashcore'
       become_user: "{{ dashuser }}"
 
-    - name: Check whether dash-cli exist
+    - name: Check whether dash-conf exist
       stat:
         path: ~/.dashcore/dash.conf
       register: dash_conf_exists
@@ -231,7 +280,7 @@
           random_rpc_name: "{{ lookup('password', '/dev/null chars=ascii_lowercase,digits length=20') }}"
           random_rpc_pass: "{{ lookup('password', '/dev/null chars=ascii_lowercase,digits length=20') }}"
 
-      - name: Create dash.conf
+      - name: Create dash.conf for mainnet
         copy:
           dest: ~/.dashcore/dash.conf
           content: |
@@ -239,11 +288,29 @@
             rpcuser=rpcuser{{ random_rpc_name }}
             rpcpassword=rpcpassword{{ random_rpc_pass }}
             rpcallowip=127.0.0.1
-            port={{ "19999" if dashnode_testnet else "9999" }}
+            port=9999
             listen=1
             server=1
             daemon=1
             externalip={{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}
+        when: not dashnode_testnet
+        become_user: "{{ dashuser }}"
+
+      - name: Create dash.conf for testnet
+        copy:
+          dest: ~/.dashcore/dash.conf
+          content: |
+            testnet={{ "1" if dashnode_testnet else "0" }}
+            rpcuser=rpcuser{{ random_rpc_name }}
+            rpcpassword=rpcpassword{{ random_rpc_pass }}
+            rpcallowip=127.0.0.1
+            listen=1
+            server=1
+            daemon=1
+            externalip={{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}
+            [test]
+            port=19999
+        when: dashnode_testnet
         become_user: "{{ dashuser }}"
       when: not dash_conf_exists.stat.exists
 
@@ -252,24 +319,28 @@
         lineinfile:
           dest: ~/.dashcore/dash.conf
           line: addressindex=1
+          insertafter: ^rpcallowip\s*=.*
         become_user: "{{ dashuser }}"
 
       - name: Add spentindex options to dash.conf
         lineinfile:
           dest: ~/.dashcore/dash.conf
           line: spentindex=1
+          insertafter: ^rpcallowip\s*=.*
         become_user: "{{ dashuser }}"
 
       - name: Add timestampindex options to dash.conf
         lineinfile:
           dest: ~/.dashcore/dash.conf
           line: timestampindex=1
+          insertafter: ^rpcallowip\s*=.*
         become_user: "{{ dashuser }}"
 
       - name: Add txindex options to dash.conf
         lineinfile:
           dest: ~/.dashcore/dash.conf
           line: txindex=1
+          insertafter: ^rpcallowip\s*=.*
         become_user: "{{ dashuser }}"
       when: enable_dashd_indexing
 
@@ -300,19 +371,23 @@
         become_user: "{{ dashuser }}"
       when: is_masternode
 
-    - name: Get dashd PID
-      shell:
-        cmd: pgrep dashd
-      register: dashd_pids
-      ignore_errors: true
-      changed_when: false
-      become_user: "{{ dashuser }}"
+    - name: Create a systemd service for dashd
+      template:
+        src: files/dashd-service.j2
+        dest: "/etc/systemd/system/dashd-{{ dash_network }}.service"
+        force: no
+      vars:
+        service_user: "{{ dashuser }}"
+        dashd_dir: "/home/{{ dashuser }}/.dashcore"
+      become: True
 
-    - name: Start dashd
-      shell:
-        cmd: ~/.dashcore/dashd
-      when: not dashd_pids.stdout
-      become_user: "{{ dashuser }}"
+    - name: Start dashd-{{ dash_network }} service
+      systemd:
+        state: started
+        enabled: true
+        unit: "dashd-{{ dash_network }}"
+        daemon_reload: yes
+      become: true
 
     - name: Disable SSH root login
       lineinfile:

@@ -127,14 +127,23 @@ After making changes, save them (Ctrl + O, ENTER) and exit the editor (Ctrl + X)
 #### Step 3. Run the Ansible script
 ```
 cd ~/dash-masternode-tool/ansible/install-dash-node
-ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook --ask-pass -i HOST_IP, -e "ansible_user=root dashuser_password=DASHUSER_PASS" install-dash-node-ubuntu.yml
+ansible-playbook --ask-pass -i HOST_IP, -u root install-dash-node-ubuntu.yml
 ```
 
 Replace capitalized strings with the appropriate values:
 * **HOST_IP**: IP address of your VPS server on which you install Dash node
-* **DASHUSER_PASS**: The password to be set for the newly created linux user who will own the Dash software (above referred to as dashuser).
 
-At the beginning, the **SSH password** prompt will be displayed, to which you should reply by entering the password for the root user of your VPS. After that, the server configuration process will begin, the individual steps of which can be viewed on the terminal screen. It will take up to a dozen minutes and when it is finished you will see something like this:  
+**Note:** one of the steps in the script is to set up a Linux account with sudo privileges and prevent logins to the root account via SSH for security reasons, so if you are running the script a second time, you should modify the way you start it as follows:
+```
+ansible-playbook --ask-pass -i HOST_IP, -u DASHUSER_NAME -e "ansible_become_pass=DASHUSER_PASSWORD" install-dash-node-ubuntu.yml
+```
+
+Replace capitalized strings with the appropriate values:
+* **DASHUSER_NAME**: the name you chose for the newly created Linux user (dash by default).
+* **DASHUSER_PASSWORD**: the password you chose for the newly created Linux user.
+
+
+At the beginning, the **SSH password** prompt will be displayed, to which you should reply by entering the password for the root user of your VPS. After that, the server configuration process will begin, the individual steps of which can be viewed on the terminal screen. It will take up to a dozen minutes, and when it is finished you will see something like this:  
 ![Ansible results](img/ansible-dash-node-installation-result.png)
 
 The outcome should be that the server has been properly configured to work as a Dash node and finally the *dashd* program has been launched, starting its synchronization with the Dash blockchain. This process will probably take up to several hours, and you can check its status by executing the `dash-cli mnsync status` command periodically.
