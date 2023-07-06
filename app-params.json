@@ -96,7 +96,7 @@
     },
     "NEW_BLS_SCHEME": {
       "mainnet": {
-        "status": "disabled",
+        "status": "enabled",
         "priority": 4,
         "message": ""
       },
