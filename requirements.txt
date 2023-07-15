@@ -12,7 +12,7 @@ paramiko==3.1.0
 requests==2.31.0
 mnemonic~=0.19
 simplejson==3.19.1
-cryptography==41.0.1
+cryptography==41.0.2
 bip32utils~=0.3.post4
 more-itertools==9.1.0
 setuptools==65.3.0
