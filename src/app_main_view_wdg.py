@@ -835,14 +835,14 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                                  ('Voting address', mn.voting_address, None)])
                 add_status_line([('Operator pubkey', mn.pubkey_operator, None)])
                 add_status_line([('Operator reward', str(mn.operator_reward), None),
-                                 ('Operator payout address', mn.operator_payout_address if mn.operator_payout_address else '&lt;empty>&gt;', None)])
-                add_status_line([('Platform Node Id', mn.platform_node_id if mn.platform_node_id else '&lt;empty>&gt;', None),
-                                 ('Platform P2P port', str(mn.platform_p2p_port) if mn.platform_p2p_port else '&lt;empty>&gt;', None),
-                                 ('Platform HTTP port', str(mn.platform_http_port) if mn.platform_http_port else '&lt;empty>&gt;', None)])
-                add_status_line([('PoSe penalty', str(mn.pose_penalty) if mn.pose_penalty is not None else '&lt;empty>&gt;', None),
-                                 ('PoSe ban height', str(mn.pose_ban_height) if mn.pose_ban_height is not None else '&lt;empty>&gt;', None),
-                                 ('PoSe ban time', app_utils.to_string(datetime.fromtimestamp(mn.pose_ban_timestamp)) if mn.pose_ban_timestamp is not None and mn.pose_ban_timestamp > 0 else '&lt;empty>&gt;', None),
-                                 ('Payment queue position', str(mn.queue_position) if mn.queue_position is not None else '&lt;empty>&gt;', None)])
+                                 ('Operator payout address', mn.operator_payout_address if mn.operator_payout_address else '&lt;empty&gt;', None)])
+                add_status_line([('Platform Node Id', mn.platform_node_id if mn.platform_node_id else '&lt;empty&gt;', None),
+                                 ('Platform P2P port', str(mn.platform_p2p_port) if mn.platform_p2p_port else '&lt;empty&gt;', None),
+                                 ('Platform HTTP port', str(mn.platform_http_port) if mn.platform_http_port else '&lt;empty&gt;', None)])
+                add_status_line([('PoSe penalty', str(mn.pose_penalty) if mn.pose_penalty is not None else '&lt;empty&gt;', None),
+                                 ('PoSe ban height', str(mn.pose_ban_height) if mn.pose_ban_height is not None else '&lt;empty&gt;', None),
+                                 ('PoSe ban time', app_utils.to_string(datetime.fromtimestamp(mn.pose_ban_timestamp)) if mn.pose_ban_timestamp is not None and mn.pose_ban_timestamp > 0 else '&lt;empty&gt;', None),
+                                 ('Payment queue position', str(mn.queue_position) if mn.queue_position is not None else '&lt;empty&gt;', None)])
 
         if not status:
             status = f"""<style>td {{white-space:nowrap;padding-right:8px}}
