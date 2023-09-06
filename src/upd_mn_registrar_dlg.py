@@ -80,13 +80,10 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
             self.setWindowTitle("Update voting key")
         elif self.show_upd_operator:
             self.setWindowTitle("Update operator key")
-        if self.show_upd_operator:
-            if not self.new_bls_scheme_active:
-                self.chbLegacyOperatorKey.hide()
-            else:
-                self.chbLegacyOperatorKey.show()
-        else:
+        if not self.new_bls_scheme_active:
             self.chbLegacyOperatorKey.hide()
+        else:
+            self.chbLegacyOperatorKey.show()
         self.restore_cache_settings()
         try:
             self.read_data_from_network()
@@ -437,16 +434,16 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
             self.dmn_new_payout_address = ''
 
         self.update_registrar_rpc_command = 'update_registrar'
-        if self.show_upd_operator:
-            if self.new_bls_scheme_active:
-                self.legacy_operator_key = self.chbLegacyOperatorKey.isChecked()
-                if self.legacy_operator_key:
-                    # Use the "update_registrar_legacy" call only when v19 fork is active, otherwise the "update_registrar"
-                    # call is used and basically does the same
-                    self.update_registrar_rpc_command = 'update_registrar_legacy'
-            else:
-                self.legacy_operator_key = True
+        if self.new_bls_scheme_active:
+            self.legacy_operator_key = self.chbLegacyOperatorKey.isChecked()
+            if self.legacy_operator_key:
+                # Use the "update_registrar_legacy" call only when v19 fork is active, otherwise the "update_registrar"
+                # call is used and basically does the same
+                self.update_registrar_rpc_command = 'update_registrar_legacy'
+        else:
+            self.legacy_operator_key = True
 
+        if self.show_upd_operator:
             key = self.edtOperatorKey.text().strip()
             if key:
                 self.operator_key_err_msg = ''
