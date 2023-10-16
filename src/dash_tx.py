@@ -56,6 +56,9 @@ def serialize_cbTx(tx):
 def serialize_Lelantus(tx):
     return tx["lelantusData"]
 
+def serialize_Spark(tx):
+    return tx["sparkData"]
+
 class DashTxType:
     CLASSICAL_TX = 0
     SPEC_PRO_REG_TX = 1
@@ -64,3 +67,4 @@ class DashTxType:
     SPEC_PRO_UP_REV_TX = 4
     SPEC_CB_TX = 5
     LELANTUS_JSPLIT = 8
+    SPARK_SPEND = 9

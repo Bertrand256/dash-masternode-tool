@@ -33,7 +33,7 @@ from hw_common import ask_for_pass_callback, ask_for_pin_callback, \
 import logging
 import wallet_common
 from wnd_utils import WndUtils
-from dash_tx import DashTxType, serialize_cbTx, serialize_Lelantus
+from dash_tx import DashTxType, serialize_cbTx, serialize_Lelantus, serialize_Spark
 
 log = logging.getLogger('dmt.hw_intf_trezor')
 
@@ -324,6 +324,8 @@ def json_to_tx(coin, data):
                 data["extraPayload"] = serialize_cbTx(data)
             elif dip2_type == DashTxType.LELANTUS_JSPLIT:
                 data["extraPayload"] = serialize_Lelantus(data)
+            elif dip2_type == DashTxType.SPARK_SPEND:
+                data["extraPayload"] = serialize_Spark(data)
             else:
                 raise NotImplementedError("Only spending of V3 coinbase outputs has been inplemented. "
                     "Please file an issue at https://github.com/firoorg/firo-masternode-tool/issues containing "
