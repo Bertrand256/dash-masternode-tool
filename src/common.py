@@ -8,7 +8,7 @@ from typing import Any
 
 class AttrsProtected(object):
     """
-    Class for protecting of attribute definition to only inside of a constructor.
+    Class for protecting of attribute definition to only an inside of a constructor.
     """
     def __init__(self):
         self.__allow_attr_definition = True
@@ -16,7 +16,7 @@ class AttrsProtected(object):
     def set_attr_protection(self):
         """
         Method to be called at the end of child class constructor. It enables attribute
-        defition protection - each attempt of creating attribute after this call will
+        definition protection - each attempt of creating attribute after this call will
         end up with an error.
         """
         self.__allow_attr_definition = False
@@ -44,12 +44,19 @@ class CancelException(Exception):
         Exception.__init__(self, *args, *kwargs)
 
 
-def namedtuple_defaults(typename, field_names, default_values=()):
-    T = collections.namedtuple(typename, field_names)
-    T.__new__.__defaults__ = (None,) * len(T._fields)
-    if isinstance(default_values, collections.Mapping):
-        prototype = T(**default_values)
-    else:
-        prototype = T(*default_values)
-    T.__new__.__defaults__ = tuple(prototype)
-    return T
+class HwNotInitialized(Exception):
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, *kwargs)
+
+
+class InternalError(Exception):
+    def __init__(self, message: str, error_code: int = -1):
+        if message:
+            self.message = message
+        else:
+            self.message = 'Internal error'
+        self.error_code = error_code
+
+    def __str__(self):
+        return self.message
+

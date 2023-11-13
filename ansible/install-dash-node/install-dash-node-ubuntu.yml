@@ -1,0 +1,410 @@
+# Author: Bertrand256
+# Created on: 2022-03
+# Description: This script is designed to prepare a Dash node dedicated to work as a masternode.
+
+- name: Installation of the Dash node
+  hosts: all
+  become: True
+  vars_files:
+    install-dash-node-vars
+  vars:
+    swap_file: "/var/swapfile"
+    ssh_pubkeys_used: false
+    dash_network:
+
+  tasks:
+    - name: Check the OS distribution
+      fail:
+        msg: "Unsupported the OS distribution {{ ansible_distribution }} (should be Debian or Ubuntu)"
+      when: ansible_distribution != 'Ubuntu' and ansible_distribution != 'Debian'
+
+    - block:
+      - pause:
+          prompt: "Choose the Dash network: mainnet | testnet"
+        register: ret
+
+      - set_fact:
+          dash_network: "{{ ret.user_input }}"
+      when: dash_network is not defined or not dash_network
+
+    - fail:
+        msg: "Dash network is not valid. Should be mainnet or testnet"
+      when: dash_network != 'mainnet' and dash_network != 'testnet'
+
+    - block:
+      - pause:
+          prompt: "Choose the Unix user for Dash software owner"
+        register: ret
+
+      - set_fact:
+          dashuser: "{{ ret.user_input }}"
+      when: dashuser is not defined or not dashuser
+
+    - fail:
+        msg: "dashuser is not defined"
+      when: dashuser is not defined or not dashuser
+
+    - block:
+      - pause:
+          prompt: "Enter the password for {{ dashuser }}"
+        register: ret
+
+      - set_fact:
+          dashuser_password: "{{ ret.user_input }}"
+      when: dashuser_password is not defined or not dashuser_password
+
+    - block:
+      - pause:
+          prompt: "Enter additional SSH public key to add to {{ dashuser }}/.ssh/authorized_keys or Enter if none"
+        register: ret
+
+      - set_fact:
+          ssh_additional_pubkey: "{{ ret.user_input }}"
+      when: ssh_additional_pubkey is not defined or not ssh_additional_pubkey
+
+    - name: Update and upgrade packages
+      apt:
+        upgrade: "yes"
+        update_cache: true
+
+    - name: Software installation
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - unattended-upgrades
+        - curl
+        - ufw
+        - git
+        - python
+        - virtualenv
+        - unzip
+        - pv
+        - jq
+
+    - name: Setup unattended upgrades
+      debconf:
+        name: unattended-upgrades
+        question: unattended-upgrades/enable_auto_updates
+        vtype: boolean
+        value: "true"
+
+    - name: Add user for Dash software
+      user:
+        name: "{{ dashuser }}"
+        password: "{{ dashuser_password | password_hash('sha512') }}"
+        shell: /bin/bash
+        append: yes
+        groups: sudo
+
+    - name: Add SSH key for {{ dashuser }}
+      authorized_key:
+        user: "{{ item }}"
+        state: present
+        key: "{{ ssh_additional_pubkey }}"
+      loop:
+        - "{{ dashuser }}"
+        - root
+      when: ssh_additional_pubkey is defined and ssh_additional_pubkey
+
+    - name: Check whether local id_rsa.pub exists
+      local_action: stat path="{{ lookup('env','HOME') + '/.ssh/id_rsa.pub' }}"
+      register: id_rsa_pub_exists
+      become: false
+      when: ssh_add_local_id_rsa_pubkey
+
+    - name: Add local id_rsa.pub do authorized_keys
+      authorized_key:
+        user: "{{ item }}"
+        state: present
+        key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+      loop:
+        - "{{ dashuser }}"
+        - root
+      when: id_rsa_pub_exists.stat is defined and id_rsa_pub_exists.stat.exists
+
+    - name: Have we set the SSH public keys in authorized_keys?
+      set_fact:
+        ssh_pubkeys_used: true
+      when: (id_rsa_pub_exists.stat is defined and id_rsa_pub_exists.stat.exists) or (ssh_additional_pubkey is defined and ssh_additional_pubkey)
+
+    - name: Disable SSH password authentication
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^(#)?PasswordAuthentication(.*)$'
+        line: 'PasswordAuthentication = no'
+        backrefs: yes
+      when: ssh_pubkeys_used and ssh_disable_password_login
+      notify:
+        Restart SSH
+
+    - name: Allow all access to SSH, DNS, and WWW
+      ufw:
+        rule: allow
+        port: '{{ item }}'
+      loop:
+        - ssh
+        - "9999"
+        - "19999"
+
+    - name: Enable ufw and default to deny
+      ufw:
+        state: enabled
+        logging: on
+        default: deny
+
+    - name: Limit ssh
+      ufw:
+        rule: limit
+        port: ssh
+        proto: tcp
+
+    - name: Check whether swap is already configured
+      shell: cat /etc/fstab
+      register: swap_fstab
+
+    - set_fact:
+        swap_configured: "{{ swap_fstab.stdout | regex_search(rule, multiline=True) | default('', True) | length > 0 }}"
+      vars:
+        rule: "{{ swap_file }}"
+
+    - block:
+      - name: Remove old file
+        file:
+          path: "{{ swap_file }}"
+          state: absent
+
+      - name: Create swap file
+        command: "fallocate -l {{ swap_size }} {{ swap_file }}"
+
+      - name: Change swap file permissions
+        file:
+          path: "{{ swap_file }}"
+          mode: 600
+
+      - name: Setup swap
+        command: "mkswap {{ swap_file }}"
+
+      - name: Turn on swap
+        command: "swapon {{ swap_file }}"
+
+      - name: Add swap file entry to fstab
+        mount:
+          name: none
+          src: "{{ swap_file }}"
+          fstype: swap
+          opts: sw
+          passno: "0"
+          dump: "0"
+          state: present
+
+      when: not swap_configured
+
+    - name: Check whether the server needs to be restarted
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    - name: Rebooting the server
+      reboot:
+      when: reboot_required.stat.exists
+
+    - name: Add Dash PGP keys
+      shell:
+        cmd: "{{ item }}"
+      become_user: "{{ dashuser }}"
+      loop:
+        - "curl https://keybase.io/pasta/pgp_keys.asc | gpg --import"
+
+    - name: Create .dashcore dir
+      file:
+        path: "~/.dashcore"
+        state: directory
+      become_user: "{{ dashuser }}"
+
+    - name: Download dash software
+      shell:
+        cmd: |
+          cd ~/.dashcore
+          platform=x86_64-linux
+          for URL in $(curl -s https://api.github.com/repos/dashpay/dash/releases/latest | jq -r ".assets[] | select(.name | test(\"${platform}\")) | .browser_download_url")
+          do
+            echo Downloading $URL
+            wget "$URL"
+            gpg --verify *.asc
+          done
+      become_user: "{{ dashuser }}"
+
+    - name: Verify dash software
+      shell:
+        cmd: cd ~/.dashcore && gpg --verify *.asc
+      become_user: "{{ dashuser }}"
+
+    - name: Unpack dash software
+      shell:
+        cmd: cd ~/.dashcore && tar xvf *.tar.gz && mv dashcore*/bin/dash-cli ~/.dashcore/ && mv dashcore*/bin/dashd ~/.dashcore/ && rm -r dashcore*
+      become_user: "{{ dashuser }}"
+
+    - name: Check whether dashd exist
+      stat:
+        path: ~/.dashcore/dashd
+      register: dashd_exists
+      become_user: "{{ dashuser }}"
+
+    - name: Check whether dash-cli exist
+      stat:
+        path: ~/.dashcore/dash-cli
+      register: dash_cli_exists
+      become_user: "{{ dashuser }}"
+
+    - name: Fail if dashd or dash-cli not found
+      fail:
+        msg: "One of the files: dashd or dash-cli does not exist"
+      when: not dashd_exists.stat.exists or not dash_cli_exists.stat.exists
+
+    - name: Add path to ~/.dashcore to .profile
+      lineinfile:
+        path: ~/.profile
+        regexp: 'PATH=.*\:~/.dashcore'
+        line: 'export PATH=$PATH:~/.dashcore'
+      become_user: "{{ dashuser }}"
+
+    - name: Check whether dash-conf exist
+      stat:
+        path: ~/.dashcore/dash.conf
+      register: dash_conf_exists
+      become_user: "{{ dashuser }}"
+
+    - block:
+      - set_fact:
+          random_rpc_name: "{{ lookup('password', '/dev/null chars=ascii_lowercase,digits length=20') }}"
+          random_rpc_pass: "{{ lookup('password', '/dev/null chars=ascii_lowercase,digits length=20') }}"
+
+      - name: Create dash.conf for mainnet
+        copy:
+          dest: ~/.dashcore/dash.conf
+          content: |
+            testnet={{ "1" if dashnode_testnet else "0" }}
+            rpcuser=rpcuser{{ random_rpc_name }}
+            rpcpassword=rpcpassword{{ random_rpc_pass }}
+            rpcallowip=127.0.0.1
+            port=9999
+            listen=1
+            server=1
+            daemon=1
+            externalip={{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}
+        when: not dashnode_testnet
+        become_user: "{{ dashuser }}"
+
+      - name: Create dash.conf for testnet
+        copy:
+          dest: ~/.dashcore/dash.conf
+          content: |
+            testnet={{ "1" if dashnode_testnet else "0" }}
+            rpcuser=rpcuser{{ random_rpc_name }}
+            rpcpassword=rpcpassword{{ random_rpc_pass }}
+            rpcallowip=127.0.0.1
+            listen=1
+            server=1
+            daemon=1
+            externalip={{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}
+            [test]
+            port=19999
+        when: dashnode_testnet
+        become_user: "{{ dashuser }}"
+      when: not dash_conf_exists.stat.exists
+
+    - block:
+      - name: Add addressindex options to dash.conf
+        lineinfile:
+          dest: ~/.dashcore/dash.conf
+          line: addressindex=1
+          insertafter: ^rpcallowip\s*=.*
+        become_user: "{{ dashuser }}"
+
+      - name: Add spentindex options to dash.conf
+        lineinfile:
+          dest: ~/.dashcore/dash.conf
+          line: spentindex=1
+          insertafter: ^rpcallowip\s*=.*
+        become_user: "{{ dashuser }}"
+
+      - name: Add timestampindex options to dash.conf
+        lineinfile:
+          dest: ~/.dashcore/dash.conf
+          line: timestampindex=1
+          insertafter: ^rpcallowip\s*=.*
+        become_user: "{{ dashuser }}"
+
+      - name: Add txindex options to dash.conf
+        lineinfile:
+          dest: ~/.dashcore/dash.conf
+          line: txindex=1
+          insertafter: ^rpcallowip\s*=.*
+        become_user: "{{ dashuser }}"
+      when: enable_dashd_indexing
+
+    - block:
+      - name: Clone sentinel repository
+        git:
+          repo: https://github.com/dashpay/sentinel.git
+          dest: ~/.dashcore/sentinel
+        become_user: "{{ dashuser }}"
+
+      - name: Check whether sentinel venv exists
+        stat:
+          path: ~/.dashcore/sentinel/venv
+        register: sentinel_venv_exists
+        become_user: "{{ dashuser }}"
+
+      - name: Create sentinel runtime environment
+        shell:
+          cmd: |
+            cd ~/.dashcore/sentinel && virtualenv venv && venv/bin/pip install -r requirements.txt && venv/bin/py.test test && venv/bin/python bin/sentinel.py
+        when: not sentinel_venv_exists.stat.exists
+        become_user: "{{ dashuser }}"
+
+      - name: Create crontab entry for sentinel
+        cron:
+          job: "cd ~/.dashcore/sentinel && ./venv/bin/python bin/sentinel.py 2>&1 >> sentinel-cron.log"
+          name: "Sentinel execution"
+        become_user: "{{ dashuser }}"
+      when: is_masternode
+
+    - name: Create a systemd service for dashd
+      template:
+        src: files/dashd-service.j2
+        dest: "/etc/systemd/system/dashd-{{ dash_network }}.service"
+        force: no
+      vars:
+        service_user: "{{ dashuser }}"
+        dashd_dir: "/home/{{ dashuser }}/.dashcore"
+      become: True
+
+    - name: Start dashd-{{ dash_network }} service
+      systemd:
+        state: started
+        enabled: true
+        unit: "dashd-{{ dash_network }}"
+        daemon_reload: yes
+      become: true
+
+    - name: Disable SSH root login
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^(#)?PermitRootLogin(.*)$'
+        line: 'PermitRootLogin = no'
+        backrefs: yes
+      when: ssh_pubkeys_used and ssh_disable_root_login
+      notify:
+        Restart SSH
+
+    - debug:
+        msg: "From now on, log on to the server with user {{ dashuser }}. Blockchain synchronization started, to check the status, run: dash-cli mnsync status"
+
+  handlers:
+    - name: Restart SSH
+      service:
+        name: sshd
+        state: restarted
+

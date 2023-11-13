@@ -18,7 +18,7 @@ import wnd_utils
 from app_config import MasternodeConfig
 from app_defs import DEBUG_MODE
 from bip44_wallet import Bip44Wallet, UNCONFIRMED_TX_BLOCK_HEIGHT
-from ext_item_model import TableModelColumn, ExtSortFilterTableModel
+from ext_item_model import TableModelColumn, ExtSortFilterItemModel
 from wallet_common import Bip44AccountType, Bip44AddressType, UtxoType, TxType
 
 log = logging.getLogger('dmt.wallet_dlg')
@@ -32,13 +32,13 @@ FILTER_OPER_EQ = 3
 
 class MnAddressItem(object):
     def __init__(self):
-        self.masternode: MasternodeConfig = None
-        self.address: Bip44AddressType = None
+        self.masternode: Optional[MasternodeConfig] = None
+        self.address: Optional[Bip44AddressType] = None
 
 
-class MnAddressTableModel(ExtSortFilterTableModel):
+class MnAddressTableModel(ExtSortFilterItemModel):
     def __init__(self, parent, masternode_list: List[MasternodeConfig], bip44_wallet: Bip44Wallet):
-        ExtSortFilterTableModel.__init__(self, parent, [
+        ExtSortFilterItemModel.__init__(self, parent, [
             TableModelColumn('description', 'Description', True, 100)
         ], False, False)
 
@@ -46,22 +46,22 @@ class MnAddressTableModel(ExtSortFilterTableModel):
         for mn in masternode_list:
             mni = MnAddressItem()
             mni.masternode = mn
-            if mni.masternode.collateralAddress:
+            if mni.masternode.collateral_address:
                 self.mn_items.append(mni)
         self.load_mn_addresses_in_bip44_wallet(bip44_wallet)
 
     def load_mn_addresses_in_bip44_wallet(self, bip44_wallet: Bip44Wallet):
         addr_ids = []
         for mni in self.mn_items:
-            if mni.masternode.collateralAddress:
-                a = bip44_wallet.get_address_item(mni.masternode.collateralAddress, True)
+            if mni.masternode.collateral_address:
+                a = bip44_wallet.get_address_item(mni.masternode.collateral_address, True)
                 address_loc = Bip44AddressType(tree_id=None)
                 address_loc.copy_from(a)
                 if not address_loc.bip32_path:
-                    address_loc.bip32_path = mni.masternode.collateralBip32Path
-                    a.bip32_path = mni.masternode.collateralBip32Path
+                    address_loc.bip32_path = mni.masternode.collateral_bip32_path
+                    a.bip32_path = mni.masternode.collateral_bip32_path
                 mni.address = address_loc
-                if mni.masternode.collateralAddress not in addr_ids:
+                if mni.masternode.collateral_address not in addr_ids:
                     addr_ids.append(mni.address.id)
         if addr_ids:
             bip44_wallet.subscribe_addresses_for_chbalance(addr_ids, True)
@@ -121,9 +121,9 @@ class MnAddressTableModel(ExtSortFilterTableModel):
             self.dataChanged.emit(index, index)
 
 
-class AccountListModel(ExtSortFilterTableModel):
+class AccountListModel(ExtSortFilterItemModel):
     def __init__(self, parent):
-        ExtSortFilterTableModel.__init__(self, parent, [
+        ExtSortFilterItemModel.__init__(self, parent, [
             TableModelColumn('address', 'Address', True, 100)
         ], False, True)
         self.accounts: List[Bip44AccountType] = []
@@ -191,10 +191,6 @@ class AccountListModel(ExtSortFilterTableModel):
             if data:
                 if role in (Qt.DisplayRole, Qt.EditRole):
                     if col == 0:
-                        # if isinstance(data, Bip44AccountType):
-                        #     return data.get_account_name()
-                        # else:
-                        #     return f'/{data.address_index}: {data.address}'
                         return data
                     elif col == 1:
                         b = data.balance
@@ -210,7 +206,9 @@ class AccountListModel(ExtSortFilterTableModel):
 
     def removeRows(self, row, count, parent=None, *args, **kwargs):
         if parent is None or not parent.isValid():
-            if row >=0 and row < len(self.accounts):
+            if 0 <= row < len(self.accounts):
+                if parent is None:
+                    parent = QModelIndex()
                 self.beginRemoveRows(parent, row, row + count)
                 for row_offs in range(count):
                     del self.accounts[row - row_offs]
@@ -377,9 +375,9 @@ class AccountListModel(ExtSortFilterTableModel):
         return cur_index + 1
 
 
-class UtxoTableModel(ExtSortFilterTableModel):
+class UtxoTableModel(ExtSortFilterItemModel):
     def __init__(self, parent, masternode_list: List[MasternodeConfig], tx_explorer_url: str):
-        ExtSortFilterTableModel.__init__(self, parent, [
+        ExtSortFilterItemModel.__init__(self, parent, [
             TableModelColumn('satoshis', 'Amount (FIRO)', True, 100),
             TableModelColumn('confirmations', 'Confirmations', True, 100),
             TableModelColumn('bip32_path', 'Path', True, 100),
@@ -396,14 +394,15 @@ class UtxoTableModel(ExtSortFilterTableModel):
         self.utxos: List[UtxoType] = []
         self.utxo_by_id: Dict[int, UtxoType] = {}
         self.block_height = None
+        self.dialog: 'WalletDlg' = parent
 
         self.mn_by_collateral_tx: Dict[str, MasternodeConfig] = {}
         self.mn_by_collateral_address: Dict[str, MasternodeConfig] = {}
 
         for mn in masternode_list:
-            ident = mn.collateralTx + '-' + str(mn.collateralTxIndex)
+            ident = mn.collateral_tx + '-' + str(mn.collateral_tx_index)
             self.mn_by_collateral_tx[ident] = mn
-            self.mn_by_collateral_address[mn.collateralAddress] = mn
+            self.mn_by_collateral_address[mn.collateral_address] = mn
 
         self.set_attr_protection()
 
@@ -415,7 +414,8 @@ class UtxoTableModel(ExtSortFilterTableModel):
 
     def set_view(self, table_view: QTableView):
         super().set_view(table_view)
-        link_delagate = wnd_utils.HyperlinkItemDelegate(table_view)
+        link_delagate = wnd_utils.HyperlinkItemDelegate(
+            table_view, self.dialog.app_config.get_hyperlink_font_color(table_view))
         link_delagate.linkActivated.connect(self.hyperlink_activated)
         table_view.setItemDelegateForColumn(self.col_index_by_name('txid'), link_delagate)
 
@@ -493,7 +493,7 @@ class UtxoTableModel(ExtSortFilterTableModel):
         self.utxos.clear()
         self.utxo_by_id.clear()
 
-    def update_utxos(self, utxos_to_add: List[UtxoType], utxos_to_update: List[UtxoType], utxos_to_delete: List[Tuple[int, int]]):
+    def update_utxos(self, utxos_to_add: List[UtxoType], utxos_to_update: List[UtxoType], utxos_to_delete: List[int]):
         if utxos_to_delete:
             row_indexes_to_remove = []
             for utxo_id in utxos_to_delete:
@@ -592,9 +592,9 @@ class UtxoTableModel(ExtSortFilterTableModel):
             #     self.view.dataChanged(tl_index, br_index, [Qt.DisplayRole, Qt.ForegroundRole, Qt.BackgroundColorRole])
 
 
-class TransactionTableModel(ExtSortFilterTableModel):
+class TransactionTableModel(ExtSortFilterItemModel):
     def __init__(self, parent, tx_explorer_url: str):
-        ExtSortFilterTableModel.__init__(self, parent, [
+        ExtSortFilterItemModel.__init__(self, parent, [
             TableModelColumn('direction', 'Direction', True, 50),
             TableModelColumn('satoshis', 'Amount', True, 100),
             TableModelColumn('block_time_str', 'Date', True, 100),
@@ -613,6 +613,7 @@ class TransactionTableModel(ExtSortFilterTableModel):
         self.tx_explorer_url = tx_explorer_url
         self.__current_block_height = None
         self.__data_modified = False
+        self.dialog: 'WalletDlg' = parent
 
         # filter:
         self.filter_type = FILTER_OR
@@ -628,7 +629,8 @@ class TransactionTableModel(ExtSortFilterTableModel):
 
     def set_view(self, table_view: QTableView):
         super().set_view(table_view)
-        link_delagate = wnd_utils.HyperlinkItemDelegate(table_view)
+        link_delagate = wnd_utils.HyperlinkItemDelegate(
+            table_view, self.dialog.app_config.get_hyperlink_font_color(table_view))
         link_delagate.linkActivated.connect(self.hyperlink_activated)
         table_view.setItemDelegateForColumn(self.col_index_by_name('tx_hash'), link_delagate)
 
@@ -730,7 +732,7 @@ class TransactionTableModel(ExtSortFilterTableModel):
                 idx = self.mapFromSource(idx)
                 return str(idx.row() + 1)
         else:
-            return ExtSortFilterTableModel.headerData(self, column, orientation, role)
+            return ExtSortFilterItemModel.headerData(self, column, orientation, role)
 
     def set_blockheight(self, cur_blockheight):
         if self.__current_block_height != cur_blockheight:

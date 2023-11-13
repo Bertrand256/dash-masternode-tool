@@ -3,76 +3,75 @@
 # Author: Bertrand256
 # Created on: 2017-03
 import argparse
-import base64
 import codecs
 import datetime
 import glob
 import json
 import os
-import pickle
 import re
 import copy
 import shutil
 import subprocess
 import sys
-import threading
-import time
-from enum import Enum
-from io import StringIO, BytesIO
+from io import StringIO
 from configparser import ConfigParser
 from random import randint
 from shutil import copyfile
 import logging
-from typing import Optional, Callable, Dict, Tuple, List
+from typing import Optional, Callable, Dict, Tuple, List, Any
+from enum import Enum
 import bitcoin
 from logging.handlers import RotatingFileHandler
-import hashlib
 
+import qdarkstyle
+import simplejson
+import hashlib
 from PyQt5 import QtCore
 from PyQt5.QtCore import QLocale, QObject
-from PyQt5.QtWidgets import QMessageBox
-from cryptography.fernet import Fernet
+from PyQt5.QtGui import QPalette
+from PyQt5.QtWidgets import QMessageBox, QWidget
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import (padding, rsa, utils)
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import app_defs
-import base58
 import dash_utils
-import hw_intf
-from app_defs import APP_NAME_SHORT, HWType, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT, get_known_loggers, APP_NAME_FOR_CRYPTING
+from app_defs import APP_NAME_SHORT, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT, get_known_loggers, APP_NAME_FOR_CRYPTING
 from app_utils import encrypt, decrypt
 import app_cache
 import default_config
 import app_utils
 from common import CancelException
 from db_intf import DBCache
-from encrypted_files import read_file_encrypted, write_file_encrypted, NotConnectedToHardwareWallet
-from hw_common import HwSessionInfo
-from wnd_utils import WndUtils
+from encrypted_files import read_file_encrypted, write_file_encrypted
+from hw_common import HWType, HWNotConnectedException
+from wnd_utils import WndUtils, get_widget_font_color_blue, get_widget_font_color_green
 
-
-CURRENT_CFG_FILE_VERSION = 5
+CURRENT_CFG_FILE_VERSION = 7
 CACHE_ITEM_LOGGERS_LOGLEVEL = 'LoggersLogLevel'
 CACHE_ITEM_LOG_FORMAT = 'LogFormat'
-
+GLOBAL_SETTINGS_FILE_NAME = 'dmt_global_settings.json'
 
 DMN_ROLE_OWNER = 0x1
 DMN_ROLE_OPERATOR = 0x2
 DMN_ROLE_VOTING = 0x4
 
 
-class InputKeyType():
+class MasternodeType(Enum):
+    REGULAR = 1
+    HPMN = 2
+
+
+class InputKeyType:
     PRIVATE = 1
     PUBLIC = 2
 
 
-class AppFeatueStatus(QObject):
+class AppFeatureStatus(QObject):
     # Priority of the feature value.
     #  0: default value implemented in the source code
     #  2: value read from the app cache
-    #  4: value read from the project github repository (can be lowered or rised)
+    #  4: value read from the project GitHub repository (can be lowered or raised)
     #  6: value read from the Dash network (the highest priority by default)
     PRIORITY_DEFAULT = 0
     PRIORITY_APP_CACHE = 2
@@ -109,28 +108,45 @@ class AppFeatueStatus(QObject):
         self.__priority = None
 
 
-class AppConfig(QObject):
-    sig_display_message = QtCore.pyqtSignal(int, str, str)  # message id, message text, message type ('info'|'warn'|'error'
+class AppDeveloperContact:
+    """
+    Stores contact information for the application developer.
+    """
+    def __init__(self, method_name: str, user_id: str, url: str):
+        self.method_name = method_name
+        self.user_id = user_id
+        self.url = url
 
-    def __init__(self):
+
+class AppConfig(QObject):
+    display_app_message = QtCore.pyqtSignal(int, str, object)
+
+    def __init__(self, ui_dark_mode_activated: bool):
         QObject.__init__(self)
         self.initialized = False
         self.app_dir = ''  # will be passed in the init method
         self.app_version = ''
+
+        # Hash of the configuration data, last saved to disk. If None, config isn't saved or read from disk yet.
+        self.config_file_data_hash: Optional[str] = None
+
+        self.global_config = Optional[app_cache.AppCache]
         QLocale.setDefault(app_utils.get_default_locale())
         self.date_format = app_utils.get_default_locale().dateFormat(QLocale.ShortFormat)
         self.date_time_format = app_utils.get_default_locale().dateTimeFormat(QLocale.ShortFormat)
+        self._internal_ui_dark_mode_activated = ui_dark_mode_activated
+        self.app_dev_contact: List[AppDeveloperContact] = []
 
         # List of Dash network configurations. Multiple conn configs advantage is to give the possibility to use
-        # another config if particular one is not functioning (when using "public" RPC service, it could be node's
-        # maintanance)
-        self.dash_net_configs = []
+        # another config if a particular one is not functioning (when using "public" RPC service, it could be node's
+        # maintenance)
+        self.dash_net_configs: List[DashNetworkConnectionCfg] = []
 
-        # to distribute the load evenly over "public" RPC services, we choose radom connection (from enabled ones)
-        # if it is set to False, connections will be used accoording to its order in dash_net_configs list
+        # to distribute the load evenly over "public" RPC services, we choose random connection (from enabled ones)
+        # if it is set to False, connections will be used according to its order in dash_net_configs list
         self.random_dash_net_config = True
 
-        # list of all enabled dashd configurations (DashNetworkConnectionCfg) - they will be used accourding to
+        # list of all enabled dashd configurations (DashNetworkConnectionCfg) - they will be used according to
         # the order in list
         self.active_dash_net_configs = []
 
@@ -141,26 +157,31 @@ class AppConfig(QObject):
         # the contents of the app-params.json configuration file read from the project GitHub repository
         self._remote_app_params = {}
         self._dash_blockchain_info = {}
-        self.feature_register_dmn_automatic = AppFeatueStatus(True, 0, '')
-        self.feature_update_registrar_automatic = AppFeatueStatus(True, 0, '')
-        self.feature_update_service_automatic = AppFeatueStatus(True, 0, '')
-        self.feature_revoke_operator_automatic = AppFeatueStatus(True, 0, '')
+        self.feature_register_dmn_automatic = AppFeatureStatus(True, 0, '')
+        self.feature_update_registrar_automatic = AppFeatureStatus(True, 0, '')
+        self.feature_update_service_automatic = AppFeatureStatus(True, 0, '')
+        self.feature_revoke_operator_automatic = AppFeatureStatus(True, 0, '')
+        self.feature_new_bls_scheme = AppFeatureStatus(True, 0, '')
 
-        self.hw_type = None  # TREZOR, KEEPKEY, LEDGERNANOS
-        self.hw_keepkey_psw_encoding = 'NFC'  # Keepkey passphrase UTF8 chars encoding:
-                                              #  NFC: compatible with official Keepkey client app
-                                              #  NFKD: compatible with Trezor
+        # obsolete and will be removed in the future (we are leaving it to
+        # preserve compatibility of the config file with older versions)
+        self.__hw_type: Optional[HWType] = None
+
+        # Keepkey passphrase UTF8 chars encoding:
+        #  NFC: compatible with official Keepkey client app
+        #  NFKD: compatible with Trezor
+        self.hw_keepkey_psw_encoding = 'NFC'
 
         self.dash_network = 'MAINNET'
 
-        self.block_explorer_tx_mainnet = 'https://insight.firo.org/tx/%TXID%'
-        self.block_explorer_addr_mainnet = 'https://insight.firo.org/address/%ADDRESS%'
-        self.block_explorer_tx_testnet = 'https://testexplorer.firo.org/tx/%TXID%'
-        self.block_explorer_addr_testnet = 'https://testexplorer.firo.org/address/%ADDRESS%'
-        self.tx_api_url_mainnet = 'https://insight.firo.org'
-        self.tx_api_url_testnet = 'https://testexplorer.firo.org'
-        self.dash_central_proposal_api = 'https://www.dashcentral.org/api/v1/proposal?hash=%HASH%'
-        self.dash_nexus_proposal_api = 'https://api.dashnexus.org/proposals/%HASH%'
+        self.block_explorer_tx_mainnet: str = ''
+        self.block_explorer_addr_mainnet: str = ''
+        self.block_explorer_tx_testnet: str = ''
+        self.block_explorer_addr_testnet: str = ''
+        self.tx_api_url_mainnet: str = ''
+        self.tx_api_url_testnet: str = ''
+        self.dash_central_proposal_api: str = ''
+        self.dash_nexus_proposal_api: str = ''
 
         # public RPC connection configurations
         self.public_conns_mainnet: Dict[str, DashNetworkConnectionCfg] = {}
@@ -169,30 +190,35 @@ class AppConfig(QObject):
         self.check_for_updates = True
         self.backup_config_file = True
         self.read_proposals_external_attributes = True  # if True, some additional attributes will be downloaded from
-                                                        # external sources
+        # external sources
         self.dont_use_file_dialogs = False
         self.confirm_when_voting = True
         self.add_random_offset_to_vote_time = True  # To avoid identifying one user's masternodes by vote time
-        self.sig_time_offset_min = -1800
-        self.sig_time_offset_max = 1800
+        self._proposal_vote_time_offset_lower: int = -30  # in minutes
+        self._proposal_vote_time_offset_upper: int = 30
+        self.proposal_vote_time_offset_min: int = -60
+        self.proposal_vote_time_offset_max: int = 60
         self.csv_delimiter = ';'
         self.masternodes = []
         self.last_bip32_base_path = ''
         self.bip32_recursive_search = True
-        self.modified = False
         self.cache_dir = ''
         self.tx_cache_dir = ''
         self.app_config_file_name = ''
         self.log_dir = ''
         self.log_file = ''
         self.log_level_str = ''
-        self.db_intf = None
+        self.db_intf: Optional[DBCache] = None
         self.db_cache_file_name = ''
         self.cfg_backup_dir = ''
         self.app_last_version = ''
         self.data_dir = ''
         self.encrypt_config_file = False
         self.config_file_encrypted = False
+        self.fetch_network_data_after_start = True
+        self.show_dash_value_in_fiat = True
+        self.ui_use_dark_mode = False  # Use dark mode independently of the OS settings
+        self.show_network_masternodes_tab = False
 
         # attributes related to encryption cache data with hardware wallet:
         self.hw_generated_key = b"\xab\x0fs}\x8b\t\xb4\xc3\xb8\x05\xba\xd1\x96\x9bq`I\xed(8w\xbf\x95\xf0-\x1a\x14\xcb\x1c\x1d+\xcd"
@@ -205,6 +231,7 @@ class AppConfig(QObject):
         self.trezor_bridge = True
         self.trezor_udp = True
         self.trezor_hid = True
+        self.reset_configuration()
 
         try:
             self.default_rpc_connections = self.decode_connections(default_config.dashd_default_connections)
@@ -214,8 +241,21 @@ class AppConfig(QObject):
 
         self.hw_session_info = None
 
+    @staticmethod
+    def get_default_user_data_dir():
+        user_home_dir = os.path.expanduser('~')
+
+        # below: let's currently stick to v5 dir; in the future we're going to migrate to a new configuraion file
+        # format that will stop using the configuration version number in the directory name
+        app_user_data_dir = os.path.join(user_home_dir, APP_DATA_DIR_NAME + '-v5')
+        return app_user_data_dir
+
+    @staticmethod
+    def get_default_global_settings_file_name():
+        return os.path.join(AppConfig.get_default_user_data_dir(), GLOBAL_SETTINGS_FILE_NAME)
+
     def init(self, app_dir):
-        """ Initialize configuration after openning the application. """
+        """ Initialize configuration after opening the application. """
         self.app_dir = app_dir
         app_defs.APP_PATH = app_dir
         app_defs.APP_IMAGE_DIR = self.get_app_img_dir()
@@ -226,6 +266,8 @@ class AppConfig(QObject):
                 self.app_version = app_utils.extract_app_version(lines)
         except:
             pass
+
+        self.global_config = app_cache.AppCache(self.app_version)
 
         parser = argparse.ArgumentParser()
         parser.add_argument('--config', help="Path to a configuration file", dest='config')
@@ -242,27 +284,12 @@ class AppConfig(QObject):
                             dest='trezor_udp', default=True)
         parser.add_argument('--trezor-hid', type=app_utils.str2bool, help="Disable HidTransport for Trezor",
                             dest='trezor_hid', default=True)
-        parser.add_argument('--sig-time-offset-min', type=int,
-                            help="Number of seconds relative to the current time being the lower bound of the "
-                                 "time range from which a random sig_time offset is drawn (default -1800)",
-                            dest='sig_time_offset_min', default=-1800)
-        parser.add_argument('--sig-time-offset-max', type=int,
-                            help="Number of seconds relative to the current time being the upper bound of the "
-                                 "time range from which a random sig_time offset is drawn (default 1800)",
-                            dest='sig_time_offset_max', default=1800)
 
         args = parser.parse_args()
         self.trezor_webusb = args.trezor_webusb
         self.trezor_bridge = args.trezor_bridge
         self.trezor_udp = args.trezor_udp
         self.trezor_hid = args.trezor_hid
-        self.sig_time_offset_min = args.sig_time_offset_min
-        self.sig_time_offset_max = args.sig_time_offset_max
-        if not self.sig_time_offset_min < self.sig_time_offset_max:
-            WndUtils.errorMsg('--sig-time-offset-min must be less than --sig-time-offset-max. Using the default '
-                              'values (-1800/1800).')
-            self.sig_time_offset_min = -1800
-            self.sig_time_offset_max = 1800
 
         app_user_dir = ''
         if args.data_dir:
@@ -271,36 +298,29 @@ class AppConfig(QObject):
                     app_user_dir = args.data_dir
                 else:
                     app_user_dir = ''
-                    WndUtils.errorMsg('--data-dir parameter doesn\'t point to a directory. Using the default '
-                                      'data directory.')
+                    WndUtils.error_msg('--data-dir parameter doesn\'t point to a directory. Using the default '
+                                       'data directory.')
             else:
                 app_user_dir = ''
-                WndUtils.errorMsg('--data-dir parameter doesn\'t point to an existing directory. Using the default '
-                                  'data directory.')
+                WndUtils.error_msg('--data-dir parameter doesn\'t point to an existing directory. Using the default '
+                                   'data directory.')
 
         migrate_config = False
         old_user_data_dir = ''
         user_home_dir = os.path.expanduser('~')
         if not app_user_dir:
-            app_user_dir = os.path.join(user_home_dir, APP_DATA_DIR_NAME + '-v' + str(CURRENT_CFG_FILE_VERSION))
-            if not os.path.exists(app_user_dir):
-                prior_version_dirs = ['.dmt']
-                # look for the data dir of the previous version
-                for d in prior_version_dirs:
-                    old_user_data_dir = os.path.join(user_home_dir, d)
-                    if os.path.exists(old_user_data_dir):
-                        migrate_config = True
-                        break
+            app_user_dir = AppConfig.get_default_user_data_dir()
 
         self.data_dir = app_user_dir
         self.cache_dir = os.path.join(self.data_dir, 'cache')
         cache_file_name = os.path.join(self.cache_dir, 'dmt_cache_v2.json')
+        global_settings_file_name = os.path.join(self.data_dir, GLOBAL_SETTINGS_FILE_NAME)
 
         if migrate_config:
             try:
-                dirs_do_copy_later:List[Tuple[str, str]] = []
+                dirs_do_copy_later: List[Tuple[str, str]] = []
 
-                def ignore_fun(cur_dir:str, items: List):
+                def ignore_fun(cur_dir: str, items: List):
                     """In the first stage, ignore directories with a lot of files inside."""
                     nonlocal dirs_do_copy_later
                     to_ignore = []
@@ -317,7 +337,7 @@ class AppConfig(QObject):
                         to_ignore.extend(items)
                     return to_ignore
 
-                def delayed_copy_thread(ctrl, dirs_to_copy:List[Tuple[str, str]]):
+                def delayed_copy_thread(ctrl, dirs_to_copy: List[Tuple[str, str]]):
                     """Directories with a possible large number of files copy in the background."""
                     try:
                         logging.info('Beginning to copy data in the background')
@@ -338,11 +358,11 @@ class AppConfig(QObject):
                     fn = cache_data.get('AppConfig_ConfigFileName')
 
                     old_dir = old_user_data_dir.replace('\\', '/')  # windows: paths stored in the cache file
-                                                                    # have possibly '/' characters instead od '\'
+                    # have possibly '/' characters instead od '\'
                     fn = fn.replace('\\', '/')
 
                     if fn.find(old_dir) >= 0 and len(fn) > len(old_dir) \
-                            and fn[len(old_dir)] in ('/','\\'):
+                            and fn[len(old_dir)] in ('/', '\\'):
                         fn = self.data_dir + fn[len(old_dir):]
                         if sys.platform == 'win32':
                             fn = fn.replace('/', '\\')
@@ -376,6 +396,9 @@ class AppConfig(QObject):
         app_cache.init(cache_file_name, self.app_version)
         self.app_last_version = app_cache.get_value('app_version', '', str)
         self.app_config_file_name = ''
+        self.global_config.set_file_name(global_settings_file_name)
+        self.global_config.start()
+        self.ui_use_dark_mode = self.global_config.get_value('UI_USE_DARK_MODE', False, bool)
 
         if args.config is not None:
             # set config file name to what user passed in the 'config' argument
@@ -420,8 +443,6 @@ class AppConfig(QObject):
         self.set_log_level('INFO')
         logging.info(f'===========================================================================')
         logging.info(f'Application started (v {self.app_version})')
-        logging.info('Environmnent:')
-        logging.info(str(os.environ))
 
         self.restore_loggers_config()
 
@@ -430,8 +451,18 @@ class AppConfig(QObject):
         if not os.path.exists(self.cfg_backup_dir):
             os.makedirs(self.cfg_backup_dir)
 
-        if not self.app_last_version or app_utils.is_version_bigger(self.app_version, self.app_last_version):
+        if not self.app_last_version or app_utils.is_version_greater(self.app_version, self.app_last_version):
             app_cache.save_data()
+
+        try:
+            app_params_json_file = os.path.join(self.app_dir, 'app-params.json')
+            if os.path.exists(app_params_json_file):
+                with open(app_params_json_file, 'rb') as fptr:
+                    strs = fptr.read()
+                    local_app_params = simplejson.loads(strs)
+                    self.set_remote_app_params(local_app_params)
+        except Exception as e:
+            logging.exception(str(e))
 
         self.initialized = True
 
@@ -439,7 +470,13 @@ class AppConfig(QObject):
         self.save_cache_settings()
         self.save_loggers_config()
         app_cache.finish()
-        self.db_intf.close()
+
+        self.global_config.set_value('UI_USE_DARK_MODE', self.ui_use_dark_mode)
+        app_cache.save_data(True)
+        self.global_config.save_data()
+
+        if self.db_intf:
+            self.db_intf.close()
 
     def save_cache_settings(self):
         if self.feature_register_dmn_automatic.get_value() is not None:
@@ -454,22 +491,27 @@ class AppConfig(QObject):
         if self.feature_revoke_operator_automatic.get_value() is not None:
             app_cache.set_value('FEATURE_REVOKE_OPERATOR_AUTOMATIC_' + self.dash_network,
                                 self.feature_revoke_operator_automatic.get_value())
+        if self.feature_new_bls_scheme.get_value() is not None:
+            app_cache.set_value('FEATURE_NEW_BLS_SCHEME_' + self.dash_network,
+                                self.feature_new_bls_scheme.get_value())
 
     def restore_cache_settings(self):
         ena = app_cache.get_value('FEATURE_REGISTER_AUTOMATIC_DMN_' + self.dash_network, True, bool)
-        self.feature_register_dmn_automatic.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
+        self.feature_register_dmn_automatic.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
         ena = app_cache.get_value('FEATURE_UPDATE_REGISTRAR_AUTOMATIC_' + self.dash_network, True, bool)
-        self.feature_update_registrar_automatic.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
+        self.feature_update_registrar_automatic.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
         ena = app_cache.get_value('FEATURE_UPDATE_SERVICE_AUTOMATIC_' + self.dash_network, True, bool)
-        self.feature_update_service_automatic.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
+        self.feature_update_service_automatic.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
         ena = app_cache.get_value('FEATURE_REVOKE_OPERATOR_AUTOMATIC_' + self.dash_network, True, bool)
-        self.feature_revoke_operator_automatic.set_value(ena, AppFeatueStatus.PRIORITY_APP_CACHE)
+        self.feature_revoke_operator_automatic.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
+        ena = app_cache.get_value('FEATURE_NEW_BLS_SCHEME_' + self.dash_network, True, bool)
+        self.feature_new_bls_scheme.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
 
     def copy_from(self, src_config):
         self.dash_network = src_config.dash_network
         self.dash_net_configs = copy.deepcopy(src_config.dash_net_configs)
         self.random_dash_net_config = src_config.random_dash_net_config
-        self.hw_type = src_config.hw_type
+        self.__hw_type = src_config.__hw_type
         self.hw_keepkey_psw_encoding = src_config.hw_keepkey_psw_encoding
         self.block_explorer_tx_mainnet = src_config.block_explorer_tx_mainnet
         self.block_explorer_tx_testnet = src_config.block_explorer_tx_testnet
@@ -482,6 +524,12 @@ class AppConfig(QObject):
         self.dont_use_file_dialogs = src_config.dont_use_file_dialogs
         self.confirm_when_voting = src_config.confirm_when_voting
         self.add_random_offset_to_vote_time = src_config.add_random_offset_to_vote_time
+        self._proposal_vote_time_offset_lower = src_config._proposal_vote_time_offset_lower
+        self._proposal_vote_time_offset_upper = src_config._proposal_vote_time_offset_upper
+        self.proposal_vote_time_offset_min = src_config.proposal_vote_time_offset_min
+        self.proposal_vote_time_offset_max = src_config.proposal_vote_time_offset_max
+        self.fetch_network_data_after_start = src_config.fetch_network_data_after_start
+        self.show_dash_value_in_fiat = src_config.show_dash_value_in_fiat
         self.csv_delimiter = src_config.csv_delimiter
         if self.initialized:
             # if this object is the main AppConfig object (it's initialized)
@@ -492,18 +540,20 @@ class AppConfig(QObject):
             # ... otherwise just copy attribute without reconfiguring logger
             self.log_level_str = src_config.log_level_str
         self.encrypt_config_file = src_config.encrypt_config_file
+        self.ui_use_dark_mode = src_config.ui_use_dark_mode
+        self.show_network_masternodes_tab = src_config.show_network_masternodes_tab
 
     def configure_cache(self):
-        if self.is_testnet():
+        if self.is_testnet:
             db_cache_file_name = 'dmt_cache_testnet_v2.db'
         else:
             db_cache_file_name = 'dmt_cache_v2.db'
         self.tx_cache_dir = os.path.join(self.cache_dir, 'tx-' + self.hw_coin_name)
         if not os.path.exists(self.tx_cache_dir):
             os.makedirs(self.tx_cache_dir)
-            if self.is_testnet():
+            if self.is_testnet:
                 # move testnet json files to a subdir (don't do this for mainnet files
-                # util there most of users move to dmt v0.9.22
+                # util there most of the users move to dmt v0.9.22
                 try:
                     for file in glob.glob(os.path.join(self.cache_dir, 'insight_dash_testnet*.json')):
                         shutil.move(file, self.tx_cache_dir)
@@ -536,10 +586,11 @@ class AppConfig(QObject):
                     cur.execute('delete from LIVE_CONFIG')
                     cur.execute('update proposals set dmt_voting_last_read_time=0')
                     self.db_intf.commit()
-                    self.sig_display_message.emit(1000,
+                    self.display_app_message.emit(1000,
                                                   'Some of your voting results on proposals have been reset in '
                                                   'relation to the activation of Spork 15. Verify this in the '
-                                                  'voting window and vote again if needed.', 'warn')
+                                                  'voting window and vote again if needed.',
+                                                  app_defs.AppTextMessageType.WARN)
 
             # check and clean the wallet addresses inconsistency
             cur.execute('select parent_id, address_index, count(*) from address where parent_id is not null '
@@ -554,8 +605,8 @@ class AppConfig(QObject):
                 cur.execute('delete from tx')
                 self.db_intf.commit()
                 logging.warning('Cleared the wallet address cache because of inconsistencies found.')
-                self.sig_display_message.emit(1001, 'The wallet cache has been cleared because of '
-                                                    'inconsistencies found.', 'warn')
+                self.display_app_message.emit(1001, 'The wallet cache has been cleared because of '
+                                                    'inconsistencies found.', app_defs.AppTextMessageType.WARN)
         except Exception as e:
             logging.error('Error while clearing voting results. Details: ' + str(e))
         finally:
@@ -563,7 +614,7 @@ class AppConfig(QObject):
 
         self.restore_cache_settings()
 
-    def clear_configuration(self):
+    def reset_configuration(self):
         """
         Clears all the data structures that are loaded during the reading of the
         configuration file. This method is called before the reading new configuration
@@ -574,8 +625,41 @@ class AppConfig(QObject):
         self.active_dash_net_configs.clear()
         self.defective_net_configs.clear()
         self.masternodes.clear()
+        self.random_dash_net_config = True
+        self._dash_blockchain_info.clear()
+        self.public_conns_mainnet.clear()
+        self.public_conns_testnet.clear()
+        self.hw_keepkey_psw_encoding = 'NFC'
+        self.dash_network = 'MAINNET'
+        self.block_explorer_tx_mainnet = 'https://insight.dash.org/insight/tx/%TXID%'
+        self.block_explorer_addr_mainnet = 'https://insight.dash.org/insight/address/%ADDRESS%'
+        self.block_explorer_tx_testnet = 'https://testnet-insight.dashevo.org/insight/tx/%TXID%'
+        self.block_explorer_addr_testnet = 'https://testnet-insight.dashevo.org/insight/address/%ADDRESS%'
+        self.tx_api_url_mainnet = 'https://insight.dash.org/insight'
+        self.tx_api_url_testnet = 'https://testnet-insight.dashevo.org/insight'
+        self.dash_central_proposal_api = 'https://www.dashcentral.org/api/v1/proposal?hash=%HASH%'
+        self.dash_nexus_proposal_api = 'https://api.dashnexus.org/proposals/%HASH%'
+        self.check_for_updates = True
+        self.backup_config_file = True
+        self.read_proposals_external_attributes = True
+        self.dont_use_file_dialogs = False
+        self.confirm_when_voting = True
+        self.add_random_offset_to_vote_time = True
+        self._proposal_vote_time_offset_lower = -30
+        self._proposal_vote_time_offset_upper = 30
+        self.csv_delimiter = ';'
+        self.app_config_file_name = ''
+        self.encrypt_config_file = False
+        self.config_file_encrypted = False
+        self.fetch_network_data_after_start = True
+        self.show_dash_value_in_fiat = True
+        self.trezor_webusb = True
+        self.trezor_bridge = True
+        self.trezor_udp = True
+        self.trezor_hid = True
+        self.show_network_masternodes_tab = False
 
-    def simple_decrypt(self, str_to_decrypt: str, string_can_be_unencrypted: bool, validator: Callable = None) -> str:
+    def simple_decrypt(self, str_to_decrypt: str, string_can_be_unencrypted: bool = False, validator: Callable = None) -> str:
         """"
         :param string_can_be_unencrypted: passed True when importing data from the old config format where some
             data wasn't encrypted yet; we want to avoid clogging a log file with errors when actually
@@ -600,14 +684,10 @@ class AppConfig(QObject):
     def simple_encrypt(self, str_to_encrypt: str) -> str:
         return encrypt(str_to_encrypt, APP_NAME_FOR_CRYPTING, iterations=5)
 
-    def read_from_file(self, hw_session: HwSessionInfo, file_name: Optional[str] = None,
-                       create_config_file: bool = False, update_current_file_name = True):
+    def read_from_file(self, hw_session: 'HwSessionInfo', file_name: Optional[str] = None,
+                       create_config_file: bool = False, update_current_file_name=True):
         if not file_name:
             file_name = self.app_config_file_name
-
-        configuration_corrected = False
-        errors_while_reading = False
-        hw_type_sav = self.hw_type
 
         if os.path.exists(file_name):
             config = ConfigParser()
@@ -619,12 +699,12 @@ class AppConfig(QObject):
                         for data_chunk in read_file_encrypted(file_name, ret_info, hw_session):
                             mem_file += data_chunk.decode('utf-8')
                         break
-                    except NotConnectedToHardwareWallet as e:
-                        ret = WndUtils.queryDlg(
+                    except HWNotConnectedException as e:
+                        ret = WndUtils.query_dlg(
                             'Configuration file read error: ' + str(e) + '\n\n' +
-                            'Click \'Retry\' to try again, \'Restore Defaults\' to continue with default '
-                            'configuration or \'Cancel\' to exit.',
-                            buttons=QMessageBox.Retry | QMessageBox.Cancel | QMessageBox.RestoreDefaults,
+                            'Click \'Retry\' to try again, \'Open\' to choose another configuration file or '
+                            '\'Cancel\' to exit.',
+                            buttons=QMessageBox.Retry | QMessageBox.Cancel | QMessageBox.Open,
                             default_button=QMessageBox.Yes, icon=QMessageBox.Critical)
 
                         if ret == QMessageBox.Cancel:
@@ -643,12 +723,12 @@ class AppConfig(QObject):
                                                     update_current_file_name=update_current_file_name)
                                 return
                             else:
-                                raise Exception('Couldn\'t read the configuration. Exiting...')
+                                raise CancelException('Cancelled')
 
                 config_file_encrypted = ret_info.get('encrypted', False)
 
                 config.read_string(mem_file)
-                self.clear_configuration()
+                self.reset_configuration()
 
                 section = 'CONFIG'
                 ini_version = config.get(section, 'CFG_VERSION', fallback=CURRENT_CFG_FILE_VERSION)
@@ -658,9 +738,12 @@ class AppConfig(QObject):
                     ini_version = CURRENT_CFG_FILE_VERSION
 
                 if ini_version > CURRENT_CFG_FILE_VERSION:
-                    self.sig_display_message.emit(1002, 'The configuration file is created by a newer app version. '
-                                                        'If you save any changes, you may lose some settings '
-                                                        'that are not supported in this version.', 'warn')
+                    self.display_app_message.emit(1002,
+                                                  'The configuration file is created by a newer app version. '
+                                                  'If you save any changes, you may lose some settings '
+                                                  'that are not supported in this version. It is suggested to save '
+                                                  'the configuration under a different file name.',
+                                                  app_defs.AppTextMessageType.WARN)
 
                 log_level_str = config.get(section, 'log_level', fallback='WARNING')
                 if log_level_str not in ('CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'):
@@ -674,7 +757,7 @@ class AppConfig(QObject):
                     dash_network = 'MAINNET'
                 self.dash_network = dash_network
 
-                if self.is_mainnet():
+                if self.is_mainnet:
                     def_bip32_path = "44'/5'/0'/0/0"
                 else:
                     def_bip32_path = "44'/1'/0'/0/0"
@@ -682,10 +765,9 @@ class AppConfig(QObject):
                 if not self.last_bip32_base_path:
                     self.last_bip32_base_path = def_bip32_path
                 self.bip32_recursive_search = config.getboolean(section, 'bip32_recursive', fallback=True)
-                self.hw_type = config.get(section, 'hw_type', fallback=HWType.trezor)
-                if self.hw_type not in (HWType.trezor, HWType.keepkey, HWType.ledger_nano_s):
-                    logging.warning('Invalid hardware wallet type: ' + self.hw_type)
-                    self.hw_type = HWType.trezor
+
+                type = config.get(section, 'hw_type', fallback=HWType.trezor.value)
+                self.__hw_type = HWType.from_string(type)
 
                 self.hw_keepkey_psw_encoding = config.get(section, 'hw_keepkey_psw_encoding', fallback='NFC')
                 if self.hw_keepkey_psw_encoding not in ('NFC', 'NFKD'):
@@ -700,13 +782,46 @@ class AppConfig(QObject):
                 self.read_proposals_external_attributes = \
                     self.value_to_bool(config.get(section, 'read_external_proposal_attributes', fallback='1'))
                 self.dont_use_file_dialogs = self.value_to_bool(config.get(section, 'dont_use_file_dialogs',
-                                                                          fallback='0'))
+                                                                           fallback='0'))
                 self.confirm_when_voting = self.value_to_bool(config.get(section, 'confirm_when_voting',
-                                                                          fallback='1'))
+                                                                         fallback='1'))
                 self.add_random_offset_to_vote_time = \
                     self.value_to_bool(config.get(section, 'add_random_offset_to_vote_time', fallback='1'))
+
+                lower = config.get(section, 'proposal_vote_time_offset_lower', fallback='')
+                if lower:
+                    try:
+                        lower = int(lower)
+                    except Exception:
+                        logging.error('Invalid value for config attribute: "proposal_vote_time_offset_lower"')
+
+                upper = config.get(section, 'proposal_vote_time_offset_upper', fallback='')
+                if upper:
+                    try:
+                        upper = int(upper)
+                    except Exception:
+                        logging.error('Invalid value for config attribute: "proposal_vote_time_offset_upper"')
+
+                if isinstance(lower, int) and isinstance(upper, int):
+                    if lower > upper:
+                        lower = upper
+
+                if isinstance(lower, int):
+                    self._proposal_vote_time_offset_lower = lower
+                if isinstance(upper, int):
+                    self._proposal_vote_time_offset_upper = upper
+
                 self.encrypt_config_file = \
                     self.value_to_bool(config.get(section, 'encrypt_config_file', fallback='0'))
+
+                self.fetch_network_data_after_start = self.value_to_bool(
+                    config.get(section, 'fetch_network_data_after_start', fallback='1'))
+
+                self.show_dash_value_in_fiat = self.value_to_bool(
+                    config.get(section, 'show_dash_value_in_fiat', fallback='1'))
+
+                self.show_network_masternodes_tab = self.value_to_bool(
+                    config.get(section, 'show_network_masternodes_tab', fallback='1'))
 
                 # with ini ver 3 we changed the connection password encryption scheme, so connections in new ini
                 # file will be saved under different section names - with this we want to disallow the old app
@@ -724,11 +839,12 @@ class AppConfig(QObject):
                                 mn = MasternodeConfig()
                                 mn.name = config.get(section, 'name', fallback='')
                                 mn.ip = config.get(section, 'ip', fallback='')
-                                mn.port = config.get(section, 'port', fallback='')
-                                mn.collateralBip32Path = config.get(section, 'collateral_bip32_path', fallback='').strip()
-                                mn.collateralAddress = config.get(section, 'collateral_address', fallback='').strip()
-                                mn.collateralTx = config.get(section, 'collateral_tx', fallback='').strip()
-                                mn.collateralTxIndex = config.get(section, 'collateral_tx_index', fallback='').strip()
+                                mn.tcp_port = config.get(section, 'port', fallback='')
+                                mn.collateral_bip32_path = config.get(section, 'collateral_bip32_path',
+                                                                      fallback='').strip()
+                                mn.collateral_address = config.get(section, 'collateral_address', fallback='').strip()
+                                mn.collateral_tx = config.get(section, 'collateral_tx', fallback='').strip()
+                                mn.collateral_tx_index = config.get(section, 'collateral_tx_index', fallback='').strip()
                                 mn.use_default_protocol_version = self.value_to_bool(
                                     config.get(section, 'use_default_protocol_version', fallback='1'))
                                 mn.protocol_version = config.get(section, 'protocol_version', fallback='').strip()
@@ -736,7 +852,7 @@ class AppConfig(QObject):
                                 roles = int(config.get(section, 'dmn_user_roles', fallback='0').strip())
                                 if not roles:
                                     role_old = int(config.get(section, 'dmn_user_role', fallback='0').strip())
-                                    # try reding the pre v0.9.22 role and map it to the current role-set
+                                    # try reading the pre v0.9.22 role and map it to the current role-set
                                     if role_old:
                                         if role_old == 1:
                                             mn.dmn_user_roles = DMN_ROLE_OWNER | DMN_ROLE_OPERATOR | DMN_ROLE_VOTING
@@ -749,44 +865,104 @@ class AppConfig(QObject):
                                 if not mn.dmn_user_roles:
                                     mn.dmn_user_roles = DMN_ROLE_OWNER | DMN_ROLE_OPERATOR | DMN_ROLE_VOTING
 
-                                mn.dmn_tx_hash = config.get(section, 'dmn_tx_hash', fallback='').strip()
-                                mn.dmn_owner_key_type = int(config.get(section, 'dmn_owner_key_type',
+                                mn.protx_hash = config.get(section, 'dmn_tx_hash', fallback='').strip()
+                                mn.owner_key_type = int(config.get(section, 'dmn_owner_key_type',
                                                                    fallback=str(InputKeyType.PRIVATE)).strip())
-                                mn.dmn_operator_key_type = int(config.get(section, 'dmn_operator_key_type',
-                                                                   fallback=str(InputKeyType.PRIVATE)).strip())
-                                mn.dmn_voting_key_type = int(config.get(section, 'dmn_voting_key_type',
-                                                                   fallback=str(InputKeyType.PRIVATE)).strip())
-                                if mn.dmn_owner_key_type == InputKeyType.PRIVATE:
-                                    mn.dmn_owner_private_key = self.simple_decrypt(
+                                mn.operator_key_type = int(config.get(section, 'dmn_operator_key_type',
+                                                                      fallback=str(InputKeyType.PRIVATE)).strip())
+                                mn.voting_key_type = int(config.get(section, 'dmn_voting_key_type',
+                                                                    fallback=str(InputKeyType.PRIVATE)).strip())
+                                mn.platform_node_key_type = int(config.get(section, 'platform_node_key_type',
+                                                                    fallback=str(InputKeyType.PRIVATE)).strip())
+
+                                if mn.owner_key_type == InputKeyType.PRIVATE:
+                                    mn.owner_private_key = self.simple_decrypt(
                                         config.get(section, 'dmn_owner_private_key', fallback='').strip(), False)
                                 else:
-                                    mn.dmn_owner_address = config.get(section, 'dmn_owner_address', fallback='').strip()
+                                    mn.owner_address = config.get(section, 'dmn_owner_address', fallback='').strip()
 
-                                if mn.dmn_operator_key_type == InputKeyType.PRIVATE:
-                                    mn.dmn_operator_private_key = self.simple_decrypt(
-                                        config.get(section, 'dmn_operator_private_key', fallback='').strip(), False)
+                                if mn.operator_key_type == InputKeyType.PRIVATE:
+                                    mn.operator_private_key = self.simple_decrypt(
+                                        config.get(section, 'operator_private_key', fallback='').strip(), False)
                                 else:
-                                    mn.dmn_operator_public_key = config.get(section, 'dmn_operator_public_key',
-                                                                            fallback='').strip()
+                                    mn.operator_public_key = config.get(section, 'dmn_operator_public_key',
+                                                                        fallback='').strip()
 
-                                if mn.dmn_voting_key_type == InputKeyType.PRIVATE:
-                                    mn.dmn_voting_private_key = self.simple_decrypt(
+                                if mn.voting_key_type == InputKeyType.PRIVATE:
+                                    mn.voting_private_key = self.simple_decrypt(
                                         config.get(section, 'dmn_voting_private_key', fallback='').strip(), False)
                                 else:
-                                    mn.dmn_voting_address = config.get(section, 'dmn_voting_address',
-                                                                       fallback='').strip()
+                                    mn.voting_address = config.get(section, 'dmn_voting_address',
+                                                                   fallback='').strip()
 
+                                try:
+                                    tmp_str = config.get(section, 'masternode_type', fallback='').strip()
+                                    if tmp_str:
+                                        mn.masternode_type = MasternodeType(int(tmp_str))
+                                    else:
+                                        mn.masternode_type = MasternodeType.REGULAR
+                                except Exception as e:
+                                    mn.masternode_type = MasternodeType.REGULAR
+                                    logging.error('Error reading masternode type from configuration file: ' + str(e))
+
+                                if mn.platform_node_key_type == InputKeyType.PRIVATE:
+                                    try:
+                                        mn.platform_node_private_key = self.simple_decrypt(
+                                            config.get(section, 'platform_node_private_key', fallback='').strip(),
+                                            False)
+                                    except Exception as e:
+                                        logging.error('Error reading platform_node_private_key from configuration '
+                                                      'file: ' + str(e))
+                                else:
+                                    try:
+                                        mn.platform_node_id = config.get(section, 'platform_node_id',
+                                                                         fallback='').strip()
+                                    except Exception as e:
+                                        logging.error(
+                                            'Error reading platform_node_id from configuration file: ' + str(e))
+
+                                try:
+                                    tmp_str = config.get(section, 'platform_p2p_port', fallback='')
+                                    if tmp_str:
+                                        mn.platform_p2p_port = int(tmp_str)
+                                except Exception as e:
+                                    logging.error('Error reading platform_p2p_port from configuration file: ' + str(e))
+
+                                try:
+                                    tmp_str = config.get(section, 'platform_http_port', fallback='')
+                                    if tmp_str:
+                                        mn.platform_http_port = int(tmp_str)
+                                except Exception as e:
+                                    logging.error('Error reading platform_http_port from configuration file: ' + str(e))
+
+                                if ini_version == 6:
+                                    if not mn.platform_node_private_key:
+                                        try:
+                                            platform_key = config.get(section, 'platform_node_id_private_key',
+                                                                      fallback='').strip()
+                                            if platform_key:
+                                                mn.platform_node_private_key = platform_key
+                                        except Exception as e:
+                                            logging.exception(
+                                                'Error reading platform_node_private_key from configuration '
+                                                'file: ' + str(e))
+
+                                mn.update_data_hash()
                                 self.masternodes.append(mn)
                             except Exception as e:
                                 logging.error('Error reading masternode configuration from file. '
                                               'Config section name: ' + section + ': ' + str(e))
                                 was_error = True
-                        elif re.match(conn_cfg_section_name+'\d', section):
+                        elif re.match(conn_cfg_section_name + '\d', section):
                             # read network configuration from new config file format
                             cfg = DashNetworkConnectionCfg('rpc')
                             cfg.enabled = self.value_to_bool(config.get(section, 'enabled', fallback='1'))
                             cfg.host = config.get(section, 'host', fallback='').strip()
                             cfg.port = config.get(section, 'port', fallback='').strip()
+                            if cfg.port:
+                                cfg.port = int(cfg.port)
+                            else:
+                                cfg.port = None
                             cfg.use_ssl = self.value_to_bool(config.get(section, 'use_ssl', fallback='0').strip())
                             cfg.username = config.get(section, 'username', fallback='').strip()
                             cfg.set_encrypted_password(config.get(section, 'password', fallback=''),
@@ -850,22 +1026,20 @@ class AppConfig(QObject):
                 self.config_file_encrypted = config_file_encrypted
 
                 if was_error:
-                    WndUtils.warnMsg('There was an error reading configuration file. '
-                                     'Look into the log file for more details.')
+                    WndUtils.warn_msg('There was an error reading configuration file. '
+                                      'Look into the log file for more details.')
+                self.update_config_data_hash()
 
             except CancelException:
-                self.hw_type = hw_type_sav
                 raise
 
             except Exception as e:
                 logging.exception('Read configuration error:')
                 errors_while_reading = True
-                self.hw_type = hw_type_sav
-                ret =  WndUtils.queryDlg('Configuration file read error: ' + str(e) + '\n\n' +
-                                         'Click \'Restore Defaults\' to continue with default configuration,'
-                                         '\'Open\' to choose another configuration file or \'\Cancel\' to exit.',
-                                 buttons=QMessageBox.RestoreDefaults | QMessageBox.Cancel | QMessageBox.Open,
-                                 default_button=QMessageBox.Yes, icon=QMessageBox.Critical)
+                ret = WndUtils.query_dlg('Configuration file read error: ' + str(e) + '\n\n' +
+                                         'Click \'Open\' to choose another configuration file or \'\Cancel\' to exit.',
+                                         buttons=QMessageBox.Cancel | QMessageBox.Open,
+                                         default_button=QMessageBox.Yes, icon=QMessageBox.Critical)
                 if ret == QMessageBox.Cancel:
                     raise CancelException('Couldn\'t read configuration file.')
                 elif ret == QMessageBox.Open:
@@ -879,52 +1053,38 @@ class AppConfig(QObject):
                         self.read_from_file(hw_session, file_name)
                         return
                     else:
-                        raise Exception('Couldn\'t read the configuration. Exiting...')
+                        raise CancelException('Cancelled')
                 if update_current_file_name:
                     self.app_config_file_name = None
-                self.modified = True
+                self.config_file_data_hash = ''
 
         elif file_name:
             if not create_config_file:
                 raise Exception(f'The configuration file \'{file_name}\' does not exist.')
             else:
                 ini_version = CURRENT_CFG_FILE_VERSION
-                self.modified = True
-            # else: file will be created while saving
 
+            # else: file will be created while saving
+                self.config_file_data_hash = ''
+
+        self.load_default_connections()
+        self.configure_cache()
+
+    def load_default_connections(self):
         try:
             if self.default_rpc_connections:
-                # force import default connecticons if there is no any in the configuration
-                force_import = (self.app_last_version == '0.9.15')
-
-                added, updated = self.import_connections(self.default_rpc_connections, force_import=force_import,
+                added, updated = self.import_connections(self.default_rpc_connections, force_import=False,
                                                          limit_to_network=None)
-                if added or updated:
-                    configuration_corrected = True
-
                 for c in self.default_rpc_connections:
                     if c.mainnet:
                         self.public_conns_mainnet[c.get_conn_id()] = c
                     else:
                         self.public_conns_testnet[c.get_conn_id()] = c
-
-            if not errors_while_reading and update_current_file_name:
-                # if there were errors while reading configuration, don't save the file automatically but
-                # let the user change the new file name instead
-                if configuration_corrected:
-                    # we are migrating settings from old configuration file - save config file in a new format
-                    self.save_to_file(hw_session=hw_session)
-                else:
-                    if ini_version < CURRENT_CFG_FILE_VERSION:
-                        self.save_to_file(hw_session=hw_session)
-
         except Exception:
             logging.exception('An exception occurred while loading default connection configuration.')
 
-        self.configure_cache()
-
-    def save_to_file(self, hw_session: HwSessionInfo, file_name: Optional[str] = None,
-                     update_current_file_name = True):
+    def save_to_file(self, hw_session: 'HwSessionInfo', file_name: Optional[str] = None,
+                     update_current_file_name=True):
         """
         Saves current configuration to a file with the name 'file_name'. If the 'file_name' argument is empty
         configuration is saved under the current configuration file name (self.app_config_file_name).
@@ -941,18 +1101,18 @@ class AppConfig(QObject):
 
             file_name = WndUtils.save_config_file_query(dir, None, None)
             if not file_name:
-                WndUtils.warnMsg('File not saved.')
                 return
 
-        # backup old ini file
+        # backup old config file
         if self.backup_config_file and update_current_file_name:
             if os.path.exists(file_name):
-                tm_str = datetime.datetime.now().strftime('%Y-%m-%d %H_%M')
+                tm_str = datetime.datetime.now().strftime('%Y-%m-%d')
                 back_file_name = os.path.join(self.cfg_backup_dir, 'config_' + tm_str + '.ini')
-                try:
-                    copyfile(file_name, back_file_name)
-                except:
-                    pass
+                if not os.path.exists(back_file_name):  # create no more than one backup per day
+                    try:
+                        copyfile(file_name, back_file_name)
+                    except Exception:
+                        pass
 
         section = 'CONFIG'
         config = ConfigParser()
@@ -960,9 +1120,8 @@ class AppConfig(QObject):
         config.set(section, 'CFG_VERSION', str(CURRENT_CFG_FILE_VERSION))
         config.set(section, 'log_level', self.log_level_str)
         config.set(section, 'dash_network', self.dash_network)
-        if not self.hw_type:
-            self.hw_type = HWType.trezor
-        config.set(section, 'hw_type', self.hw_type)
+        if self.__hw_type:
+            config.set(section, 'hw_type', self.__hw_type.value)
         config.set(section, 'hw_keepkey_psw_encoding', self.hw_keepkey_psw_encoding)
         config.set(section, 'bip32_base_path', self.last_bip32_base_path)
         config.set(section, 'random_dash_net_config', '1' if self.random_dash_net_config else '0')
@@ -972,40 +1131,51 @@ class AppConfig(QObject):
         config.set(section, 'read_external_proposal_attributes',
                    '1' if self.read_proposals_external_attributes else '0')
         config.set(section, 'confirm_when_voting', '1' if self.confirm_when_voting else '0')
+        config.set(section, 'fetch_network_data_after_start', '1' if self.fetch_network_data_after_start else '0')
+        config.set(section, 'show_dash_value_in_fiat', '1' if self.show_dash_value_in_fiat else '0')
         config.set(section, 'add_random_offset_to_vote_time', '1' if self.add_random_offset_to_vote_time else '0')
+        config.set(section, 'proposal_vote_time_offset_lower', str(self._proposal_vote_time_offset_lower))
+        config.set(section, 'proposal_vote_time_offset_upper', str(self._proposal_vote_time_offset_upper))
         config.set(section, 'encrypt_config_file', '1' if self.encrypt_config_file else '0')
+        config.set(section, 'show_network_masternodes_tab', '1' if self.show_network_masternodes_tab else '0')
 
         # save mn configuration
         for idx, mn in enumerate(self.masternodes):
-            section = 'MN' + str(idx+1)
+            section = 'MN' + str(idx + 1)
             config.add_section(section)
             config.set(section, 'name', mn.name)
             config.set(section, 'ip', mn.ip)
-            config.set(section, 'port', str(mn.port))
+            config.set(section, 'port', str(mn.tcp_port))
             # the private key encryption method used below is a very basic one, just to not have them stored
             # in plain text; more serious encryption is used when enabling the 'Encrypt config file' option
-            config.set(section, 'collateral_bip32_path', mn.collateralBip32Path)
-            config.set(section, 'collateral_address', mn.collateralAddress)
-            config.set(section, 'collateral_tx', mn.collateralTx)
-            config.set(section, 'collateral_tx_index', str(mn.collateralTxIndex))
+            config.set(section, 'collateral_bip32_path', mn.collateral_bip32_path)
+            config.set(section, 'collateral_address', mn.collateral_address)
+            config.set(section, 'collateral_tx', mn.collateral_tx)
+            config.set(section, 'collateral_tx_index', str(mn.collateral_tx_index))
             config.set(section, 'use_default_protocol_version', '1' if mn.use_default_protocol_version else '0')
             config.set(section, 'protocol_version', str(mn.protocol_version))
             config.set(section, 'dmn_user_roles', str(mn.dmn_user_roles))
-            config.set(section, 'dmn_tx_hash', mn.dmn_tx_hash)
-            config.set(section, 'dmn_owner_private_key', self.simple_encrypt(mn.dmn_owner_private_key))
-            config.set(section, 'dmn_operator_private_key', self.simple_encrypt(mn.dmn_operator_private_key))
-            config.set(section, 'dmn_voting_private_key', self.simple_encrypt(mn.dmn_voting_private_key))
-            config.set(section, 'dmn_owner_key_type', str(mn.dmn_owner_key_type))
-            config.set(section, 'dmn_operator_key_type', str(mn.dmn_operator_key_type))
-            config.set(section, 'dmn_voting_key_type', str(mn.dmn_voting_key_type))
-            config.set(section, 'dmn_owner_address', mn.dmn_owner_address)
-            config.set(section, 'dmn_operator_public_key', mn.dmn_operator_public_key)
-            config.set(section, 'dmn_voting_address', mn.dmn_voting_address)
-            mn.modified = False
+            config.set(section, 'dmn_tx_hash', mn.protx_hash)
+            config.set(section, 'dmn_owner_private_key', self.simple_encrypt(mn.owner_private_key))
+            config.set(section, 'dmn_operator_private_key', self.simple_encrypt(mn.operator_private_key))
+            config.set(section, 'dmn_voting_private_key', self.simple_encrypt(mn.voting_private_key))
+            config.set(section, 'dmn_owner_key_type', str(mn.owner_key_type))
+            config.set(section, 'dmn_operator_key_type', str(mn.operator_key_type))
+            config.set(section, 'dmn_voting_key_type', str(mn.voting_key_type))
+            config.set(section, 'dmn_owner_address', mn.owner_address)
+            config.set(section, 'dmn_operator_public_key', mn.operator_public_key)
+            config.set(section, 'dmn_voting_address', mn.voting_address)
+            config.set(section, 'masternode_type', str(mn.masternode_type.value))
+            config.set(section, 'platform_node_key_type', str(mn.platform_node_key_type))
+            config.set(section, 'platform_node_id', mn.platform_node_id)
+            config.set(section, 'platform_node_private_key', self.simple_encrypt(mn.platform_node_private_key))
+            config.set(section, 'platform_p2p_port', str(mn.platform_p2p_port) if mn.platform_p2p_port else '')
+            config.set(section, 'platform_http_port', str(mn.platform_http_port) if mn.platform_http_port else '')
+            mn.update_data_hash()
 
         # save dash network connections
         for idx, cfg in enumerate(self.dash_net_configs):
-            section = 'CONNECTION' + str(idx+1)
+            section = 'CONNECTION' + str(idx + 1)
             config.add_section(section)
             config.set(section, 'method', cfg.method)
             config.set(section, 'enabled', '1' if cfg.enabled else '0')
@@ -1049,9 +1219,57 @@ class AppConfig(QObject):
 
         if update_current_file_name:
             self.config_file_encrypted = encrypted
-            self.modified = False
             self.app_config_file_name = file_name
             app_cache.set_value('AppConfig_ConfigFileName', self.app_config_file_name)
+        self.update_config_data_hash()
+
+    def new_configuration(self):
+        """ Creates a new configuration with defaults """
+        self.reset_configuration()
+        self.load_default_connections()
+        self.configure_cache()
+        self.config_file_data_hash = ''
+
+    def get_cfg_data_str(self):
+        """
+        Returns saveable configuration data packed as a string. Used for hashing configuration data
+        to be used as a comparison method if configration has changed.
+        """
+        all_data = ''
+        all_data += str(self.log_level_str)
+        all_data += str(self.dash_network)
+        all_data += str(self.__hw_type.value) if self.__hw_type is not None else ''
+        all_data += str(self.hw_keepkey_psw_encoding)
+        all_data += str(self.last_bip32_base_path)
+        all_data += str(self.random_dash_net_config)
+        all_data += str(self.check_for_updates)
+        all_data += str(self.backup_config_file)
+        all_data += str(self.dont_use_file_dialogs)
+        all_data += str(self.read_proposals_external_attributes)
+        all_data += str(self.confirm_when_voting)
+        all_data += str(self.fetch_network_data_after_start)
+        all_data += str(self.show_dash_value_in_fiat)
+        all_data += str(self.add_random_offset_to_vote_time)
+        all_data += str(self._proposal_vote_time_offset_lower)
+        all_data += str(self._proposal_vote_time_offset_upper)
+        all_data += str(self.encrypt_config_file)
+        all_data += str(self.show_network_masternodes_tab)
+
+        for mn in self.masternodes:
+            all_data += mn.get_data_str()
+
+        for cfg in self.dash_net_configs:
+            all_data += cfg.get_data_str()
+
+        return all_data
+
+    def get_config_data_hash(self):
+        data = self.get_cfg_data_str()
+        h = hashlib.sha256(data.encode('ascii', 'ignore'))
+        return h.hexdigest()
+
+    def update_config_data_hash(self):
+        self.config_file_data_hash = self.get_config_data_hash()
 
     def reset_network_dependent_dyn_params(self):
         self.apply_remote_app_params()
@@ -1060,6 +1278,7 @@ class AppConfig(QObject):
         """ Set the dictionary containing the app live parameters stored in the project repository
         (remote app-params.json).
         """
+        self._remote_app_params.clear()
         self._remote_app_params = params
         self.apply_remote_app_params()
 
@@ -1075,14 +1294,41 @@ class AppConfig(QObject):
                         status = a.get('status')
                         message = a.get('message', '')
                         if status in ('enabled', 'disabled'):
-                            return (True if status == 'enabled' else False, prio, message)
+                            return True if status == 'enabled' else False, prio, message
             return None, None, None
+
+        def read_param_from_json(json_param_symbol: str, cfg_attr_name: str) -> Any:
+            params = self._remote_app_params.get('params')
+            if params:
+                value = params.get(json_param_symbol)
+                if value is not None:
+                    if hasattr(self, cfg_attr_name):
+                        self.__setattr__(cfg_attr_name, value)
+                    else:
+                        logging.error(f'Attribute {cfg_attr_name} does not exist.')
+            return
 
         if self._remote_app_params:
             self.feature_register_dmn_automatic.set_value(*get_feature_config_remote('REGISTER_DMN_AUTOMATIC'))
             self.feature_update_registrar_automatic.set_value(*get_feature_config_remote('UPDATE_REGISTRAR_AUTOMATIC'))
             self.feature_update_service_automatic.set_value(*get_feature_config_remote('UPDATE_SERVICE_AUTOMATIC'))
             self.feature_revoke_operator_automatic.set_value(*get_feature_config_remote('REVOKE_OPERATOR_AUTOMATIC'))
+            self.feature_new_bls_scheme.set_value(*get_feature_config_remote('NEW_BLS_SCHEME'))
+
+            read_param_from_json('voteTimeRandomOffsetMin', 'proposal_vote_time_offset_min')
+            read_param_from_json('voteTimeRandomOffsetMax', 'proposal_vote_time_offset_max')
+
+            if self._remote_app_params.get('appDeveloperContact') and \
+                    isinstance(self._remote_app_params.get('appDeveloperContact'), list):
+
+                self.app_dev_contact = []
+                for ci in self._remote_app_params.get('appDeveloperContact'):
+                    name = self.simple_decrypt(ci.get('name'))
+                    user_id = self.simple_decrypt(ci.get('userId'))
+                    url = self.simple_decrypt(ci.get('url'))
+                    if name and user_id:
+                        dci = AppDeveloperContact(name, user_id, url)
+                        self.app_dev_contact.append(dci)
 
     def read_dash_network_app_params(self, dashd_intf):
         """ Read parameters having impact on the app's behavior (sporks/dips) from the Dash network. Called
@@ -1125,10 +1371,48 @@ class AppConfig(QObject):
             v = default
         return v
 
+    @property
+    def proposal_vote_time_offset_lower(self):
+        value = self._proposal_vote_time_offset_lower
+        if isinstance(value, int):
+            try:
+                if value < self.proposal_vote_time_offset_min:
+                    value = self.proposal_vote_time_offset_min
+                if value > self.proposal_vote_time_offset_max:
+                    value = self.proposal_vote_time_offset_max
+                if value > self._proposal_vote_time_offset_upper:
+                    return self._proposal_vote_time_offset_upper
+            except Exception as e:
+                logging.exception(str(e))
+        return value
+
+    @proposal_vote_time_offset_lower.setter
+    def proposal_vote_time_offset_lower(self, value):
+        self._proposal_vote_time_offset_lower = value
+
+    @property
+    def proposal_vote_time_offset_upper(self):
+        value = self._proposal_vote_time_offset_upper
+        if isinstance(value, int):
+            try:
+                if value < self.proposal_vote_time_offset_min:
+                    value = self.proposal_vote_time_offset_min
+                if value > self.proposal_vote_time_offset_max:
+                    value = self.proposal_vote_time_offset_max
+                if value < self._proposal_vote_time_offset_lower:
+                    return self._proposal_vote_time_offset_lower
+            except Exception as e:
+                logging.exception(str(e))
+        return value
+
+    @proposal_vote_time_offset_upper.setter
+    def proposal_vote_time_offset_upper(self, value):
+        self._proposal_vote_time_offset_upper = value
+
     def set_log_level(self, new_log_level_str: str):
         """
         Method called when log level has been changed by the user. New log
-        :param new_log_level: new log level (symbol as INFO,WARNING,etc) to be set.
+        :param new_log_level_str: new log level (symbol as INFO,WARNING,etc) to be set.
         """
         if self.log_level_str != new_log_level_str:
             ll_sav = self.log_level_str
@@ -1157,7 +1441,6 @@ class AppConfig(QObject):
         if self.log_handler and self.log_handler.formatter:
             fmt = self.log_handler.formatter._fmt
             app_cache.set_value(CACHE_ITEM_LOG_FORMAT, fmt)
-
 
     def restore_loggers_config(self):
         lcfg = app_cache.get_value(CACHE_ITEM_LOGGERS_LOGLEVEL, {}, dict)
@@ -1194,12 +1477,12 @@ class AppConfig(QObject):
         """
         tmp_list = []
         for cfg in self.dash_net_configs:
-            if cfg.enabled and self.is_testnet() == cfg.testnet:
+            if cfg.enabled and self.is_testnet == cfg.testnet:
                 tmp_list.append(cfg)
         if self.random_dash_net_config:
             ordered_list = []
             while len(tmp_list):
-                idx = randint(0, len(tmp_list)-1)
+                idx = randint(0, len(tmp_list) - 1)
                 ordered_list.append(tmp_list[idx])
                 del tmp_list[idx]
             self.active_dash_net_configs = ordered_list
@@ -1234,7 +1517,7 @@ class AppConfig(QObject):
         for conn_raw in raw_conn_list:
             try:
                 if 'use_ssh_tunnel' in conn_raw and 'host' in conn_raw and 'port' in conn_raw and \
-                   'username' in conn_raw and 'password' in conn_raw and 'use_ssl' in conn_raw:
+                        'username' in conn_raw and 'password' in conn_raw and 'use_ssl' in conn_raw:
                     cfg = DashNetworkConnectionCfg('rpc')
                     cfg.use_ssh_tunnel = conn_raw['use_ssh_tunnel']
                     cfg.host = conn_raw['host']
@@ -1312,7 +1595,7 @@ class AppConfig(QObject):
     def import_connections(self, in_conns, force_import, limit_to_network: Optional[str]):
         """
         Imports connections from a list. Used at the app's start to process default connections and/or from
-          a configuration dialog, when user pastes from a clipboard a string, describing connections he
+          a configuration dialog, when a user pastes a string, describing connections he
           wants to add to the configuration. The latter feature is used for a convenience.
         :param in_conns: list of DashNetworkConnectionCfg objects.
         :returns: tuple (list_of_added_connections, list_of_updated_connections)
@@ -1321,7 +1604,7 @@ class AppConfig(QObject):
         added_conns = []
         updated_conns = []
         if in_conns:
-            # import default mainnet connections if there is so mainnet conenctions in the current configuration
+            # import default mainnet connections if there is so mainnet connections in the current configuration
             # the same for testnet
             mainnet_conn_count = 0
             testnet_conn_count = 0
@@ -1333,14 +1616,14 @@ class AppConfig(QObject):
 
             for nc in in_conns:
                 if (self.dash_network == 'MAINNET' and nc.testnet == False) or \
-                   (self.dash_network == 'TESTNET' and nc.testnet == True) or not limit_to_network:
+                        (self.dash_network == 'TESTNET' and nc.testnet == True) or not limit_to_network:
                     id = nc.get_conn_id()
                     # check if new connection is in existing list
                     conn = self.get_conn_cfg_by_id(id)
                     if not conn:
                         if force_import or not app_cache.get_value('imported_default_conn_' + nc.get_conn_id(),
                                                                    False, bool) or \
-                           (testnet_conn_count == 0 and nc.testnet) or  (mainnet_conn_count == 0 and nc.mainnet):
+                                (testnet_conn_count == 0 and nc.testnet) or (mainnet_conn_count == 0 and nc.mainnet):
                             # this new connection was not automatically imported before
                             self.dash_net_configs.append(nc)
                             added_conns.append(nc)
@@ -1386,28 +1669,28 @@ class AppConfig(QObject):
                 raise Exception('Masternode with this name: ' + mn.name + ' already exists in configuration')
 
     def is_modified(self) -> bool:
-        modified = self.modified
-        if not modified:
-            for mn in self.masternodes:
-                if mn.modified:
-                    modified = True
-                    break
-        return modified
+        if self.config_file_data_hash is not None:
+            mod = self.config_file_data_hash != self.get_config_data_hash()
+        else:
+            mod = False
+        return mod
 
+    @property
     def is_testnet(self) -> bool:
         return self.dash_network == 'TESTNET'
 
+    @property
     def is_mainnet(self) -> bool:
         return self.dash_network == 'MAINNET'
 
     def get_zcoin(self):
-        if self.is_testnet():
+        if self.is_testnet:
             return 'Zcoin Testnet'
         else:
             return 'Zcoin'
 
     def get_firo(self):
-        if self.is_testnet():
+        if self.is_testnet:
             return 'Firo Testnet'
         else:
             return 'Firo'
@@ -1447,51 +1730,6 @@ class AppConfig(QObject):
         else:
             return self.tx_api_url_testnet
 
-    def get_hw_type(self):
-        return self.hw_type
-
-    def initialize_hw_encryption(self, hw_session: HwSessionInfo):
-        if threading.current_thread() != threading.main_thread():
-            raise Exception('This function must be called from the main thread.')
-
-        if not self.fernet:
-            self.hw_encryption_key = None
-            self.fernet = None
-            # encrypt generated_key with hardware wallet: it will be used to encrypt data in db cache
-            try:
-                if self.hw_type in (HWType.trezor, HWType.keepkey):
-                    v = hw_intf.hw_encrypt_value(hw_session, [10, 100, 1000], 'bip32address',
-                                                 self.hw_generated_key, False, False)
-                    self.hw_encryption_key = base64.urlsafe_b64encode(v[0])
-                else:
-                    # Ledger doesn't have encryption features like Trezor, so as an encryption
-                    # key we use the public key of the wallet's BIP32 root
-                    key = app_utils.SHA256.new(hw_session.base_public_key + self.hw_generated_key).digest()
-                    self.hw_encryption_key = base64.urlsafe_b64encode(key)
-
-                self.fernet = Fernet(self.hw_encryption_key)
-                return True
-            except Exception as e:
-                logging.warning("Couldn't encrypt data with hardware wallet: " + str(e))
-                return False
-        else:
-            return True
-
-    def hw_encrypt_string(self, data_str):
-        if self.fernet:
-            return self.fernet.encrypt(data_str)
-        else:
-            return None
-
-    def hw_decrypt_string(self, data_str):
-        if self.fernet:
-            try:
-                return self.fernet.decrypt(data_str)
-            except Exception:
-                return None
-        else:
-            return None
-
     def get_app_img_dir(self):
         return os.path.join(self.app_dir, '', 'img')
 
@@ -1500,154 +1738,238 @@ class AppConfig(QObject):
             return True
         return False
 
+    @property
+    def internal_ui_dark_mode_activated(self):
+        return self._internal_ui_dark_mode_activated
+
+    @internal_ui_dark_mode_activated.setter
+    def internal_ui_dark_mode_activated(self, activated: bool):
+        self._internal_ui_dark_mode_activated = activated
+
+    def get_widget_font_color_blue(self, wdg: QWidget) -> str:
+        if self.internal_ui_dark_mode_activated:
+            bg_color = qdarkstyle.Palette.COLOR_BACKGROUND_1
+        else:
+            palette = wdg.palette()
+            bg_col = palette.color(QPalette.Normal, palette.Base)
+            bg_color = bg_col.name()
+        return get_widget_font_color_blue(bg_color)
+
+    def get_widget_font_color_green(self, wdg: QWidget) -> str:
+        if self.internal_ui_dark_mode_activated:
+            bg_color = qdarkstyle.Palette.COLOR_BACKGROUND_1
+        else:
+            palette = wdg.palette()
+            bg_col = palette.color(QPalette.Normal, palette.Base)
+            bg_color = bg_col.name()
+        return get_widget_font_color_green(bg_color)
+
+    def get_hyperlink_font_color(self, wdg: QWidget) -> str:
+        palette = wdg.palette()
+        bg_col = palette.color(QPalette.Normal, palette.Link)
+
+        if self.internal_ui_dark_mode_activated:
+            bg_col = bg_col.lighter(140)
+        bg_color = bg_col.name()
+        return bg_color
+
+    def get_widget_background_color(self, wdg: QWidget) -> str:
+        if self.internal_ui_dark_mode_activated:
+            bg_color = qdarkstyle.DarkPalette.COLOR_BACKGROUND_1
+        else:
+            palette = wdg.palette()
+            bg_col = palette.color(QPalette.Normal, palette.Base)
+            bg_color = bg_col.name()
+        return bg_color
+
+    def is_network_masternodes_enabled(self) -> bool:
+        return self.show_network_masternodes_tab
+
 
 class MasternodeConfig:
     def __init__(self):
-        self.name = ''
-        self.__ip = ''
-        self.__port = '8168'
-        self.__collateralBip32Path = ''
-        self.__collateralAddress = ''
-        self.__collateralTx = ''
-        self.__collateralTxIndex = ''
-        self.use_default_protocol_version = True
-        self.__protocol_version = ''
+        self.__name: str = ''
+        self.__ip: str = ''
+        self.__port: Optional[int] = 8168
+        self.__collateral_bip32_path: str = ''
+        self.__collateral_address: str = ''
+        self.__collateral_tx: str = ''
+        self.__collateral_tx_index: str = ''
+        self.__protocol_version: str = ''
         self.__dmn_user_roles = DMN_ROLE_OWNER | DMN_ROLE_OPERATOR | DMN_ROLE_VOTING
-        self.__dmn_tx_hash = ''
-        self.__dmn_owner_key_type = InputKeyType.PRIVATE
-        self.__dmn_operator_key_type = InputKeyType.PRIVATE
-        self.__dmn_voting_key_type = InputKeyType.PRIVATE
-        self.__dmn_owner_private_key = ''
-        self.__dmn_operator_private_key = ''
-        self.__dmn_voting_private_key = ''
-        self.__dmn_owner_address = ''
-        self.__dmn_operator_public_key = ''
-        self.__dmn_voting_address = ''
-        self.new = False
-        self.modified = False
+        self.__tx_hash: str = ''
+        self.__owner_key_type: int = InputKeyType.PRIVATE
+        self.__operator_key_type: int = InputKeyType.PRIVATE
+        self.__voting_key_type: int = InputKeyType.PRIVATE
+        self.__platform_node_key_type: int = InputKeyType.PRIVATE
+        self.__owner_private_key: str = ''
+        self.__operator_private_key: str = ''
+        self.__voting_private_key: str = ''
+        self.__owner_address: str = ''
+        self.__operator_public_key: str = ''
+        self.__voting_address: str = ''
+        self.__masternode_type: MasternodeType = MasternodeType.REGULAR
+        self.__platform_node_private_key: str = ''
+        self.__platform_node_id: str = ''
+        self.__platform_p2p_port: Optional[int] = None
+        self.__platform_http_port: Optional[int] = None
+        self.use_default_protocol_version = True
+        self.is_new = False  # True if this mn configuration entry isn't included in the app configuration yet
+        self.saved_data_hash = ''
         self.lock_modified_change = False
 
-    def set_modified(self):
-        if not self.lock_modified_change:
-            self.modified = True
-
     def copy_from(self, src_mn: 'MasternodeConfig'):
+        self.name = src_mn.name
         self.ip = src_mn.ip
-        self.port = src_mn.port
-        self.collateralBip32Path = src_mn.collateralBip32Path
-        self.collateralAddress = src_mn.collateralAddress
-        self.collateralTx = src_mn.collateralTx
-        self.collateralTxIndex = src_mn.collateralTxIndex
+        self.tcp_port = src_mn.tcp_port
+        self.collateral_bip32_path = src_mn.collateral_bip32_path
+        self.collateral_address = src_mn.collateral_address
+        self.collateral_tx = src_mn.collateral_tx
+        self.collateral_tx_index = src_mn.collateral_tx_index
         self.use_default_protocol_version = src_mn.use_default_protocol_version
         self.protocol_version = src_mn.protocol_version
         self.dmn_user_roles = src_mn.dmn_user_roles
-        self.dmn_tx_hash = src_mn.dmn_tx_hash
-        self.dmn_owner_key_type = src_mn.dmn_owner_key_type
-        self.dmn_operator_key_type = src_mn.dmn_operator_key_type
-        self.dmn_voting_key_type = src_mn.dmn_voting_key_type
-        self.dmn_owner_private_key = src_mn.dmn_owner_private_key
-        self.dmn_operator_private_key = src_mn.dmn_operator_private_key
-        self.dmn_voting_private_key = src_mn.dmn_voting_private_key
-        self.dmn_owner_address = src_mn.dmn_owner_address
-        self.dmn_operator_public_key = src_mn.dmn_operator_public_key
-        self.dmn_voting_address = src_mn.dmn_voting_address
-        self.new = True
+        self.protx_hash = src_mn.protx_hash
+        self.owner_key_type = src_mn.owner_key_type
+        self.operator_key_type = src_mn.operator_key_type
+        self.voting_key_type = src_mn.voting_key_type
+        self.owner_private_key = src_mn.owner_private_key
+        self.operator_private_key = src_mn.operator_private_key
+        self.voting_private_key = src_mn.voting_private_key
+        self.platform_node_key_type = src_mn.platform_node_key_type
+        self.owner_address = src_mn.owner_address
+        self.operator_public_key = src_mn.operator_public_key
+        self.voting_address = src_mn.voting_address
+        self.masternode_type = src_mn.masternode_type
+        self.platform_node_id = src_mn.platform_node_id
+        self.platform_node_private_key = src_mn.platform_node_private_key
+        self.platform_p2p_port = src_mn.platform_p2p_port
+        self.platform_http_port = src_mn.platform_http_port
+        self.is_new = src_mn.is_new
         self.modified = True
         self.lock_modified_change = False
+        self.saved_data_hash = src_mn.saved_data_hash
+
+    def get_data_str(self) -> str:
+        """
+        Returns masternode data packed as string to be used for hashing.
+        """
+        all_attrs = ''
+        for attr, value in self.__dict__.items():
+            m = re.match('(_MasternodeConfig)?(.+)', attr)
+            if m:
+                name = m.group(2)
+                if name.startswith('__'):
+                    all_attrs += str(value)
+        return all_attrs
+
+    def get_hash(self) -> str:
+        data = self.get_data_str()
+        h = hashlib.sha256(data.encode('ascii', 'ignore'))
+        return h.hexdigest()
+
+    def update_data_hash(self):
+        self.saved_data_hash = self.get_hash()
+
+    def is_modified(self):
+        h = self.get_hash()
+        return self.saved_data_hash != h
 
     @property
-    def ip(self):
+    def name(self) -> str:
+        return self.__name
+
+    @name.setter
+    def name(self, new_name: str):
+        self.__name = new_name
+
+    @property
+    def ip(self) -> str:
         if self.__ip:
             return self.__ip.strip()
         else:
             return self.__ip
 
     @ip.setter
-    def ip(self, new_ip):
+    def ip(self, new_ip: str):
         if new_ip:
             self.__ip = new_ip.strip()
         else:
             self.__ip = new_ip
 
     @property
-    def port(self):
-        if self.__port:
-            return self.__port.strip()
-        else:
-            return self.__port
+    def tcp_port(self) -> Optional[int]:
+        return self.__port
 
-    @port.setter
-    def port(self, new_port):
-        if new_port:
-            self.__port = new_port.strip()
-        else:
-            self.__port = new_port
+    @tcp_port.setter
+    def tcp_port(self, new_port: Optional[int]):
+        self.__port = new_port
 
     @property
-    def collateralBip32Path(self):
-        if self.__collateralBip32Path:
-            return self.__collateralBip32Path.strip()
+    def collateral_bip32_path(self) -> str:
+        if self.__collateral_bip32_path:
+            return self.__collateral_bip32_path.strip()
         else:
-            return self.__collateralBip32Path
+            return self.__collateral_bip32_path
 
-    @collateralBip32Path.setter
-    def collateralBip32Path(self, new_collateral_bip32_path):
+    @collateral_bip32_path.setter
+    def collateral_bip32_path(self, new_collateral_bip32_path: str):
         if new_collateral_bip32_path:
-            self.__collateralBip32Path = new_collateral_bip32_path.strip()
+            self.__collateral_bip32_path = new_collateral_bip32_path.strip()
         else:
-            self.__collateralBip32Path = new_collateral_bip32_path
+            self.__collateral_bip32_path = new_collateral_bip32_path
 
     @property
-    def collateralAddress(self):
-        if self.__collateralAddress:
-            return self.__collateralAddress.strip()
+    def collateral_address(self) -> str:
+        if self.__collateral_address:
+            return self.__collateral_address.strip()
         else:
-            return self.__collateralAddress
+            return self.__collateral_address
 
-    @collateralAddress.setter
-    def collateralAddress(self, new_collateral_address):
+    @collateral_address.setter
+    def collateral_address(self, new_collateral_address: str):
         if new_collateral_address:
-            self.__collateralAddress = new_collateral_address.strip()
+            self.__collateral_address = new_collateral_address.strip()
         else:
-            self.__collateralAddress = new_collateral_address
+            self.__collateral_address = new_collateral_address
 
     @property
-    def collateralTx(self):
-        if self.__collateralTx:
-            return self.__collateralTx.strip()
+    def collateral_tx(self) -> str:
+        if self.__collateral_tx:
+            return self.__collateral_tx.strip()
         else:
-            return self.__collateralTx
+            return self.__collateral_tx
 
-    @collateralTx.setter
-    def collateralTx(self, new_collateral_tx):
+    @collateral_tx.setter
+    def collateral_tx(self, new_collateral_tx: str):
         if new_collateral_tx:
-            self.__collateralTx = new_collateral_tx.strip()
+            self.__collateral_tx = new_collateral_tx.strip()
         else:
-            self.__collateralTx = new_collateral_tx
+            self.__collateral_tx = new_collateral_tx
 
     @property
-    def collateralTxIndex(self):
-        if self.__collateralTxIndex:
-            return self.__collateralTxIndex.strip()
+    def collateral_tx_index(self) -> str:
+        if self.__collateral_tx_index:
+            return self.__collateral_tx_index.strip()
         else:
-            return self.__collateralTxIndex
+            return self.__collateral_tx_index
 
-    @collateralTxIndex.setter
-    def collateralTxIndex(self, new_collateral_tx_index):
+    @collateral_tx_index.setter
+    def collateral_tx_index(self, new_collateral_tx_index: str):
         if new_collateral_tx_index:
-            self.__collateralTxIndex = new_collateral_tx_index.strip()
+            self.__collateral_tx_index = new_collateral_tx_index.strip()
         else:
-            self.__collateralTxIndex = new_collateral_tx_index
+            self.__collateral_tx_index = new_collateral_tx_index
 
     @property
-    def protocol_version(self):
+    def protocol_version(self) -> str:
         if self.__protocol_version:
             return self.__protocol_version.strip()
         else:
             return self.__protocol_version
 
     @protocol_version.setter
-    def protocol_version(self, new_protocol_version):
+    def protocol_version(self, new_protocol_version: str):
         if new_protocol_version:
             self.__protocol_version = new_protocol_version.strip()
         else:
@@ -1662,157 +1984,261 @@ class MasternodeConfig:
         self.__dmn_user_roles = roles
 
     @property
-    def dmn_tx_hash(self):
-        return self.__dmn_tx_hash
+    def protx_hash(self) -> str:
+        return self.__tx_hash
 
-    @dmn_tx_hash.setter
-    def dmn_tx_hash(self, tx_hash: str):
+    @protx_hash.setter
+    def protx_hash(self, tx_hash: str):
         if tx_hash is None:
             tx_hash = ''
-        self.__dmn_tx_hash = tx_hash.strip()
+        self.__tx_hash = tx_hash.strip()
 
     @property
-    def dmn_owner_private_key(self):
-        return self.__dmn_owner_private_key
+    def owner_private_key(self) -> str:
+        return self.__owner_private_key
 
-    @dmn_owner_private_key.setter
-    def dmn_owner_private_key(self, dmn_owner_private_key: str):
-        if dmn_owner_private_key is None:
-            dmn_owner_private_key = ''
-        self.__dmn_owner_private_key = dmn_owner_private_key.strip()
-
-    @property
-    def dmn_owner_address(self):
-        return self.__dmn_owner_address
-
-    @dmn_owner_address.setter
-    def dmn_owner_address(self, address):
-        self.__dmn_owner_address = address
+    @owner_private_key.setter
+    def owner_private_key(self, owner_private_key: str):
+        if owner_private_key is None:
+            owner_private_key = ''
+        self.__owner_private_key = owner_private_key.strip()
 
     @property
-    def dmn_operator_private_key(self):
-        return self.__dmn_operator_private_key
+    def owner_address(self) -> str:
+        return self.__owner_address
 
-    @dmn_operator_private_key.setter
-    def dmn_operator_private_key(self, dmn_operator_private_key: str):
-        if dmn_operator_private_key is None:
-            dmn_operator_private_key = ''
-        self.__dmn_operator_private_key = dmn_operator_private_key.strip()
+    @owner_address.setter
+    def owner_address(self, address: str):
+        self.__owner_address = address
 
     @property
-    def dmn_operator_public_key(self):
-        return self.__dmn_operator_public_key
+    def operator_private_key(self) -> str:
+        return self.__operator_private_key
 
-    @dmn_operator_public_key.setter
-    def dmn_operator_public_key(self, key):
-        self.__dmn_operator_public_key = key
-
-    @property
-    def dmn_voting_private_key(self):
-        return self.__dmn_voting_private_key
-
-    @dmn_voting_private_key.setter
-    def dmn_voting_private_key(self, dmn_voting_private_key: str):
-        if dmn_voting_private_key is None:
-            dmn_voting_private_key = ''
-        self.__dmn_voting_private_key = dmn_voting_private_key.strip()
+    @operator_private_key.setter
+    def operator_private_key(self, operator_private_key: str):
+        if operator_private_key is None:
+            operator_private_key = ''
+        self.__operator_private_key = operator_private_key.strip()
 
     @property
-    def dmn_voting_address(self):
-        return self.__dmn_voting_address
+    def operator_public_key(self) -> str:
+        return self.__operator_public_key
 
-    @dmn_voting_address.setter
-    def dmn_voting_address(self, address):
-        self.__dmn_voting_address = address
+    @operator_public_key.setter
+    def operator_public_key(self, key: str):
+        self.__operator_public_key = key
 
     @property
-    def dmn_owner_key_type(self):
-        return self.__dmn_owner_key_type
+    def voting_private_key(self) -> str:
+        return self.__voting_private_key
 
-    @dmn_owner_key_type.setter
-    def dmn_owner_key_type(self, type: InputKeyType):
-        if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
+    @voting_private_key.setter
+    def voting_private_key(self, voting_private_key: str):
+        if voting_private_key is None:
+            voting_private_key = ''
+        self.__voting_private_key = voting_private_key.strip()
+
+    @property
+    def voting_address(self) -> str:
+        return self.__voting_address
+
+    @voting_address.setter
+    def voting_address(self, address: str):
+        self.__voting_address = address
+
+    @property
+    def owner_key_type(self) -> int:
+        return self.__owner_key_type
+
+    @owner_key_type.setter
+    def owner_key_type(self, key_type: int):
+        if key_type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
             raise Exception('Invalid owner key type')
-        self.__dmn_owner_key_type = type
+        self.__owner_key_type = key_type
 
     @property
-    def dmn_operator_key_type(self):
-        return self.__dmn_operator_key_type
+    def operator_key_type(self) -> int:
+        return self.__operator_key_type
 
-    @dmn_operator_key_type.setter
-    def dmn_operator_key_type(self, type: InputKeyType):
-        if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
+    @operator_key_type.setter
+    def operator_key_type(self, key_type: int):
+        if key_type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
             raise Exception('Invalid operator key type')
-        self.__dmn_operator_key_type = type
+        self.__operator_key_type = key_type
 
     @property
-    def dmn_voting_key_type(self):
-        return self.__dmn_voting_key_type
+    def voting_key_type(self) -> int:
+        return self.__voting_key_type
 
-    @dmn_voting_key_type.setter
-    def dmn_voting_key_type(self, type: InputKeyType):
-        if type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
+    @voting_key_type.setter
+    def voting_key_type(self, key_type: int):
+        if key_type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
             raise Exception('Invalid voting key type')
-        self.__dmn_voting_key_type = type
+        self.__voting_key_type = key_type
 
-    def get_current_key_for_voting(self, app_config: AppConfig, dashd_intf):
-        return self.dmn_voting_private_key
+    def get_current_key_for_voting(self, app_config: AppConfig, dashd_intf) -> str:
+        return self.voting_private_key
 
-    def get_dmn_owner_public_address(self, dash_network) -> Optional[str]:
-        if self.__dmn_owner_key_type == InputKeyType.PRIVATE:
-            if self.__dmn_owner_private_key:
-                address = dash_utils.wif_privkey_to_address(self.__dmn_owner_private_key, dash_network)
+    @property
+    def platform_node_key_type(self):
+        return self.__platform_node_key_type
+
+    @platform_node_key_type.setter
+    def platform_node_key_type(self, key_type: int):
+        if key_type not in (InputKeyType.PRIVATE, InputKeyType.PUBLIC):
+            raise Exception('Invalid voting key type')
+        self.__platform_node_key_type = key_type
+
+    @property
+    def masternode_type(self) -> MasternodeType:
+        return self.__masternode_type
+
+    @masternode_type.setter
+    def masternode_type(self, mn_type: MasternodeType):
+        self.__masternode_type = mn_type
+
+    @property
+    def platform_node_id(self) -> str:
+        return self.__platform_node_id
+
+    @platform_node_id.setter
+    def platform_node_id(self, node_id: str):
+        if node_id is None:
+            node_id = ''
+        self.__platform_node_id = node_id
+
+    @property
+    def platform_node_private_key(self):
+        return self.__platform_node_private_key
+
+    @platform_node_private_key.setter
+    def platform_node_private_key(self, private_key: str):
+        if private_key is None:
+            private_key = ''
+        self.__platform_node_private_key = private_key
+
+    @property
+    def platform_p2p_port(self) -> Optional[int]:
+        return self.__platform_p2p_port
+
+    @platform_p2p_port.setter
+    def platform_p2p_port(self, p2p_port: Optional[int]):
+        if p2p_port and not (1 <= p2p_port <= 65535):
+            raise Exception("Platform P2P port must be a valid TCP port [1-65535]")
+        self.__platform_p2p_port = p2p_port
+
+    @property
+    def platform_http_port(self) -> Optional[int]:
+        return self.__platform_http_port
+
+    @platform_http_port.setter
+    def platform_http_port(self, http_port: Optional[int]):
+        if http_port and not (1 <= http_port <= 65535):
+            raise Exception("Platform HTTP port must be a valid TCP port [1-65535]")
+        self.__platform_http_port = http_port
+
+    def get_owner_public_address(self, dash_network) -> Optional[str]:
+        if self.__owner_key_type == InputKeyType.PRIVATE:
+            if self.__owner_private_key:
+                try:
+                    address = dash_utils.wif_privkey_to_address(self.__owner_private_key, dash_network)
+                except Exception as e:
+                    logging.exception(str(e))
+                    address = ''
                 return address
         else:
-            if self.__dmn_owner_address:
-                return self.__dmn_owner_address
+            if self.__owner_address:
+                return self.__owner_address
         return ''
 
-    def get_dmn_owner_pubkey_hash(self) -> Optional[str]:
-        if self.dmn_owner_key_type == InputKeyType.PRIVATE:
-            if self.__dmn_owner_private_key:
-                pubkey = dash_utils.wif_privkey_to_pubkey(self.__dmn_owner_private_key)
-                pubkey_bin = bytes.fromhex(pubkey)
-                pub_hash = bitcoin.bin_hash160(pubkey_bin)
-                return pub_hash.hex()
+    def get_owner_pubkey_hash(self) -> Optional[str]:
+        if self.owner_key_type == InputKeyType.PRIVATE:
+            if self.__owner_private_key:
+                try:
+                    pubkey = dash_utils.wif_privkey_to_pubkey(self.__owner_private_key)
+                    pubkey_bin = bytes.fromhex(pubkey)
+                    pub_hash = bitcoin.bin_hash160(pubkey_bin)
+                    pub_hash = pub_hash.hex()
+                except Exception as e:
+                    logging.exception(str(e))
+                    pub_hash = ''
+                return pub_hash
         else:
-            if self.__dmn_owner_address:
-                ret = dash_utils.address_to_pubkey_hash(self.__dmn_owner_address)
+            if self.__owner_address:
+                ret = dash_utils.address_to_pubkey_hash(self.__owner_address)
                 if ret:
                     return ret.hex()
         return ''
 
-    def get_dmn_voting_public_address(self, dash_network) -> Optional[str]:
-        if self.__dmn_voting_key_type == InputKeyType.PRIVATE:
-            if self.__dmn_voting_private_key:
-                address = dash_utils.wif_privkey_to_address(self.__dmn_voting_private_key, dash_network)
+    def get_voting_public_address(self, dash_network) -> Optional[str]:
+        if self.__voting_key_type == InputKeyType.PRIVATE:
+            if self.__voting_private_key:
+                try:
+                    address = dash_utils.wif_privkey_to_address(self.__voting_private_key, dash_network)
+                except Exception as e:
+                    logging.exception(str(e))
+                    address = ''
                 return address
         else:
-            if self.__dmn_voting_address:
-                return self.__dmn_voting_address
+            if self.__voting_address:
+                return self.__voting_address
         return ''
 
-    def get_dmn_voting_pubkey_hash(self) -> Optional[str]:
-        if self.__dmn_voting_key_type == InputKeyType.PRIVATE:
-            if self.__dmn_voting_private_key:
-                pubkey = dash_utils.wif_privkey_to_pubkey(self.__dmn_voting_private_key)
-                pubkey_bin = bytes.fromhex(pubkey)
-                pub_hash = bitcoin.bin_hash160(pubkey_bin)
-                return pub_hash.hex()
+    def get_voting_pubkey_hash(self) -> Optional[str]:
+        if self.__voting_key_type == InputKeyType.PRIVATE:
+            if self.__voting_private_key:
+                try:
+                    pubkey = dash_utils.wif_privkey_to_pubkey(self.__voting_private_key)
+                    pubkey_bin = bytes.fromhex(pubkey)
+                    pub_hash = bitcoin.bin_hash160(pubkey_bin)
+                    pub_hash = pub_hash.hex()
+                except Exception as e:
+                    logging.exception(str(e))
+                    pub_hash = ''
+                return pub_hash
         else:
-            if self.__dmn_voting_address:
-                ret = dash_utils.address_to_pubkey_hash(self.__dmn_voting_address)
+            if self.__voting_address:
+                ret = dash_utils.address_to_pubkey_hash(self.__voting_address)
                 if ret:
                     return ret.hex()
         return ''
 
-    def get_dmn_operator_pubkey(self) -> Optional[str]:
-        if self.__dmn_operator_key_type == InputKeyType.PRIVATE:
-            if self.__dmn_operator_private_key:
-                pubkey = dash_utils.bls_privkey_to_pubkey(self.__dmn_operator_private_key)
+    def get_operator_pubkey(self, new_bls_scheme: bool) -> Optional[str]:
+        if self.__operator_key_type == InputKeyType.PRIVATE:
+            if self.__operator_private_key:
+                try:
+                    pubkey = dash_utils.bls_privkey_to_pubkey(self.__operator_private_key, new_bls_scheme)
+                except Exception as e:
+                    logging.exception(str(e))
+                    pubkey = ''
                 return pubkey
         else:
-            return self.__dmn_operator_public_key
+            return self.__operator_public_key
+        return ''
+
+    def get_platform_node_id(self) -> Optional[str]:
+        if self.__platform_node_key_type == InputKeyType.PRIVATE:
+            if self.__platform_node_private_key:
+                try:
+                    node_id = dash_utils.ed25519_private_key_to_platform_node_id(self.__platform_node_private_key)
+                except Exception as e:
+                    logging.exception(str(e))
+                    node_id = ''
+                return node_id
+        else:
+            return self.__platform_node_id
+        return ''
+
+    def get_platform_node_private_key_for_editing(self) -> Optional[str]:
+        if self.__platform_node_key_type == InputKeyType.PRIVATE:
+            if self.__platform_node_private_key:
+                try:
+                    key = dash_utils.ed25519_private_key_to_tenderdash(self.__platform_node_private_key)
+                except Exception as e:
+                    logging.exception(str(e))
+                    key = ''
+                return key
         return ''
 
 
@@ -1824,6 +2250,15 @@ class SSHConnectionCfg(object):
         self.__password = ''
         self.__auth_method = 'any'  # 'any', 'password', 'key_pair', 'ssh_agent'
         self.private_key_path = ''
+
+    def get_data_str(self) -> str:
+        all_data = str(self.__host)
+        all_data += str(self.__port)
+        all_data += str(self.__username)
+        all_data += str(self.__password)
+        all_data += str(self.__auth_method)
+        all_data += str(self.private_key_path)
+        return all_data
 
     @property
     def host(self):
@@ -1874,7 +2309,7 @@ class SSHConnectionCfg(object):
 class DashNetworkConnectionCfg(object):
     def __init__(self, method):
         self.__enabled = True
-        self.method = method    # now only 'rpc'
+        self.method = method  # now only 'rpc'
         self.__host = ''
         self.__port = ''
         self.__username = ''
@@ -1885,6 +2320,23 @@ class DashNetworkConnectionCfg(object):
         self.__testnet = False
         self.__rpc_encryption_pubkey_der = ''
         self.__rpc_encryption_pubkey_object = None
+
+    def get_data_str(self) -> str:
+        """
+        Returns data packed as string to be used for hashing.
+        """
+        all_attrs = str(self.__enabled)
+        all_attrs += str(self.__host)
+        all_attrs += str(self.__port)
+        all_attrs += str(self.__username)
+        all_attrs += str(self.__password)
+        all_attrs += str(self.__use_ssl)
+        all_attrs += str(self.__use_ssh_tunnel)
+        all_attrs += self.__ssh_conn_cfg.get_data_str()
+        all_attrs += str(self.__testnet)
+        all_attrs += str(self.__rpc_encryption_pubkey_der)
+
+        return all_attrs
 
     def get_description(self):
         if self.__use_ssh_tunnel:
@@ -1899,8 +2351,8 @@ class DashNetworkConnectionCfg(object):
 
     def get_conn_id(self):
         """
-        Returns identifier of this connection, built on attributes that uniquely characteraize the connection.
-        :return:
+        Returns identifier of this connection, built on attributes that uniquely characterize the connection.
+        :return: 
         """
         if self.__use_ssh_tunnel:
             id = 'SSH:' + self.ssh_conn_cfg.host + ':' + self.__host + ':' + self.__port + ':' + str(self.__testnet)
@@ -1923,7 +2375,7 @@ class DashNetworkConnectionCfg(object):
                                          self.ssh_conn_cfg.username == cfg2.ssh_conn_cfg.username and
                                          self.ssh_conn_cfg.auth_method == cfg2.ssh_conn_cfg.auth_method and
                                          self.ssh_conn_cfg.private_key_path == cfg2.ssh_conn_cfg.private_key_path)) \
-               and self.testnet == cfg2.testnet and \
+            and self.testnet == cfg2.testnet and \
             self.__rpc_encryption_pubkey_der == cfg2.__rpc_encryption_pubkey_der
 
     def __deepcopy__(self, memodict):
@@ -1933,7 +2385,7 @@ class DashNetworkConnectionCfg(object):
 
     def copy_from(self, cfg2):
         """
-        Copies alle attributes from another instance of this class.
+        Copies all the attributes from another instance of this class.
         :param cfg2: Another instance of this type from which attributes will be copied.
         """
         self.host = cfg2.host
@@ -2053,7 +2505,7 @@ class DashNetworkConnectionCfg(object):
     @use_ssl.setter
     def use_ssl(self, use_ssl):
         if not isinstance(use_ssl, bool):
-            raise Exception('Ivalid type of "use_ssl" argument')
+            raise Exception('Invalid type of "use_ssl" argument')
         self.__use_ssl = use_ssl
 
     @property
@@ -2063,7 +2515,7 @@ class DashNetworkConnectionCfg(object):
     @use_ssh_tunnel.setter
     def use_ssh_tunnel(self, use_ssh_tunnel):
         if not isinstance(use_ssh_tunnel, bool):
-            raise Exception('Ivalid type of "use_ssh_tunnel" argument')
+            raise Exception('Invalid type of "use_ssh_tunnel" argument')
         self.__use_ssh_tunnel = use_ssh_tunnel
 
     @property
@@ -2081,7 +2533,7 @@ class DashNetworkConnectionCfg(object):
     @testnet.setter
     def testnet(self, testnet):
         if not isinstance(testnet, bool):
-            raise Exception('Ivalid type of "testnet" argument')
+            raise Exception('Invalid type of "testnet" argument')
         self.__testnet = testnet
 
     def set_rpc_encryption_pubkey(self, key: str):

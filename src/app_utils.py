@@ -14,7 +14,7 @@ import binascii
 import datetime
 from typing import Optional, List, Tuple, ByteString, BinaryIO, Callable
 from PyQt5.QtCore import QLocale
-from PyQt5.QtWidgets import QMessageBox, QMenu, QAction
+from PyQt5.QtWidgets import QMenu, QAction
 from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
@@ -61,7 +61,7 @@ def parse_version_str(version_str) -> Tuple[List[int], Optional[str]]:
                 else:
                     remainder = version_str[pos_begin:]
             break
-        elem = version_str[pos_begin : pos_end].strip()
+        elem = version_str[pos_begin: pos_end].strip()
         if not elem:
             break
 
@@ -77,7 +77,7 @@ def parse_version_str(version_str) -> Tuple[List[int], Optional[str]]:
 
 
 def version_str_to_number(version_str):
-    version_nrs,_ = parse_version_str(version_str)
+    version_nrs, _ = parse_version_str(version_str)
 
     ver_list = [str(n).zfill(4) for n in version_nrs]
     version_nr_str = ''.join(ver_list)
@@ -85,7 +85,7 @@ def version_str_to_number(version_str):
     return version_nr
 
 
-def is_version_bigger(checked_version: str, ref_version: str) -> bool:
+def is_version_greater(checked_version: str, ref_version: str) -> bool:
     cmp = False
     try:
         version_nrs, ref_suffix = parse_version_str(ref_version)
@@ -98,11 +98,11 @@ def is_version_bigger(checked_version: str, ref_version: str) -> bool:
 
         if checked_suffix:
             if ref_suffix:
-                ref_match = re.match('(\d+)(\D+)', ref_suffix[::-1])
+                ref_match = re.match(r'(\d+)(\D+)', ref_suffix[::-1])
             else:
                 ref_match = None
 
-            verified_match = re.match('(\d+)(\D+)', checked_suffix[::-1])
+            verified_match = re.match(r'(\d+)(\D+)', checked_suffix[::-1])
             if verified_match and len(verified_match.groups()) == 2 and \
                     (not ref_match or (ref_match and len(ref_match.groups()) == 2 and
                                        ref_match.group(2) == verified_match.group(2))):
@@ -114,12 +114,18 @@ def is_version_bigger(checked_version: str, ref_version: str) -> bool:
 
         if checked_version_str and ref_version_str:
             cmp = float(checked_version_str) > float(ref_version_str)
+            if not cmp and float(checked_version_str) == float(ref_version_str) and not checked_suffix \
+                and ref_suffix:
+                # if the ref version string has a version suffix (like "-rc1" ) and the checked version does not have
+                # one, it means, that the checked version is final (that is greater)
+                cmp = True
         else:
             cmp = False
     except Exception:
         logging.exception('Exception occurred while comparing app versions')
 
     return cmp
+
 
 def write_bytes_buf(data: ByteString) -> bytearray:
     return num_to_varint(len(data)) + data
@@ -208,9 +214,9 @@ def seconds_to_human(number_of_seconds, out_seconds=True, out_minutes=True, out_
                      out_days=True, out_unit_auto_adjust=False):
     """
     Converts number of seconds to string representation.
-    :param out_seconds: False, if seconds part in output is to be trucated
+    :param out_seconds: False, if seconds part in output is to be truncated
     :param number_of_seconds: number of seconds.
-    :param out_unit_auto_adjust: if True, funcion automatically decides what parts of the date-time diff
+    :param out_unit_auto_adjust: if True, function automatically decides what parts of the date-time diff
       passed as an argument will become part of the output string. For example, if number_of_seconds is bigger than
       days, there is no sense to show seconds part.
     :return: string representation of time delta
@@ -273,6 +279,20 @@ def seconds_to_human(number_of_seconds, out_seconds=True, out_minutes=True, out_
     return ' '.join(human_strings)
 
 
+def bytes_to_human(bytes_count: int):
+    if bytes_count >= 1099511627776:
+        ret_str = '{0:.2f} TB'.format(bytes_count / 1099511627776)
+    elif bytes_count >= 1073741824:
+        ret_str = '{0:.2f} GB'.format(bytes_count / 1073741824)
+    elif bytes_count >= 1048576:
+        ret_str = '{0:.2f} MB'.format(bytes_count / 1048576)
+    elif bytes_count >= 1024:
+        ret_str = '{0:.2f} kB'.format(bytes_count / 1024)
+    else:
+        ret_str = f'{bytes_count} {"Byte" if bytes_count == 1 else "Bytes"}'
+    return ret_str
+
+
 def get_default_locale():
     return QLocale.system()
 
@@ -281,7 +301,7 @@ ctx = decimal.Context()
 ctx.prec = 20
 
 
-def to_string(data):
+def to_string(data) -> Optional[str]:
     """ Converts date/datetime or number to string using the current locale.
     """
 
@@ -316,7 +336,6 @@ def update_mru_menu_items(mru_file_list: List[str], mru_menu: QMenu,
                           file_open_action: Callable[[str], None],
                           current_file_name: str,
                           clear_all_actions: Callable[[None], None] = None):
-
     # look for a separator below the item list
     act_separator = None
     act_clear = None
@@ -375,10 +394,25 @@ def update_mru_menu_items(mru_file_list: List[str], mru_menu: QMenu,
 
 def str2bool(v):
     if isinstance(v, bool):
-       return v
+        return v
     if v.lower() in ('yes', 'true', '1'):
         return True
     elif v.lower() in ('no', 'false', '0'):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+
+
+def url_path_join(url: str, *parts: str) -> str:
+    if url is None:
+        url = ''
+
+    for part in parts:
+        if part:
+            if url and url[-1] == '/' and part[0] == '/':
+                url += part[1:]
+            elif url and url[-1] != '/' and part[0] != '/':
+                url += '/' + part
+            else:
+                url += part
+    return url

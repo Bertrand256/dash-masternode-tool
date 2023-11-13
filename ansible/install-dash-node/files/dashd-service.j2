@@ -1,0 +1,33 @@
+# Source: https://github.com/kxcd/Masternode-Zeus/blob/main/masternode_zeus.sh
+[Unit]
+Description=Dash Core Daemon
+Documentation=https://dash.org
+After=syslog.target network.target
+
+[Service]
+Type=forking
+User={{ service_user }}
+Group={{ service_user }}
+ExecStart={{ dashd_dir }}/dashd
+
+# Time that systemd gives a process to start before shooting it in the head
+TimeoutStartSec=10m
+
+# If ExecStop is not set, systemd sends a SIGTERM, which is \"okay\", just not ideal
+ExecStop={{ dashd_dir }}/dash-cli stop
+
+# Time that systemd gives a process to stop before shooting it in the head
+TimeoutStopSec=300
+Restart=on-failure
+RestartSec=120
+
+# Allow for three failures in five minutes before trying to spawn another instance
+StartLimitInterval=300
+StartLimitBurst=3
+
+# If the OOM kills this process, systemd should restart it.
+OOMPolicy=continue
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

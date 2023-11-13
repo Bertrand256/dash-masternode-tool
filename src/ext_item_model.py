@@ -3,7 +3,10 @@
 # Author: Bertrand256
 # Created on: 2018-07
 import logging
-from PyQt5.QtCore import Qt, pyqtSlot, QSortFilterProxyModel, QAbstractTableModel, QVariant
+from enum import Enum
+
+from PyQt5.QtCore import Qt, pyqtSlot, QSortFilterProxyModel, QVariant, QAbstractItemModel, \
+    QModelIndex
 from PyQt5.QtWidgets import QTableView, QWidget, QAbstractItemView, QTreeView
 from typing import List, Optional, Any, Dict, Generator
 
@@ -17,14 +20,22 @@ from wnd_utils import WndUtils
 log = logging.getLogger('dmt.ext_item_model')
 
 
+class HorizontalAlignment(Enum):
+    LEFT = 1
+    RIGHT = 2
+
+
 class TableModelColumn(AttrsProtected):
-    def __init__(self, name, caption, visible, initial_width: int = None, additional_attrs: Optional[List[str]] = None):
+    def __init__(self, name, caption, visible, initial_width: int = None,
+                 additional_attrs: Optional[List[str]] = None,
+                 horizontal_alignment: Optional[HorizontalAlignment] = None):
         AttrsProtected.__init__(self)
         self.name = name
         self.caption = caption
         self.visible = visible
         self.initial_width = initial_width
         self.visual_index = None
+        self.horizontal_alignment = horizontal_alignment
         if additional_attrs:
             for attr in additional_attrs:
                 self.add_attribute(attr)
@@ -35,7 +46,7 @@ class TableModelColumn(AttrsProtected):
 class ColumnedSortFilterProxyModel(QSortFilterProxyModel):
     def __init__(self, parent):
         QSortFilterProxyModel.__init__(self, parent)
-        self.source_model: ExtSortFilterTableModel = None
+        self.source_model: Optional[ExtSortFilterItemModel] = None
 
     def setSourceModel(self, source_model):
         try:
@@ -61,18 +72,118 @@ class ColumnedSortFilterProxyModel(QSortFilterProxyModel):
             return is_less
 
 
-class ColumnedItemModelMixin(object):
-    def __init__(self, parent, columns: List[TableModelColumn], columns_movable):
-        object.__init__(self)
+class ExtSortFilterItemModel(QAbstractItemModel, AttrsProtected):
+    def __init__(self, parent, columns: List[TableModelColumn], columns_movable, filtering_sorting):
+        AttrsProtected.__init__(self)
+        QAbstractItemModel.__init__(self, parent)
         self.parent_widget = parent
         self._columns = columns
         self._col_idx_by_name: Dict[str, int] = {}
         self._rebuild_column_index()
-        self.view: QAbstractItemView = None
+        self.view: Optional[QAbstractItemView] = None
         self.columns_movable = columns_movable
-        self.sorting_column_name = ''
-        self.sorting_order = Qt.AscendingOrder
-        self.proxy_model: ColumnedSortFilterProxyModel = None
+        self.initial_sorting_column_name = ''
+        self.initial_sorting_order = Qt.AscendingOrder
+        self.proxy_model: Optional[ColumnedSortFilterProxyModel] = None
+        self.data_lock = thread_utils.EnhRLock()
+        if filtering_sorting:
+            self.enable_filter_proxy_model(self)
+
+    def acquire_lock(self):
+        self.data_lock.acquire()
+
+    def release_lock(self):
+        self.data_lock.release()
+
+    def __enter__(self):
+        self.acquire_lock()
+
+    def __exit__(self, type, value, traceback):
+        self.release_lock()
+
+    def set_sort_column(self, col_name: str, sort_order: Qt.SortOrder):
+        if self.proxy_model:
+            idx = self.col_index_by_name(col_name)
+            if idx >= 0:
+                self.proxy_model.sort(idx, sort_order)
+                if self.view:
+                    self.view.horizontalHeader().setSortIndicator(idx, sort_order)
+                else:
+                    self.initial_sorting_order = col_name
+                    self.initial_sorting_order = sort_order
+            else:
+                raise Exception(f'Column {col_name} not in column list' )
+
+    def set_view(self, view: QAbstractItemView):
+        self.view = view
+        self.get_view_horizontal_header().sectionMoved.connect(self.on_view_column_moved)
+        if self.proxy_model:
+            self.view.setModel(self.proxy_model)
+        else:
+            self.view.setModel(self)
+        self._apply_columns_to_ui()
+
+        if self.initial_sorting_column_name:
+            self.set_sort_column(self.initial_sorting_column_name, self.initial_sorting_order)
+        else:
+            col_idx = self.get_sort_column_index()
+            sort_order = self.get_sort_order()
+            if 0 <= col_idx < len(self._columns):
+                self.view.horizontalHeader().setSortIndicator(col_idx, sort_order)
+
+        if self.columns_movable:
+            self.get_view_horizontal_header().setSectionsMovable(True)
+        for idx, col in enumerate(self._columns):
+            if col.initial_width:
+                self.get_view_horizontal_header().resizeSection(idx, col.initial_width)
+
+    def get_sort_column_index(self) -> int:
+        if self.proxy_model:
+            return self.proxy_model.sortColumn()
+        else:
+            return -1
+
+    def get_sort_column(self) -> Optional[TableModelColumn]:
+        if self.proxy_model:
+            col_idx = self.proxy_model.sortColumn()
+            if 0 <= col_idx < len(self._columns):
+                return self._columns[col_idx]
+        return None
+
+    def get_sort_order(self) -> Optional[Qt.SortOrder]:
+        if self.proxy_model:
+            return self.proxy_model.sortOrder()
+        else:
+            return None
+
+    def index(self, row, column, parent=None, *args, **kwargs):
+        return self.createIndex(row, column)
+
+    def parent(self, index=None):
+        return QModelIndex()
+
+    def selected_rows(self) -> Generator[int, None, None]:
+        if self.view:
+            sel = self.view.selectionModel()
+            rows = sel.selectedRows()
+            for row in rows:
+                if self.proxy_model:
+                    source_row = self.proxy_model.mapToSource(row)
+                    row_idx = source_row.row()
+                else:
+                    row_idx = row.row()
+                if row_idx >= 0:
+                    yield row_idx
+
+    def data_by_row_index(self, row_index):
+        # Reimplement in derived classes. Used by selected_data_items
+        pass
+
+    def selected_data_items(self) -> Generator[Any, None, None]:
+        for row in self.selected_rows():
+            d = self.data_by_row_index(row)
+            if d:
+                yield d
 
     def enable_filter_proxy_model(self, source_model):
         if not self.proxy_model:
@@ -139,7 +250,10 @@ class ColumnedItemModelMixin(object):
                          'width': width})
         app_cache.set_value(setting_name, cols)
 
-    def restore_col_defs(self, setting_name: str):
+    def restore_col_defs(self, setting_name: str) -> bool:
+        """
+        :return: True, if columns settings were found in cache, False otherwise
+        """
         cols = app_cache.get_value(setting_name, [], list)
         if cols:
             idx = 0
@@ -153,6 +267,8 @@ class ColumnedItemModelMixin(object):
                     idx += 1
             self._columns.sort(key=lambda x: x.visual_index)
             self._rebuild_column_index()
+            return True
+        return False
 
     def on_view_column_moved(self, logicalIndex, oldVisualIndex, newVisualIndex):
         hdr = self.get_view_horizontal_header()
@@ -175,7 +291,7 @@ class ColumnedItemModelMixin(object):
                 self._apply_columns_to_ui()
         except Exception as e:
             logging.exception('Exception while configuring table view columns')
-            WndUtils.errorMsg(str(e))
+            WndUtils.error_msg(str(e))
 
     def columnCount(self, parent=None, *args, **kwargs):
         return self.col_count()
@@ -201,24 +317,6 @@ class ColumnedItemModelMixin(object):
             return self.view.header()
         else:
             raise Exception('Unsupported view type: %s', str(type(self.view)))
-
-    def set_view(self, view: QAbstractItemView):
-        self.view = view
-        self.get_view_horizontal_header().sectionMoved.connect(self.on_view_column_moved)
-        if self.proxy_model:
-            self.view.setModel(self.proxy_model)
-        else:
-            self.view.setModel(self)
-        self._apply_columns_to_ui()
-        if self.sorting_column_name:
-            idx = self.col_index_by_name(self.sorting_column_name)
-            if idx is not None:
-                self.view.sortByColumn(idx, self.sorting_order)
-        if self.columns_movable:
-            self.get_view_horizontal_header().setSectionsMovable(True)
-        for idx, col in enumerate(self._columns):
-            if col.initial_width:
-                self.get_view_horizontal_header().resizeSection(idx, col.initial_width)
 
     def _apply_columns_to_ui(self):
         hdr = self.get_view_horizontal_header()
@@ -250,49 +348,3 @@ class ColumnedItemModelMixin(object):
             return self.proxy_model.mapFromSource(index)
         else:
             return index
-
-
-class ExtSortFilterTableModel(ColumnedItemModelMixin, QAbstractTableModel, AttrsProtected):
-    def __init__(self, parent, columns: List[TableModelColumn], columns_movable, filtering_sorting):
-        AttrsProtected.__init__(self)
-        ColumnedItemModelMixin.__init__(self, parent, columns, columns_movable)
-        QAbstractTableModel.__init__(self, parent)
-
-        if filtering_sorting:
-            self.enable_filter_proxy_model(self)
-        self.data_lock = thread_utils.EnhRLock()
-
-    def acquire_lock(self):
-        self.data_lock.acquire()
-
-    def release_lock(self):
-        self.data_lock.release()
-
-    def __enter__(self):
-        self.acquire_lock()
-
-    def __exit__(self, type, value, traceback):
-        self.release_lock()
-
-    def selected_rows(self) -> Generator[int, None, None]:
-        if self.view:
-            sel = self.view.selectionModel()
-            rows = sel.selectedRows()
-            for row in rows:
-                if self.proxy_model:
-                    source_row = self.proxy_model.mapToSource(row)
-                    row_idx = source_row.row()
-                else:
-                    row_idx = row.row()
-                if row_idx >= 0:
-                    yield row_idx
-
-    def data_by_row_index(self, row_index):
-        # Reimplement in derived classes. Used by selected_data_items
-        pass
-
-    def selected_data_items(self) -> Generator[Any, None, None]:
-        for row in self.selected_rows():
-            d = self.data_by_row_index(row)
-            if d:
-                yield d

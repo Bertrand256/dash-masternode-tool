@@ -17,9 +17,9 @@ class DocDlg(QDialog, ui_doc_dlg.Ui_DocDlg, WndUtils):
         self.doc_text = doc_text
         self.style_sheet = style_sheet
         self.window_title = window_title
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_doc_dlg.Ui_DocDlg.setupUi(self, self)
         self.setWindowTitle(self.window_title)
         if self.style_sheet:

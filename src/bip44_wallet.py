@@ -7,17 +7,16 @@ import threading
 import time
 import datetime
 import logging
-from functools import partial
 
 from PyQt5 import QtCore
-from typing import List, Dict, Tuple, Optional, Any, Generator, NamedTuple, Callable, ByteString, Union
+from typing import List, Dict, Tuple, Optional, Generator, Callable, Union
 from PyQt5.QtCore import QObject, Qt
 import app_utils
 import hw_intf
 from common import CancelException
 from dash_utils import bip32_path_string_to_n, pubkey_to_address, bip32_path_n_to_string, bip32_path_string_append_elem
 from dashd_intf import DashdInterface
-from hw_common import HwSessionInfo, HWNotConnectedException
+from hw_common import HWNotConnectedException
 from db_intf import DBCache
 from thread_fun_dlg import CtrlObject
 from thread_utils import EnhRLock
@@ -54,7 +53,7 @@ class SwitchedHDIdentityException(Exception):
 class Bip44Wallet(QObject):
     blockheight_changed = QtCore.pyqtSignal(int)
 
-    def __init__(self, coin_name: str, hw_session: HwSessionInfo, db_intf: DBCache, dashd_intf: DashdInterface,
+    def __init__(self, coin_name: str, hw_session: 'HwSessionInfo', db_intf: DBCache, dashd_intf: DashdInterface,
                  dash_network: str):
         QObject.__init__(self)
         self.db = None
@@ -68,7 +67,7 @@ class Bip44Wallet(QObject):
         self.__tree_id = None
         self.__tree_ident = None
         self.__tree_label = ''
-        self.__cur_tx_fetch_prioriry = None
+        self.__cur_tx_fetch_priority = None
         self.__waiting_tx_fetch_priority = None
         self.__tx_fetch_end_event = threading.Event()
 
@@ -115,12 +114,12 @@ class Bip44Wallet(QObject):
         self.purge_unconf_txs_called = False
         self.external_call_level = 0
 
-        self.on_account_added_callback: Callable[[Bip44AccountType], None] = None
-        self.on_account_data_changed_callback: Callable[[Bip44AccountType], None] = None
-        self.on_account_address_added_callback: Callable[[Bip44AccountType, Bip44AddressType], None] = None
-        self.on_address_data_changed_callback: Callable[[Bip44AccountType, Bip44AddressType], None] = None
-        self.on_address_loaded_callback: Callable[[Bip44AddressType], None] = None
-        self.on_fetch_account_txs_feedback: Callable[[int], None] = None  # args: number of txses fetched each call
+        self.on_account_added_callback: Optional[Callable[[Bip44AccountType], None]] = None
+        self.on_account_data_changed_callback: Optional[Callable[[Bip44AccountType], None]] = None
+        self.on_account_address_added_callback: Optional[Callable[[Bip44AccountType, Bip44AddressType], None]] = None
+        self.on_address_data_changed_callback: Optional[Callable[[Bip44AccountType, Bip44AddressType], None]] = None
+        self.on_address_loaded_callback: Optional[Callable[[Bip44AddressType], None]] = None
+        self.on_fetch_account_txs_feedback: Optional[Callable[[int], None]] = None  # args: number of txses fetched each call
 
     def signal_account_added(self, account: Bip44AccountType):
         if self.on_account_added_callback and account and self.__tree_id == account.tree_id and \
@@ -365,7 +364,7 @@ class Bip44Wallet(QObject):
         if not addr:
             acc = None
             addr = self.addresses_by_id.get(addr_id)
-        return (addr, acc)
+        return addr, acc
 
     def _get_bip44_entry_by_xpub(self, xpub) -> Bip44Entry:
         raise Exception('ToDo')
@@ -521,8 +520,8 @@ class Bip44Wallet(QObject):
                               account: Bip44AccountType) -> Generator[Bip44AddressType, None, None]:
 
         tm_begin = time.time()
+        count = 0
         try:
-            count = 0
             for idx in range(addr_start_index, addr_start_index + addr_count):
                 addr_info = self._get_child_address(key_entry, idx)
                 if account:
@@ -724,8 +723,8 @@ class Bip44Wallet(QObject):
                 _empty_addresses = 0
                 db_cursor = self.db_intf.get_cursor()
                 try:
-                    for addr_info in reversed(addresses):
-                        addr_id = addr_info.id
+                    for addr_info_rev in reversed(addresses):
+                        addr_id = addr_info_rev.id
 
                         # check if there was no transactions for the address
                         if not self.addr_bal_updated.get(addr_id):
@@ -909,8 +908,6 @@ class Bip44Wallet(QObject):
 
     def _get_tx_db_id(self, db_cursor, txhash: str, tx_json: Dict = None, create=True) -> Tuple[int, Optional[Dict]]:
         """
-        :param tx_entry:
-        :param db_cursor:
         :return: Tuple[int <transaction db id>, Optional[Dict <transaction details json>]]
         """
         tx_hash = self._wrap_txid(txhash)
@@ -1124,7 +1121,7 @@ class Bip44Wallet(QObject):
 
     def _check_terminate_tx_fetch(self):
         if self.__waiting_tx_fetch_priority is not None and \
-           self.__cur_tx_fetch_prioriry < self.__waiting_tx_fetch_priority:
+           self.__cur_tx_fetch_priority < self.__waiting_tx_fetch_priority:
             raise BreakFetchTransactionsException('Break fetch transactions')
 
     def _wait_for_tx_fetch_terminate(self, new_priority: int):
@@ -1140,13 +1137,13 @@ class Bip44Wallet(QObject):
 
         self.__waiting_tx_fetch_priority = new_priority
 
-        while self.__cur_tx_fetch_prioriry is not None:
+        while self.__cur_tx_fetch_priority is not None:
             self.__tx_fetch_end_event.wait(1)
             if self.__tx_fetch_end_event.is_set():
                 self.__tx_fetch_end_event.clear()
 
         self.__waiting_tx_fetch_priority = None
-        self.__cur_tx_fetch_prioriry = new_priority
+        self.__cur_tx_fetch_priority = new_priority
 
     def fetch_all_accounts_txs(self, check_break_process_fun: Callable, priority: int = DEFAULT_TX_FETCH_PRIORITY):
 
@@ -1200,12 +1197,12 @@ class Bip44Wallet(QObject):
                 self.decrease_ext_call_level()
 
         finally:
-            self.__cur_tx_fetch_prioriry = None
+            self.__cur_tx_fetch_priority = None
             self.__tx_fetch_end_event.set()
         log.debug('Finished fetching transactions for all accounts.')
 
     def fetch_account_txs_xpub(self, account: Union[Bip44AccountType, str], change: int,
-                               check_break_process_fun: Callable, priority: int = DEFAULT_TX_FETCH_PRIORITY):
+                               check_break_process_fun: Optional[Callable], priority: int = DEFAULT_TX_FETCH_PRIORITY):
         """
         Dedicated for scanning external xpub accounts (not managed by the current hardware wallet) to find the
         first not used ("fresh") addres to be used as a transaction destination.
@@ -1238,7 +1235,7 @@ class Bip44Wallet(QObject):
                 self.decrease_ext_call_level()
                 self.db_intf.release_cursor()
         finally:
-            self.__cur_tx_fetch_prioriry = None
+            self.__cur_tx_fetch_priority = None
             self.__tx_fetch_end_event.set()
 
         log.debug(f'fetch_account_xpub_txs exec time: {time.time() - tm_begin}s')
@@ -1275,7 +1272,7 @@ class Bip44Wallet(QObject):
         Scans for a specific address. If necessary, the method fetches transactions to reveal the all used addresses.
         :param addr: the address being searched.
         """
-        addr_found: Bip44AddressType = None
+        addr_found: Optional[Bip44AddressType] = None
 
         def new_address_fetched(new_addr: Bip44AddressType):
             nonlocal addr, addr_found
@@ -1749,7 +1746,7 @@ class Bip44Wallet(QObject):
             finally:
                 self.decrease_ext_call_level()
         finally:
-            self.__cur_tx_fetch_prioriry = None
+            self.__cur_tx_fetch_priority = None
             self.__tx_fetch_end_event.set()
         return account
 
@@ -1963,8 +1960,8 @@ def get_tx_address_thread(ctrl: CtrlObject, addresses: List[str], bip44_wallet: 
     txes_cnt = 0
     msg = 'Looking for a BIP32 path of the address related to the masternode collateral.<br>' \
           'This may take a while (<a href="break">break</a>)....'
-    ctrl.dlg_config_fun(dlg_title="Looking for address", show_progress_bar=False)
-    ctrl.display_msg_fun(msg)
+    ctrl.dlg_config(dlg_title="Looking for address", show_progress_bar=False)
+    ctrl.display_msg(msg)
 
     def check_break_scanning():
         nonlocal break_scanning
@@ -1975,7 +1972,7 @@ def get_tx_address_thread(ctrl: CtrlObject, addresses: List[str], bip44_wallet: 
     def fetch_txes_feeback(tx_cnt: int):
         nonlocal msg, txes_cnt
         txes_cnt += tx_cnt
-        ctrl.display_msg_fun(msg + '<br><br>' + 'Number of transactions fetched so far: ' + str(txes_cnt))
+        ctrl.display_msg(msg + '<br><br>' + 'Number of transactions fetched so far: ' + str(txes_cnt))
 
     def on_msg_link_activated(link: str):
         nonlocal break_scanning

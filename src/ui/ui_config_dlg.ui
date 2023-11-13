@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>667</width>
-    <height>440</height>
+    <width>628</width>
+    <height>480</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -32,7 +32,7 @@
       <enum>QTabWidget::Rounded</enum>
      </property>
      <property name="currentIndex">
-      <number>0</number>
+      <number>1</number>
      </property>
      <widget class="QWidget" name="tabDashd">
       <attribute name="title">
@@ -317,86 +317,8 @@
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_2">
        <property name="spacing">
-        <number>12</number>
+        <number>8</number>
        </property>
-       <item>
-        <layout class="QHBoxLayout" name="layHardwareWallet">
-         <item>
-          <widget class="QLabel" name="label_3">
-           <property name="text">
-            <string>Hardware wallet:</string>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
-           </property>
-           <property name="margin">
-            <number>0</number>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QRadioButton" name="chbHwTrezor">
-           <property name="minimumSize">
-            <size>
-             <width>60</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>16777215</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>Trezor</string>
-           </property>
-           <property name="checked">
-            <bool>true</bool>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QRadioButton" name="chbHwKeepKey">
-           <property name="minimumSize">
-            <size>
-             <width>70</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>16777215</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>KeepKey</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QRadioButton" name="chbHwLedgerNanoS">
-           <property name="text">
-            <string>Ledger Nano S</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <spacer name="horizontalSpacer_2">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>40</width>
-             <height>20</height>
-            </size>
-           </property>
-          </spacer>
-         </item>
-        </layout>
-       </item>
        <item>
         <widget class="QWidget" name="wdgKeepkeyPassEncoding" native="true">
          <layout class="QHBoxLayout" name="horizontalLayout_2">
@@ -476,22 +398,57 @@
         </widget>
        </item>
        <item>
+        <widget class="QCheckBox" name="chbFetchDataAfterStart">
+         <property name="text">
+          <string>Automatically fetch network data after starting the app</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="chbShowDashFIATValue">
+         <property name="text">
+          <string>Show DASH value in FIAT</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QCheckBox" name="chbBackupConfigFile">
          <property name="toolTip">
           <string>If checked, old config file will be saved when changing configuration</string>
          </property>
          <property name="text">
-          <string>Backup config file</string>
+          <string>Backup config file when saving</string>
          </property>
         </widget>
        </item>
        <item>
+
         <widget class="QCheckBox" name="chbDontUseFileDialogs">
          <property name="toolTip">
           <string/>
          </property>
          <property name="text">
           <string>Don't use file dialogs</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="chbUIDarkMode">
+         <property name="toolTip">
+          <string>Use dark mode (independent of the OS settings)</string>
+         </property>
+         <property name="text">
+          <string>Use UI dark mode</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="chbShowNetworkMasternodes">
+         <property name="toolTip">
+          <string>Shows a tab in the main window with a list of all masternodes in the Dash network</string>
+         </property>
+         <property name="text">
+          <string>Show network masternodes tab</string>
          </property>
         </widget>
        </item>

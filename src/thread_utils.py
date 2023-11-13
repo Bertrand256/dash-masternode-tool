@@ -12,7 +12,7 @@ from typing import Dict, Tuple, Optional, List
 SAVE_CALL_STACK = True
 
 
-class LockCaller():
+class LockCaller:
     def __init__(self, thread, calling_filename, calling_line_number, call_stack):
         self.thread = thread
         self.file_name = calling_filename
@@ -30,7 +30,7 @@ def clean_call_stack(stack):
     return call_stack
 
 
-class EnhRLock():
+class EnhRLock:
     lock_list = []
     int_lock = threading.Lock()
 

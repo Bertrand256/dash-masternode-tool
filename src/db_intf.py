@@ -131,23 +131,23 @@ class DBCache(object):
     def create_structures(self):
         try:
             cur = self.db_conn.cursor()
-            # create structires for masternodes data:
+            # create structures for masternodes data:
             cur.execute("CREATE TABLE IF NOT EXISTS masternodes(id INTEGER PRIMARY KEY, ident TEXT, status TEXT,"
-                        " protocol TEXT, payee TEXT, last_seen INTEGER, active_seconds INTEGER,"
+                        " type TEXT, protocol TEXT, payee TEXT, last_seen INTEGER, active_seconds INTEGER,"
                         " last_paid_time INTEGER, last_paid_block INTEGER, ip TEXT,"
-                        " dmt_active INTEGER, dmt_create_time TEXT, dmt_deactivation_time TEXT)")
+                        " collateral_hash TEXT, collateral_index INTEGER, collateral_address TEXT, "
+                        " owner_address TEXT, voting_address TEXT, pubkey_operator TEXT,"
+                        " platform_node_id TEXT, platform_p2p_port INTEGER, platform_http_port INTEGER, "
+                        " dmt_active INTEGER, dmt_create_time TEXT, dmt_deactivation_time TEXT, "
+                        " protx_hash TEXT, queue_position INTEGER, registered_height INTEGER, "
+                        " operator_reward REAL, pose_penalty INTEGER, pose_revived_height INTEGER, "
+                        " pose_ban_height INTEGER, operator_payout_address TEXT, pose_ban_timestamp INTEGER)")
 
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_DMT_ACTIVE ON masternodes(dmt_active)")
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_IDENT ON masternodes(ident)")
-
-            if not self.table_columns_exist('masternodes', ['protx_hash']):
-                cur.execute("ALTER TABLE masternodes ADD COLUMN protx_hash TEXT")
-
-            if not self.table_columns_exist('masternodes', ['registered_height']):
-                cur.execute("ALTER TABLE masternodes ADD COLUMN registered_height INTEGER")
-
-            if not self.table_columns_exist('masternodes', ['queue_position']):
-                cur.execute("ALTER TABLE masternodes ADD COLUMN queue_position INTEGER")
+            cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_DMT_CREATE_TIME ON masternodes(dmt_create_time)")
+            cur.execute("CREATE INDEX IF NOT EXISTS IDX_masternodes_DMT_DEACTIVATION_TIME ON "
+                        "masternodes(dmt_deactivation_time)")
 
             # create structures for proposals:
             cur.execute("CREATE TABLE IF NOT EXISTS proposals(id INTEGER PRIMARY KEY, name TEXT, payment_start TEXT,"
@@ -159,10 +159,16 @@ class DBCache(object):
                         " dmt_create_time TEXT, dmt_deactivation_time TEXT, dmt_voting_last_read_time INTEGER,"
                         " ext_attributes_loaded INTEGER, owner TEXT, title TEXT, ext_attributes_load_time INTEGER)")
 
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_PROPOSALS_HASH ON PROPOSALS(hash)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_proposals_hash ON proposals(hash)")
+
+            # structure for protx info
+            cur.execute("CREATE TABLE IF NOT EXISTS protx(id INTEGER PRIMARY KEY, protx_hash TEXT, "
+                        "operator_reward REAL, service TEXT, registered_height INTEGER, "
+                        "pose_penalty INTEGER, pose_revived_height INTEGER, pose_ban_height INTEGER, "                        
+                        "operator_payout_address TEXT)")
 
             # upgrade schema do v 0.9.11:
-            cur.execute("PRAGMA table_info(PROPOSALS)")
+            cur.execute("PRAGMA table_info(proposals)")
             columns = cur.fetchall()
             prop_owner_exists = False
             prop_title_exists = False
@@ -184,34 +190,29 @@ class DBCache(object):
             if not ext_attributes_loaded_exists:
                 # column for saving information whether additional attributes has been read from external sources
                 # like DashCentral.org (1: yes, 0: no)
-                cur.execute("ALTER TABLE PROPOSALS ADD COLUMN ext_attributes_loaded INTEGER")
+                cur.execute("ALTER TABLE proposals ADD COLUMN ext_attributes_loaded INTEGER")
             if not prop_owner_exists:
                 # proposal's owner from an external source like DashCentral.org
-                cur.execute("ALTER TABLE PROPOSALS ADD COLUMN owner TEXT")
+                cur.execute("ALTER TABLE proposals ADD COLUMN owner TEXT")
             if not prop_title_exists:
                 # proposal's title from an external source like DashCentral.org
-                cur.execute("ALTER TABLE PROPOSALS ADD COLUMN title TEXT")
+                cur.execute("ALTER TABLE proposals ADD COLUMN title TEXT")
             if not ext_attributes_load_time_exists:
                 # proposal's title from an external source like DashCentral.org
-                cur.execute("ALTER TABLE PROPOSALS ADD COLUMN ext_attributes_load_time INTEGER")
+                cur.execute("ALTER TABLE proposals ADD COLUMN ext_attributes_load_time INTEGER")
 
-            cur.execute("CREATE TABLE IF NOT EXISTS VOTING_RESULTS(id INTEGER PRIMARY KEY, proposal_id INTEGER,"
-                        " masternode_ident TEXT, voting_time TEXT, voting_result TEXT,"
-                        "hash TEXT)")
+            cur.execute("CREATE TABLE IF NOT EXISTS voting_results(id INTEGER PRIMARY KEY, proposal_id INTEGER,"
+                        " masternode_ident TEXT, voting_time TEXT, voting_result TEXT, signal TEXT, weight INTEGER,"
+                        " hash TEXT)")
 
-            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_HASH ON VOTING_RESULTS(hash)")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_voting_results_hash ON voting_results(hash)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_voting_results_1 ON voting_results(proposal_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_voting_results_2 ON voting_results(masternode_ident)")
 
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_1 ON VOTING_RESULTS(proposal_id)")
-
-            cur.execute("CREATE INDEX IF NOT EXISTS IDX_VOTING_RESULTS_2 ON VOTING_RESULTS(masternode_ident)")
-
-            # Create table for storing live data for example last read time of proposals
+            # Create table for storing live data, for example, last read time of proposals
             cur.execute("CREATE TABLE IF NOT EXISTS LIVE_CONFIG(symbol text PRIMARY KEY, value TEXT)")
-
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_LIVE_CONFIG_SYMBOL ON LIVE_CONFIG(symbol)")
-
             cur.execute("CREATE TABLE IF NOT EXISTS hd_tree(id INTEGER PRIMARY KEY, ident TEXT, label TEXT)")
-
             cur.execute("CREATE INDEX IF NOT EXISTS idx_hd_tree_1 ON hd_tree(ident)")
 
             if not self.table_columns_exist('address', ['parent_id', 'xpub_hash', 'balance', 'address_index',
@@ -266,6 +267,51 @@ class DBCache(object):
                         'timestamp INTEGER)')  # key: tx hash + '-' + output_index
             cur.execute('create index if not exists labels.tx_out_label_1 on address_label(key)')
 
+            # Upgrade to schema 0.9.33
+            cur.execute("PRAGMA table_info(masternodes)")
+            columns = [x[1] for x in cur.fetchall()]
+            if 'protx_hash' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN protx_hash TEXT")
+            if 'registered_height' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN registered_height INTEGER")
+            if 'queue_position' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN queue_position INTEGER")
+            if 'type' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN type TEXT")
+            if 'platform_node_id' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN platform_node_id TEXT")
+            if 'platform_p2p_port' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN platform_p2p_port INTEGER")
+            if 'platform_http_port' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN platform_http_port INTEGER")
+            if 'collateral_hash' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN collateral_hash TEXT")
+            if 'collateral_index' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN collateral_index INTEGER")
+            if 'collateral_address' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN collateral_address TEXT")
+            if 'owner_address' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN owner_address TEXT")
+            if 'voting_address' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN voting_address TEXT")
+            if 'pubkey_operator' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN pubkey_operator TEXT")
+            if 'operator_reward' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN operator_reward REAL")
+            if 'pose_penalty' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN pose_penalty INTEGER")
+            if 'pose_revived_height' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN pose_revived_height INTEGER")
+            if 'pose_ban_height' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN pose_ban_height INTEGER")
+            if 'operator_payout_address' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN operator_payout_address TEXT")
+            if 'pose_ban_timestamp' not in columns:
+                cur.execute("ALTER TABLE masternodes ADD COLUMN pose_ban_timestamp INTEGER")
+            if not self.table_columns_exist('voting_results', ['signal']):
+                cur.execute("ALTER TABLE voting_results ADD COLUMN signal TEXT")
+            if not self.table_columns_exist('voting_results', ['weight']):
+                cur.execute("ALTER TABLE voting_results ADD COLUMN weight INTEGER")
         except Exception:
             log.exception('Exception while initializing database.')
             raise

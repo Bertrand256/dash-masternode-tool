@@ -30,6 +30,7 @@ class AppCache(object):
         self.save_event = threading.Event()
         self.__data = {}
         self.thread = None
+        self.changes_pending = False
 
     def set_file_name(self, cache_file_name: str):
         if cache_file_name != self.cache_file_name:
@@ -49,9 +50,11 @@ class AppCache(object):
 
     def save_data(self):
         try:
-            self.__data['app_version'] = self.app_version
-            json.dump(self.__data, open(self.cache_file_name, 'w'))
-            self.last_data_change_time = 0
+            if self.changes_pending:
+                self.__data['app_version'] = self.app_version
+                json.dump(self.__data, open(self.cache_file_name, 'w'))
+                self.last_data_change_time = 0
+                self.changes_pending = False
         except Exception as e:
             log.error('Error writing cache: ' + str(e))
 
@@ -65,6 +68,7 @@ class AppCache(object):
 
     def data_changed(self):
         self.last_data_change_time = time.time()
+        self.changes_pending = True
 
     def set_value(self, symbol, value):
         if isinstance(value, (int, float, str, list, tuple, dict)):
@@ -94,7 +98,7 @@ class AppCache(object):
         self.thread = None
 
 
-cache = None
+cache: Optional[AppCache] = None
 
 
 def init(cache_file_name, app_version):
@@ -129,10 +133,13 @@ def get_value(symbol, default_value, type):
     return None
 
 
-def save_data():
+def save_data(force: bool = False):
     global cache
     if cache:
-        cache.data_changed()  # it forces saving data inside a thread
+        if force:
+            cache.save_data()
+        else:
+            cache.data_changed()  # it forces saving data inside a thread
     else:
         log.warning('AppCache not initialized')
 
@@ -162,7 +169,7 @@ def restore_window_size(window, default_width:Optional[int] = None, default_heig
 def restore_splitter_sizes(window: QDialog, splitter: QSplitter):
     global cache
     if cache:
-        symbol = window.__class__.__name__  + '_' + splitter.objectName()
+        symbol = window.__class__.__name__ + '_' + splitter.objectName()
         sizes = cache.get_value(symbol, None, list)
         if not isinstance(sizes, list) or len(sizes) != 2:
             sizes = [100, 100]
@@ -177,6 +184,6 @@ def restore_splitter_sizes(window: QDialog, splitter: QSplitter):
 def save_splitter_sizes(window: QDialog, splitter: QSplitter):
     global cache
     if cache:
-        symbol = window.__class__.__name__  + '_' + splitter.objectName()
+        symbol = window.__class__.__name__ + '_' + splitter.objectName()
         cache.set_value(symbol, splitter.sizes())
 

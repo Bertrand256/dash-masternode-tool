@@ -6,14 +6,20 @@
 import binascii
 import base64
 import logging
+import re
 import struct
 import typing
+import hashlib
 from random import randint
 
 import bitcoin
 from bip32utils import Base58
 import base58
-from bls_py import bls
+from typing import Literal, cast
+from blspy import (PrivateKey, Util, AugSchemeMPL, PopSchemeMPL, G1Element, G2Element)
+from bls_py import bls as bls_legacy
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+import cryptography.hazmat.primitives.serialization
 
 
 # Bitcoin opcodes used in the application
@@ -25,7 +31,9 @@ OP_EQUAL = b'\x87'
 
 DEFAULT_SENTINEL_VERSION = 0x010001  # sentinel version before implementation of nSentinelVersion in CMasternodePing
 DEFAULT_DAEMON_VERSION = 120200  # daemon version before implementation of nDaemonVersion in CMasternodePing
-
+MASTERNODE_TX_MINIMUM_CONFIRMATIONS = 15
+DASH_PLATFORM_DEFAULT_P2P_PORT = 26656
+DASH_PLATFORM_DEFAULT_HTTP_PORT = 443
 
 class ChainParams(object):
     B58_PREFIXES_PUBKEY_ADDRESS = None
@@ -57,7 +65,7 @@ class ChainParamsTestNet(ChainParams):
     BIP44_COIN_TYPE = 1
 
 
-def get_chain_params(dash_network: str) -> typing.ClassVar[ChainParams]:
+def get_chain_params(dash_network: str):
     if dash_network == 'MAINNET':
         return ChainParamsMainNet
     elif dash_network == 'TESTNET':
@@ -116,7 +124,7 @@ def wif_privkey_to_address(privkey: str, dash_network: str):
     return pubkey_to_address(pubkey, dash_network)
 
 
-def validate_address(address: str, dash_network: typing.Optional[str]) -> bool:
+def validate_address(address: str, dash_network: typing.Optional[str] = None) -> bool:
     """Validates if the 'address' is a valid Dash address.
     :address: address to be validated
     :dash_network: the dash network type against which the address will be validated; if the value is None, then
@@ -161,7 +169,7 @@ def generate_wif_privkey(dash_network: str, compressed: bool = False):
     return base58.b58encode(data + checksum)
 
 
-def validate_wif_privkey(privkey: str, dash_network: str):
+def validate_wif_privkey(privkey: str, dash_network: str) -> bool:
     try:
         data = base58.b58decode(privkey)
         if len(data) not in (37, 38):
@@ -204,22 +212,9 @@ def generate_bls_privkey() -> str:
         pk_bytes = bytes.fromhex(privkey)
         num_pk = bitcoin.decode_privkey(privkey, 'hex')
         if 0 < num_pk < bitcoin.N:
-            if pk_bytes[0] >= 0x74:
-                if i == max_iterations - 1: # BLS restriction: the first byte is less than 0x74
-                    # after 'limit' iterations we couldn't get the first byte "compatible" with BLS so
-                    # the last resort is to change it to a random value < 0x73
-                    tmp_pk_bytes = bytearray(pk_bytes)
-                    tmp_pk_bytes[0] = randint(0, 0x73)
-                    logging.warning('Changing the first byte of the generated BLS key from %s to %s to meet '
-                                    'the requirements', str(pk_bytes[0]), str(tmp_pk_bytes[0]))
-                    pk_bytes = bytes(tmp_pk_bytes)
-                else:
-                    continue
-
             try:
-                pk = bls.PrivateKey.from_bytes(pk_bytes)
-                pk_bin = pk.serialize()
-                return pk_bin.hex()
+                pk: PrivateKey = AugSchemeMPL.key_gen(pk_bytes)
+                return bytes(pk).hex()
             except Exception as e:
                 logging.warning('Could not process "%s" as a BLS private key. Error details: %s',
                                 pk_bytes.hex(), str(e))
@@ -228,15 +223,72 @@ def generate_bls_privkey() -> str:
     raise Exception("Could not generate BLS private key")
 
 
-def bls_privkey_to_pubkey(privkey: str) -> str:
+def validate_bls_privkey(privkey: str, new_bls_scheme: bool) -> bool:
+    try:
+        pub = bls_privkey_to_pubkey(privkey, new_bls_scheme)
+        return True if pub else False
+    except Exception:
+        return False
+
+
+def validate_bls_pubkey(pubkey: str, new_bls_scheme: bool) -> bool:
+    try:
+        if new_bls_scheme:
+            G1Element.from_bytes(bytes.fromhex(pubkey))
+            return True
+        else:
+            return validate_bls_pubkey_legacy(pubkey)
+    except Exception as e:
+        return False
+
+
+def bls_privkey_to_pubkey(privkey: str, new_bls_scheme: bool) -> str:
+    if new_bls_scheme:
+        return bls_privkey_to_pubkey_basic(privkey)
+    else:
+        return bls_privkey_to_pubkey_legacy(privkey)
+
+
+def bls_privkey_to_pubkey_basic(privkey: str) -> str:
+    """
+    Converts BLS private to a public key using the new BLS scheme introduced in Dash v19, referred to as "basic".
+    :param privkey:
+    :return:
+    """
+    pk_bin = bytes.fromhex(privkey)
+    pk = PrivateKey.from_bytes(pk_bin)
+    pubkey = bytes(pk.get_g1()).hex()
+    return pubkey
+
+
+def bls_privkey_to_pubkey_legacy(privkey: str) -> str:
     """
     :param privkey: BLS privkey as a hex string
     :return: BLS pubkey as a hex string.
     """
-    pk = bls.PrivateKey.from_bytes(bytes.fromhex(privkey))
+    pk_bin = bytes.fromhex(privkey)
+    if len(pk_bin) != 32:
+        raise Exception(f'Invalid private key length: {len(pk_bin)} (should be 32)')
+    pk = bls_legacy.PrivateKey.from_bytes(pk_bin)
     pubkey = pk.get_public_key()
     pubkey_bin = pubkey.serialize()
     return pubkey_bin.hex()
+
+
+def validate_bls_privkey_legacy(privkey: str) -> bool:
+    try:
+        pub = bls_privkey_to_pubkey_legacy(privkey)
+        return True if pub else False
+    except Exception:
+        return False
+
+
+def validate_bls_pubkey_legacy(pubkey: str) -> bool:
+    try:
+        bls_legacy.PublicKey.from_bytes(bytes.fromhex(pubkey))
+        return True
+    except Exception:
+        return False
 
 
 def num_to_varint(n):
@@ -253,16 +305,16 @@ def num_to_varint(n):
 
 
 def read_varint_from_buf(buffer, offset) -> typing.Tuple[int, int]:
-    if (buffer[offset] < 0xfd):
+    if buffer[offset] < 0xfd:
         value_size = 1
         value = buffer[offset]
-    elif (buffer[offset] == 0xfd):
+    elif buffer[offset] == 0xfd:
         value_size = 3
         value = int.from_bytes(buffer[offset + 1: offset + 3], byteorder='little')
-    elif (buffer[offset] == 0xfe):
+    elif buffer[offset] == 0xfe:
         value_size = 5
         value = int.from_bytes(buffer[offset + 1: offset + 5], byteorder='little')
-    elif (buffer[offset] == 0xff):
+    elif buffer[offset] == 0xff:
         value_size = 9
         value = int.from_bytes(buffer[offset + 1: offset + 9], byteorder='little')
     else:
@@ -272,18 +324,18 @@ def read_varint_from_buf(buffer, offset) -> typing.Tuple[int, int]:
 
 def read_varint_from_file(fptr: typing.BinaryIO) -> int:
     buffer = fptr.read(1)
-    if (buffer[0] < 0xfd):
+    if buffer[0] < 0xfd:
         value_size = 1
         value = buffer[0]
-    elif (buffer[0] == 0xfd):
+    elif buffer[0] == 0xfd:
         value_size = 2
         buffer = fptr.read(value_size)
         value = int.from_bytes(buffer[0: 2], byteorder='little')
-    elif (buffer[0] == 0xfe):
+    elif buffer[0] == 0xfe:
         value_size = 4
         buffer = fptr.read(value_size)
         value = int.from_bytes(buffer[0: 4], byteorder='little')
-    elif (buffer[0] == 0xff):
+    elif buffer[0] == 0xff:
         value_size = 8
         buffer = fptr.read(value_size)
         value = int.from_bytes(buffer[0: 8], byteorder='little')
@@ -378,9 +430,7 @@ def ecdsa_sign_raw(msg_raw: bytes, wif_priv_key: str, dash_network: str):
 
 def serialize_input_str(tx, prevout_n, sequence, script_sig):
     """Based on project: https://github.com/chaeplin/dashmnb."""
-    s = ['CTxIn(']
-    s.append('COutPoint(%s, %s)' % (tx, prevout_n))
-    s.append(', ')
+    s = ['CTxIn(', 'COutPoint(%s, %s)' % (tx, prevout_n), ', ']
     if tx == '00' * 32 and prevout_n == 0xffffffff:
         s.append('coinbase %s' % script_sig)
     else:
@@ -422,7 +472,7 @@ def bip32_path_string_append_elem(path_str: str, elem: int):
     return bip32_path_n_to_string(path_n)
 
 
-def compose_tx_locking_script(dest_address, dash_newtork: str):
+def compose_tx_locking_script(dest_address, dash_network: str):
     """
     Create a Locking script (ScriptPubKey) that will be assigned to a transaction output.
     :param dest_address: destination address in Base58Check format
@@ -433,7 +483,7 @@ def compose_tx_locking_script(dest_address, dash_newtork: str):
     if len(pubkey_hash) != 20:
         raise Exception('Invalid length of the public key hash: ' + str(len(pubkey_hash)))
 
-    if dest_address[0] in get_chain_params(dash_newtork).B58_PREFIXES_PUBKEY_ADDRESS:
+    if dest_address[0] in get_chain_params(dash_network).B58_PREFIXES_PUBKEY_ADDRESS:
         # sequence of opcodes/arguments for p2pkh (pay-to-public-key-hash)
         scr = OP_DUP + \
               OP_HASH160 + \
@@ -441,7 +491,7 @@ def compose_tx_locking_script(dest_address, dash_newtork: str):
               pubkey_hash + \
               OP_EQUALVERIFY + \
               OP_CHECKSIG
-    elif dest_address[0] in get_chain_params(dash_newtork).B58_PREFIXES_SCRIPT_ADDRESS:
+    elif dest_address[0] in get_chain_params(dash_network).B58_PREFIXES_SCRIPT_ADDRESS:
         # sequence of opcodes/arguments for p2sh (pay-to-script-hash)
         scr = OP_HASH160 + \
               int.to_bytes(len(pubkey_hash), 1, byteorder='little') + \
@@ -475,168 +525,235 @@ def convert_dash_xpub(xpub, dest_prefix: str):
     return xpub
 
 
+def generate_ed25519_private_key() -> str:
+    """
+    Generates an ed25519 private key as a hex-encoded 32-byte binary value
+    :return: hex-encoded string
+    """
+    pk = Ed25519PrivateKey.generate()
+    pk_bin = pk.private_bytes_raw()
+    return pk_bin.hex()
+
+
+def parse_ed25519_private_key(priv_key: str) -> Ed25519PrivateKey:
+    """
+    Parses ed25519 private key from a few formats.
+    :param priv_key: Private key as a string in formats:
+                       a) PEM with "-----BEGIN/END PRIVATE KEY" enclosing
+                       b) PEM without "-----BEGIN/END PRIVATE KEY" enclosing (bare Base64 string)
+                       c) private + public keys concatenated (64 byte)
+                       d) hex-encoded 32-byte value (64-byte string)
+    :return: 32-byte private key as a hex string
+    """
+    try:
+        match = re.match(r"-+BEGIN PRIVATE KEY-+\n(.+)\n-+END PRIVATE KEY-+", priv_key, re.IGNORECASE)
+        if match and len(match.groups()) == 1:
+            base64_str = match.group(1)
+            priv_key = base64.b64decode(base64_str)
+        elif len(priv_key) == 64:
+            # assume that priv-key is a hex-encoded binary value
+            priv_key = bytes.fromhex(priv_key)
+        else:
+            # assume, that priv_key is a base64 encoded private key with or without a DER "header""
+            priv_key = base64.b64decode(priv_key)
+
+        pub_key_in = None
+        if len(priv_key) == 48:
+            priv_key = priv_key[16:]  # extract private key from DER encoding
+        elif len(priv_key) == 32:
+            pass
+        elif len(priv_key) == 64:
+            # Assume that the input string contains a combined private key and public key
+            priv_key, pub_key_in = priv_key[0:32], priv_key[32:]
+        else:
+            raise Exception('Invalid private key format (1)')
+
+        pk = Ed25519PrivateKey.from_private_bytes(priv_key)
+        if pub_key_in:
+            pub_key_hex = pk.public_key().public_bytes(
+                cryptography.hazmat.primitives.serialization.Encoding.Raw,
+                cryptography.hazmat.primitives.serialization.PublicFormat.Raw).hex()
+
+            if pub_key_in.hex() != pub_key_hex:
+                raise Exception('Invalid private key format (2)')
+
+        return pk
+    except Exception as e:
+        raise Exception('Invalid private key format (3): ' + str(e))
+
+
+def ed25519_private_key_to_pubkey(priv_key: str) -> str:
+    """
+    Converts Ed25519 private key to a public key.
+    :param priv_key: see function parse_ed25519_private_key
+    :return: 32-byte public key as a hex string
+    """
+    pk = parse_ed25519_private_key(priv_key)
+    pub_key_hex = pk.public_key().public_bytes(cryptography.hazmat.primitives.serialization.Encoding.Raw,
+                                               cryptography.hazmat.primitives.serialization.PublicFormat.Raw).hex()
+    return pub_key_hex
+
+
+def ed25519_public_key_to_platform_id(public_key: str) -> str:
+    """
+    Converts ed25519 public key to Dash Platform ID
+    :param public_key: hex encoded public key (32 byte)
+    :return: platform id string
+    """
+    pub_bytes = bytes.fromhex(public_key)
+    hashed = hashlib.sha256(pub_bytes)
+    return hashed.digest()[0:20].hex()
+
+
+def ed25519_private_key_to_pkcs8_base64(private_key: str) -> str:
+    priv: Ed25519PrivateKey = parse_ed25519_private_key(private_key)
+    priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.DER,
+                                    cryptography.hazmat.primitives.serialization.PrivateFormat.PKCS8,
+                                    cryptography.hazmat.primitives.serialization.NoEncryption())
+    priv_str = base64.b64encode(priv_bytes).decode('ascii')
+    return priv_str
+
+
+def ed25519_private_key_to_pkcs8_der(private_key: str) -> str:
+    priv: Ed25519PrivateKey = parse_ed25519_private_key(private_key)
+    priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.DER,
+                                    cryptography.hazmat.primitives.serialization.PrivateFormat.PKCS8,
+                                    cryptography.hazmat.primitives.serialization.NoEncryption())
+    priv_str = priv_bytes.hex()
+    return priv_str
+
+
+def ed25519_private_key_to_pkcs8_pem(private_key: str) -> str:
+    priv: Ed25519PrivateKey = parse_ed25519_private_key(private_key)
+    priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.PEM,
+                                    cryptography.hazmat.primitives.serialization.PrivateFormat.PKCS8,
+                                    cryptography.hazmat.primitives.serialization.NoEncryption())
+    priv_str = priv_bytes.decode('ascii')
+    return priv_str
+
+
+def ed25519_private_key_to_raw_hex(private_key: str) -> str:
+    priv: Ed25519PrivateKey = parse_ed25519_private_key(private_key)
+    priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.Raw,
+                                    cryptography.hazmat.primitives.serialization.PrivateFormat.Raw,
+                                    cryptography.hazmat.primitives.serialization.NoEncryption())
+    priv_str = priv_bytes.hex()
+    return priv_str
+
+
+def ed25519_private_key_to_tenderdash(private_key: str) -> str:
+    """
+    Return a string in format used by Tenderdash, i.e., concatenated private and public keys, encoded as base64
+    """
+    priv: Ed25519PrivateKey = parse_ed25519_private_key(private_key)
+    priv_bytes = priv.private_bytes(cryptography.hazmat.primitives.serialization.Encoding.Raw,
+                                    cryptography.hazmat.primitives.serialization.PrivateFormat.Raw,
+                                    cryptography.hazmat.primitives.serialization.NoEncryption())
+    pub_bytes = priv.public_key().public_bytes(cryptography.hazmat.primitives.serialization.Encoding.Raw,
+                                               cryptography.hazmat.primitives.serialization.PublicFormat.Raw)
+    priv_str = base64.b64encode(priv_bytes + pub_bytes).decode('ascii')
+    return priv_str
+
+
+def ed25519_private_key_to_platform_node_id(private_key: str) -> str:
+    pub_key_hex = ed25519_private_key_to_pubkey(private_key)
+    node_id = ed25519_public_key_to_platform_id(pub_key_hex)
+    return node_id
+
+
+def validate_ed25519_privkey(private_key: str) -> bool:
+    try:
+        _ = parse_ed25519_private_key(private_key)
+        return True
+    except Exception as e:
+        return False
+
+
+def validate_platform_node_id(platform_id: str) -> bool:
+    try:
+        pub_bytes = bytes.fromhex(platform_id)
+        if len(pub_bytes) == 20:
+            return True
+        else:
+            return False
+    except Exception:
+        return False
+
+
 class COutPoint(object):
-    def __init__(self, hash: bytes, index: int):
-        self.hash: bytes = hash
+    def __init__(self, hash: str, index: int):
+        self.hash: bytes = bytes.fromhex(hash)
         self.index: int = index
 
-    def serialize(self) -> str:
-        ser_str = self.hash[::-1].hex()
-        ser_str += int(self.index).to_bytes(4, byteorder='little').hex()
+    def serialize_for_sig(self, dash_network: Literal['MAINNET', 'TESTNET']) -> str:
+        if dash_network == 'MAINNET':
+            ser_str = self.hash.hex() + '-' + str(self.index)
+        else:
+            ser_str = self.hash[::-1].hex()
+            ser_str += int(self.index).to_bytes(4, byteorder='little').hex()
         return ser_str
 
 
-class CTxIn(object):
-    def __init__(self, prevout: COutPoint):
-        self.prevout: COutPoint = prevout
-        self.script = ''
-        self.sequence = 0xffffffff
+class CGovernanceVote(object):
+    def __init__(self, mn_collateral_hash: str, mn_collateral_index: int, proposal_hash: str, vote: str, time: int):
+        vote_outcome_dict = {
+            'none': 0,
+            'yes': 1,
+            'no': 2,
+            'abstain': 3
+        }
 
-    def serialize(self):
-        return self.prevout.serialize() + '00' + self.sequence.to_bytes(4, byteorder='little').hex()
+        self.outpoint = COutPoint(mn_collateral_hash, mn_collateral_index)
+        self.proposal_hash: bytes = bytes.fromhex(proposal_hash)
+        self.vote_signal: int = 1  # VOTE_SIGNAL_FUNDING
+        self.vote_outcome: int = vote_outcome_dict.get(vote)
+        self.time: int = time
 
-
-class CMasternodePing(object):
-    def __init__(self, mn_outpoint: COutPoint, block_hash: bytes, sig_time: int, rpc_node_protocol_version: int):
-        self.mn_outpoint: COutPoint = mn_outpoint  # protocol >= 70209
-        self.mn_tx_in = CTxIn(mn_outpoint)  # protocol <= 70208
-        self.block_hash: bytes = block_hash
-        self.sig_time: int = sig_time
-        self.rpc_node_protocol_version: int = rpc_node_protocol_version
-        self.sig = None
-        self.sig_message = ''
-        self.sentinel_is_current = 0
-        self.sentinel_version = DEFAULT_SENTINEL_VERSION
-        self.daemon_version = DEFAULT_DAEMON_VERSION
-
-    def get_hash(self):
-        self.sig_message = self.mn_outpoint.serialize()
-        self.sig_message += self.block_hash[::-1].hex()
-        self.sig_message += self.sig_time.to_bytes(8, "little").hex()
-        self.sig_message += self.sentinel_is_current.to_bytes(1, "little").hex()
-        self.sig_message += self.sentinel_version.to_bytes(4, "little").hex()
-        self.sig_message += self.daemon_version.to_bytes(4, "little").hex()
-        hash = bitcoin.bin_dbl_sha256(bytes.fromhex(self.sig_message))
-        return hash
-
-    def sign_message(self, priv_key, dash_network):
-        self.sig_message = f'CTxIn(COutPoint({self.mn_outpoint.hash.hex()}, {self.mn_outpoint.index}), ' \
-                           f'scriptSig=){self.block_hash.hex()}{str(self.sig_time)}'
-        r = ecdsa_sign(self.sig_message, priv_key, dash_network)
-        self.sig = base64.b64decode(r)
-        return self.sig
-
-    def sign(self, priv_key, dash_network, is_spork6_active: bool):
-        if is_spork6_active:
-            hash = self.get_hash()
-            r = ecdsa_sign_raw(hash, priv_key, dash_network)
-            self.sig = base64.b64decode(r)
-        else:
-            self.sig = self.sign_message(priv_key, dash_network)
-        return self.sig
-
-    def serialize(self):
-        if self.rpc_node_protocol_version <= 70208:
-            ser_str = self.mn_tx_in.serialize()
-        else:
-            ser_str = self.mn_outpoint.serialize()
-
-        ser_str += self.block_hash[::-1].hex()
-        ser_str += self.sig_time.to_bytes(8, byteorder='little').hex()
-        ser_str += num_to_varint(len(self.sig)).hex() + self.sig.hex()
-
-        if self.rpc_node_protocol_version >= 70209:
-            ser_str += self.sentinel_is_current.to_bytes(1, "little").hex()
-            ser_str += self.sentinel_version.to_bytes(4, "little").hex()
-            ser_str += self.daemon_version.to_bytes(4, "little").hex()
-        else:
-            ser_str += '0001000100'
-
+    def serialize(self, dash_network: Literal['MAINNET', 'TESTNET']):
+        ser_str = self.outpoint.serialize_for_sig(dash_network)
+        ser_str += '00' + 0xffffffff.to_bytes(4, byteorder='little').hex()
+        ser_str += self.proposal_hash[::-1].hex()
+        ser_str += self.vote_signal.to_bytes(4, byteorder='little').hex()
+        ser_str += self.vote_outcome.to_bytes(4, byteorder='little').hex()
+        ser_str += self.time.to_bytes(8, byteorder='little').hex()
         return ser_str
 
-    def __str__(self):
-        ret = f'CMasternodePing(\n' \
-              f'  mn_outpoint.hash: {self.mn_outpoint.hash.hex()}\n' \
-              f'  mn_outpoint.index: {self.mn_outpoint.index}\n' \
-              f'  block_hash: {self.block_hash.hex()}\n' \
-              f'  sig_time: {self.sig_time}\n' \
-              f'  sig_message: {self.sig_message}\n' \
-              f'  sig: {self.sig.hex() if self.sig else "None"}\n' \
-              f'  serialized: {self.serialize()}\n)'
-        return ret
-
-
-class CMasternodeBroadcast(object):
-    def __init__(self, mn_ip: str,
-                 mn_port: int,
-                 pubkey_collateral: bytes,
-                 pubkey_masternode: bytes,
-                 collateral_tx: bytes,
-                 collateral_tx_index: int,
-                 block_hash: bytes,
-                 sig_time: int,
-                 protocol_version: int,
-                 rpc_node_protocol_version: int,
-                 spork6_active: bool):
-
-        self.mn_ip: str = mn_ip
-        self.mn_port: int = mn_port
-        self.pubkey_collateral: bytes = pubkey_collateral
-        self.pubkey_masternode: bytes = pubkey_masternode
-        self.sig = None
-        self.sig_time: int = sig_time
-        self.protocol_version: int = protocol_version
-        self.collateral_outpoint = COutPoint(collateral_tx, int(collateral_tx_index))
-        self.rpc_node_protocol_version = rpc_node_protocol_version
-        self.spork6_active = spork6_active
-        self.mn_ping: CMasternodePing = CMasternodePing(self.collateral_outpoint, block_hash, sig_time,
-                                                        rpc_node_protocol_version)
-
-    def get_message_to_sign(self):
-        str_for_serialize = self.mn_ip + ':' + str(self.mn_port) + str(self.sig_time) + \
-            binascii.unhexlify(bitcoin.hash160(self.pubkey_collateral))[::-1].hex() + \
-            binascii.unhexlify(bitcoin.hash160(self.pubkey_masternode))[::-1].hex() + \
-            str(self.protocol_version)
-        return str_for_serialize
-
-    def sign(self, collateral_bip32_path: str, hw_sign_message_fun: typing.Callable, hw_session,
-             mn_privkey_wif: str, dash_network: str):
-
-        self.mn_ping.sign(mn_privkey_wif, dash_network, is_spork6_active=self.spork6_active)
-
-        str_for_serialize = self.get_message_to_sign()
-        self.sig = hw_sign_message_fun(hw_session, collateral_bip32_path, str_for_serialize)
-
-        return self.sig
-
-    def serialize(self):
-        if not self.sig:
-            raise Exception('Message not signed.')
-
-        if self.rpc_node_protocol_version <= 70208:
-            ser_str = self.mn_ping.mn_tx_in.serialize()
+    def serialize_for_sig(self, dash_network: Literal['MAINNET', 'TESTNET']):
+        ser_str = self.outpoint.serialize_for_sig(dash_network)
+        if dash_network == 'MAINNET':
+            ser_str += '|' + self.proposal_hash.hex() + '|' + str(self.vote_signal) + '|' + str(self.vote_outcome) + \
+                       '|' + str(self.time)
         else:
-            ser_str = self.mn_ping.mn_outpoint.serialize()
-
-        addr = '00000000000000000000ffff'
-        ip_elems = map(int, self.mn_ip.split('.'))
-        for i in ip_elems:
-            addr += i.to_bytes(1, byteorder='big').hex()
-        addr += int(self.mn_port).to_bytes(2, byteorder='big').hex()
-
-        ser_str += addr
-        ser_str += num_to_varint(len(self.pubkey_collateral)).hex() + self.pubkey_collateral.hex()
-        ser_str += num_to_varint(len(self.pubkey_masternode)).hex() + self.pubkey_masternode.hex()
-        ser_str += num_to_varint(len(self.sig.signature)).hex() + self.sig.signature.hex()
-        ser_str += self.sig_time.to_bytes(8, byteorder='little').hex()
-        ser_str += int(self.protocol_version).to_bytes(4, byteorder='little').hex()
-        ser_str += self.mn_ping.serialize()
-
+            ser_str += self.proposal_hash[::-1].hex()
+            ser_str += self.vote_outcome.to_bytes(4, byteorder='little').hex()
+            ser_str += self.vote_signal.to_bytes(4, byteorder='little').hex()
+            ser_str += self.time.to_bytes(8, byteorder='little').hex()
         return ser_str
 
-    def __str__(self):
-        ret = f'\nCMasternodeBroadcast(\n' \
-              f'  pubkey_collateral: {self.pubkey_collateral.hex()}\n' \
-              f'  pubkey_masternode: {self.pubkey_masternode.hex()}\n' \
-              f'{str(self.mn_ping)})'
-        return ret
+    def get_hash(self, dash_network: Literal['MAINNET', 'TESTNET']):
+        ser_str = self.serialize(dash_network)
+        hash = bitcoin.bin_dbl_sha256(bytes.fromhex(ser_str))
+        return hash.hex()
+
+    def get_data_for_signing(self, dash_network: Literal['MAINNET', 'TESTNET']) -> bytes:
+        ser_str = self.serialize_for_sig(dash_network)
+        if dash_network == 'TESTNET':
+            data_for_sig = bitcoin.bin_dbl_sha256(bytes.fromhex(ser_str))
+        else:
+            data_for_sig = ser_str.encode('ascii')
+        return data_for_sig
+
+    def get_signed_vote(self, priv_key: str, dash_network: Literal['MAINNET', 'TESTNET']) -> str:
+        """
+        Sign a vote object.
+        :param priv_key: Private key for voting.
+        :param dash_network: TESTNET or MAINNET
+        :return: Base64-encoded signature
+        """
+        ser_str = self.serialize_for_sig(dash_network)
+        if dash_network == 'TESTNET':
+            data_for_sig = bitcoin.bin_dbl_sha256(bytes.fromhex(ser_str))
+            sig_base64 = ecdsa_sign_raw(data_for_sig, priv_key, dash_network)
+        else:
+            sig_base64 = ecdsa_sign(ser_str, priv_key, dash_network)
+        return sig_base64

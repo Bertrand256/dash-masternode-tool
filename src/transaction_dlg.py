@@ -6,12 +6,14 @@ import sys
 
 import re
 from typing import Optional, Callable, Dict, List
+
+import qdarkstyle.dark.palette
 import simplejson
 import logging
 
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import pyqtSlot
-from PyQt5.QtGui import QTextDocument, QDesktopServices
+from PyQt5.QtGui import QTextDocument, QDesktopServices, QPalette
 from PyQt5.QtWidgets import QDialog, QMessageBox, QProxyStyle, QStyle
 from decimal import Decimal
 
@@ -20,12 +22,12 @@ from bitcoinrpc.authproxy import JSONRPCException
 import app_cache
 import app_utils
 from app_config import AppConfig
-from app_defs import HWType
+from hw_common import HWType
 from dashd_intf import DashdInterface
-from hw_common import HwSessionInfo
+from hw_intf import HwSessionInfo
 from ui.ui_transaction_dlg import Ui_TransactionDlg
 from wallet_common import UtxoType, TxOutputType, Bip44AddressType
-from wnd_utils import WndUtils, ProxyStyleNoFocusRect
+from wnd_utils import WndUtils, ProxyStyleNoFocusRect, QDetectThemeChange, is_color_dark, get_widget_font_color_blue
 
 CACHE_ITEM_DETAILS_WORD_WRAP = 'TransactionDlg_DetailsWordWrap'
 
@@ -33,12 +35,11 @@ CACHE_ITEM_DETAILS_WORD_WRAP = 'TransactionDlg_DetailsWordWrap'
 log = logging.getLogger('dmt.transaction_dlg')
 
 
-class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
+class TransactionDlg(QDialog, QDetectThemeChange, Ui_TransactionDlg, WndUtils):
     def __init__(self, parent: QDialog,
                  app_config: AppConfig,
                  dashd_intf: DashdInterface,
                  raw_transaction: str,
-                 use_instant_send: bool,
                  tx_inputs: List[UtxoType],
                  tx_outputs: List[TxOutputType],
                  cur_hd_tree_id: int,
@@ -48,6 +49,7 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                  dependent_transactions: Optional[dict] = None,
                  fn_show_address_on_hw: Callable[[Bip44AddressType], None] = None):
         QDialog.__init__(self, parent=parent)
+        QDetectThemeChange.__init__(self)
         Ui_TransactionDlg.__init__(self)
         WndUtils.__init__(self, app_config)
         self.app_config = app_config
@@ -55,7 +57,6 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
         self.dashd_intf = dashd_intf
         self.transaction_sent = False
         self.raw_transaction = raw_transaction
-        self.use_instant_send = use_instant_send
         self.tx_inputs = tx_inputs
         self.tx_outputs = tx_outputs
         self.tx_id = None  # will be decoded from rawtransaction
@@ -66,9 +67,9 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
         self.dependent_transactions = dependent_transactions  # key: txid, value: transaction dict
         self.after_send_tx_callback: Callable[[Dict], None] = after_send_tx_callback
         self.fn_show_address_on_hw = fn_show_address_on_hw
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         Ui_TransactionDlg.setupUi(self, self)
         self.setWindowTitle('Transaction')
         self.chb_word_wrap.setChecked(app_cache.get_value(CACHE_ITEM_DETAILS_WORD_WRAP, False, bool))
@@ -98,6 +99,9 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
     def closeEvent(self, event):
         app_cache.save_window_size(self)
 
+    def onThemeChanged(self):
+        self.prepare_tx_view()
+
     def on_chb_word_wrap_toggled(self, checked):
         app_cache.set_value(CACHE_ITEM_DETAILS_WORD_WRAP, checked)
         self.apply_word_wrap(checked)
@@ -114,7 +118,12 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                     val = round(val / 1e8, 8)
             return float(val)
 
+        value_color = self.app_config.get_widget_font_color_blue(self)
+        bg_color = self.app_config.get_widget_background_color(self)
+        link_color = self.app_config.get_hyperlink_font_color(self)
+
         try:
+            tx_size_str = '?'
             if self.hw_session and self.hw_session.hw_type:
                 hw_type_desc = HWType.get_desc(self.hw_session.hw_type)
             else:
@@ -261,11 +270,19 @@ class TransactionDlg(QDialog, Ui_TransactionDlg, WndUtils):
                                        'broadcast the transaction.</span></p>'
 
                         summary = f"""<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">
-<html><head><meta name="qrichtext" content="1" /><style type="text/css">
-td.lbl{{text-align: right;vertical-align: top;}} p.lbl{{margin: 0 5px 0 0; font-weight: bold;}} p.val{{margin: 0 0 0 8px; color: navy;}}
-</style></head><body style="font-size:{self.base_font_size}pt; font-weight:400; font-style:normal; margin-left:10px;margin-right:10px;">
-<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:{self.title_font_size}pt; font-weight:600;">{title}</span></p>
-<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:{self.base_font_size}pt;"><br /></p>
+<html><head><meta name="qrichtext" content="1" />
+<style type="text/css">
+td.lbl{{text-align: right;vertical-align: top;}} 
+p.lbl{{margin: 0 5px 0 0; font-weight: bold;}} 
+p.val{{margin: 0 0 0 8px; color: {value_color};}}
+a {{color: {link_color}}}
+</style></head>
+<body style="font-size:{self.base_font_size}pt; font-weight:400; font-style:normal; margin-left:10px;margin-right:10px;
+  background-color:{bg_color};">
+<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">
+<span style=" font-size:{self.title_font_size}pt; font-weight:600;">{title}</span></p>
+<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; 
+  -qt-block-indent:0; text-indent:0px; font-size:{self.base_font_size}pt;"><br /></p>
 {subtitle}
 <p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">
  <table>
@@ -307,7 +324,7 @@ td.lbl{{text-align: right;vertical-align: top;}} p.lbl{{margin: 0 5px 0 0; font-
     def on_btn_broadcast_clicked(self):
         try:
             log.debug('Broadcasting raw transaction: ' + self.raw_transaction)
-            txid = self.dashd_intf.sendrawtransaction(self.raw_transaction, self.use_instant_send)
+            txid = self.dashd_intf.sendrawtransaction(self.raw_transaction, False)
             if txid != self.tx_id:
                 log.warning('TXID returned by sendrawtransaction differs from the original txid')
                 self.tx_id = txid
@@ -320,7 +337,7 @@ td.lbl{{text-align: right;vertical-align: top;}} p.lbl{{margin: 0 5px 0 0; font-
         except Exception as e:
             log.exception(f'Exception occurred while broadcasting transaction. '
                               f'Transaction size: {self.tx_size} bytes.')
-            self.errorMsg('An error occurred while sending transation: '+ str(e))
+            self.error_msg('An error occurred while sending transation: ' + str(e))
 
     @pyqtSlot(bool)
     def on_btn_close_clicked(self, enabled):
@@ -328,4 +345,4 @@ td.lbl{{text-align: right;vertical-align: top;}} p.lbl{{margin: 0 5px 0 0; font-
             self.accept()
         else:
             self.reject()
-        self.closeEvent(None)
+        self.close()

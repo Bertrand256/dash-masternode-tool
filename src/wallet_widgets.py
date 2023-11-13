@@ -5,26 +5,26 @@
 import logging
 import math
 import re
-from PyQt5.QtGui import QPen, QBrush, QTextDocument, QFont, QFontMetrics, QPalette
-from functools import partial
-from typing import List, Callable, Optional, Tuple
-import sys
 import os
+from functools import partial
+from typing import List, Optional, Tuple
+
+from PyQt5.QtGui import QPen, QBrush, QTextDocument, QFont, QFontMetrics, QPalette
 from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import QSize, QEventLoop, QObject, QTimer, QVariant, pyqtSlot, QModelIndex, Qt, QRect, QPoint, \
     QMargins
 from PyQt5.QtWidgets import QPushButton, QToolButton, QWidgetItem, QSpacerItem, QLayout, QHBoxLayout, QLineEdit, \
     QLabel, QComboBox, QMenu, QMessageBox, QVBoxLayout, QCheckBox, QItemDelegate, QStyleOptionViewItem, QStyle
+
 import app_cache
 import app_utils
 import dash_utils
 from app_defs import FEE_DUFF_PER_BYTE, MIN_TX_FEE
 from common import CancelException
 from encrypted_files import write_file_encrypted, read_file_encrypted
-from hw_common import HwSessionInfo
+from hw_intf import HwSessionInfo
 from wallet_common import TxOutputType, Bip44AccountType, Bip44AddressType, TxType
-from wnd_utils import WndUtils
-
+from wnd_utils import WndUtils, is_color_dark
 
 OUTPUT_VALUE_UNIT_AMOUNT = 'AMT'
 OUTPUT_VALUE_UNIT_PERCENT = 'PCT'
@@ -77,7 +77,7 @@ class SendFundsDestinationItem(QObject):
         self.edt_amount.textChanged.connect(self.on_edt_amount_changed)
         self.lay_amount.addWidget(self.edt_amount)
         self.btn_use_all = QToolButton(Form)
-        self.btn_use_all.setText('\u2b06')
+        self.btn_use_all.setText('\u2912')
         self.btn_use_all.setFixedSize(14, self.edt_amount.sizeHint().height())
         self.btn_use_all.setToolTip('Use remaining funds')
         self.btn_use_all.clicked.connect(self.on_btn_use_all_funds_clicked)
@@ -269,10 +269,8 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.add_to_fee = 0.0
         self.inputs_count = 0
         self.change_amount = 0.0
-        self.use_instant_send = False
         self.values_unit = OUTPUT_VALUE_UNIT_AMOUNT
         self.tm_calculate_change_value = QTimer(self)
-        self.tm_debounce__ = QTimer(self)
         self.current_file_name = ''
         self.current_file_encrypted = False
         self.recent_data_files = []  # recent used data files
@@ -384,7 +382,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.edt_fee_value.textChanged.connect(self.on_edt_fee_value_textChanged)
         self.lay_fee_value.addWidget(self.edt_fee_value)
         self.btn_get_default_fee = QToolButton(self.scroll_area_widget)
-        self.btn_get_default_fee.setText('\u2b06')
+        self.btn_get_default_fee.setText('\u2605')
         self.btn_get_default_fee.setFixedSize(14, self.edt_fee_value.sizeHint().height())
         self.btn_get_default_fee.setToolTip('Use default fee')
         self.btn_get_default_fee.clicked.connect(self.on_btn_get_default_fee_clicked)
@@ -488,31 +486,12 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         self.show_hide_remove_buttons()
         self.update_change_and_fee()
 
-    def remove_item_from_layout(self, item):
-        if item:
-            if isinstance(item, QWidgetItem):
-                w = item.widget()
-                self.lay_addresses.removeWidget(w)
-                w.setParent(None)
-                del w
-            elif isinstance(item, QLayout):
-                for subitem_idx in reversed(range(item.count())):
-                    subitem = item.itemAt(subitem_idx)
-                    self.remove_item_from_layout(subitem)
-                self.lay_addresses.removeItem(item)
-                item.setParent(None)
-                del item
-            elif isinstance(item, QSpacerItem):
-                del item
-            else:
-                raise Exception('Invalid item type')
-
     def remove_dest_address(self, address_item):
         row_idx = self.recipients.index(address_item)
         # remove all widgets related to the 'send to' address that is being removed
         for col_idx in range(self.lay_addresses.columnCount()):
             item = self.lay_addresses.itemAtPosition(row_idx, col_idx)
-            self.remove_item_from_layout(item)
+            WndUtils.remove_item_from_layout(self.lay_addresses, item)
 
         # move up all rows greater than the row being removed
         for row in range(row_idx + 1, len(self.recipients)):
@@ -587,29 +566,22 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         return change_amount
 
     def calculate_fee(self, change_amount = None) -> float:
-        if change_amount is None:
-            change_amount = self.change_amount
-        recipients_count = len(self.recipients)
-        if change_amount > 0.0:
-            recipients_count += 1
+        # When calculating the fee, for the sake of simplicity, assume that there will always be one output for change.
+        recipients_count = len(self.recipients) + 1
 
-        if self.app_config.is_testnet():
+        if self.app_config.is_testnet:
             fee_multiplier = 10  # in testnet large transactions tend to get stuck if the fee is "normal"
         else:
             fee_multiplier = 1
 
         if self.inputs_total_amount > 0.0:
-            bytes = (self.inputs_count * 148) + (recipients_count * 34) + 10
-            fee = round(bytes * FEE_DUFF_PER_BYTE, 8)
+            tx_bytes = (self.inputs_count * 148) + (recipients_count * 34) + 10
+            fee = round(tx_bytes * FEE_DUFF_PER_BYTE, 8)
             if not fee:
                 fee = MIN_TX_FEE
             fee = round(fee * fee_multiplier / 1e8, 8)
         else:
             fee = 0.0
-
-        if self.use_instant_send:
-            is_fee = 0.0001 * self.inputs_count
-            fee = max(is_fee, fee)
 
         return fee
 
@@ -697,15 +669,6 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
     def on_edt_fee_value_textChanged(self, text):
         self.debounce_call('fee_value', self.read_fee_value_from_ui, 400)
 
-    @pyqtSlot(bool)
-    def on_chb_instant_send_toggled(self, checked):
-        self.use_instant_send = checked
-        if self.values_unit == OUTPUT_VALUE_UNIT_AMOUNT and len(self.recipients) >= 1:
-            self.update_fee()
-            self.use_all_funds_for_address(self.recipients[0])
-        else:
-            self.update_change_and_fee()
-
     def show_hide_change_address(self, visible):
         if visible != self.change_controls_visible:
             row_nr = self.lay_addresses.rowCount() - 1
@@ -730,9 +693,9 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
 
     def set_input_amount(self, amount, inputs_count):
         self.inputs_count = inputs_count
-        if amount != self.inputs_total_amount or inputs_count != self.inputs_count:
+        if amount != self.inputs_total_amount:
             # if there is only one recipient address and his current amount equals to the
-            # previuus input_amount, assign new value to him
+            # previuus input_amount, assign new value to it
 
             last_total_amount = self.inputs_total_amount
             last_fee_amount = self.fee_amount
@@ -783,7 +746,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
                 for nr in reversed(range(len(addresses), len(self.recipients))):
                     self.remove_dest_address(self.recipients[nr])
             for idx, addr_item in enumerate(self.recipients):
-                if isinstance(addresses[idx], (list,tuple)):
+                if isinstance(addresses[idx], (list, tuple)):
                     # passed address-value tuple
                     if len(addresses[idx]) >= 1:
                         addr_item.set_address(addresses[idx][0])
@@ -792,6 +755,26 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
                 else:
                     addr_item.set_address(addresses[idx])
             self.display_totals()
+
+    def limit_dest_value(self, dest_value: float):
+        """
+        Sets the value limit for the recipient. If this limit value is less than the sum of the values
+        of all selected UTXOs, the excess will be returned as change.
+        :param dest_value: the limit value to be set
+        """
+        if dest_value < self.inputs_total_amount:
+            left_value = dest_value
+            for idx, addr in enumerate(self.recipients):
+                if idx == len(self.recipients) - 1:
+                    addr.set_value(left_value)
+                else:
+                    if addr.get_value() < left_value:
+                        left_value -= addr.get_value()
+                    else:
+                        addr.set_value(left_value)
+                        left_value = 0.0
+
+            self.update_change_and_fee()
 
     def on_cbo_output_unit_change(self, index):
         if index == 0:
@@ -845,8 +828,8 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
             self.lbl_data_file_badge.setVisible(False)
 
     def clear_outputs(self):
-        if WndUtils.queryDlg("Do you really want to clear all outputs?", default_button=QMessageBox.Cancel,
-                             icon=QMessageBox.Warning) == QMessageBox.Ok:
+        if WndUtils.query_dlg("Do you really want to clear all outputs?", default_button=QMessageBox.Cancel,
+                              icon=QMessageBox.Warning) == QMessageBox.Ok:
             self.set_dest_addresses([('', '')])
             self.use_all_funds_for_address(self.recipients[0])
             self.current_file_name = ''
@@ -924,7 +907,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
             if file_name:
                 self.read_from_file(file_name)
         except Exception as e:
-            self.parent_dialog.errorMsg(str(e))
+            self.parent_dialog.error_msg(str(e))
 
     def read_from_file(self, file_name):
         try:
@@ -995,7 +978,7 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
         except Exception as e:
             self.update_mru_menu_items()
             logging.exception('Exception while reading file with recipients data.')
-            self.parent_dialog.errorMsg(str(e))
+            self.parent_dialog.error_msg(str(e))
 
     def add_menu_item_to_mru(self, file_name: str) -> None:
         if file_name:
@@ -1061,8 +1044,14 @@ class SendFundsDestination(QtWidgets.QWidget, WndUtils):
             raise Exception('Invalid the fee value.')
         return round((self.fee_amount + self.add_to_fee) * 1e8)
 
-    def get_use_instant_send(self):
-        return self.use_instant_send
+    def calculate_tx_size(self) -> int:
+        """
+        Calculates transaction size in bytes based on the number of inputs and outputs
+        :return: TX size in bytes.
+        """
+        recipients = self.get_number_of_recipients()
+        tx_size_bytes = (self.inputs_count * 148) + (recipients * 34) + 10
+        return tx_size_bytes
 
 
 class WalletMnItemDelegate(QItemDelegate):
@@ -1080,23 +1069,24 @@ class WalletMnItemDelegate(QItemDelegate):
 
     def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
         if index.isValid():
+            has_focus = self.parent().hasFocus()
             mn = index.data()
             painter.save()
 
             painter.setPen(QPen(Qt.NoPen))
             if option.state & QStyle.State_Selected:
-                if option.state & QStyle.State_HasFocus:
-                    primary_color = Qt.white
-                    secondary_color = Qt.white
+                if has_focus:
+                    primary_color = option.palette.color(QPalette.Normal, option.palette.HighlightedText)
+                    secondary_color = primary_color
                     painter.setBrush(QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
                 else:
-                    primary_color = Qt.black
-                    secondary_color = Qt.black
+                    primary_color = option.palette.color(QPalette.Inactive, option.palette.HighlightedText)
+                    secondary_color = primary_color
                     painter.setBrush(QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
             else:
-                painter.setBrush(QBrush(Qt.white))
-                primary_color = Qt.black
-                secondary_color = Qt.darkGray
+                painter.setBrush(QBrush(option.palette.color(QPalette.Normal, option.palette.Base)))
+                primary_color = option.palette.color(QPalette.Normal, option.palette.WindowText)
+                secondary_color = option.palette.color(QPalette.Disabled, option.palette.WindowText)
             painter.drawRect(option.rect)
 
             # draw the masternode description
@@ -1121,7 +1111,6 @@ class WalletMnItemDelegate(QItemDelegate):
             else:
                 balance_str = 'Balance: unknown'
             painter.drawText(r, Qt.AlignLeft, balance_str)
-
             painter.restore()
 
     def sizeHint(self, option, index):
@@ -1150,23 +1139,25 @@ class WalletAccountItemDelegate(QItemDelegate):
 
     def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
         if index.isValid():
+            has_focus = self.parent().hasFocus()
+            is_dark_theme = is_color_dark(option.palette.color(QPalette.Normal, option.palette.Window))
             data = index.data()
             painter.save()
 
             painter.setPen(QPen(Qt.NoPen))
             if option.state & QStyle.State_Selected:
-                if option.state & QStyle.State_HasFocus:
-                    primary_color = Qt.white
-                    secondary_color = Qt.white
-                    painter.setBrush(QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
+                if has_focus:
+                    primary_color = option.palette.color(QPalette.Normal, option.palette.HighlightedText)
+                    secondary_color = primary_color
+                    painter.setBrush(QBrush(option.palette.color(QPalette.Normal, option.palette.Highlight)))
                 else:
-                    primary_color = Qt.black
-                    secondary_color = Qt.black
+                    primary_color = option.palette.color(QPalette.Inactive, option.palette.HighlightedText)
+                    secondary_color = primary_color
                     painter.setBrush(QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
             else:
-                painter.setBrush(QBrush(Qt.white))
-                primary_color = Qt.black
-                secondary_color = Qt.darkGray
+                painter.setBrush(QBrush(option.palette.color(QPalette.Normal, option.palette.Base)))
+                primary_color = option.palette.color(QPalette.Normal, option.palette.WindowText)
+                secondary_color = option.palette.color(QPalette.Disabled, option.palette.WindowText)
             painter.drawRect(option.rect)
 
             r = option.rect
@@ -1196,19 +1187,21 @@ class WalletAccountItemDelegate(QItemDelegate):
                 option.font.setPointSize(option.font.pointSize() - 2)
 
                 if option.state & QStyle.State_Selected:
-                    if option.state & QStyle.State_HasFocus:
-                        color = Qt.white
+                    if has_focus:
+                        color = primary_color
                     else:
-                        color = Qt.black
+                        color = primary_color
                 else:
-                    # if balance is zero use bold font
                     if data.balance > 0:
-                        color = Qt.black
+                        color = primary_color
                     else:
                         if data.received > 0:
-                            color = Qt.darkGray
+                            color = secondary_color
                         else:
-                            color = Qt.darkGreen
+                            if is_dark_theme:
+                                color = Qt.green
+                            else:
+                                color = Qt.darkGreen
 
                 painter.setPen(QPen(color))
                 painter.setFont(option.font)
@@ -1274,6 +1267,8 @@ class TxSenderRecipientItemDelegate(QItemDelegate):
 
     def paint(self, painter, option: QStyleOptionViewItem, index: QModelIndex):
         if index.isValid():
+            has_focus = self.parent().hasFocus()
+            is_dark_theme = is_color_dark(option.palette.color(QPalette.Normal, option.palette.Window))
             tx = index.data()
             if not tx:
                 return
@@ -1285,15 +1280,13 @@ class TxSenderRecipientItemDelegate(QItemDelegate):
             painter.save()
 
             painter.setPen(QPen(Qt.NoPen))
-            selected = False
             if option.state & QStyle.State_Selected:
-                if option.state & QStyle.State_HasFocus:
-                    selected = True
+                if has_focus:
                     painter.setBrush(QBrush(option.palette.color(QPalette.Active, option.palette.Highlight)))
                 else:
                     painter.setBrush(QBrush(option.palette.color(QPalette.Inactive, option.palette.Highlight)))
             else:
-                painter.setBrush(QBrush(Qt.white))
+                painter.setBrush(QBrush(option.palette.color(QPalette.Normal, option.palette.Base)))
             painter.drawRect(option.rect)
 
             r = option.rect
@@ -1305,37 +1298,38 @@ class TxSenderRecipientItemDelegate(QItemDelegate):
                 fm = option.fontMetrics
                 if addr_list:
                     for addr in addr_list:
-                        if isinstance(addr, Bip44AddressType):
-                            if not selected:
-                                painter.setPen(QPen(Qt.darkGreen))
+                        if option.state & QStyle.State_Selected:
+                            if has_focus:
+                                fg_color = option.palette.color(QPalette.Normal, option.palette.HighlightedText)
                             else:
-                                painter.setPen(QPen(Qt.white))
-                            painter.drawText(r, Qt.AlignLeft, addr.address)
-
-                            # in the second line displayy additional info regarding the user's recipient address
-                            # if addr.is_change:
-                            #     s = ' (your own change address, path: ' + addr.bip32_path + ')'
-                            # else:
-                            #     s = ' (your own address, path: ' + addr.bip32_path + ')'
-                            #
-                            # if not selected:
-                            #     painter.setPen(QPen(Qt.darkGray))
-                            # else:
-                            #     painter.setPen(QPen(Qt.white))
-                            # painter.drawText(r - QMargins(fm.width(addr.address), 0, 0, 0), Qt.AlignLeft, s)
+                                fg_color = option.palette.color(QPalette.Inactive, option.palette.HighlightedText)
                         else:
-                            if not selected:
-                                painter.setPen(QPen(Qt.black))
+                            if isinstance(addr, Bip44AddressType):
+                                if is_dark_theme:
+                                    fg_color = Qt.green
+                                else:
+                                    fg_color = Qt.darkGreen
                             else:
-                                painter.setPen(QPen(Qt.white))
-                            painter.drawText(r, Qt.AlignLeft, addr)
+                                fg_color = option.palette.color(QPalette.Normal, option.palette.WindowText)
+
+                        if isinstance(addr, Bip44AddressType):
+                            text = addr.address
+                        else:
+                            text = addr
+
+                        painter.setPen(QPen(fg_color))
+                        painter.drawText(r, Qt.AlignLeft, text)
                         r.setTop(r.top() + fm.height() + WalletMnItemDelegate.CellLinesMargin)
                 else:
                     if self.is_sender and tx.is_coinbase:
-                        if not selected:
-                            painter.setPen(QPen(Qt.darkGray))
+                        if option.state & QStyle.State_Selected:
+                            if has_focus:
+                                fg_color = option.palette.color(QPalette.Normal, option.palette.HighlightedText)
+                            else:
+                                fg_color = option.palette.color(QPalette.Inactive, option.palette.HighlightedText)
                         else:
-                            painter.setPen(QPen(Qt.white))
+                            fg_color = Qt.darkGray
+                        painter.setPen(QPen(fg_color))
                         painter.drawText(r, Qt.AlignLeft, '[New coins]')
 
             painter.restore()

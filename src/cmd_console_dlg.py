@@ -4,12 +4,14 @@
 # Created on: 2018-09
 import json
 import re
+
+from PyQt5 import QtWidgets
 from PyQt5.QtCore import pyqtSlot, QEvent, Qt
 from PyQt5.QtWidgets import QDialog, QDialogButtonBox
 from bitcoinrpc.authproxy import EncodeDecimal
 
 from ui import ui_cmd_console_dlg
-from wnd_utils import WndUtils
+from wnd_utils import WndUtils, get_widget_font_color_green
 import logging
 import app_cache
 from app_defs import get_known_loggers, DEFAULT_LOG_FORMAT
@@ -30,10 +32,9 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
         self.last_commands = []
         self.last_command_index = None
         self.saved_command_text = ''
+        self.setupUi(self)
 
-        self.setupUi()
-
-    def setupUi(self):
+    def setupUi(self, dialog: QtWidgets.QDialog):
         ui_cmd_console_dlg.Ui_CmdConsoleDlg.setupUi(self, self)
         self.setWindowTitle("Command console")
         self.restore_cache_settings()
@@ -95,7 +96,7 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
             newl = ''
         else:
             newl = '<br>'
-        self.message(newl + '&gt; <b>' + command + '</b><br>', 'green')
+        self.message(newl + '&gt; <b>' + command + '</b><br>', get_widget_font_color_green(self.edtCmdLog))
         ok = False
 
         match = re.search(r"\s*([A-Za-z0-9]+)\s*(.*)", command)
@@ -160,7 +161,7 @@ class CmdConsoleDlg(QDialog, ui_cmd_console_dlg.Ui_CmdConsoleDlg):
                     except:
                         a = args.split()
                         for idx, el in enumerate(a):
-                            if isinstance(el, str) and el.lower() in ('true','false'):
+                            if isinstance(el, str) and el.lower() in ('true', 'false'):
                                 a[idx] = (el.lower() == 'true')
                         ok = self.rpc_command(match.group(1), *a)
                 else:

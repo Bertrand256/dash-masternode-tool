@@ -3,7 +3,7 @@ import logging
 from typing import Callable
 
 from PyQt5.QtCore import pyqtSlot, QTimer
-from PyQt5.QtWidgets import QDialog, QMessageBox
+from PyQt5.QtWidgets import QDialog, QApplication
 from bitcoinrpc.authproxy import JSONRPCException
 
 import app_cache
@@ -12,40 +12,46 @@ from app_defs import FEE_DUFF_PER_BYTE
 from dash_utils import validate_address
 from dashd_intf import DashdInterface
 from ui import ui_revoke_mn_dlg
-from wnd_utils import WndUtils, ProxyStyleNoFocusRect
-
+from wnd_utils import WndUtils, ProxyStyleNoFocusRect, QDetectThemeChange, get_widget_font_color_green
 
 CACHE_ITEM_SHOW_COMMANDS = 'RevokeMnDlg_ShowCommands'
 
 
-class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
+class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
     def __init__(self,
                  main_dlg,
                  app_config: AppConfig,
                  dashd_intf: DashdInterface,
                  masternode: MasternodeConfig):
         QDialog.__init__(self, main_dlg)
+        QDetectThemeChange.__init__(self)
         ui_revoke_mn_dlg.Ui_RevokeMnDlg.__init__(self)
         WndUtils.__init__(self, main_dlg.app_config)
         self.main_dlg = main_dlg
         self.masternode = masternode
         self.app_config = app_config
         self.dashd_intf = dashd_intf
-        self.dmn_protx_hash = self.masternode.dmn_tx_hash
+        self.dmn_protx_hash = self.masternode.protx_hash
         self.dmn_actual_operator_pubkey = ""
         self.revocation_reason = 0
         self.show_manual_commands = False
-        self.setupUi()
+        self.setupUi(self)
 
-    def setupUi(self):
+    def setupUi(self, dialog: QDialog):
         ui_revoke_mn_dlg.Ui_RevokeMnDlg.setupUi(self, self)
         self.btnClose.hide()
+        WndUtils.set_icon(self, self.btnCopyCommandText, 'content-copy@16px.png')
         self.edtManualCommands.setStyle(ProxyStyleNoFocusRect())
         self.restore_cache_settings()
         self.update_ctrls_state()
         self.minimize_dialog_height()
-        self.read_data_from_network()
+        try:
+            self.read_data_from_network()
+        except Exception as e:
+            WndUtils.error_msg(str(e))
         self.update_manual_cmd_info()
+        cl = QApplication.clipboard()
+        cl.changed.connect(self.strip_clipboard_contents)
 
     def closeEvent(self, event):
         self.save_cache_settings()
@@ -71,6 +77,28 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
         sh.setWidth(self.width())
         return sh
 
+    def onThemeChanged(self):
+        self.update_styles()
+
+    def update_styles(self):
+        self.update_manual_cmd_info()
+
+    def strip_clipboard_contents(self, mode):
+        """ Remove leading/trailing spaces and newline characters from a text copied do clipboard."""
+        try:
+            cl = QApplication.clipboard()
+            t = cl.text()
+            if t and t.strip() != t:
+                # QClipboard.blockSignals not working with QT 5.15 on Windows, so we need the above additional
+                # protection to avoid infinite loop when setting a new clipboard value
+                cl.blockSignals(True)
+                try:
+                    cl.setText(t.strip())
+                finally:
+                    cl.blockSignals(False)
+        except Exception as e:
+            logging.exception(str(e))
+
     @pyqtSlot(bool)
     def on_btnCancel_clicked(self):
         self.close()
@@ -86,9 +114,9 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
                 for protx in self.dashd_intf.protx('list', 'registered', True):
                     protx_state = protx.get('state')
                     if (protx_state and protx_state.get(
-                            'service') == self.masternode.ip + ':' + self.masternode.port) or \
-                            (protx.get('collateralHash') == self.masternode.collateralTx and
-                             str(protx.get('collateralIndex')) == str(self.masternode.collateralTxIndex)):
+                            'service') == self.masternode.ip + ':' + str(self.masternode.tcp_port)) or \
+                            (protx.get('collateralHash') == self.masternode.collateral_tx and
+                             str(protx.get('collateralIndex')) == str(self.masternode.collateral_tx_index)):
                         self.dmn_protx_hash = protx.get("proTxHash")
                         break
                 if not self.dmn_protx_hash:
@@ -112,7 +140,6 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
             raise
 
     def update_ctrls_state(self):
-
         if self.show_manual_commands:
             self.lblManualCommands.setText('<a style="text-decoration:none" '
                                            'href="hide">Hide commands for manual execution</a>')
@@ -120,6 +147,7 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
             self.lblManualCommands.setText('<a style="text-decoration:none" '
                                            'href="show">Show commands for manual execution</a>')
 
+        self.btnCopyCommandText.setVisible(self.show_manual_commands)
         self.edtManualCommands.setVisible(self.show_manual_commands)
 
         self.minimize_dialog_height()
@@ -130,19 +158,27 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
         self.update_ctrls_state()
 
     def validate_data(self):
-        if self.masternode.dmn_operator_key_type != InputKeyType.PRIVATE:
+        if self.masternode.operator_key_type != InputKeyType.PRIVATE:
             raise Exception('The operator private key is required.')
-
-        if self.masternode.get_dmn_operator_pubkey() != self.dmn_actual_operator_pubkey:
-            raise Exception('The operator key from your configuration does not match the key published on the network.')
 
         self.revocation_reason = self.cboReason.currentIndex()
 
+    def get_manual_cmd_text(self, fee_source_info=None) -> str:
+        cmd = f'protx revoke "{self.dmn_protx_hash}" "{self.masternode.operator_private_key}" ' \
+              f'{self.revocation_reason} '
+
+        if fee_source_info:
+            cmd += fee_source_info
+        else:
+            cmd += '"feeSourceAddress"'
+        return cmd
+
     def update_manual_cmd_info(self):
         try:
+            green_color = get_widget_font_color_green(self.lblIP)
             self.validate_data()
-            cmd = f'protx revoke "{self.dmn_protx_hash}" "{self.masternode.dmn_operator_private_key}" ' \
-                f'{self.revocation_reason} "<span style="color:green">feeSourceAddress</span>"'
+            cmd = self.get_manual_cmd_text('<span style="color:{green_color}">feeSourceAddress</span>')
+
             msg = '<ol>' \
                   '<li>Start a Firo Core wallet with sufficient funds to cover a transaction fee.</li>'
             msg += '<li>Execute the following command in the Firo Core debug console:<br><br>'
@@ -161,17 +197,27 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
         self.update_manual_cmd_info()
 
     @pyqtSlot(bool)
+    def on_btnCopyCommandText_clicked(self):
+        cmd = self.get_manual_cmd_text()
+        cl = QApplication.clipboard()
+        cl.setText(cmd)
+
+    @pyqtSlot(bool)
     def on_btnSendRevokeTx_clicked(self, enabled):
-        self.read_data_from_network()
-        self.validate_data()
-        self.send_revoke_tx()
+        try:
+            self.read_data_from_network()
+            self.validate_data()
+            self.send_revoke_tx()
+        except Exception as e:
+            WndUtils.error_msg(str(e))
 
     def send_revoke_tx(self):
         try:
             params = ['revoke',
                       self.dmn_protx_hash,
-                      self.masternode.dmn_operator_private_key,
-                      self.revocation_reason]
+                      self.masternode.operator_private_key,
+                      self.revocation_reason,
+                      funding_address]
 
             try:
                 revoke_support = self.dashd_intf.checkfeaturesupport('protx_revoke',
@@ -233,12 +279,12 @@ class RevokeMnDlg(QDialog, ui_revoke_mn_dlg.Ui_RevokeMnDlg, WndUtils):
                      f'The new values ​​will be visible on the network after the transaction is confirmed, i.e. in ' \
                      f'about 2.5 minutes.'
 
-                WndUtils.infoMsg(msg)
+                WndUtils.info_msg(msg)
 
         except Exception as e:
             if str(e).find('protx-dup') >= 0:
-                WndUtils.errorMsg('The previous protx transaction has not been confirmed yet. Wait until it is '
+                WndUtils.error_msg('The previous protx transaction has not been confirmed yet. Wait until it is '
                          'confirmed before sending a new transaction.')
             else:
                 logging.error('Exception occurred while sending protx revoke: ' + str(e))
-                WndUtils.errorMsg(str(e))
+                WndUtils.error_msg(str(e))

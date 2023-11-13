@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>862</width>
+    <width>905</width>
     <height>625</height>
    </rect>
   </property>
@@ -17,7 +17,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>Dialog</string>
+   <string>Wallet</string>
   </property>
   <property name="sizeGripEnabled">
    <bool>true</bool>
@@ -83,35 +83,6 @@
           </property>
           <property name="text">
            <string>...</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QWidget" name="wdgSpinner" native="true">
-          <property name="minimumSize">
-           <size>
-            <width>32</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="lbl_message">
-          <property name="styleSheet">
-           <string notr="true"/>
-          </property>
-          <property name="text">
-           <string/>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-          <property name="openExternalLinks">
-           <bool>true</bool>
-          </property>
-          <property name="textInteractionFlags">
-           <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
           </property>
          </widget>
         </item>
@@ -415,9 +386,19 @@
                      <number>8</number>
                     </property>
                     <item>
-                     <widget class="QToolButton" name="btnCheckAll">
+                     <widget class="QToolButton" name="btnSelectUtxosByValue">
                       <property name="toolTip">
-                       <string/>
+                       <string>Select UTXOs by the Dash value</string>
+                      </property>
+                      <property name="text">
+                       <string>Select by Value</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QToolButton" name="btnSelectAllUtxos">
+                      <property name="toolTip">
+                       <string>Select All UTXOs</string>
                       </property>
                       <property name="text">
                        <string>Select All</string>
@@ -427,6 +408,9 @@
                         <width>12</width>
                         <height>12</height>
                        </size>
+                      </property>
+                      <property name="popupMode">
+                       <enum>QToolButton::InstantPopup</enum>
                       </property>
                       <property name="toolButtonStyle">
                        <enum>Qt::ToolButtonTextBesideIcon</enum>
@@ -439,7 +423,7 @@
                        <string/>
                       </property>
                       <property name="text">
-                       <string>Unselect All</string>
+                       <string>Deselect All</string>
                       </property>
                       <property name="iconSize">
                        <size>
@@ -465,7 +449,7 @@
                        <string notr="true"/>
                       </property>
                       <property name="text">
-                       <string>Hide collateral utxos</string>
+                       <string>Hide collateral UTXOs</string>
                       </property>
                      </widget>
                     </item>
@@ -690,6 +674,16 @@
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout_3">
      <item>
+      <widget class="QPushButton" name="btnCancel">
+       <property name="text">
+        <string>Cancel</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
       <spacer name="horizontalSpacer">
        <property name="orientation">
         <enum>Qt::Horizontal</enum>
@@ -701,6 +695,16 @@
         </size>
        </property>
       </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnChooseAddressAndExit">
+       <property name="text">
+        <string>Choose address and exit</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
      </item>
      <item alignment="Qt::AlignRight">
       <widget class="QPushButton" name="btnClose">
