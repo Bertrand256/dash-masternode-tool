@@ -934,141 +934,159 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             return
 
     def on_show_address_on_hw_triggered(self):
-        if self.hw_selected_address_id is not None:
-            a = self.account_list_model.account_by_id(self.hw_selected_account_id)
-            if a:
-                addr = a.address_by_id(self.hw_selected_address_id)
-                if addr:
-                    self.show_address_on_hw(addr)
+        try:
+            if self.hw_selected_address_id is not None:
+                a = self.account_list_model.account_by_id(self.hw_selected_account_id)
+                if a:
+                    addr = a.address_by_id(self.hw_selected_address_id)
+                    if addr:
+                        self.show_address_on_hw(addr)
+        except Exception as e:
+            WndUtils.error_msg('Couldn\'t copy the selected address.')
 
     def on_act_copy_address_triggered(self):
         addr = None
-        if self.hw_selected_address_id is not None:
-            a = self.account_list_model.account_by_id(self.hw_selected_account_id)
-            if a:
-                addr = a.address_by_id(self.hw_selected_address_id)
-                if addr:
-                    # for security purposes get the address from hardware wallet and compare it to the one
-                    # read from db cache
-                    addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, addr.bip32_path, False)
-                    if addr_hw != addr.address:
-                        self.error_msg('Inconsistency between the wallet cache and the hardware wallet data occurred. '
-                                       'Please clear the wallet cache.')
-                        return
-                    clipboard = QApplication.clipboard()
-                    clipboard.setText(addr.address)
-        if not addr:
-            WndUtils.warn_msg('Couldn\'t copy the selected address.')
+        try:
+            if self.hw_selected_address_id is not None:
+                a = self.account_list_model.account_by_id(self.hw_selected_account_id)
+                if a:
+                    addr = a.address_by_id(self.hw_selected_address_id)
+                    if addr:
+                        # for security purposes get the address from hardware wallet and compare it to the one
+                        # read from db cache
+                        addr_hw = self.hw_call_wrapper(hw_intf.get_address)(self.hw_session, addr.bip32_path, False)
+                        if addr_hw != addr.address:
+                            self.error_msg('Inconsistency between the wallet cache and the hardware wallet data occurred. '
+                                           'Please clear the wallet cache.')
+                            return
+                        clipboard = QApplication.clipboard()
+                        clipboard.setText(addr.address)
+            if not addr:
+                WndUtils.warn_msg('Couldn\'t copy the selected address.')
+        except Exception as e:
+            WndUtils.error_msg('Couldn\'t copy the selected address.')
 
     def on_act_sign_message_for_address_triggered(self):
-        addr = None
-        if self.hw_selected_address_id is not None:
-            acc = self.account_list_model.account_by_id(self.hw_selected_account_id)
-            if acc:
-                addr = acc.address_by_id(self.hw_selected_address_id)
-                if addr and addr.bip32_path and addr.address:
-                    ui = SignMessageDlg(self.main_ui, self.hw_session, self.rt_data, addr.bip32_path, addr.address)
-                    ui.exec_()
-        if not addr:
-            WndUtils.warn_msg('Couldn\'t copy the selected address.')
+        try:
+            addr = None
+            if self.hw_selected_address_id is not None:
+                acc = self.account_list_model.account_by_id(self.hw_selected_account_id)
+                if acc:
+                    addr = acc.address_by_id(self.hw_selected_address_id)
+                    if addr and addr.bip32_path and addr.address:
+                        ui = SignMessageDlg(self.main_ui, self.hw_session, self.rt_data, addr.bip32_path, addr.address)
+                        ui.exec_()
+            if not addr:
+                WndUtils.warn_msg('Couldn\'t copy the selected address.')
+        except Exception as e:
+            WndUtils.error_msg('Couldn\'t copy the selected address.')
 
     def on_delete_account_triggered(self):
-        if self.hw_selected_account_id is not None:
-            view_index = self.accountsListView.currentIndex()
-            if view_index and view_index.isValid():
-                index = self.account_list_model.mapToSource(view_index)
-                node = index.internalPointer()
-                if isinstance(node, Bip44AccountType):
-                    acc = node
-                elif isinstance(node, Bip44AddressType):
-                    acc = node.bip44_account
-                else:
-                    raise Exception('No account selected.')
-
-                if WndUtils.query_dlg(f"Do you really want to remove account '{acc.get_account_name()}' from cache?",
-                                      buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                                      default_button=QMessageBox.Cancel,
-                                      icon=QMessageBox.Information) != QMessageBox.Yes:
-                    return
-
-                fx_state = self.allow_fetch_transactions
-                signals_state = self.accountsListView.blockSignals(True)
-                with self.account_list_model:
-                    self.allow_fetch_transactions = False
-                    self.account_list_model.remove_account(index.row())
-                    self.bip44_wallet.remove_account(acc.id)
-                    self.allow_fetch_transactions = fx_state
-                    self.accountsListView.blockSignals(signals_state)
-                    self.reflect_ui_account_selection()
-
-    def on_delete_address_triggered(self):
-        """For testing only"""
-        if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
-            if self.hw_selected_address_id is not None:
+        try:
+            if self.hw_selected_account_id is not None:
                 view_index = self.accountsListView.currentIndex()
                 if view_index and view_index.isValid():
                     index = self.account_list_model.mapToSource(view_index)
-                    acc = None
-                    acc_index = None
-                    addr = index.internalPointer()
-                    if isinstance(addr, Bip44AddressType):
-                        acc_view_index = view_index.parent()
-                        if acc_view_index.isValid():
-                            acc_index = self.account_list_model.mapToSource(acc_view_index)
-                            acc = acc_index.internalPointer()
+                    node = index.internalPointer()
+                    if isinstance(node, Bip44AccountType):
+                        acc = node
+                    elif isinstance(node, Bip44AddressType):
+                        acc = node.bip44_account
+                    else:
+                        raise Exception('No account selected.')
 
-                    if acc and acc_index:
-                        if WndUtils.query_dlg(f"Do you really want to clear address '{addr.address}' data in cache?",
-                                              buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                                              default_button=QMessageBox.Cancel,
-                                              icon=QMessageBox.Information) != QMessageBox.Yes:
-                            return
+                    if WndUtils.query_dlg(f"Do you really want to remove account '{acc.get_account_name()}' from cache?",
+                                          buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                          default_button=QMessageBox.Cancel,
+                                          icon=QMessageBox.Information) != QMessageBox.Yes:
+                        return
 
-                        ftx_state = self.allow_fetch_transactions
-                        signals_state = self.accountsListView.blockSignals(True)
-                        with self.account_list_model:
-                            self.allow_fetch_transactions = False
-                            self.account_list_model.removeRow(index.row(), parent=acc_index)
-                            self.bip44_wallet.remove_address(addr.id)
-                            self.allow_fetch_transactions = ftx_state
-                            self.accountsListView.blockSignals(signals_state)
-                            self.reflect_ui_account_selection()
-        elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
-            if self.selected_mns:
-                mns_str = ','.join([mn.masternode.name for mn in self.selected_mns])
-                if WndUtils.query_dlg(
-                        f"Do you really want to clear transactions cache data for masternodes: '{mns_str}'?",
-                        buttons=QMessageBox.Yes | QMessageBox.Cancel,
-                        default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
-                    return
-                for mn in self.selected_mns:
-                    self.bip44_wallet.remove_address(mn.address.id)
-                    with self.utxo_table_model:
-                        self.utxo_table_model.beginResetModel()
-                        self.utxo_table_model.clear_utxos()
-                        self.utxo_table_model.endResetModel()
+                    fx_state = self.allow_fetch_transactions
+                    signals_state = self.accountsListView.blockSignals(True)
+                    with self.account_list_model:
+                        self.allow_fetch_transactions = False
+                        self.account_list_model.remove_account(index.row())
+                        self.bip44_wallet.remove_account(acc.id)
+                        self.allow_fetch_transactions = fx_state
+                        self.accountsListView.blockSignals(signals_state)
+                        self.reflect_ui_account_selection()
+        except Exception as e:
+            WndUtils.error_msg('Couldn\'t copy the selected address.')
 
-                    with self.tx_table_model:
-                        self.tx_table_model.beginResetModel()
-                        self.tx_table_model.clear_utxos()
-                        self.tx_table_model.endResetModel()
+    def on_delete_address_triggered(self):
+        """For testing only"""
+        try:
+            if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS:
+                if self.hw_selected_address_id is not None:
+                    view_index = self.accountsListView.currentIndex()
+                    if view_index and view_index.isValid():
+                        index = self.account_list_model.mapToSource(view_index)
+                        acc = None
+                        acc_index = None
+                        addr = index.internalPointer()
+                        if isinstance(addr, Bip44AddressType):
+                            acc_view_index = view_index.parent()
+                            if acc_view_index.isValid():
+                                acc_index = self.account_list_model.mapToSource(acc_view_index)
+                                acc = acc_index.internalPointer()
+
+                        if acc and acc_index:
+                            if WndUtils.query_dlg(f"Do you really want to clear address '{addr.address}' data in cache?",
+                                                  buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                                                  default_button=QMessageBox.Cancel,
+                                                  icon=QMessageBox.Information) != QMessageBox.Yes:
+                                return
+
+                            ftx_state = self.allow_fetch_transactions
+                            signals_state = self.accountsListView.blockSignals(True)
+                            with self.account_list_model:
+                                self.allow_fetch_transactions = False
+                                self.account_list_model.removeRow(index.row(), parent=acc_index)
+                                self.bip44_wallet.remove_address(addr.id)
+                                self.allow_fetch_transactions = ftx_state
+                                self.accountsListView.blockSignals(signals_state)
+                                self.reflect_ui_account_selection()
+            elif self.utxo_src_mode == MAIN_VIEW_MASTERNODE_LIST:
+                if self.selected_mns:
+                    mns_str = ','.join([mn.masternode.name for mn in self.selected_mns])
+                    if WndUtils.query_dlg(
+                            f"Do you really want to clear transactions cache data for masternodes: '{mns_str}'?",
+                            buttons=QMessageBox.Yes | QMessageBox.Cancel,
+                            default_button=QMessageBox.Cancel, icon=QMessageBox.Information) != QMessageBox.Yes:
+                        return
+                    for mn in self.selected_mns:
+                        self.bip44_wallet.remove_address(mn.address.id)
+                        with self.utxo_table_model:
+                            self.utxo_table_model.beginResetModel()
+                            self.utxo_table_model.clear_utxos()
+                            self.utxo_table_model.endResetModel()
+
+                        with self.tx_table_model:
+                            self.tx_table_model.beginResetModel()
+                            self.tx_table_model.clear_utxos()
+                            self.tx_table_model.endResetModel()
+        except Exception as e:
+            WndUtils.error_msg('Couldn\'t copy the selected address.')
 
     @pyqtSlot()
     def on_show_account_next_fresh_address_triggered(self):
-        view_index = self.accountsListView.currentIndex()
-        if view_index and view_index.isValid():
-            index = self.account_list_model.mapToSource(view_index)
-            acc = None
-            data = index.internalPointer()
-            if isinstance(data, Bip44AddressType):
-                acc_view_index = view_index.parent()
-                if acc_view_index.isValid():
-                    acc_index = self.account_list_model.mapToSource(acc_view_index)
-                    acc = acc_index.internalPointer()
-            elif isinstance(data, Bip44AccountType):
-                acc = data
-            if acc:
-                self.account_list_model.increase_account_fresh_addr_count(acc, 1)
+        try:
+            view_index = self.accountsListView.currentIndex()
+            if view_index and view_index.isValid():
+                index = self.account_list_model.mapToSource(view_index)
+                acc = None
+                data = index.internalPointer()
+                if isinstance(data, Bip44AddressType):
+                    acc_view_index = view_index.parent()
+                    if acc_view_index.isValid():
+                        acc_index = self.account_list_model.mapToSource(acc_view_index)
+                        acc = acc_index.internalPointer()
+                elif isinstance(data, Bip44AccountType):
+                    acc = data
+                if acc:
+                    self.account_list_model.increase_account_fresh_addr_count(acc, 1)
+        except Exception as e:
+            WndUtils.error_msg('Couldn\'t copy the selected address.')
 
     def get_utxo_src_cfg_hash(self):
         hash = str({self.utxo_src_mode}) + ':'

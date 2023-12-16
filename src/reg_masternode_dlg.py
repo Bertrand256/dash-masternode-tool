@@ -113,7 +113,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         self.wait_for_confirmation_timer_id = None
         self.show_field_hinds = True
         self.summary_info = []
-        self.register_prepare_command_name = 'register_prepare'  # register_prepare or register_prepare_hpmn, depending
+        self.register_prepare_command_name = 'register_prepare'  # register_prepare or register_prepare_evo, depending
         # on self.masternode_type
         if self.masternode:
             self.collateral_tx_address_path = self.masternode.collateral_bip32_path
@@ -1211,7 +1211,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         if self.masternode_type == MasternodeType.REGULAR:
             self.register_prepare_command_name = 'register_prepare'
         else:
-            self.register_prepare_command_name = 'register_prepare_hpmn'
+            self.register_prepare_command_name = 'register_prepare_evo'
 
         self.platform_node_id_validation_err_msg = ''
         if self.masternode_type == MasternodeType.HPMN:

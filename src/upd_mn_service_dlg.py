@@ -462,7 +462,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                   f'"{self.masternode.operator_private_key}" "{self.new_operator_payout_address}" '
         else:
             # HPMN
-            cmd = f'protx update_service_hpmn "{self.protx_hash}" "{self.ip}:{str(self.tcp_port)}" ' \
+            cmd = f'protx update_service_evo "{self.protx_hash}" "{self.ip}:{str(self.tcp_port)}" ' \
                   f'"{self.masternode.operator_private_key}" "{self.platform_node_id}" {self.platform_p2p_port} ' \
                   f'{self.platform_http_port} "{self.new_operator_payout_address}" '
         if fee_source_info:
@@ -622,7 +622,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
             if self.masternode.masternode_type == MasternodeType.REGULAR:
                 protx_command = 'update_service'
             else:
-                protx_command = 'update_service_hpmn'
+                protx_command = 'update_service_evo'
 
             params = [protx_command,
                       self.protx_hash,
