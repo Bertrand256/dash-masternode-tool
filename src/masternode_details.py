@@ -425,7 +425,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                     msg = str(e)
                     if not msg:
                         msg = 'Key conversion error.'
-                    WndUtils.errorMsg(msg)
+                    WndUtils.error_msg(msg)
 
         return ret
 
@@ -468,7 +468,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                     msg = str(e)
                     if not msg:
                         msg = 'Key conversion error.'
-                    WndUtils.errorMsg(msg)
+                    WndUtils.error_msg(msg)
         return ret
 
     def get_operator_key_to_display(self) -> str:
@@ -497,7 +497,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
                     msg = str(e)
                     if not msg:
                         msg = 'Key conversion error.'
-                    WndUtils.errorMsg(msg)
+                    WndUtils.error_msg(msg)
         return ret
 
     @pyqtSlot(str)
@@ -718,7 +718,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details.Ui_WdgMasternodeDetail
             found_protx = None
             if not ((self.masternode.ip and self.masternode.port) or
                     (self.masternode.collateralTx and self.masternode.collateralTxIndex)):
-                WndUtils.errorMsg('To be able to locate the deterministic masternode transaction you need to '
+                WndUtils.error_msg('To be able to locate the deterministic masternode transaction you need to '
                                   'provide the masternode ip + port or collateral tx + tx index.')
                 return
 

@@ -36,7 +36,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import app_defs
 import dash_utils
-from app_defs import APP_NAME_SHORT, APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT, get_known_loggers, APP_NAME_FOR_CRYPTING
+from app_defs import APP_DATA_DIR_NAME, DEFAULT_LOG_FORMAT, get_known_loggers, APP_NAME_FOR_CRYPTING
 from app_utils import encrypt, decrypt
 import app_cache
 import default_config
@@ -163,9 +163,7 @@ class AppConfig(QObject):
         self.feature_revoke_operator_automatic = AppFeatureStatus(True, 0, '')
         self.feature_new_bls_scheme = AppFeatureStatus(True, 0, '')
 
-        # obsolete and will be removed in the future (we are leaving it to
-        # preserve compatibility of the config file with older versions)
-        self.__hw_type: Optional[HWType] = None
+        self.hw_type = None
 
         # Keepkey passphrase UTF8 chars encoding:
         #  NFC: compatible with official Keepkey client app
@@ -631,12 +629,12 @@ class AppConfig(QObject):
         self.public_conns_testnet.clear()
         self.hw_keepkey_psw_encoding = 'NFC'
         self.dash_network = 'MAINNET'
-        self.block_explorer_tx_mainnet = 'https://insight.dash.org/insight/tx/%TXID%'
-        self.block_explorer_addr_mainnet = 'https://insight.dash.org/insight/address/%ADDRESS%'
-        self.block_explorer_tx_testnet = 'https://testnet-insight.dashevo.org/insight/tx/%TXID%'
-        self.block_explorer_addr_testnet = 'https://testnet-insight.dashevo.org/insight/address/%ADDRESS%'
-        self.tx_api_url_mainnet = 'https://insight.dash.org/insight'
-        self.tx_api_url_testnet = 'https://testnet-insight.dashevo.org/insight'
+        self.block_explorer_tx_mainnet = 'https://insight.firo.org/tx/%TXID%'
+        self.block_explorer_addr_mainnet = 'https://insight.firo.org/address/%ADDRESS%'
+        self.block_explorer_tx_testnet = 'https://testexplorer.firo.org/tx/%TXID%'
+        self.block_explorer_addr_testnet = 'https://testexplorer.firo.org/address/%ADDRESS%'
+        self.tx_api_url_mainnet = 'https://insight.firo.org'
+        self.tx_api_url_testnet = 'https://testexplorer.firo.org'
         self.dash_central_proposal_api = 'https://www.dashcentral.org/api/v1/proposal?hash=%HASH%'
         self.dash_nexus_proposal_api = 'https://api.dashnexus.org/proposals/%HASH%'
         self.check_for_updates = True
@@ -881,7 +879,7 @@ class AppConfig(QObject):
                                 else:
                                     mn.owner_address = config.get(section, 'dmn_owner_address', fallback='').strip()
 
-                                if mn.operator_key_type == InputKeyType.PRIVATE:
+                                if mn.operator_key_type == InputKeyType.PRIVATE: 
                                     mn.operator_private_key = self.simple_decrypt(
                                         config.get(section, 'operator_private_key', fallback='').strip(), False)
                                 else:
@@ -1323,9 +1321,9 @@ class AppConfig(QObject):
 
                 self.app_dev_contact = []
                 for ci in self._remote_app_params.get('appDeveloperContact'):
-                    name = self.simple_decrypt(ci.get('name'))
-                    user_id = self.simple_decrypt(ci.get('userId'))
-                    url = self.simple_decrypt(ci.get('url'))
+                    name = ci.get('name')
+                    user_id = ci.get('userId')
+                    url = ci.get('url')
                     if name and user_id:
                         dci = AppDeveloperContact(name, user_id, url)
                         self.app_dev_contact.append(dci)

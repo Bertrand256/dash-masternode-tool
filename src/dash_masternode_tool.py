@@ -28,7 +28,7 @@ if __name__ == '__main__':
                 msg = 'An unhandled exception accurred: ' + value.__class__.__name__ + '.'
             except:
                 msg = 'An unhandled exception accurred.'
-        WndUtils.errorMsg(msg)
+        WndUtils.error_msg(msg)
 
     sys.excepthook = my_excepthook
 

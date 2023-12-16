@@ -691,10 +691,7 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         elif self.chbHwKeepKey.isChecked():
             self.local_config.hw_type = HWType.keepkey
         else:
-            self.local_config.hw_type = HWType.ledger_nano_s
-
-        self.update_keepkey_pass_encoding_ui()
-        self.set_modified()
+            self.local_config.hw_type = HWType.ledger_nano
 
     @pyqtSlot(bool)
     def on_chbHwTrezor_toggled(self, checked):

@@ -3,7 +3,7 @@ bitcoin>=1.1.42
 trezor==0.13.6
 keepkey
 libusb1~=3.0.0
-PyQt5==5.15.9
+PyQt5==5.15.10
 PyQtChart==5.15.6
 pyinstaller==4.4; sys_platform == 'linux'
 pyinstaller==4.10; sys_platform == 'darwin'

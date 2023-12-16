@@ -18,7 +18,6 @@ from trezorlib import device
 import trezorlib.firmware
 import trezorlib
 
-
 import dash_utils
 import hw_common
 from app_runtime_data import AppRuntimeData
@@ -28,7 +27,7 @@ from hw_common import ask_for_pass_callback, ask_for_pin_callback, \
 import logging
 import wallet_common
 from wnd_utils import WndUtils
-from dash_tx import DashTxType, serialize_cbTx, serialize_Lelantus, serialize_Spark
+
 
 log = logging.getLogger('dmt.hw_intf_trezor')
 
@@ -325,8 +324,20 @@ def json_to_tx(tx_json):
     t = btc.from_json(tx_json)
     dip2_type = tx_json.get("type", 0)
 
+    t.inputs =[]
+    for vin in tx_json["vin"]:
+        if "scriptSig" in vin and vin["scriptSig"]["hex"] == "c9":
+            i = messages.TxInputType()
+            i.prev_hash = b"\0" * 32
+            i.prev_index = vin["sequence"]
+            i.script_sig = bytes.fromhex(vin["scriptSig"]["hex"])
+            i.sequence = vin["sequence"]
+            t.inputs.append(i)
+        else:
+            t.inputs.append(_json_to_input(tx_json, vin))
+    t.bin_outputs = [_json_to_bin_output(tx_json, vout) for vout in tx_json["vout"]]
+
     if t.version == 3 and dip2_type != 0:
-        # It's a DIP2 special TX with payload
         if dip2_type == DashTxType.SPEC_CB_TX:
             tx_json["extraPayload"] = serialize_cbTx(tx_json)
         elif dip2_type == DashTxType.LELANTUS_JSPLIT:
@@ -335,8 +346,8 @@ def json_to_tx(tx_json):
             tx_json["extraPayload"] = serialize_Spark(tx_json)
         else:
             raise NotImplementedError("Only spending of V3 coinbase outputs has been inplemented. "
-                    "Please file an issue at https://github.com/firoorg/firo-masternode-tool/issues containing "
-                    "the tx type=" + str(dip2_type))
+                "Please file an issue at https://github.com/firoorg/firo-masternode-tool/issues containing "
+                "the tx type=" + str(dip2_type))
         tx_json["extraPayloadSize"] = len(tx_json["extraPayload"]) >> 1
 
 
@@ -347,9 +358,7 @@ def json_to_tx(tx_json):
             raise ValueError(
                 "extra_data_len (%d) does not match calculated length (%d)"
                 % (tx_json["extraPayloadSize"], len(tx_json["extraPayload"]) * 2)
-
             )
-
         t.extra_data = dash_utils.num_to_varint(tx_json["extraPayloadSize"]) + bytes.fromhex(
             tx_json["extraPayload"]
         )
@@ -359,7 +368,6 @@ def json_to_tx(tx_json):
     t.version |= dip2_type << 16
 
     return t
-
 
 
 class MyTxApiInsight(object):
@@ -436,9 +444,7 @@ def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: 
             address_n=address_n,
             amount=utxo.satoshis,
             prev_hash=binascii.unhexlify(utxo.txid),
-            prev_index=int(utxo.output_index),
-            amount=utxo.satoshis
-        )
+            prev_index=int(utxo.output_index))
 
         inputs.append(it)
         inputs_amount += utxo.satoshis

@@ -34,7 +34,6 @@ import upd_mn_service_dlg
 import wnd_utils
 from app_main_view_wdg import WdgAppMainView
 from app_runtime_data import AppRuntimeData
-from bip44_wallet import find_wallet_addresses, Bip44Wallet
 from cmd_console_dlg import CmdConsoleDlg
 from common import CancelException
 from config_dlg import ConfigDlg
@@ -43,10 +42,8 @@ import app_cache
 import wallet_dlg
 import app_utils
 
-from masternode_details_wdg import WdgMasternodeDetails
-from app_config import AppConfig, MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType, MasternodeType
-from app_defs import PROJECT_URL, APP_NAME_LONG, DispMessage, AppTextMessageType, get_note_url
-from dash_utils import bip32_path_n_to_string
+from app_config import AppConfig, MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, InputKeyType
+from app_defs import PROJECT_URL, APP_NAME_LONG, DispMessage, AppTextMessageType
 
 from dashd_intf import DashdInterface, DashdIndexException
 from hw_common import HWPinException, HWType, HWDevice, HWNotConnectedException

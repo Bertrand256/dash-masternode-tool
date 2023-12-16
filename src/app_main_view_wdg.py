@@ -339,8 +339,8 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 self.update_ui()
                 self.update_info_page()
 
-                if self.app_config.fetch_network_data_after_start:
-                    self.refresh_network_data()
+                # if self.app_config.fetch_network_data_after_start:
+                #     self.refresh_network_data()
             except Exception as e:
                 logging.exception(str(e))
 
@@ -1276,6 +1276,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             logging.info('Starting thread "refresh_status_thread"')
             self.refresh_status_thread_ref = WndUtils.run_thread(self, self.refresh_status_thread, (),
                                                                  on_thread_finish=update)
+
 
         if self.app_config.show_dash_value_in_fiat and (self.app_config.is_mainnet or SCREENSHOT_MODE):
             if not self.refresh_price_thread_ref and \
