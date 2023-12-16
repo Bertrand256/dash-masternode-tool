@@ -467,7 +467,7 @@ class Masternode(AttrsProtected):
         AttrsProtected.__init__(self)
         self.ident: Optional[str] = None
         self.status: Optional[str] = None
-        self.type: Optional[str] = None  # HighPerformance or Regular
+        self.type: Optional[str] = None  # Evo or Regular
         self.payout_address: Optional[str] = None
         self.lastpaidtime: int = 0
         self._lastpaidblock: int = -1

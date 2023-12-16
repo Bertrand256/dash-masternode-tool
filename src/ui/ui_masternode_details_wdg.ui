@@ -188,7 +188,7 @@
         <item>
          <widget class="QRadioButton" name="rbMNTypeHPMN">
           <property name="text">
-           <string> HPMN (4000 Dash)</string>
+           <string> EVO (4000 Dash)</string>
           </property>
          </widget>
         </item>

@@ -13,7 +13,7 @@ import cryptography.hazmat.primitives.serialization
 import dash_utils
 import hw_intf
 from app_config import MasternodeConfig, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING, InputKeyType, AppConfig, \
-    MasternodeType
+    MasternodeType, MasternodeTypeMap
 from app_defs import DispMessage, AppTextMessageType
 from bip44_wallet import Bip44Wallet, BreakFetchTransactionsException
 from common import CancelException
@@ -278,37 +278,37 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
 
         # Platform Node ID
         self.lblPlatformNodeKey.setVisible(self.masternode is not None and
-                                           (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                           (self.masternode.masternode_type == MasternodeType.EVO) and
                                            (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.edtPlatformNodeKey.setVisible(self.masternode is not None and
-                                           (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                           (self.masternode.masternode_type == MasternodeType.EVO) and
                                            (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.btnCopyPlatformNodeKey.setVisible(self.masternode is not None and
-                                               (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                               (self.masternode.masternode_type == MasternodeType.EVO) and
                                                (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.btnShowPlatformNodeKey.setVisible(self.masternode is not None and
                                                self.edit_mode is False and
-                                               (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                               (self.masternode.masternode_type == MasternodeType.EVO) and
                                                (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.lblPlatformNodeMsg.setVisible(self.masternode is not None and
-                                           (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                           (self.masternode.masternode_type == MasternodeType.EVO) and
                                            (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0) and
                                            self.platform_node_key_invalid)
 
         # Platform P2P port
         self.lblPlatformP2PPort.setVisible(self.masternode is not None and
-                                           (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                           (self.masternode.masternode_type == MasternodeType.EVO) and
                                            (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.edtPlatformP2PPort.setVisible(self.masternode is not None and
-                                           (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                           (self.masternode.masternode_type == MasternodeType.EVO) and
                                            (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
 
         # Platform HTTP port
         self.lblPlatformHTTPPort.setVisible(self.masternode is not None and
-                                            (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                            (self.masternode.masternode_type == MasternodeType.EVO) and
                                             (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.edtPlatformHTTPPort.setVisible(self.masternode is not None and
-                                            (self.masternode.masternode_type == MasternodeType.HPMN) and
+                                            (self.masternode.masternode_type == MasternodeType.EVO) and
                                             (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
 
         self.btnGenerateOwnerPrivateKey.setVisible(
@@ -329,17 +329,17 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.btnGeneratePlatformNodePrivateKey.setVisible(
             self.masternode is not None and self.edit_mode and
             self.masternode.platform_node_key_type == InputKeyType.PRIVATE and
-            self.masternode.masternode_type == MasternodeType.HPMN and
+            self.masternode.masternode_type == MasternodeType.EVO and
             self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0)
 
         self.btnPlatformP2PPortSetDefault.setVisible(
             self.masternode is not None and self.edit_mode and
-            self.masternode.masternode_type == MasternodeType.HPMN and
+            self.masternode.masternode_type == MasternodeType.EVO and
             self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0)
 
         self.btnPlatformHTTPPortSetDefault.setVisible(
             self.masternode is not None and self.edit_mode and
-            self.masternode.masternode_type == MasternodeType.HPMN and
+            self.masternode.masternode_type == MasternodeType.EVO and
             self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0)
 
         self.lblUserRole.setVisible(self.masternode is not None)
@@ -585,7 +585,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.chbRoleOperator.setChecked(self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR)
             self.chbRoleVoting.setChecked(self.masternode.dmn_user_roles & DMN_ROLE_VOTING)
             self.rbMNTypeRegular.setChecked(self.masternode.masternode_type == MasternodeType.REGULAR)
-            self.rbMNTypeHPMN.setChecked(self.masternode.masternode_type == MasternodeType.HPMN)
+            self.rbMNTypeHPMN.setChecked(self.masternode.masternode_type == MasternodeType.EVO)
             self.edtName.setText(self.masternode.name)
             self.edtIP.setText(self.masternode.ip)
             self.edtPort.setText(str(self.masternode.tcp_port))
@@ -1012,7 +1012,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     def on_rbMNTypeHPMN_toggled(self, checked):
         if not self.updating_ui:
             if checked:
-                self.masternode.masternode_type = MasternodeType.HPMN
+                self.masternode.masternode_type = MasternodeType.EVO
             self.update_ui_controls_state()
             self.on_mn_data_modified()
             self.role_modified.emit()
@@ -1104,6 +1104,12 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                     if mn_cfg.protx_hash != mn_info.protx_hash:
                         updated_fields.append('protx hash')
                         self.masternode.protx_hash = mn_info.protx_hash
+                        modified = True
+
+                    mn_type = MasternodeTypeMap.get(mn_info.type, MasternodeType.REGULAR)
+                    if mn_cfg.masternode_type != mn_type:
+                        updated_fields.append('mn type')
+                        self.masternode.masternode_type = mn_type
                         modified = True
 
                     if mn_cfg.collateral_tx != mn_info.collateral_hash or str(mn_cfg.collateral_tx_index) != \

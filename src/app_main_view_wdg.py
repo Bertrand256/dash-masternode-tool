@@ -22,7 +22,8 @@ from PyQt5.QtWidgets import QWidget, QMessageBox, QApplication, QTableView, QIte
 import app_cache
 import app_utils
 import hw_intf
-from app_config import AppConfig, MasternodeConfig, MasternodeType, DMN_ROLE_OWNER, DMN_ROLE_OPERATOR, DMN_ROLE_VOTING
+from app_config import (AppConfig, MasternodeConfig, MasternodeType, MasternodeTypeMap, DMN_ROLE_OWNER,
+                        DMN_ROLE_OPERATOR, DMN_ROLE_VOTING)
 from app_defs import COLOR_ERROR_STR, COLOR_WARNING_STR, COLOR_ERROR, COLOR_WARNING, \
     AppTextMessageType, SCREENSHOT_MODE
 from common import CancelException
@@ -1480,10 +1481,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 else:
                     mn_stat.status_warning = True
 
-                mn_stat.masternode_type = {
-                    'HighPerformance': MasternodeType.HPMN,
-                    'Regular': MasternodeType.REGULAR
-                }.get(mn_info.type, MasternodeType.REGULAR)
+                mn_stat.masternode_type = MasternodeTypeMap.get(mn_info.type, MasternodeType.REGULAR)
 
                 if mn_info.pose_penalty:
                     mn_stat.pose_penalty = mn_info.pose_penalty
@@ -1682,7 +1680,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         m.filter_mn_type = {
             0: None,
             1: 'Regular',
-            2: 'HighPerformance'
+            2: 'Evo'
         }.get(self.cboNetMnsFilterType.currentIndex(), None)
         m.filter_protx = self.edtNetMnsFilterProtx.text()
         m.filter_ip_port = self.edtNetMnsFilterIP.text()
@@ -2449,7 +2447,7 @@ class MasternodeStatus:
         self.platform_node_id_mismatch = False
         self.platform_p2p_port_mismatch = False
         self.platform_http_port_mismatch = False
-        if masternode_cfg.masternode_type == MasternodeType.HPMN:
+        if masternode_cfg.masternode_type == MasternodeType.EVO:
             if masternode_cfg.get_platform_node_id() != self.platform_node_id:
                 self.platform_node_id_mismatch = True
             if masternode_cfg.platform_p2p_port != self.platform_p2p_port:

@@ -490,7 +490,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
     @pyqtSlot(bool)
     def on_rbMNTypeHPMN_toggled(self, checked):
         if checked:
-            self.masternode_type = MasternodeType.HPMN
+            self.masternode_type = MasternodeType.EVO
             self.update_fields_info(True)
             self.update_ctrls_visibility()
 
@@ -771,7 +771,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
     def upd_platform_node_key_info(self, show_invalid_data_msg: bool):
         msg = ''
         style = ''
-        if self.masternode_type == MasternodeType.HPMN:
+        if self.masternode_type == MasternodeType.EVO:
             if show_invalid_data_msg and self.platform_node_id_validation_err_msg:
                 msg = self.platform_node_id_validation_err_msg
                 style = 'error'
@@ -999,7 +999,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                  f'Voting public address\t{self.voting_address}',
                  f'Protx hash\t{self.dmn_reg_tx_hash}']
 
-            if self.masternode_type == MasternodeType.HPMN:
+            if self.masternode_type == MasternodeType.EVO:
                 self.summary_info.extend(
                     [f'Platform Node Id\t{self.platform_node_id}',
                      f'Platform P2P port\t{self.platform_p2p_port}',
@@ -1214,7 +1214,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             self.register_prepare_command_name = 'register_prepare_evo'
 
         self.platform_node_id_validation_err_msg = ''
-        if self.masternode_type == MasternodeType.HPMN:
+        if self.masternode_type == MasternodeType.EVO:
             node_key = self.edtPlatformNodeKey.text().strip()
             if self.platform_node_key_type == InputKeyType.PRIVATE:
                 if not node_key:
@@ -1660,7 +1660,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                           str(round(self.operator_reward, 2)),
                           self.owner_payout_addr]
 
-                if self.masternode_type == MasternodeType.HPMN:
+                if self.masternode_type == MasternodeType.EVO:
                     params.extend([self.platform_node_id, str(self.platform_p2p_port), str(self.platform_http_port)])
 
                 if funding_address:
@@ -1778,7 +1778,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                       f'"{owner_key}" "{self.operator_pubkey}" "{self.voting_address}" ' \
                       f'"{str(round(self.operator_reward, 2))}" "{self.owner_payout_addr}" '
 
-                if self.masternode_type == MasternodeType.HPMN:
+                if self.masternode_type == MasternodeType.EVO:
                     cmd += f'"{self.platform_node_id}" "{str(self.platform_p2p_port)}" "{str(self.platform_http_port)}"'
 
                 cmd += f' "{addr}"'

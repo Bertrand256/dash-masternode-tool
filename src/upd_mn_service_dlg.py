@@ -81,7 +81,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
         WndUtils.set_icon(self.parent, self.btnPlatformP2PPortSetDefault, 'restore@16px.png')
         WndUtils.set_icon(self.parent, self.btnPlatformHTTPPortSetDefault, 'restore@16px.png')
         WndUtils.set_icon(self, self.btnCopyCommandText, 'content-copy@16px.png')
-        if self.masternode.masternode_type == MasternodeType.HPMN:
+        if self.masternode.masternode_type == MasternodeType.EVO:
             if self.platform_node_key_type == InputKeyType.PRIVATE:
                 self.edtPlatformNodeKey.setText(self.platform_node_private_key)
             else:
@@ -93,7 +93,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                              self.btnGeneratePlatformNodeKey, self.btnPlatformP2PPortSetDefault,
                              self.btnPlatformHTTPPortSetDefault, self.lblPlatformNodeKey, self.lblPlatformP2PPort,
                              self.lblPlatformHTTPPort)
-        if self.masternode.masternode_type == MasternodeType.HPMN:
+        if self.masternode.masternode_type == MasternodeType.EVO:
             for ctrl in platform_controls:
                 ctrl.show()
         else:
@@ -268,7 +268,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
 
         self.edtManualCommands.setVisible(self.show_manual_commands)
         self.btnCopyCommandText.setVisible(self.show_manual_commands)
-        if self.masternode.masternode_type == MasternodeType.HPMN:
+        if self.masternode.masternode_type == MasternodeType.EVO:
             if self.platform_node_key_type == InputKeyType.PRIVATE:
                 self.btnGeneratePlatformNodeKey.setVisible(True)
             else:
@@ -297,11 +297,11 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
             style = 'info'
         set_info_label(self.lblOperatorPayoutMsg, msg, style)
         self.lineOperatorPayoutMsg.setVisible(self.lblOperatorPayoutMsg.isVisible() and
-                                              self.masternode.masternode_type == MasternodeType.HPMN)
+                                              self.masternode.masternode_type == MasternodeType.EVO)
 
         msg = ''
         style = ''
-        if self.masternode.masternode_type == MasternodeType.HPMN:
+        if self.masternode.masternode_type == MasternodeType.EVO:
             if self.platform_node_id_validation_err_msg:
                 msg = self.platform_node_id_validation_err_msg
                 style = 'error'
@@ -390,7 +390,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
             errors_occurred = True
 
         self.platform_node_id_validation_err_msg = ''
-        if self.masternode.masternode_type == MasternodeType.HPMN:
+        if self.masternode.masternode_type == MasternodeType.EVO:
             node_key = self.edtPlatformNodeKey.text().strip()
             if self.platform_node_key_type == InputKeyType.PRIVATE:
                 if not node_key:
@@ -461,7 +461,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
             cmd = f'protx update_service "{self.protx_hash}" "{self.ip}:{str(self.tcp_port)}" ' \
                   f'"{self.masternode.operator_private_key}" "{self.new_operator_payout_address}" '
         else:
-            # HPMN
+            # EVO
             cmd = f'protx update_service_evo "{self.protx_hash}" "{self.ip}:{str(self.tcp_port)}" ' \
                   f'"{self.masternode.operator_private_key}" "{self.platform_node_id}" {self.platform_p2p_port} ' \
                   f'{self.platform_http_port} "{self.new_operator_payout_address}" '
@@ -629,7 +629,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                       dmn_new_ip_port,
                       self.masternode.operator_private_key]
 
-            if self.masternode.masternode_type == MasternodeType.HPMN:
+            if self.masternode.masternode_type == MasternodeType.EVO:
                 params.extend([self.platform_node_id, self.platform_p2p_port, self.platform_http_port])
 
             params.extend([self.new_operator_payout_address, funding_address])
@@ -704,7 +704,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
 
                 self.masternode.ip = self.ip
                 self.masternode.tcp_port = int(self.tcp_port)
-                if self.masternode.masternode_type == MasternodeType.HPMN:
+                if self.masternode.masternode_type == MasternodeType.EVO:
                     self.masternode.platform_node_key_type = self.platform_node_key_type
                     if self.platform_node_key_type == InputKeyType.PRIVATE:
                         self.masternode.platform_node_private_key = self.platform_node_private_key

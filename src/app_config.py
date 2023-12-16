@@ -59,8 +59,13 @@ DMN_ROLE_VOTING = 0x4
 
 class MasternodeType(Enum):
     REGULAR = 1
-    HPMN = 2
+    EVO = 2
 
+
+MasternodeTypeMap = {
+    'Evo': MasternodeType.EVO,
+    'Regular': MasternodeType.REGULAR
+}
 
 class InputKeyType:
     PRIVATE = 1
