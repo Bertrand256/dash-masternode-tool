@@ -1242,7 +1242,7 @@ class DashdInterface(WndUtils):
                         mn.modified = False
 
                     log.info('Fetching masternode data from the network')
-                    mns_json = self.proxy.evoznodelist(*args)
+                    mns_json = self.proxy.masternodelist(*args)
                     app_cache.set_value(f'MasternodesLastReadTime_{self.app_config.dash_network}', int(time.time()))
                     log.info('Finished fetching masternode data from the network')
 
@@ -1315,7 +1315,7 @@ class DashdInterface(WndUtils):
 
                     return self.masternodes
             else:
-                mns = self.proxy.evoznodelist(*args)
+                mns = self.proxy.masternodenodelist(*args)
                 return mns
         else:
             raise Exception('Not connected')

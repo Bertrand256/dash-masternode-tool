@@ -1321,9 +1321,9 @@ class AppConfig(QObject):
 
                 self.app_dev_contact = []
                 for ci in self._remote_app_params.get('appDeveloperContact'):
-                    name = ci.get('name')
-                    user_id = ci.get('userId')
-                    url = ci.get('url')
+                    name = self.simple_decrypt(ci.get('name'))
+                    user_id = self.simple_decrypt(ci.get('userId'))
+                    url = self.simple_decrypt(ci.get('url'))
                     if name and user_id:
                         dci = AppDeveloperContact(name, user_id, url)
                         self.app_dev_contact.append(dci)
