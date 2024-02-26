@@ -102,8 +102,7 @@ class ProposalColumn(TableModelColumn):
 
 class Vote(AttrsProtected):
     def __init__(self, voting_masternode_label: str, voting_time: datetime, voting_result: str, signal: str,
-                 weight: int,
-                 user_masternode_label: str):
+                 weight: int, user_masternode_label: str):
         super().__init__()
         self.voting_masternode_label = voting_masternode_label
         self.user_masternode_label: str = user_masternode_label if voting_masternode_label is None else None
@@ -284,15 +283,20 @@ class Proposal(AttrsProtected):
             for mn in masternodes:
                 if mn.status in ('ENABLED', 'PRE_ENABLED'):
                     mns_count += 1
+            funding_threshold = gi.get('fundingthreshold')
+            if funding_threshold is None:
+                funding_threshold = int(mns_count * 0.1)
+
             if self.voting_in_progress:
-                if abs_yes_count >= mns_count * 0.1:
+                if abs_yes_count >= funding_threshold:
                     self.voting_status = 1  # will be funded
-                    self.set_value('voting_status_caption', 'Passing +%d (%d of %d needed)' %
-                                   (abs_yes_count - int(mns_count * 0.1), abs_yes_count, int(mns_count * 0.1)))
+                    self.set_value('voting_status_caption',
+                                   f'Passing +{abs_yes_count - funding_threshold} ({abs_yes_count} of '
+                                   f'{funding_threshold} needed)')
                 else:
                     self.voting_status = 2  # needs additional votes
-                    self.set_value('voting_status_caption', 'Needs additional %d votes' % (int(mns_count * 0.1) -
-                                                                                           abs_yes_count))
+                    self.set_value('voting_status_caption', f'Needs additional {funding_threshold - abs_yes_count} '
+                                                            f'votes')
             else:
                 if funding_enabled:
                     self.voting_status = 3  # funded
@@ -387,6 +391,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         self.next_budget_requested_pct = None
         self.next_budget_approved_pct = None
         self.next_budget_approved_by_user_yes_votes = None
+        self.next_voting_deadline = None
         self.proposals_last_read_time = 0
         self.current_proposal = None
         self.propsModel = None
@@ -1142,7 +1147,6 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
             deadline_block = self.next_superblock - sb_cycle
             self.voting_deadline_passed = deadline_block <= self.cur_block_height < self.next_superblock
-
             self.next_voting_deadline = self.next_superblock_time - (sb_cycle * 2.5 * 60)
             self.display_budget_summary()
 
@@ -1153,7 +1157,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
 
     def find_superblocks_for_timestamp(self, timestamp: int) -> Tuple[int, int]:
         """The method looks for two consecutive superblocks, the first with a smaller timestamp than given in
-        the argument, the second with a greater."""
+        the argument, the second with a greater one."""
 
         def get_next_sb_ts(sb_nr: int) -> int:
             if sb_nr > self.last_superblock:
