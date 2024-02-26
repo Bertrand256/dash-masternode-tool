@@ -1197,13 +1197,17 @@ class DashdInterface(WndUtils):
                     log.exception(str(e))
 
                 payment_queue.append(mn)
+                if mn.type == 'Evo':
+                    payment_queue.append(mn)  # for Evo node, take 4 places in the payment queue
+                    payment_queue.append(mn)
+                    payment_queue.append(mn)
             else:
                 mn.queue_position = None
         payment_queue.sort(key=lambda x: x.queue_position, reverse=False)
 
         for mn in masternodes:
             if mn.status == 'ENABLED':
-                mn.queue_position = payment_queue.index(mn)
+                mn.queue_position = payment_queue.index(mn) + 1
 
     @control_rpc_call
     def get_masternodelist(self, *args, data_max_age=MASTERNODES_CACHE_VALID_SECONDS,
