@@ -345,32 +345,6 @@
       when: enable_dashd_indexing
 
     - block:
-      - name: Clone sentinel repository
-        git:
-          repo: https://github.com/dashpay/sentinel.git
-          dest: ~/.dashcore/sentinel
-        become_user: "{{ dashuser }}"
-
-      - name: Check whether sentinel venv exists
-        stat:
-          path: ~/.dashcore/sentinel/venv
-        register: sentinel_venv_exists
-        become_user: "{{ dashuser }}"
-
-      - name: Create sentinel runtime environment
-        shell:
-          cmd: |
-            cd ~/.dashcore/sentinel && virtualenv venv && venv/bin/pip install -r requirements.txt && venv/bin/py.test test && venv/bin/python bin/sentinel.py
-        when: not sentinel_venv_exists.stat.exists
-        become_user: "{{ dashuser }}"
-
-      - name: Create crontab entry for sentinel
-        cron:
-          job: "cd ~/.dashcore/sentinel && ./venv/bin/python bin/sentinel.py 2>&1 >> sentinel-cron.log"
-          name: "Sentinel execution"
-        become_user: "{{ dashuser }}"
-      when: is_masternode
-
     - name: Create a systemd service for dashd
       template:
         src: files/dashd-service.j2
