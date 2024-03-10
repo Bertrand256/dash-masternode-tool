@@ -29,7 +29,6 @@ OP_EQUALVERIFY = b'\x88'
 OP_CHECKSIG = b'\xAC'
 OP_EQUAL = b'\x87'
 
-DEFAULT_SENTINEL_VERSION = 0x010001  # sentinel version before implementation of nSentinelVersion in CMasternodePing
 DEFAULT_DAEMON_VERSION = 120200  # daemon version before implementation of nDaemonVersion in CMasternodePing
 MASTERNODE_TX_MINIMUM_CONFIRMATIONS = 15
 DASH_PLATFORM_DEFAULT_P2P_PORT = 26656
