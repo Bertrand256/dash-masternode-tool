@@ -693,58 +693,61 @@ class SpinnerWidget(QWidget):
             self.updateGeometry()
 
     def paintEvent(self, event):
-        content_rect = self.contentsRect()
-        if self.spinner_size:
-            size = min(self.spinner_size, content_rect.width(), content_rect.height())
-        else:
-            size = min(content_rect.width(), content_rect.height())
-        dot_count = 5
-        dot_size = int(size / dot_count) * 1.5
+        try:
+            content_rect = self.contentsRect()
+            if self.spinner_size:
+                size = min(self.spinner_size, content_rect.width(), content_rect.height())
+            else:
+                size = min(content_rect.width(), content_rect.height())
+            dot_count = 5
+            dot_size = int(size / dot_count) * 1.5
 
-        spinner_rect = QRect(content_rect.left(), content_rect.top(), size, size)
+            spinner_rect = QRect(content_rect.left(), content_rect.top(), size, size)
 
-        painter = QPainter(self)
-        painter.setClipRect(content_rect)
+            painter = QPainter(self)
+            painter.setClipRect(content_rect)
 
-        if self.timer_id:
-            diff_height = content_rect.height() - size
-            offs_y = 0
-            if diff_height > 0:
-                if self.vertical_align == Qt.AlignVCenter:
-                    offs_y = diff_height / 2
-                elif self.vertical_align == Qt.AlignBottom:
-                    offs_y = diff_height
+            if self.timer_id:
+                diff_height = content_rect.height() - size
+                offs_y = 0
+                if diff_height > 0:
+                    if self.vertical_align == Qt.AlignVCenter:
+                        offs_y = diff_height / 2
+                    elif self.vertical_align == Qt.AlignBottom:
+                        offs_y = diff_height
 
-            x_center = spinner_rect.left() + spinner_rect.width() / 2 - dot_size / 2
-            y_center = spinner_rect.top() + offs_y + spinner_rect.height() / 2 - dot_size / 2
+                x_center = spinner_rect.left() + spinner_rect.width() / 2 - dot_size / 2
+                y_center = spinner_rect.top() + offs_y + spinner_rect.height() / 2 - dot_size / 2
 
-            painter.save()
-            for i in range(dot_count):
-                if self.counter % dot_count == i:
-                    painter.setBrush(QBrush(QColor(0, 0, 0)))
-                    d_size = dot_size * 1.1
-                else:
-                    painter.setBrush(QBrush(QColor(200, 200, 200)))
-                    d_size = dot_size
+                painter.save()
+                for i in range(dot_count):
+                    if self.counter % dot_count == i:
+                        painter.setBrush(QBrush(QColor(0, 0, 0)))
+                        d_size = dot_size * 1.1
+                    else:
+                        painter.setBrush(QBrush(QColor(200, 200, 200)))
+                        d_size = dot_size
 
-                r = size / 2 - dot_size / 2
-                x = r * math.cos(2 * math.pi * i / dot_count)
-                y = r * math.sin(2 * math.pi * i / dot_count)
-                painter.drawEllipse(x_center + x, y_center + y, d_size, d_size)
-            painter.restore()
+                    r = size / 2 - dot_size / 2
+                    x = r * math.cos(2 * math.pi * i / dot_count)
+                    y = r * math.sin(2 * math.pi * i / dot_count)
+                    painter.drawEllipse(x_center + x, y_center + y, d_size, d_size)
+                painter.restore()
 
-        if self.message:
-            # painter.setPen(QPen(Qt.black))
-            if self.font_size:
-                f = painter.font()
-                f.setPointSize(self.font_size)
-                painter.setFont(f)
+            if self.message:
+                # painter.setPen(QPen(Qt.black))
+                if self.font_size:
+                    f = painter.font()
+                    f.setPointSize(self.font_size)
+                    painter.setFont(f)
 
-            text_rect = QRect(content_rect)
-            text_rect.translate(spinner_rect.width() + SpinnerWidget.SPINNER_TO_TEXT_DISTANCE if self.timer_id else 0,
-                                0)
-            painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, self.message)
-        painter.end()
+                text_rect = QRect(content_rect)
+                text_rect.translate(spinner_rect.width() + SpinnerWidget.SPINNER_TO_TEXT_DISTANCE if self.timer_id else 0,
+                                    0)
+                painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, self.message)
+            painter.end()
+        except Exception as e:
+            logging.exception(str(e))
 
     def sizeHint(self):
         sh: QSize = self.size()

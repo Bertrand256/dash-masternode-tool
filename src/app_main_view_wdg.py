@@ -15,9 +15,11 @@ from typing import Callable, Optional, List, Dict, Any, Tuple
 
 import requests
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtCore import pyqtSlot, Qt, QTimer, QVariant, QModelIndex, QPoint, QUrl, QItemSelectionModel, QItemSelection
+from PyQt5.QtCore import pyqtSlot, Qt, QTimer, QVariant, QModelIndex, QPoint, QUrl, QItemSelectionModel, QItemSelection, \
+    pyqtSignal
 from PyQt5.QtGui import QPalette, QColor, QDesktopServices
-from PyQt5.QtWidgets import QWidget, QMessageBox, QApplication, QTableView, QItemDelegate, QMenu
+from PyQt5.QtWidgets import QWidget, QMessageBox, QApplication, QTableView, QItemDelegate, QMenu, QAction, QActionGroup, \
+    QPushButton, QHBoxLayout, QToolButton
 
 import app_cache
 import app_utils
@@ -1757,6 +1759,8 @@ class MasternodesFromConfigTableModel(ExtSortFilterItemModel):
                              horizontal_alignment=HorizontalAlignment.RIGHT),
             TableModelColumn('next_payment_time', 'Next payment (time)', True, 150),
             TableModelColumn('next_payment_in', 'Next payment (in)', True, 150),
+            TableModelColumn('pose_score', 'PoSeScore', False, 100,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
             TableModelColumn('collateral_addr_balance_dash', 'Collateral balance [DASH]', False, 100,
                              horizontal_alignment=HorizontalAlignment.RIGHT),
             TableModelColumn('collateral_addr_balance_fiat', 'Collateral balance [USD]', False, 100,

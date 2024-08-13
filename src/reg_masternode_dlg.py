@@ -1359,15 +1359,22 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                         raise Exception(f'The collateral transaction ({self.collateral_tx}) output '
                                         f'({self.collateral_tx_index}) doesn\'t have value in the scriptPubKey '
                                         f'field.')
-                    ads = spk.get('addresses')
-                    if not ads or len(ads) < 0:
-                        raise Exception('The collateral transaction output doesn\'t have the Dash address assigned.')
+
+                    address = spk.get('address')
+                    if not address:
+                        # todo: remove after 1-Oct-2024
+                        ads = spk.get('addresses')  # < Dash v21
+                        if not ads or len(ads) < 0:
+                            raise Exception('The collateral transaction output doesn\'t have the Dash address assigned.')
+                        else:
+                            address = ads[0]
+
                     if vout.get('valueSat') != collateral_value_needed:
                         raise Exception(f'The value of the collateral transaction output is not equal to '
                                         f'{round(collateral_value_needed / 1e8)} Dash, which it should be '
                                         f'for this type of masternode.\n\nSelect another tx output.')
 
-                    self.collateral_tx_address = ads[0]
+                    self.collateral_tx_address = address
                 else:
                     raise Exception(f'Transaction {self.collateral_tx} doesn\'t have output with index: '
                                     f'{self.collateral_tx_index}')

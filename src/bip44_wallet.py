@@ -997,7 +997,11 @@ class Bip44Wallet(QObject):
 
             spk = vout.get('scriptPubKey', {})
             if spk:
-                address = ','.join(spk.get('addresses', []))
+                address = spk.get('address')
+                if not address:
+                    # todo: remove after 1-Oct-2024
+                    address = ','.join(spk.get('addresses', []))  # < v21
+
                 if address:
                     # I assume that there will never be more than one address
                     addr_id = self.get_address_id(address, db_cursor)

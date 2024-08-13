@@ -407,7 +407,7 @@ class Ui_WdgAppMainView(object):
         self.label_2.setText(_translate("WdgAppMainView", "Collateral hash:"))
         self.cboNetMnsFilterType.setItemText(0, _translate("WdgAppMainView", "Any"))
         self.cboNetMnsFilterType.setItemText(1, _translate("WdgAppMainView", "Regular (1k)"))
-        self.cboNetMnsFilterType.setItemText(2, _translate("WdgAppMainView", "Evo (4k)"))
+        self.cboNetMnsFilterType.setItemText(2, _translate("WdgAppMainView", "High performance (4k)"))
         self.label_8.setText(_translate("WdgAppMainView", "Protx hash:"))
         self.label_9.setText(_translate("WdgAppMainView", "Platform Node Id:"))
         self.label_6.setText(_translate("WdgAppMainView", "Owner address:"))

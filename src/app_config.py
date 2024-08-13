@@ -576,23 +576,33 @@ class AppConfig(QObject):
         try:
             cur = self.db_intf.get_cursor()
 
-            # reset the cached user votes because of the network votes reset caused by spork 15
-            cur.execute('select voting_time from VOTING_RESULTS where id=(select min(id) from VOTING_RESULTS)')
-            row = cur.fetchone()
-            if row and row[0]:
-                d = datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
-                vts = d.timestamp()
-                if vts < 1554246129:  # timestamp of the block (1047200) that activated spork 15
-                    logging.info('Cleared the cached votes because of the spork 15 activation')
-                    cur.execute('delete from VOTING_RESULTS')
-                    cur.execute('delete from LIVE_CONFIG')
-                    cur.execute('update proposals set dmt_voting_last_read_time=0')
-                    self.db_intf.commit()
-                    self.display_app_message.emit(1000,
-                                                  'Some of your voting results on proposals have been reset in '
-                                                  'relation to the activation of Spork 15. Verify this in the '
-                                                  'voting window and vote again if needed.',
-                                                  app_defs.AppTextMessageType.WARN)
+            if self.app_last_version == '0.9.38':
+                # In Dash v21, changes were made to the format of data returned by getrawtransaction and
+                # decoderawtransaction, which caused incorrect transaction status to be stored in the database
+                # cache by DMT version 0.9.38. Below, we remove the incorrect entries, so they will be reprocessed.
+                # todo: remove this block after 01-Oct-2024
+
+                _theshold_block = 2113000  # Threshold block number above which corrections must be made
+
+                cur.execute('update address set last_scan_block_height=?-1000 where last_scan_block_height>?',
+                            (_theshold_block, _theshold_block))
+                if cur.rowcount:
+                    logging.info(f'Fix DMT-v0.9.38/Dash-v21; fixed addresses count: {cur.rowcount}')
+
+                cur.execute('delete from tx_output where tx_id in (select id from tx where block_height>?)',
+                            (_theshold_block,))
+                if cur.rowcount:
+                    logging.info(f'Fix DMT-v0.9.38/Dash-v21; fixed tx_outputs: {cur.rowcount}')
+
+                cur.execute('delete from tx_input where tx_id in (select id from tx where block_height>?)',
+                            (_theshold_block,))
+                if cur.rowcount:
+                    logging.info(f'Fix DMT-v0.9.38/Dash-v21; fixed tx_inputs: {cur.rowcount}')
+
+                cur.execute('delete from tx where block_height>?', (_theshold_block,))
+                if cur.rowcount:
+                    logging.info(f'Fix DMT-v0.9.38/Dash-v21; fixed txes: {cur.rowcount}')
+                self.db_intf.commit()
 
             # check and clean the wallet addresses inconsistency
             cur.execute('select parent_id, address_index, count(*) from address where parent_id is not null '
