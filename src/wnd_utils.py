@@ -731,7 +731,7 @@ class SpinnerWidget(QWidget):
                     r = size / 2 - dot_size / 2
                     x = r * math.cos(2 * math.pi * i / dot_count)
                     y = r * math.sin(2 * math.pi * i / dot_count)
-                    painter.drawEllipse(x_center + x, y_center + y, d_size, d_size)
+                    painter.drawEllipse(int(x_center + x), int(y_center + y), int(d_size), int(d_size))
                 painter.restore()
 
             if self.message:
