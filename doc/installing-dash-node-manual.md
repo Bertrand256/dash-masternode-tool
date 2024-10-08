@@ -259,42 +259,7 @@ If it doesn't happen, open the following address in your web browser: https://gi
 
   What values you choose for USERNAME_FOR_RPC_INTERFACE and PASSWORD_FOR_RPC_INTERFACE is completely irrelevant.
 
-### 12. Installing *sentinel*
-Sentinel is an additional program that must be installed for the masternode to perform all necessary operations. It is a program written in Python and its installation basically consists of downloading the source code from GitHub and preparing the runtime environment.
-
-The next steps will be performed from the SSH terminal after logging in to the dash user.
-
-* Download the sentinel source code and create the runtime environment:
-  ```
-  cd ~/.dashcore
-  git clone https://github.com/dashpay/sentinel
-  cd sentinel
-  virtualenv venv
-  venv/bin/pip install -r requirements.txt
-  venv/bin/py.test test 
-  venv/bin/python bin/sentinel.py
-  ```
-
-  If your node is not completely synchronized with the network, you will see the appropriate message. If everything is ok, the last command will return nothing.
-
-* Configure sentinel execution
-
-  Sentinel is a script that needs to be run periodically (once per minute) so now you need to add a proper cron job.
-  
-  Run the cron configuration editor:
-  ```
-  crontab -e
-  ```
-  > **Note**. If this is the first time you are running crontab, you will be asked which editor to use for this. If you are not an advanced Linux user I suggest you choose the nano editor.
-  
-  Add the following line:
-  ```
-  * * * * * cd ~/.dashcore/sentinel && ./venv/bin/python bin/sentinel.py 2>&1 >> sentinel-cron.log
-  ```
-
-* Save your changes (CTRL+O, ENTER) and exit the editor (CTRL+X)
-
-### 13. Start the dashd program and wait for the blockchain synchronization to complete
+### 12. Start the dashd program and wait for the blockchain synchronization to complete
 ```
 ~/.dashcore/dashd
 ```
