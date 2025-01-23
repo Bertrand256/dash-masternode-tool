@@ -779,7 +779,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                                 f'[<a href="copy_owner_addr_net">copy</a>])')
                         if st.operator_pubkey_mismatch:
                             warnings.append(
-                                f'Operator public key mismatch (config: {short_address_str(mn.get_operator_pubkey(self.app_config.feature_new_bls_scheme.get_value()), 6)} '
+                                f'Operator public key mismatch (config: {short_address_str(mn.get_operator_pubkey(), 6)} '
                                 f'[<a href="copy_operator_key_cfg">copy</a>], '
                                 f'network: {short_address_str(st.network_operator_public_key, 6)}'
                                 f'[<a href="copy_operator_key_net">copy</a>])')
@@ -1019,7 +1019,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                     cl.setText(ms.network_owner_public_address)
 
             elif link == 'copy_operator_key_cfg':
-                cl.setText(self.cur_masternode.get_operator_pubkey(self.app_config.feature_new_bls_scheme.get_value()))
+                cl.setText(self.cur_masternode.get_operator_pubkey())
 
             elif link == 'copy_operator_key_net':
                 ms = self.mns_status.get(self.cur_masternode)
@@ -1439,8 +1439,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 check_finishing()
                 mn_stat = self.mns_status.get(mn_cfg)
                 if not mn_stat:
-                    mn_stat = MasternodeStatus(self.app_config.dash_network,
-                                               self.app_config.feature_new_bls_scheme.get_value())
+                    mn_stat = MasternodeStatus(self.app_config.dash_network)
                     self.mns_status[mn_cfg] = mn_stat
 
                 if mn_cfg.collateral_tx and str(mn_cfg.collateral_tx_index):
@@ -2309,9 +2308,8 @@ class NetworkStatus:
 
 
 class MasternodeStatus:
-    def __init__(self, dash_network, new_bls_scheme):
+    def __init__(self, dash_network):
         self.dash_network = dash_network
-        self.new_bls_scheme = new_bls_scheme
         self.not_found = False
         self.status = ''
         self.status_warning = False
@@ -2422,7 +2420,7 @@ class MasternodeStatus:
             self.owner_public_address_mismatch = False
 
         if masternode_cfg.dmn_user_roles & DMN_ROLE_OPERATOR:
-            operator_pubkey_cfg = masternode_cfg.get_operator_pubkey(self.new_bls_scheme)
+            operator_pubkey_cfg = masternode_cfg.get_operator_pubkey()
             self.network_operator_public_key = masternode_info.pubkey_operator
             if not operator_pubkey_cfg or operator_pubkey_cfg[2:] != masternode_info.pubkey_operator[2:]:
                 # don't compare the first byte to overcome the difference being the result of the new-old BLS

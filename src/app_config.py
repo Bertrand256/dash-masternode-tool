@@ -166,7 +166,6 @@ class AppConfig(QObject):
         self.feature_update_registrar_automatic = AppFeatureStatus(True, 0, '')
         self.feature_update_service_automatic = AppFeatureStatus(True, 0, '')
         self.feature_revoke_operator_automatic = AppFeatureStatus(True, 0, '')
-        self.feature_new_bls_scheme = AppFeatureStatus(True, 0, '')
 
         # obsolete and will be removed in the future (we are leaving it to
         # preserve compatibility of the config file with older versions)
@@ -493,9 +492,6 @@ class AppConfig(QObject):
         if self.feature_revoke_operator_automatic.get_value() is not None:
             app_cache.set_value('FEATURE_REVOKE_OPERATOR_AUTOMATIC_' + self.dash_network,
                                 self.feature_revoke_operator_automatic.get_value())
-        if self.feature_new_bls_scheme.get_value() is not None:
-            app_cache.set_value('FEATURE_NEW_BLS_SCHEME_' + self.dash_network,
-                                self.feature_new_bls_scheme.get_value())
 
     def restore_cache_settings(self):
         ena = app_cache.get_value('FEATURE_REGISTER_AUTOMATIC_DMN_' + self.dash_network, True, bool)
@@ -506,8 +502,6 @@ class AppConfig(QObject):
         self.feature_update_service_automatic.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
         ena = app_cache.get_value('FEATURE_REVOKE_OPERATOR_AUTOMATIC_' + self.dash_network, True, bool)
         self.feature_revoke_operator_automatic.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
-        ena = app_cache.get_value('FEATURE_NEW_BLS_SCHEME_' + self.dash_network, True, bool)
-        self.feature_new_bls_scheme.set_value(ena, AppFeatureStatus.PRIORITY_APP_CACHE)
 
     def copy_from(self, src_config):
         self.dash_network = src_config.dash_network
@@ -645,10 +639,10 @@ class AppConfig(QObject):
         self.dash_network = 'MAINNET'
         self.block_explorer_tx_mainnet = 'https://insight.dash.org/insight/tx/%TXID%'
         self.block_explorer_addr_mainnet = 'https://insight.dash.org/insight/address/%ADDRESS%'
-        self.block_explorer_tx_testnet = 'https://testnet-insight.dashevo.org/insight/tx/%TXID%'
-        self.block_explorer_addr_testnet = 'https://testnet-insight.dashevo.org/insight/address/%ADDRESS%'
+        self.block_explorer_tx_testnet = 'https://insight.testnet.networks.dash.org/insight/tx/%TXID%'
+        self.block_explorer_addr_testnet = 'https://insight.testnet.networks.dash.org/insight/address/%ADDRESS%'
         self.tx_api_url_mainnet = 'https://insight.dash.org/insight'
-        self.tx_api_url_testnet = 'https://testnet-insight.dashevo.org/insight'
+        self.tx_api_url_testnet = 'https://insight.testnet.networks.dash.org/insight/insight'
         self.dash_central_proposal_api = 'https://www.dashcentral.org/api/v1/proposal?hash=%HASH%'
         self.dash_nexus_proposal_api = 'https://api.dashnexus.org/proposals/%HASH%'
         self.check_for_updates = True
@@ -1322,7 +1316,6 @@ class AppConfig(QObject):
             self.feature_update_registrar_automatic.set_value(*get_feature_config_remote('UPDATE_REGISTRAR_AUTOMATIC'))
             self.feature_update_service_automatic.set_value(*get_feature_config_remote('UPDATE_SERVICE_AUTOMATIC'))
             self.feature_revoke_operator_automatic.set_value(*get_feature_config_remote('REVOKE_OPERATOR_AUTOMATIC'))
-            self.feature_new_bls_scheme.set_value(*get_feature_config_remote('NEW_BLS_SCHEME'))
 
             read_param_from_json('voteTimeRandomOffsetMin', 'proposal_vote_time_offset_min')
             read_param_from_json('voteTimeRandomOffsetMax', 'proposal_vote_time_offset_max')
@@ -2186,11 +2179,11 @@ class MasternodeConfig:
                     return ret.hex()
         return ''
 
-    def get_operator_pubkey(self, new_bls_scheme: bool) -> Optional[str]:
+    def get_operator_pubkey(self) -> Optional[str]:
         if self.__operator_key_type == InputKeyType.PRIVATE:
             if self.__operator_private_key:
                 try:
-                    pubkey = dash_utils.bls_privkey_to_pubkey(self.__operator_private_key, new_bls_scheme)
+                    pubkey = dash_utils.bls_privkey_to_pubkey(self.__operator_private_key)
                 except Exception as e:
                     logging.exception(str(e))
                     pubkey = ''

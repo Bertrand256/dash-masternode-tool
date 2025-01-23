@@ -10,7 +10,7 @@ import dash_utils
 from app_config import MasternodeConfig, AppConfig, InputKeyType
 from app_defs import FEE_DUFF_PER_BYTE
 from dash_utils import wif_privkey_to_address, generate_wif_privkey, generate_bls_privkey, validate_address, \
-    bls_privkey_to_pubkey, bls_privkey_to_pubkey_legacy, validate_wif_privkey
+    bls_privkey_to_pubkey, validate_wif_privkey
 from dashd_intf import DashdInterface
 from ui import ui_upd_mn_registrar_dlg
 from wnd_utils import WndUtils, ProxyStyleNoFocusRect, QDetectThemeChange, get_widget_font_color_blue, \
@@ -42,9 +42,6 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         self.on_upd_success_callback = on_upd_success_callback
         self.operator_key_type = InputKeyType.PRIVATE
         self.operator_key_generated_here: bool = False
-        self.new_bls_scheme_active: bool = app_config.feature_new_bls_scheme.get_value()
-        self.legacy_operator_key: bool = False  # it's only used if self.new_bls_scheme_active is True,
-                                                # that is - the v19 fork is active
         self.update_registrar_rpc_command: str = ''
         self.voting_key_type = InputKeyType.PRIVATE
         self.dmn_protx_hash = self.masternode.protx_hash
@@ -80,10 +77,6 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
             self.setWindowTitle("Update voting key")
         elif self.show_upd_operator:
             self.setWindowTitle("Update operator key")
-        if not self.new_bls_scheme_active:
-            self.chbLegacyOperatorKey.hide()
-        else:
-            self.chbLegacyOperatorKey.show()
         self.restore_cache_settings()
         try:
             self.read_data_from_network()
@@ -206,7 +199,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
             if self.dmn_prev_payout_address:
                 self.edtPayoutAddress.setText(self.dmn_prev_payout_address)
 
-            pub_operator = self.masternode.get_operator_pubkey(self.app_config.feature_new_bls_scheme.get_value())
+            pub_operator = self.masternode.get_operator_pubkey()
             if self.masternode.operator_key_type == InputKeyType.PRIVATE:
                 self.edtOperatorKey.setText(self.masternode.operator_private_key)
             else:
@@ -378,7 +371,6 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         try:
             self.edtOperatorKey.setText(generate_bls_privkey())
             self.operator_key_generated_here = True
-            self.chbLegacyOperatorKey.setChecked(False)
             self.update_manual_cmd_info()
         except Exception as e:
             self.error_msg(str(e), True)
@@ -407,17 +399,6 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
         k = generate_wif_privkey(self.app_config.dash_network, compressed=True)
         self.edtVotingKey.setText(k)
 
-    @pyqtSlot(bool)
-    def on_chbLegacyOperatorKey_toggled(self, checked):
-        try:
-            self.legacy_operator_key = checked
-            if not self.updating_ui:
-                self.validate_data()
-                self.update_ctrls_state()
-                self.update_manual_cmd_info()
-        except Exception as e:
-            self.error_msg(str(e), True)
-
     def validate_data(self) -> bool:
         errors_occurred = False
 
@@ -434,14 +415,6 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
             self.dmn_new_payout_address = ''
 
         self.update_registrar_rpc_command = 'update_registrar'
-        if self.new_bls_scheme_active:
-            self.legacy_operator_key = self.chbLegacyOperatorKey.isChecked()
-            if self.legacy_operator_key:
-                # Use the "update_registrar_legacy" call only when v19 fork is active, otherwise the "update_registrar"
-                # call is used and basically does the same
-                self.update_registrar_rpc_command = 'update_registrar_legacy'
-        else:
-            self.legacy_operator_key = True
 
         if self.show_upd_operator:
             key = self.edtOperatorKey.text().strip()
@@ -449,15 +422,12 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                 self.operator_key_err_msg = ''
                 if self.operator_key_type == InputKeyType.PRIVATE:
                     self.dmn_new_operator_privkey = key
-                    if not dash_utils.validate_bls_privkey(self.dmn_new_operator_privkey, not self.legacy_operator_key and
-                                                           self.app_config.feature_new_bls_scheme.get_value()):
+                    if not dash_utils.validate_bls_privkey(self.dmn_new_operator_privkey):
                         self.operator_key_err_msg = 'Invalid operator private key'
                         self.edtOperatorKey.setFocus()
                         errors_occurred = True
                     try:
-                        self.dmn_new_operator_pubkey = bls_privkey_to_pubkey(
-                            self.dmn_new_operator_privkey, not self.legacy_operator_key and
-                                                           self.app_config.feature_new_bls_scheme.get_value())
+                        self.dmn_new_operator_pubkey = bls_privkey_to_pubkey(self.dmn_new_operator_privkey)
                     except Exception as e:
                         self.edtOperatorKey.setFocus()
                         self.operator_key_err_msg = 'Invalid operator private key: ' + str(e)
@@ -465,8 +435,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                 else:
                     self.dmn_new_operator_pubkey = key
                     self.dmn_new_operator_privkey = ''
-                    new_bls_scheme = not self.legacy_operator_key and self.app_config.feature_new_bls_scheme.get_value()
-                    if not dash_utils.validate_bls_pubkey(self.dmn_new_operator_pubkey, new_bls_scheme):
+                    if not dash_utils.validate_bls_pubkey(self.dmn_new_operator_pubkey):
                         self.operator_key_err_msg = 'Invalid operator public key'
                         errors_occurred = True
             else:

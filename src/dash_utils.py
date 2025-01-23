@@ -17,7 +17,6 @@ from bip32utils import Base58
 import base58
 from typing import Literal, cast
 from blspy import (PrivateKey, Util, AugSchemeMPL, PopSchemeMPL, G1Element, G2Element)
-from bls_py import bls as bls_legacy
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import cryptography.hazmat.primitives.serialization
 
@@ -223,30 +222,24 @@ def generate_bls_privkey() -> str:
     raise Exception("Could not generate BLS private key")
 
 
-def validate_bls_privkey(privkey: str, new_bls_scheme: bool) -> bool:
+def validate_bls_privkey(privkey: str) -> bool:
     try:
-        pub = bls_privkey_to_pubkey(privkey, new_bls_scheme)
+        pub = bls_privkey_to_pubkey(privkey)
         return True if pub else False
     except Exception:
         return False
 
 
-def validate_bls_pubkey(pubkey: str, new_bls_scheme: bool) -> bool:
+def validate_bls_pubkey(pubkey: str) -> bool:
     try:
-        if new_bls_scheme:
-            G1Element.from_bytes(bytes.fromhex(pubkey))
-            return True
-        else:
-            return validate_bls_pubkey_legacy(pubkey)
+        G1Element.from_bytes(bytes.fromhex(pubkey))
+        return True
     except Exception as e:
         return False
 
 
-def bls_privkey_to_pubkey(privkey: str, new_bls_scheme: bool) -> str:
-    if new_bls_scheme:
-        return bls_privkey_to_pubkey_basic(privkey)
-    else:
-        return bls_privkey_to_pubkey_legacy(privkey)
+def bls_privkey_to_pubkey(privkey: str) -> str:
+    return bls_privkey_to_pubkey_basic(privkey)
 
 
 def bls_privkey_to_pubkey_basic(privkey: str) -> str:
@@ -259,36 +252,6 @@ def bls_privkey_to_pubkey_basic(privkey: str) -> str:
     pk = PrivateKey.from_bytes(pk_bin)
     pubkey = bytes(pk.get_g1()).hex()
     return pubkey
-
-
-def bls_privkey_to_pubkey_legacy(privkey: str) -> str:
-    """
-    :param privkey: BLS privkey as a hex string
-    :return: BLS pubkey as a hex string.
-    """
-    pk_bin = bytes.fromhex(privkey)
-    if len(pk_bin) != 32:
-        raise Exception(f'Invalid private key length: {len(pk_bin)} (should be 32)')
-    pk = bls_legacy.PrivateKey.from_bytes(pk_bin)
-    pubkey = pk.get_public_key()
-    pubkey_bin = pubkey.serialize()
-    return pubkey_bin.hex()
-
-
-def validate_bls_privkey_legacy(privkey: str) -> bool:
-    try:
-        pub = bls_privkey_to_pubkey_legacy(privkey)
-        return True if pub else False
-    except Exception:
-        return False
-
-
-def validate_bls_pubkey_legacy(pubkey: str) -> bool:
-    try:
-        bls_legacy.PublicKey.from_bytes(bytes.fromhex(pubkey))
-        return True
-    except Exception:
-        return False
 
 
 def num_to_varint(n):

@@ -354,7 +354,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QRadioButton" name="rbMNTypeHPMN">
+          <widget class="QRadioButton" name="rbMNTypeEvo">
            <property name="text">
             <string> EVO (4000 Dash)</string>
            </property>

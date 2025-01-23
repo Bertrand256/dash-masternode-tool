@@ -44,7 +44,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.edit_mode = False
         self.owner_key_invalid = False
         self.operator_key_invalid = False
-        self.operator_pubkey_is_legacy = False
         self.voting_key_invalid = False
         self.platform_node_key_invalid = False
         self.setupUi(self)
@@ -244,7 +243,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                                        (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.lblOperatorKeyMsg.setVisible(self.masternode is not None and
                                          (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0) and
-                                          (self.operator_key_invalid or self.operator_pubkey_is_legacy))
+                                          self.operator_key_invalid)
         self.edtOperatorKey.setVisible(self.masternode is not None and
                                        (self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR > 0))
         self.btnShowOperatorPrivateKey.setVisible(self.masternode is not None and
@@ -365,7 +364,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.chbRoleOperator.setEnabled(self.edit_mode)
         self.chbRoleOwner.setEnabled(self.edit_mode)
         self.rbMNTypeRegular.setEnabled(self.edit_mode)
-        self.rbMNTypeHPMN.setEnabled(self.edit_mode)
+        self.rbMNTypeEvo.setEnabled(self.edit_mode)
         self.edtName.setReadOnly(self.edit_mode is False)
         self.edtIP.setReadOnly(self.edit_mode is False)
         self.edtPort.setReadOnly(self.edit_mode is False)
@@ -487,12 +486,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                            self.ag_operator_key, style, err_msg)
             self.edtOperatorKey.setPlaceholderText(placeholder_text)
 
-            if not err_msg and self.masternode.operator_key_type == InputKeyType.PUBLIC and \
-                    self.operator_pubkey_is_legacy:
-                err_msg = 'Legacy operator public key'
-                set_label_text(self.lblOperatorKey, self.lblOperatorKeyMsg, 'Operator', key_type, tooltip_anchor,
-                               self.ag_operator_key, style, err_msg, error_msg_style='warning')
-
             style = ''
             if self.masternode.voting_key_type == InputKeyType.PRIVATE:
                 key_type, tooltip_anchor, placeholder_text = ('privkey', 'address', 'Enter the voting private key')
@@ -585,7 +578,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.chbRoleOperator.setChecked(self.masternode.dmn_user_roles & DMN_ROLE_OPERATOR)
             self.chbRoleVoting.setChecked(self.masternode.dmn_user_roles & DMN_ROLE_VOTING)
             self.rbMNTypeRegular.setChecked(self.masternode.masternode_type == MasternodeType.REGULAR)
-            self.rbMNTypeHPMN.setChecked(self.masternode.masternode_type == MasternodeType.EVO)
+            self.rbMNTypeEvo.setChecked(self.masternode.masternode_type == MasternodeType.EVO)
             self.edtName.setText(self.masternode.name)
             self.edtIP.setText(self.masternode.ip)
             self.edtPort.setText(str(self.masternode.tcp_port))
@@ -709,8 +702,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                         if self.act_view_as_operator_private_key.isChecked():
                             ret = self.masternode.operator_private_key
                         elif self.act_view_as_operator_public_key.isChecked():
-                            ret = self.masternode.get_operator_pubkey(
-                                self.app_config.feature_new_bls_scheme.get_value())
+                            ret = self.masternode.get_operator_pubkey()
                         else:
                             ret = '???'
                     else:
@@ -1009,7 +1001,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
             self.role_modified.emit()
 
     @pyqtSlot(bool)
-    def on_rbMNTypeHPMN_toggled(self, checked):
+    def on_rbMNTypeEvo_toggled(self, checked):
         if not self.updating_ui:
             if checked:
                 self.masternode.masternode_type = MasternodeType.EVO
@@ -1255,7 +1247,6 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     def validate_keys(self):
         self.owner_key_invalid = False
         self.operator_key_invalid = False
-        self.operator_pubkey_is_legacy = False
         self.voting_key_invalid = False
         self.platform_node_key_invalid = False
 
@@ -1269,20 +1260,13 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                     self.owner_key_invalid = not dash_utils.validate_address(self.masternode.owner_address,
                                                                              self.app_config.dash_network)
 
-            new_bls_scheme = self.app_config.feature_new_bls_scheme.get_value()
             if self.masternode.operator_key_type == InputKeyType.PRIVATE:
                 if self.masternode.operator_private_key:
                     self.operator_key_invalid = not dash_utils.validate_bls_privkey(
-                        self.masternode.operator_private_key, new_bls_scheme)
+                        self.masternode.operator_private_key)
             else:
                 if self.masternode.operator_public_key:
-                    self.operator_key_invalid = not dash_utils.validate_bls_pubkey(
-                        self.masternode.operator_public_key, new_bls_scheme)
-
-                    if self.operator_key_invalid and new_bls_scheme:
-                        if dash_utils.validate_bls_pubkey_legacy(self.masternode.operator_public_key):
-                            self.operator_key_invalid = False
-                            self.operator_pubkey_is_legacy = True
+                    self.operator_key_invalid = not dash_utils.validate_bls_pubkey(self.masternode.operator_public_key)
 
             if self.masternode.voting_key_type == InputKeyType.PRIVATE:
                 if self.masternode.voting_private_key:

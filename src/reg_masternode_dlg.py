@@ -152,13 +152,13 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         if doc_url:
             self.lblDocumentation.setText(f'<a href="{doc_url}">Documentation</a>')
         self.rbMNTypeRegular.blockSignals(True)
-        self.rbMNTypeHPMN.blockSignals(True)
+        self.rbMNTypeEvo.blockSignals(True)
         if self.masternode_type == MasternodeType.REGULAR:
             self.rbMNTypeRegular.setChecked(True)
         else:
-            self.rbMNTypeHPMN.setChecked(True)
+            self.rbMNTypeEvo.setChecked(True)
         self.rbMNTypeRegular.blockSignals(False)
-        self.rbMNTypeHPMN.blockSignals(False)
+        self.rbMNTypeEvo.blockSignals(False)
         self.update_styles()
         self.update_dynamic_labels()
         self.update_ctrls_visibility()
@@ -415,7 +415,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                     protx_state.get('ownerAddress'):
                 gen_owner = True
 
-            if self.masternode.get_operator_pubkey(self.app_config.feature_new_bls_scheme.get_value()) == \
+            if self.masternode.get_operator_pubkey() == \
                     protx_state.get('pubKeyOperator'):
                 gen_operator = True
 
@@ -488,7 +488,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
             self.update_ctrls_visibility()
 
     @pyqtSlot(bool)
-    def on_rbMNTypeHPMN_toggled(self, checked):
+    def on_rbMNTypeEvo_toggled(self, checked):
         if checked:
             self.masternode_type = MasternodeType.EVO
             self.update_fields_info(True)
@@ -1165,8 +1165,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                         self.edtOperatorKey.setFocus()
                         self.operator_key_validation_err_msg = 'Invalid operator private key: ' + str(e)
 
-                    new_scheme = self.app_config.feature_new_bls_scheme.get_value()
-                    self.operator_pubkey = bls_privkey_to_pubkey(self.operator_privkey, new_scheme)
+                    self.operator_pubkey = bls_privkey_to_pubkey(self.operator_privkey)
                 except Exception as e:
                     self.edtOperatorKey.setFocus()
                     self.operator_key_validation_err_msg = 'Invalid operator private key: ' + str(e)
