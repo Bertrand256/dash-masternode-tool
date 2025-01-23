@@ -117,6 +117,45 @@ class btchipDMT(btchip):
         return result
 
 
+class dashTransaction(bitcoinTransaction):
+    def __init__(self, data=None):
+        # Override the initialization to handle Dash-specific transaction parsing
+        self.version = ""
+        self.inputs = []
+        self.outputs = []
+        self.lockTime = ""
+        self.witness = False
+        self.witnessScript = ""
+
+        if data is not None:
+            offset = 0
+            self.version = data[offset:offset + 4]
+            offset += 4
+
+            # Dash-specific modification: Remove witness type check
+            # In Dash, the witness type is not used, so we skip the previous offset adjustment
+
+            inputSize = readVarint(data, offset)
+            offset += inputSize['size']
+            numInputs = inputSize['value']
+
+            for i in range(numInputs):
+                tmp = {'buffer': data, 'offset': offset}
+                self.inputs.append(bitcoinInput(tmp))
+                offset = tmp['offset']
+
+            outputSize = readVarint(data, offset)
+            offset += outputSize['size']
+            numOutputs = outputSize['value']
+
+            for i in range(numOutputs):
+                tmp = {'buffer': data, 'offset': offset}
+                self.outputs.append(bitcoinOutput(tmp))
+                offset = tmp['offset']
+
+            # Remove witness-specific handling for Dash
+            self.lockTime = data[offset:offset + 4]
+
 def process_ledger_exceptions(func):
     """
     Catch exceptions for known user errors and expand the exception message with some suggestions.
@@ -201,7 +240,7 @@ def get_device_list(allow_bootloader_mode: bool = False) -> List[hw_common.HWDev
                     initialized = version_info.flags.is_onboarded is True
                     version = version_info.se_version
                 except Exception as e:
-                    logging.exception(str(e))
+                    logging.debug(str(e))
                 finally:
                     if dev:
                         dev.close()
@@ -544,7 +583,7 @@ def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: 
             raw_tx = bytearray.fromhex(raw_tx)
 
         # parse the raw transaction, so that we can extract the UTXO locking script we refer to
-        prev_transaction = bitcoinTransaction(raw_tx)
+        prev_transaction = dashTransaction(raw_tx)
 
         data = decodedtransactions[utxo.txid]
         dip2_type = data.get("type", 0)
@@ -599,7 +638,7 @@ def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: 
     amount -= int(tx_fee)
     amount = int(amount)
 
-    new_transaction = bitcoinTransaction()  # new transaction object to be used for serialization at the last stage
+    new_transaction = dashTransaction()  # new transaction object to be used for serialization at the last stage
     new_transaction.version = bytearray([0x01, 0x00, 0x00, 0x00])
     for out in tx_outputs:
         output = bitcoinOutput()
