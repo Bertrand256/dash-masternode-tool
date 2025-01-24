@@ -1,6 +1,6 @@
 python-bitcoinrpc>=1.0
 bitcoin>=1.1.42
-trezor==0.13.6
+trezor==0.13.9
 keepkey
 libusb1~=3.2.0
 PyQt5==5.15.11
@@ -20,7 +20,6 @@ setuptools==75.8.0
 btchip-python @ git+https://github.com/Bertrand256/btchip-python
 ledgerwallet==0.6.0
 blspy==2.0.3
-#python-bls==0.1.10
 construct==2.10.70
-protobuf==3.20.3
+protobuf==5.29.3
 QDarkStyle==3.2.3

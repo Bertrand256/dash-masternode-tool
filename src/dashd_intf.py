@@ -368,10 +368,21 @@ def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching
             ret = None
             last_exception = None
             self = args[0]
-            self.mark_call_begin()
+
+            try:
+                # estimate the size of the input data in bytes
+                input_bytes = len(args[1:]) + len(str(kwargs))
+            except:
+                input_bytes = None
+
+            finished_with_success = False
+            bytes_received = 0
+
+            self.mark_call_begin(input_bytes)
             try:
                 self.http_lock.acquire()
                 last_conn_reset_time = None
+
                 for try_nr in range(1, 5):
                     try:
                         try:
@@ -404,6 +415,13 @@ def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching
 
                             last_exception = None
                             self.mark_cur_conn_cfg_is_ok()
+
+                            try:
+                                # estimate of the output data in bytes
+                                bytes_received = len(str(ret))
+                            except:
+                                bytes_received = None
+                            finished_with_success = True
                             break
 
                         except (ConnectionResetError, ConnectionAbortedError, httplib.CannotSendRequest,
@@ -450,6 +468,7 @@ def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching
                         raise
             finally:
                 self.http_lock.release()
+                self.mark_call_end(bytes_received, not finished_with_success)
 
             if last_exception:
                 raise last_exception
@@ -735,6 +754,13 @@ class DashdInterface(WndUtils):
         self.last_masternodes_read_params_hash: Optional[str] = None
         self.masternodes_last_db_timestamp: int = 0
 
+        self.metrics_bytes_received = 0
+        self.metrics_bytes_sent = 0
+        self.metrics_rpc_time_ms = 0
+        self.metrics_rpc_call_count = 0
+        self.metrics_failures_count = 0
+        self.metrics_last_call_started_ts = 0
+
         self.ssh = None
         self.window = window
         self.active = False
@@ -771,6 +797,7 @@ class DashdInterface(WndUtils):
 
         if not for_testing_connections_only:
             self.load_masternode_data_from_db_cache()
+        self.reset_metrics()
         self.initialized = True
 
     def read_masternode_data_from_db(self, masternodes: List[Masternode], where_condition: str,
@@ -882,6 +909,20 @@ class DashdInterface(WndUtils):
         h = hashlib.sha256(str_to_hash.encode('ascii', 'ignore'))
         return h.hexdigest()
 
+    def reset_metrics(self):
+        self.metrics_bytes_received = 0
+        self.metrics_bytes_sent = 0
+        self.metrics_rpc_time_ms = 0
+        self.metrics_rpc_call_count = 0
+        self.metrics_failures_count = 0
+        self.metrics_last_call_started_ts = 0
+
+    def metrics_call_start(self, bytes_sent: int):
+        self.metrics_last_call_started_ts = time.time()
+
+    def metrics_call_end(self, bytes_received: int, failure: bool):
+        pass
+
     def reload_configuration(self):
         """Called after modification of connections' configuration or changes having impact on the file name
         associated to database cache."""
@@ -895,6 +936,7 @@ class DashdInterface(WndUtils):
             self.load_masternode_data_from_db_cache()
         else:
             self.cur_conn_def = None
+        self.reset_metrics()
 
     def disconnect(self):
         if self.active:
@@ -907,8 +949,31 @@ class DashdInterface(WndUtils):
             if self.on_connection_disconnected_callback:
                 self.on_connection_disconnected_callback()
 
-    def mark_call_begin(self):
-        self.starting_conn = self.cur_conn_def
+    def mark_call_begin(self, input_bytes=None):
+        try:
+            self.starting_conn = self.cur_conn_def
+            self.metrics_last_call_started_ts = time.time()
+
+            if isinstance(input_bytes, (int, float)):
+                self.metrics_bytes_sent += input_bytes
+
+            self.metrics_rpc_call_count == 1
+        except:
+            pass
+
+    def mark_call_end(self, output_bytes=None, failure=False):
+        try:
+            if isinstance(self.metrics_last_call_started_ts, (int, float)):
+                tm_diff = time.time() - self.metrics_last_call_started_ts
+                self.metrics_rpc_time_ms += int(tm_diff * 1000)
+
+            if isinstance(output_bytes, (int, float)):
+                self.metrics_bytes_received += output_bytes
+
+            if failure:
+                self.metrics_failures_count += 1
+        except:
+            pass
 
     def switch_to_next_config(self):
         """

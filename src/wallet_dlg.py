@@ -17,7 +17,8 @@ from functools import partial
 from typing import Tuple, List, Optional, Dict, Generator, Callable
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QAbstractTableModel, QVariant, Qt, pyqtSlot, QStringListModel, QItemSelectionModel, \
-    QItemSelection, QSortFilterProxyModel, QAbstractItemModel, QModelIndex, QObject, QAbstractListModel, QPoint, QRect
+    QItemSelection, QSortFilterProxyModel, QAbstractItemModel, QModelIndex, QObject, QAbstractListModel, QPoint, QRect, \
+    QTimer
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import QDialog, QTableView, QHeaderView, QMessageBox, QSplitter, QVBoxLayout, QPushButton, \
     QItemDelegate, QLineEdit, QCompleter, QInputDialog, QLayout, QAction, QAbstractItemView, QStatusBar, QCheckBox, \
@@ -172,6 +173,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.utxo_value_subscribed = None
         # list of UTXOs of the subscribed value, created during this session
         self.subscribed_utxos_created = []
+
+        self.current_scan_metrics = {}
+        self.refresh_ui_timer = None
 
         self.setupUi(self)
 
@@ -1478,6 +1482,18 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             self.display_thread_ref = None
         log.debug('Finishing display_thread')
 
+    def refresh_scan_metrics(self):
+        address_count = self.current_scan_metrics.get('scanned_address_count', '?')
+        tx_count = self.current_scan_metrics.get('txes_fetched', '?')
+        bytes = self.current_scan_metrics.get('bytes_received', 0)
+        if bytes:
+            bytes = app_utils.bytes_to_human(bytes)
+        else:
+            bytes ='?'
+        lbl = f'Fetching transactions (addresses: {address_count}, transactions: {tx_count}, data fetched: {bytes})'
+        self.loading_data_spinner.set_message(lbl)
+
+
     def data_thread(self, ctrl: CtrlObject):
         last_hd_tree_id = None
 
@@ -1485,6 +1501,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             if not self.allow_fetch_transactions or self.finishing or ctrl.finish or \
                     (self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS and last_hd_tree_id != self.cur_hd_tree_id):
                 raise BreakFetchTransactionsException('Break fetch transactions')
+            self.current_scan_metrics = self.bip44_wallet.get_scan_metrics()
 
         log.debug('Starting data_thread')
         try:
@@ -1704,6 +1721,9 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         def show():
             self.loading_data_spinner.show()
             self.loading_data_spinner.set_spinner_active(True)
+            self.refresh_ui_timer = QTimer(self)
+            self.refresh_ui_timer.timeout.connect(self.refresh_scan_metrics)
+            self.refresh_ui_timer.start(1000)
 
         if threading.current_thread() != threading.main_thread():
             if self.enable_synch_with_main_thread:
@@ -1715,6 +1735,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         def hide():
             self.loading_data_spinner.set_spinner_active(False)
             self.loading_data_spinner.hide()
+
+            if self.refresh_ui_timer:
+                self.refresh_ui_timer.stop()
+                self.refresh_ui_timer.timeout.disconnect(self.refresh_scan_metrics)
 
         if threading.current_thread() != threading.main_thread():
             if self.enable_synch_with_main_thread:

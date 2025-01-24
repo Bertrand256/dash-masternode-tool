@@ -760,6 +760,11 @@ class SpinnerWidget(QWidget):
             sh.setWidth(w)
         return sh
 
+    def set_message(self, message: str):
+        self.message = message
+        self.resize(self.sizeHint())
+        pass
+
     def timerEvent(self, event):
         self.counter += 1
         self.update()
