@@ -23,7 +23,7 @@ from wallet_common import Bip44AccountType, Bip44AddressType, UtxoType, TxOutput
     address_to_hash, TxType, CacheInconsistencyException
 from wnd_utils import WndUtils
 
-TX_QUERY_ADDR_CHUNK_SIZE = 10
+TX_QUERY_ADDR_CHUNK_SIZE = 20
 ADDRESS_SCAN_GAP_LIMIT = 20
 MAX_ADDRESSES_TO_SCAN = 1000
 MAX_BIP44_ACCOUNTS = 200
@@ -104,10 +104,6 @@ class Bip44Wallet(QObject):
         # ... the same for accounts:
         self.__txes_subscribed_accounts: Dict[int, int] = {}
 
-        # dict of txids fetched from mempool; used to avoid processing multiple times
-        # before they get confirmed
-        self.__txs_in_mempool: Dict[str, str] = {}
-
         self.subscribed_addrs_lock = EnhRLock()
 
         self.purge_unconf_txs_called = False
@@ -170,7 +166,6 @@ class Bip44Wallet(QObject):
         self.addresses_by_id.clear()
         self.addresses_by_address.clear()
         self.utxos_by_id.clear()
-        self.__txs_in_mempool.clear()
         with self.subscribed_addrs_lock:
             self.__txes_subscribed_addrs.clear()
         self.reset_tx_diffs()
@@ -734,7 +729,7 @@ class Bip44Wallet(QObject):
                     for addr_info_rev in reversed(addresses):
                         addr_id = addr_info_rev.id
 
-                        # check if there was no transactions for the address
+                        # check if there were no transactions for the address
                         if not self.addr_bal_updated.get(addr_id):
                             db_cursor.execute('select 1 from tx_output where address_id=?', (addr_id,))
                             if db_cursor.fetchone():
@@ -763,6 +758,7 @@ class Bip44Wallet(QObject):
         self.increase_ext_call_level()
 
         cur_block_height = self.get_block_height()
+        self._reset_scan_metrics()
 
         if not self.purge_unconf_txs_called:
             try:
@@ -789,20 +785,52 @@ class Bip44Wallet(QObject):
     def _process_addresses_txs(self, addr_info_list: List[Bip44AddressType], max_block_height: int,
                                check_break_process_fun: Callable = None):
 
-        def process_txes(txids: List[Dict], skip_cache=False):
-            log.debug('starting process_txes - tx count: %s', len(txids))
+        def get_unconfirmed_missed_transactions(addr_ids: List[int]):
+            """Fetch all transactions from the db cache that are marked as uncommitted, but have had
+            enough time (20 minutes) to be confirmed on the network. Apply the confirmation status in the db cache
+            if applicable.
+            """
+
+            self._fill_temp_ids_table(addr_ids, db_cursor)
+
+            db_cursor.execute("""select tx_hash from tx where tree_id=? and block_height=? and
+              (exists(select * from tx_input i where i.tx_id=tx.id and i.src_address_id in (select id from temp_ids)) or
+               exists(select * from tx_output o where o.tx_id=tx.id and o.address_id in (select id from temp_ids))) 
+              and block_timestamp < ?
+            """, (self.__tree_id, UNCONFIRMED_TX_BLOCK_HEIGHT, int(time.time() - 20 * 60)))
+
+            for tx_hash, in db_cursor.fetchall():
+                tx_json = self._getrawtransaction(tx_hash, skip_cache=True)
+                yield tx_json
+
+        def process_transactions(tx_iterator: Generator[Dict, None, None], skip_cache=False):
             last_time_checked = time.time()
             last_nr = 0
-            for nr, tx_entry in enumerate(txids):
-                self._process_tx(db_cursor, tx_entry.get('txid'), skip_cache=skip_cache)
-                if time.time() - last_time_checked > 1:  # feedback every 1s
+
+            tm_start = time.time()
+            log.debug(f'Starting process_transactions')
+
+            tx_nr = 0
+            for tx_entry in tx_iterator:
+                self.scan_metrics_txes_fetched += 1
+                tx_id = tx_entry.get('txid')
+                if not tx_id:
+                    log.error('TX JSON does not have the "txid" attribute')
+                    continue
+
+                self._process_transaction(db_cursor, tx_id, tx_json=tx_entry, skip_cache=skip_cache)
+                tx_nr += 1
+
+                if int(time.time() - last_time_checked) > 1:  # feedback every 1s
                     if check_break_process_fun and check_break_process_fun():
                         break
                     if self.on_fetch_account_txs_feedback:
-                        self.on_fetch_account_txs_feedback(nr - last_nr)
+                        self.on_fetch_account_txs_feedback(tx_nr - last_nr)
                         last_time_checked = time.time()
-                        last_nr = nr
-            log.debug('finished process_txes')
+                        last_nr = tx_nr
+
+            tm_diff = round(time.time() - tm_start, 2)
+            log.debug(f'Finished process_transactions - tx fetched count: {tx_nr}, fetch time: {tm_diff} s')
 
         log.debug('_process_addresses_txs, addr count: %s', len(addr_info_list))
         tm_begin = time.time()
@@ -820,76 +848,112 @@ class Bip44Wallet(QObject):
         db_cursor = self.db_intf.get_cursor()
         try:
             self._fill_temp_ids_table(addr_ids, db_cursor)
-            db_cursor.execute('select min(last_scan_block_height) from address where id in (select id from temp_ids)')
+
+            # Check the minimum block number from which scanning for new transactions will be done for all of the input
+            # addresses; if there are any addresses not used before (last_scan_block_height=0) discard their
+            # last_scan_block_height value to avoid a full-rescan of all the other addresses; here we assume that
+            # fresh addresses (that weren't needed during previous scans) do not have any transactions;
+            db_cursor.execute('select min(last_scan_block_height) from address where last_scan_block_height is not null'
+                              ' and last_scan_block_height > 0 and id in (select id from temp_ids)')
+
             row = db_cursor.fetchone()
             if row:
                 if row[0] is not None:
                     last_block_height = row[0]
+                else:
+                    last_block_height = 0
+            start_height = min(last_block_height + 1, max_block_height)
 
-            if last_block_height < max_block_height:
-                log.debug(f'getaddressdeltas for {addresses}, start: {last_block_height + 1}, end: {max_block_height}')
-                txids = self.dashd_intf.getaddressdeltas({'addresses': addresses,
-                                                         'start': last_block_height + 1,
-                                                         'end': max_block_height})
-            else:
-                txids = []
+            txes = self.dashd_intf.getaddressdeltasrawtx_dmt(addresses=addresses, start=start_height,
+                                                              end=max_block_height, verbose=1, include_mempool=1)
+            process_transactions(txes)
 
-            try:
-                mempool_entries = self.dashd_intf.getaddressmempool(addresses)
-                mempool_entries_verified = []
-                for me_tx in mempool_entries:
-                    me_txid = me_tx.get('txid')
-                    if me_txid not in self.__txs_in_mempool:
-                        mempool_entries_verified.append(me_tx)
-                        self.__txs_in_mempool[me_txid] = me_txid
-                if mempool_entries_verified:
-                    txids.extend(mempool_entries_verified)
-            except Exception as e:
-                log.warning('Error querying mempool: ' + str(e))
 
-            if txids:
-                process_txes(txids)
+            # Update all unspent transaction outputs according to the db cache that seem to being spent anyway
+            for addr_info in addr_info_list:
+                db_cursor.execute('select o.id, o.address, o.address_id, i.src_address, i.src_address_id, tx1.id, '
+                                  'i.input_index spent_input_index_matching,'
+                                   ' tx2.tx_hash spent_tx_hash_matching '
+                                   'from tx_output o '
+                                   '    join tx tx1 on tx1.id=o.tx_id'
+                                   '    join tx_input i on  i.src_tx_hash=tx1.tx_hash and '
+                                   '         i.src_tx_output_index=o.output_index '
+                                   '    join tx tx2 on tx2.id=i.tx_id and tx2.tree_id=tx1.tree_id '
+                                   '  where (o.spent_tx_hash is null or o.spent_input_index is null) and tx1.tree_id=?'
+                                   '  and (o.address=? or o.address_id=? or i.src_address=? or i.src_address_id=?)',
+                    (self.__tree_id, addr_info.address, addr_info.id, addr_info.address, addr_info.id))
 
-                # update the last scan block height info for each of the addresses
-                if last_block_height != max_block_height:
-                    for addr_info in addr_info_list:
-                        db_cursor.execute('update address set last_scan_block_height=? where id=?',
-                                          (max_block_height, addr_info.id))
+                for output_id, address1, address1_id, address_2, address2_id, tx_id, spent_index, spent_tx_hash in \
+                    db_cursor.fetchall():
+                    db_cursor.execute('update tx_output set spent_tx_hash=?, spent_input_index=? where id=?',
+                                      (spent_tx_hash, spent_index, output_id))
 
-                    for addr_info in addr_info_list:
-                        if addr_info.address:
-                            addr_info.last_scan_block_height = max_block_height
+                    self._utxo_modified(output_id)
 
-                # update balances of the all addresses affected by processing transactions
-                addr_ids_to_update_balance = [a.id for a in addr_info_list if a.id in self.addr_bal_updated]
-                if addr_ids_to_update_balance:
-                    self._update_addr_balances(account=None, addr_ids=addr_ids_to_update_balance)
+                    addrs_to_update = []
+                    if address1_id is not None:
+                        addrs_to_update.append(address1_id)
+                    if address2_id is not None:
+                        addrs_to_update.append(address2_id)
+
+                    if addrs_to_update:
+                        self._update_addr_balances(account=None, addr_ids=addrs_to_update, db_cursor=db_cursor)
+                    log.info('Fixing the spent data on transaction output id: ' + str(output_id))
+
+            # update the last scan block height info for each of the addresses
+            if last_block_height != max_block_height:
+                for addr_info in addr_info_list:
+                    db_cursor.execute('update address set last_scan_block_height=? where id=?',
+                                      (max_block_height, addr_info.id))
+
+                for addr_info in addr_info_list:
+                    if addr_info.address:
+                        addr_info.last_scan_block_height = max_block_height
+
+            # update balances of the all addresses affected by processing transactions
+            addr_ids_to_update_balance = [a.id for a in addr_info_list if a.id in self.addr_bal_updated]
+            if addr_ids_to_update_balance:
+                self._update_addr_balances(account=None, addr_ids=addr_ids_to_update_balance)
 
             # verify whether the address balances from the db cache match the balances maintained by network
             addr_ids_to_update_balance = []
-            for a in addr_info_list:
-                if time.time() - a.last_balance_verify_ts >= ADDR_BALANCE_CONSISTENCY_CHECK_SECONDS:
-                    log.debug('Verifying address balance consistency. Id: %s', a.id)
-                    try:
-                        self.scan_metrics_scanned_address_count += 1
-                        b = self.dashd_intf.getaddressbalance([a.address])
-                        bal = b.get('balance')
-                        a.last_balance_verify_ts = int(time.time())
-                        if bal is not None and bal != a.balance:
-                            log.warning(f'Balance of address {a.address}, id: {a.id} discrepency; cached balance: {a.balance}, network balance: {bal}')
-                            txids = self.dashd_intf.getaddressdeltas({'addresses': [a.address],
-                                                                      'start': 0,
-                                                                      'end': max_block_height})
+            _addresses = [a.address for a in addr_info_list]
+            _cur_addr_balances = self.dashd_intf.getaddressbalances_dmt(_addresses)
 
-                            process_txes(txids, skip_cache=True) # we need to re-fetch data from the network to exclude
-                                                                 # possible invalid data that got into the cache due to
-                                                                 # some network problems or chain reorganization
+            # process unconfirmed transactions
+            txes = get_unconfirmed_missed_transactions(addr_ids)
+            process_transactions(txes)
 
-                            if a.id in self.addr_bal_updated:
-                                addr_ids_to_update_balance.append(a.id)
-                    except Exception as e:
-                        log.error('Address balance check error: %s', str(e))
-                    log.debug('Finished verifying address balance consistency. Id: %s', a.id)
+            if last_block_height > 0:
+                for a in addr_info_list:
+                    if time.time() - a.last_balance_verify_ts >= ADDR_BALANCE_CONSISTENCY_CHECK_SECONDS:
+                        log.debug('Verifying address balance consistency. Id: %s', a.id)
+                        try:
+                            b = _cur_addr_balances.get(a.address)
+                            if b is None:
+                                log.warning('No balance info for address: ' + a.address)
+                            else:
+                                # refresh data since it might have been changed in earlier stages
+                                a.read_from_db(db_cursor)
+                                current_balance = b.get('balance')
+                                a.last_balance_verify_ts = int(time.time())
+                                if current_balance is not None and current_balance != a.balance:
+                                    log.warning(f'Balance of address {a.address}, id: {a.id} discrepency; cached '
+                                                f'balance: {a.balance}, network balance: {current_balance}')
+
+                                    txes = self.dashd_intf.getaddressdeltasrawtx_dmt(addresses=[a.address], start = 0,
+                                                                                     end = max_block_height, verbose=1,
+                                                                                     include_mempool=1)
+
+                                    # we need to re-fetch data from the network to exclude possible invalid data
+                                    # that got into the cache due to some network problems or chain reorganization
+                                    process_transactions(txes, skip_cache=True)
+
+                                    if a.id in self.addr_bal_updated:
+                                        addr_ids_to_update_balance.append(a.id)
+                        except Exception as e:
+                            log.error('Address balance check error: %s', str(e))
+                        log.debug('Finished verifying address balance consistency. Id: %s', a.id)
 
             if addr_ids_to_update_balance:
                 self._update_addr_balances(account=None, addr_ids=addr_ids_to_update_balance)
@@ -901,41 +965,48 @@ class Bip44Wallet(QObject):
 
         log.debug('_process_addresses_txs exec time: %s', time.time() - tm_begin)
 
-    def _process_tx(self, db_cursor, txhash: str, tx_json: Optional[Dict] = None, skip_cache=False):
-        self._get_tx_db_id(db_cursor, txhash, tx_json, skip_cache=skip_cache)
-
-    def _getrawtransaction(self, txhash, skip_cache: bool = False):
-        if txhash in self.__txs_in_mempool:
-            in_mempool = True
-        else:
-            in_mempool = False
-
-        tx = self.dashd_intf.getrawtransaction(txhash, 1, skip_cache=skip_cache)
+    def _getrawtransaction(self, tx_hash, skip_cache: bool = False):
+        tx = self.dashd_intf.getrawtransaction(tx_hash, 1, skip_cache=skip_cache)
         self.scan_metrics_txes_fetched += 1
-
-        if in_mempool and tx.get('height'):
-            del self.__txs_in_mempool[txhash]
         return tx
 
-    def _get_tx_db_id(self, db_cursor, txhash: str, tx_json: Dict = None, create=True, skip_cache=False) -> Tuple[int, Optional[Dict]]:
+    def _process_transaction(self, db_cursor, tx_hash: str, tx_json: Dict = None, skip_cache=False) \
+            -> Tuple[int, Optional[Dict]]:
         """
+        Adds records related to transaction do a local cache database, fetching a transaction detaisl (JSON) from RPC
+        node if necessary.
+        :param db_cursor: cursor to a local database
+        :param tx_hash: hash of the transaction
+        :param tx_json: transaction details in JSON form or None if not available when calling this function
+        :param skip_cache: if True, transaction details will be fetched from the network, regardless of whether they are
+                    cached on the local filesystem or not;
         :return: Tuple[int <transaction db id>, Optional[Dict <transaction details json>]]
         """
-        tx_hash = self._wrap_txid(txhash)
+        tx_hash = self._wrap_txid(tx_hash)
 
-        db_cursor.execute('select id, block_height from tx where tx_hash=?', (tx_hash,))
-        row = db_cursor.fetchone()
-        if not row:
-            if create:
-                if not tx_json:
-                    tx_json = self._getrawtransaction(txhash, skip_cache=skip_cache)
+        try:
+            if not tx_json:
+                tx_json = self._getrawtransaction(tx_hash, skip_cache=skip_cache)
 
-                block_height = tx_json.get('height')
-                if block_height:
-                    block_hash = self.dashd_intf.getblockhash(block_height, skip_cache=skip_cache)
-                    block_header = self.dashd_intf.getblockheader(block_hash, skip_cache=skip_cache)
-                    block_timestamp = block_header.get('time')
-                else:
+            if not self.__tree_id:
+                log.error('Bip44Wallet error: tree_id is empty')
+                raise Exception('Bip44Wallet error: tree_id is empty')
+
+            db_cursor.execute('select id, block_height from tx where tx_hash=? and tree_id=?', (tx_hash, self.__tree_id))
+            row = db_cursor.fetchone()
+            if not row:
+                db_cursor.execute('select id, block_height from tx where tx_hash=? and tree_id is null', (tx_hash, ))
+                row = db_cursor.fetchone()
+                if row:
+                    # update tree_id in the selected record - it has been created before v0.9.40
+                    # todo: remove the correction code after 2025.05.01
+                    db_cursor.execute('update tx set tree_id=? where id=?', (self.__tree_id, row[0]))
+
+            block_height = tx_json.get('height')
+            block_timestamp = tx_json.get('time')
+
+            if not row:
+                if not block_height:
                     # if block_height equals 0, it's an unconfirmed transaction and block_timestamp stores
                     # the time when tx has been added to the cache
                     block_height = UNCONFIRMED_TX_BLOCK_HEIGHT
@@ -944,102 +1015,84 @@ class Bip44Wallet(QObject):
                 tx_vin = tx_json.get('vin', [])
                 is_coinbase = 1 if (len(tx_vin) == 1 and tx_vin[0].get('coinbase')) else 0
 
-                db_cursor.execute('insert into tx(tx_hash, block_height, block_timestamp, coinbase) values(?,?,?,?)',
-                                  (tx_hash, block_height, block_timestamp, is_coinbase))
+                db_cursor.execute('insert into tx(tx_hash, block_height, block_timestamp, coinbase, tree_id) '
+                                  'values(?,?,?,?,?)',
+                                  (tx_hash, block_height, block_timestamp, is_coinbase, self.__tree_id))
                 tx_id = db_cursor.lastrowid
                 self._tx_added(tx_id)
-
-                db_cursor.execute('update tx_input set src_tx_id=? where src_tx_id is null and src_tx_hash=?',
-                                  (tx_id, txhash))
             else:
-                tx_id = None
-                tx_json = None
-        else:
-            tx_id = row[0]
-            height = row[1]
-            is_unconfirmed = True if height >= UNCONFIRMED_TX_BLOCK_HEIGHT else False
+                tx_id, prev_height = row
+                was_unconfirmed = True if prev_height >= UNCONFIRMED_TX_BLOCK_HEIGHT else False
 
-            if not tx_json:
-                tx_json = self._getrawtransaction(txhash, skip_cache=skip_cache)
+                if was_unconfirmed:
+                    # it was an unconfirmed transactions; check whether it has been confirmed since the last call
+                    if block_height:
+                        db_cursor.execute('update tx set block_height=?, block_timestamp=? where id=?',
+                                          (block_height, block_timestamp, tx_id))
+                        self.db_intf.commit()
 
-            if is_unconfirmed:
-                # it is unconfirmed transactions; check whether it has been confirmed since the last call
+                        # list utxos for this transaction and signal they got confirmed
+                        db_cursor.execute('select id from main.tx_output where tx_id=? and (spent_tx_hash is null '
+                                          'or spent_input_index is null) and address_id is not null', (tx_id,))
+                        for utxo_id, in db_cursor.fetchall():
+                            utxo = self.utxos_by_id.get(utxo_id)
+                            if utxo:
+                                utxo.block_height = block_height
+                            self._utxo_modified(utxo_id)
 
-                block_height = tx_json.get('height', 0)
-                if block_height:
-                    block_hash = self.dashd_intf.getblockhash(block_height, skip_cache=skip_cache)
-                    block_header = self.dashd_intf.getblockheader(block_hash, skip_cache=skip_cache)
-                    block_timestamp = block_header.get('time')
-                    db_cursor.execute('update tx set block_height=?, block_timestamp=? where id=?',
-                                      (block_height, block_timestamp, tx_id))
-                    self.db_intf.commit()
+            if tx_json:
+                existing_input_ids = []
+                existing_output_ids = []
 
-                    # list utxos for this transaction and signal they got confirmed
-                    db_cursor.execute('select id from main.tx_output where tx_id=? and (spent_tx_id is null '
-                                      'or spent_input_index is null) and address_id is not null', (tx_id,))
-                    for utxo_id, in db_cursor.fetchall():
-                        utxo = self.utxos_by_id.get(utxo_id)
-                        if utxo:
-                            utxo.block_height = block_height
-                        self._utxo_modified(utxo_id)
+                for index, vout in enumerate(tx_json.get('vout', [])):
+                    _id = self._process_tx_output_entry(db_cursor, tx_id, tx_hash, index, tx_json)
+                    if _id:
+                        existing_output_ids.append(_id)
 
-        if tx_json:
-            existing_input_ids = []
-            existing_output_ids = []
+                for index, vin in enumerate(tx_json.get('vin', [])):
+                    _id = self._process_tx_input_entry(db_cursor, tx_id, tx_hash, index, tx_json)
+                    if _id:
+                        existing_input_ids.append(_id)
 
-            for index, vout in enumerate(tx_json.get('vout', [])):
-                _id = self._process_tx_output_entry(db_cursor, tx_id, txhash, index, tx_json, skip_cache=skip_cache)
-                if _id:
-                    existing_output_ids.append(_id)
+                # remove redundant outputs and inputs that may be leftover after entering orphaned forks or other read
+                # errors from RCP nodes
+                # 1. outputs:
+                db_cursor.execute('select id, address_id from tx_output where tx_id=?', (tx_id,))
+                for _id, _address_id in db_cursor.fetchall():
+                    if _id not in existing_output_ids:
+                        db_cursor.execute('delete from tx_output where id=?', (_id,))
+                        if _address_id:
+                            self.addr_bal_updated[_address_id] = True
 
-            for index, vin in enumerate(tx_json.get('vin', [])):
-                _id = self._process_tx_input_entry(db_cursor, tx_id, tx_hash, index, tx_json, skip_cache=skip_cache)
-                if _id:
-                    existing_input_ids.append(_id)
+                # 2. inputs:
+                db_cursor.execute('select id, src_address_id from tx_input where tx_id=?', (tx_id,))
+                for _id, _address_id in db_cursor.fetchall():
+                    if _id not in existing_input_ids:
+                        db_cursor.execute('delete from tx_input where id=?', (_id,))
+                        if _address_id:
+                            self.addr_bal_updated[_address_id] = True
 
-            # remove redundant outputs and inputs that may be leftover after entering orphaned forks or other read
-            # errors from RCP nodes
-            # 1. outputs:
-            db_cursor.execute('select id, address_id from tx_output where tx_id=?', (tx_id,))
-            for _id, _address_id in db_cursor.fetchall():
-                if _id not in existing_output_ids:
-                    db_cursor.execute('delete from tx_output where id=?', (_id,))
-                    if _address_id:
-                        self.addr_bal_updated[_address_id] = True
-
-            # 2. inputs:
-            db_cursor.execute('select id, src_address_id from tx_input where tx_id=?', (tx_id,))
-            for _id, _address_id in db_cursor.fetchall():
-                if _id not in existing_input_ids:
-                    db_cursor.execute('delete from tx_input where id=?', (_id,))
-                    if _address_id:
-                        self.addr_bal_updated[_address_id] = True
-
+        except Exception as e:
+            self.db_intf.rollback()
+            log.exception(str(e))
+            raise
         return tx_id, tx_json
 
-    def _process_tx_output_entry(self, db_cursor, tx_id: Optional[int], txhash: str, tx_index: int,
-                                 tx_json: Optional[Dict], skip_cache=False) -> Optional[int]:
+    def _process_tx_output_entry(self, db_cursor, tx_id: int, tx_hash: str, output_index: int, tx_json: Dict) \
+            -> Optional[int]:
         """
         :param db_cursor: database curso
         :param tx_id: db id of the record in the 'tx' table
-        :param txhash: transaction hash
-        :param tx_index: the output index in the transaction outputs list
+        :param tx_hash: transaction hash
+        :param output_index: the output index in the transaction outputs list
         :param tx_json: transaction body as a JSON object
         :return: id of the related record in the 'tx_output' table
         """
         output_db_id = None
 
-        if not tx_id:
-            tx_id, tx_json_ = self._get_tx_db_id(db_cursor, txhash, tx_json, skip_cache=skip_cache)
-            if not tx_json and tx_json_:
-                tx_json = tx_json_
-
-        if not tx_json:
-            tx_json = self._getrawtransaction(txhash, skip_cache=skip_cache)
-
         vouts = tx_json.get('vout')
-        if tx_index < len(vouts):
-            vout = vouts[tx_index]
+        if output_index < len(vouts):
+            vout = vouts[output_index]
 
             spk = vout.get('scriptPubKey', {})
             if spk:
@@ -1052,25 +1105,27 @@ class Bip44Wallet(QObject):
                 scr_type = spk.get('type')
 
                 # check if the output has already been spent
-                db_cursor.execute('select tx_id, input_index from tx_input where src_tx_hash=? and '
-                                  'src_tx_output_index=?', (txhash, tx_index))
+                db_cursor.execute('select tx.tx_hash, input_index from tx_input join tx on tx_input.tx_id = tx.id '
+                                  'where src_tx_hash=? and src_tx_output_index=? and tx.tree_id=?',
+                                  (tx_hash, output_index, self.__tree_id))
                 row = db_cursor.fetchone()
+
                 if row:
-                    spent_tx_id, spent_input_index = row
+                    spent_tx_hash, spent_input_index = row
                 else:
                     spent_input_index = None
-                    spent_tx_id = None
+                    spent_tx_hash = None
 
-                db_cursor.execute('select id, address_id, address, satoshis, spent_tx_id, spent_input_index '
-                                  'from tx_output where tx_id=? and output_index=?', (tx_id, tx_index))
+                db_cursor.execute('select id, address_id, address, satoshis, spent_tx_hash, spent_input_index '
+                                  'from tx_output where tx_id=? and output_index=?', (tx_id, output_index))
                 row = db_cursor.fetchone()
 
                 if not row:
                     db_cursor.execute('insert into tx_output(address_id, address, tx_id, output_index, satoshis, '
-                                      'spent_tx_id, spent_input_index, script_type) '
+                                      'spent_tx_hash, spent_input_index, script_type) '
                                       'values(?,?,?,?,?,?,?,?)',
-                                      (addr_id, address, tx_id, tx_index, satoshis, spent_tx_id, spent_input_index,
-                                       scr_type))
+                                      (addr_id, address, tx_id, output_index, satoshis, spent_tx_hash,
+                                       spent_input_index, scr_type))
 
                     utxo_id = db_cursor.lastrowid
                     self._utxo_added(utxo_id)
@@ -1078,62 +1133,45 @@ class Bip44Wallet(QObject):
                         self.addr_bal_updated[addr_id] = True
                     output_db_id = utxo_id
                 else:
-                    (output_db_id, addr_id_cached, address_cached, satoshis_cached, spent_tx_id_cached,
+                    (output_db_id, addr_id_cached, address_cached, satoshis_cached, spent_tx_hash_cached,
                      spent_input_index_cached) = row
 
                     if (addr_id_cached != addr_id or address_cached != address or satoshis_cached != satoshis or
-                        spent_tx_id != spent_tx_id_cached or spent_input_index_cached != spent_input_index):
-                        # update db if there is any discrepency with the data fetched from the network; it may be
-                        # caused by the network problems or the chain reorganization
+                        spent_tx_hash != spent_tx_hash_cached or spent_input_index_cached != spent_input_index):
 
                         if addr_id:
                             self.addr_bal_updated[addr_id] = True
 
-                        db_cursor.execute('update tx_output set address_id=?, address=?, satoshis=?, spent_tx_id=?, '
+                        # update db if there is any discrepency with the data fetched from the network; it may be
+                        # caused by the network problems or the chain reorganization
+                        db_cursor.execute('update tx_output set address_id=?, address=?, satoshis=?, spent_tx_hash=?, '
                                           'spent_input_index=? where id=?',
-                                          (addr_id, address, satoshis, spent_tx_id, spent_input_index, output_db_id))
-
-                        log.warning(f'Updating tx_output id {output_db_id} due to the data discrepency between cache '
-                                     'and the Dash network')
-
+                                          (addr_id, address, satoshis, spent_tx_hash, spent_input_index, output_db_id))
             else:
-                log.warning('No scriptPub in output, txhash: %s, index: %s', txhash, tx_index)
+                log.warning('No scriptPub in output, txhash: %s, index: %s', tx_hash, output_index)
         else:
-            log.warning(f'Ouptut index number {tx_index} exceeds the number of transaction outputs ({len(vouts)}); '
+            log.warning(f'Ouptut index number {output_index} exceeds the number of transaction outputs ({len(vouts)}); '
                         f'tx_id: {tx_id}')
 
         return output_db_id
 
-    def _process_tx_input_entry(self, db_cursor, tx_id: Optional[int], txhash: Optional[str], tx_index: int,
-                                tx_json: Optional[Dict], skip_cache=False) -> Optional[int]:
+    def _process_tx_input_entry(self, db_cursor, tx_id: int, tx_hash: str, input_index: int, tx_json: Dict) \
+            -> Optional[int]:
         input_db_id = None
 
-        # for this outgoing tx entry find a related incoming one and mark it as spent
-        if not tx_id:
-            tx_id, tx_json_ = self._get_tx_db_id(db_cursor, txhash, tx_json)
-            if not tx_json and tx_json_:
-                tx_json = tx_json_
-
-        if not tx_json:
-            tx_json = self._getrawtransaction(txhash, skip_cache=skip_cache)
-
         vins = tx_json.get('vin')
-        if tx_index < len(vins):
-            vin = vins[tx_index]
+        if input_index < len(vins):
+            vin = vins[input_index]
 
             satoshis = vin.get('valueSat')
             if satoshis:
                 satoshis = -satoshis
             related_tx_hash = vin.get('txid')
             related_tx_index = vin.get('vout')
-            if related_tx_hash:
-                related_tx_id, _ = self._get_tx_db_id(db_cursor, related_tx_hash, create=False, skip_cache=skip_cache)
-            else:
-                related_tx_id = None
 
-            db_cursor.execute('select id, src_address, src_address_id, satoshis, src_tx_hash, src_tx_id, '
+            db_cursor.execute('select id, src_address, src_address_id, satoshis, src_tx_hash, '
                               'src_tx_output_index, coinbase from tx_input where tx_id=? and input_index=?',
-                              (tx_id, tx_index))
+                              (tx_id, input_index))
             row = db_cursor.fetchone()
             addr = vin.get('address')
             if addr:
@@ -1144,52 +1182,45 @@ class Bip44Wallet(QObject):
 
             if not row:
                 db_cursor.execute('insert into tx_input(tx_id, input_index, src_address, src_address_id, satoshis,'
-                                  'src_tx_hash, src_tx_id, src_tx_output_index, coinbase) values(?,?,?,?,?,?,?,?,?)',
-                                  (tx_id, tx_index, addr, addr_id, satoshis, related_tx_hash, related_tx_id,
-                                   related_tx_index, coinbase))
+                                  'src_tx_hash, src_tx_output_index, coinbase) values(?,?,?,?,?,?,?,?)',
+                                  (tx_id, input_index, addr, addr_id, satoshis, related_tx_hash, related_tx_index,
+                                   coinbase))
                 if addr_id:
                     self.addr_bal_updated[addr_id] = True
                 input_db_id = db_cursor.lastrowid
-                related_tx_id_cached = None
+                related_tx_hash_cached = None
             else:
-                (input_db_id, src_address_cached, src_address_id_cached, satoshis_cached,
-                 related_tx_hash_cached, related_tx_id_cached, related_tx_index_cached, coinbase_cached) = row
+                (input_db_id, src_address_cached, src_address_id_cached, satoshis_cached, related_tx_hash_cached,
+                 related_tx_index_cached, coinbase_cached) = row
 
                 if (src_address_cached != addr or src_address_id_cached != addr_id or
                     satoshis_cached != satoshis or related_tx_hash_cached != related_tx_hash or
-                    related_tx_id_cached != related_tx_id or related_tx_index_cached != related_tx_index or
-                    coinbase_cached != coinbase):
+                    related_tx_index_cached != related_tx_index or coinbase_cached != coinbase):
 
-                    # update db if there is any discrepency with the data fetched from the network; it may be
-                    # caused by the network problems or the chain reorganization
                     if addr_id:
                         self.addr_bal_updated[addr_id] = True
 
+                    # update db if there is any discrepency with the data fetched from the network; it may be
+                    # caused by the network problems or the chain reorganization
                     db_cursor.execute('update tx_input set src_address=?, src_address_id=?, satoshis=?,'
-                                      'src_tx_hash=?, src_tx_id=?, src_tx_output_index=?, coinbase=? where id=?',
-                                      (addr, addr_id, satoshis, related_tx_hash, related_tx_id, related_tx_index,
+                                      'src_tx_hash=?, src_tx_output_index=?, coinbase=? where id=?',
+                                      (addr, addr_id, satoshis, related_tx_hash, related_tx_index,
                                        coinbase, input_db_id))
 
                     log.warning(f'Updating tx_input id {input_db_id} due to the data discrepency between cache and '
                                 f'the Dash network')
 
-            if related_tx_id and related_tx_id != related_tx_id_cached:
-                # update the 'spent' db fields of the related transaction
-                db_cursor.execute('select id, spent_tx_id, spent_input_index, address_id from tx_output '
-                                  'where tx_id=? and output_index=?', (related_tx_id, related_tx_index))
-                row = db_cursor.fetchone()
-                if row:
-                    utxo_id = row[0]
-                    addr_id = row[3]
-                    if row[1] != tx_id or row[2] != tx_index:
-                        db_cursor.execute('update tx_output set spent_tx_id=?, spent_input_index=? where id=?',
-                                          (tx_id, tx_index, utxo_id))
-
-                        self._utxo_removed(utxo_id)
-                        self.addr_bal_updated[addr_id] = True
-
+            if related_tx_hash and related_tx_hash_cached != related_tx_hash:
+                # mark related utxos as spent
+                db_cursor.execute(
+                    'update tx_output set spent_tx_hash=?, spent_input_index=? '
+                    ' where exists(select 1 from tx where tx.id=tx_output.tx_id and tx.tree_id=? and tx.tx_hash=?) '
+                    ' and output_index=? and (spent_tx_hash is null or spent_tx_hash<>? or spent_input_index is null '
+                    '  or spent_input_index <> ?)',
+                    (tx_hash, input_index, self.__tree_id, related_tx_hash, related_tx_index, tx_hash, input_index))
+                rc = db_cursor.rowcount
         else:
-            log.warning(f'Input index number {tx_index} exceeds the number of transaction inputs ({len(vins)}); '
+            log.warning(f'Input index number {input_index} exceeds the number of transaction inputs ({len(vins)}); '
                         f'tx_id: {tx_id}')
 
         return input_db_id
@@ -1198,12 +1229,12 @@ class Bip44Wallet(QObject):
         db_cursor2 = None
         try:
             limit_ts = int(time.time()) - UNCONFIRMED_TX_PURGE_SECONDS
-            db_cursor.execute('select id from tx where block_height=? and block_timestamp<?',
-                              (UNCONFIRMED_TX_BLOCK_HEIGHT, limit_ts,))
+            db_cursor.execute('select id, tx_hash from tx where block_height=? and block_timestamp<? and tree_id=?',
+                              (UNCONFIRMED_TX_BLOCK_HEIGHT, limit_ts, self.__tree_id))
             for tx_row in db_cursor.fetchall():
                 if not db_cursor2:
                     db_cursor2 = self.db_intf.get_cursor()
-                self.purge_transaction(tx_row[0], db_cursor2)
+                self.purge_transaction(tx_row[0], tx_row[1], db_cursor2)
         finally:
             if db_cursor2:
                 self.db_intf.release_cursor()  # we are releasing cursor2
@@ -1287,6 +1318,7 @@ class Bip44Wallet(QObject):
             self.validate_hd_tree()
             self.addr_ids_created.clear()
             self.increase_ext_call_level()
+            self._reset_scan_metrics()
             db_cursor = self.db_intf.get_cursor()
 
             try:
@@ -1337,6 +1369,7 @@ class Bip44Wallet(QObject):
             self.addr_ids_created.clear()
             self.increase_ext_call_level()
             db_cursor = self.db_intf.get_cursor()
+            self._reset_scan_metrics()
             try:
                 if isinstance(account, str):
                     acc = self._get_key_entry_by_xpub(account)
@@ -1416,7 +1449,7 @@ class Bip44Wallet(QObject):
             self.on_address_loaded_callback = old_add_loaded_feedback
         return addr_found
 
-    def purge_transaction(self, tx_id: int, db_cursor=None):
+    def purge_transaction(self, tx_id: int, tx_hash: str, db_cursor=None):
         log.info('Purging timed-out unconfirmed transaction (td_id: %s).', tx_id)
         if not db_cursor:
             db_cursor = self.db_intf.get_cursor()
@@ -1427,23 +1460,23 @@ class Bip44Wallet(QObject):
         try:
             mod_addr_ids = []
 
-            # following addressses will have balance changed after purging the transaction
+            # following addressses will have the balance changed after purging the transaction
             db_cursor.execute('select address_id from tx_output where address_id is not null and '
-                              '(tx_id=? or spent_tx_id=?) union '
+                              '(tx_id=? or spent_tx_hash=?) union '
                               'select src_address_id from tx_input where src_address_id is not null and tx_id=?',
-                              (tx_id, tx_id, tx_id))
+                              (tx_id, tx_hash, tx_id))
 
             for row in db_cursor.fetchall():
                 if not row[0] in mod_addr_ids:
                     mod_addr_ids.append(row[0])
 
-            # list all transaction outputs that was previously spent - due to the transaction deletion
+            # list all transaction outputs that were previously spent - due to the transaction deletion
             # they are no longer spent, so we add them to the "new" utxos list
-            db_cursor.execute('select id, address_id from tx_output where spent_tx_id=?', (tx_id,))
+            db_cursor.execute('select id, address_id from tx_output where spent_tx_hash=?', (tx_hash,))
             for row in db_cursor.fetchall():
                 self._utxo_added(row[0])
-            db_cursor.execute('update tx_output set spent_tx_id=null, spent_input_index=null where spent_tx_id=?',
-                              (tx_id,))
+            db_cursor.execute('update tx_output set spent_tx_hash=null, spent_input_index=null where spent_tx_hash=?',
+                              (tx_hash,))
 
             db_cursor.execute('select id, address_id from tx_output where tx_id=?', (tx_id,))
             for row in db_cursor.fetchall():
@@ -1478,6 +1511,7 @@ class Bip44Wallet(QObject):
 
             if addr_ids:
                 # update balances for specific addresses
+                addr_ids = list(set(addr_ids))  # remove duplicate ids
                 self._fill_temp_ids_table(addr_ids, db_cursor)
 
                 db_cursor.execute(
@@ -1596,7 +1630,7 @@ class Bip44Wallet(QObject):
             sql_text = "select o.id, tx.block_height, tx.coinbase, tx.block_timestamp," \
                        "tx.tx_hash, o.output_index, o.satoshis, o.address_id from tx_output o " \
                        "join address a on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca " \
-                       "on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_id is null " \
+                       "on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_hash is null " \
                        "or spent_input_index is null)"
 
             params = []
@@ -1641,7 +1675,7 @@ class Bip44Wallet(QObject):
         try:
             sql_text = "select o.id, tx.block_height, tx.coinbase,tx.block_timestamp, tx.tx_hash, o.output_index, " \
                        "o.satoshis, o.address_id from tx_output o join address a" \
-                       " on a.id=o.address_id join tx on tx.id=o.tx_id where (spent_tx_id is null " \
+                       " on a.id=o.address_id join tx on tx.id=o.tx_id where (spent_tx_hash is null " \
                        " or spent_input_index is null) and a.id in (select id from temp_ids2)"
 
             params = []
@@ -1680,7 +1714,7 @@ class Bip44Wallet(QObject):
 
             sql_text = "select o.id, tx.block_height, tx.coinbase,tx.block_timestamp, tx.tx_hash, o.output_index, " \
                        "o.satoshis, o.address_id from tx_output o join address a" \
-                       " on a.id=o.address_id join tx on tx.id=o.tx_id where (spent_tx_id is null " \
+                       " on a.id=o.address_id join tx on tx.id=o.tx_id where (spent_tx_hash is null " \
                        " or spent_input_index is null) and o.id in (select id from temp_ids) " \
                        " order by tx.block_height desc"
 
@@ -1879,7 +1913,7 @@ class Bip44Wallet(QObject):
         db_cursor = self.db_intf.get_cursor()
         try:
             txhash = tx_json.get('txid')
-            self._process_tx(db_cursor, txhash, tx_json)
+            self._process_transaction(db_cursor, txhash, tx_json)
             addr_ids = list(self.addr_bal_updated.keys())
             if addr_ids:
                 # if the transaction fetch operation hasn't been completed yet, the list of addresses with updated

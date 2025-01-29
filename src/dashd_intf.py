@@ -3,8 +3,11 @@
 # Author: Bertrand256
 # Created on: 2017-03
 from __future__ import annotations
+
+import base64
 import decimal
 import functools
+import gzip
 import json
 import hashlib
 from decimal import Decimal
@@ -17,13 +20,15 @@ import threading
 import time
 import datetime
 import logging
+from sys import getsizeof
+
 from PyQt5.QtCore import QThread
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException, EncodeDecimal
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from paramiko import AuthenticationException, PasswordRequiredException, SSHException
 from paramiko.ssh_exception import NoValidConnectionsError, BadAuthenticationType
-from typing import List, Dict, Union, Callable, Optional
+from typing import List, Dict, Union, Callable, Optional, Generator, Any, Tuple
 import app_cache
 from app_config import AppConfig
 from random import randint
@@ -355,7 +360,8 @@ class DashdIndexException(JSONRPCException):
                        'Changing these parameters requires to execute dashd with "-reindex" option (linux: ./dashd -reindex)'
 
 
-def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching_conns=True):
+def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching_conns=True,
+                     skip_counting_data_size=False):
     """
     Decorator dedicated to functions related to RPC calls, taking care of switching an active connection if the
     current one becomes faulty. It also performs argument encryption for configured RPC calls.
@@ -416,11 +422,12 @@ def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching
                             last_exception = None
                             self.mark_cur_conn_cfg_is_ok()
 
-                            try:
-                                # estimate of the output data in bytes
-                                bytes_received = len(str(ret))
-                            except:
-                                bytes_received = None
+                            if not skip_counting_data_size:
+                                try:
+                                    # estimate of the output data in bytes
+                                    bytes_received = len(str(ret))
+                                except:
+                                    bytes_received = None
                             finished_with_success = True
                             break
 
@@ -739,10 +746,14 @@ class DashdInterface(WndUtils):
         self.initialized = False
         self.app_config = None
         self.db_intf = None
-        self.connections = []
+        self.connections: List['DashNetworkConnectionCfg'] = []
         self.cur_conn_index = 0
         self.cur_conn_def: Optional['DashNetworkConnectionCfg'] = None
         self.block_timestamps: Dict[int, int] = {}
+
+        # Dictionary of the extended features supported by a remote node; Values are dictinaries where
+        # a key contains a feature symbol and value stores a dict returned by the 'checkfeaturesupport' call
+        self.conn_features: Dict[str, Dict[str, Dict]] = {}
 
         # below is the connection with which particular RPC call has started; if connection is switched because of
         # problems with some nodes, switching stops if we close round and return to the starting connection
@@ -780,6 +791,7 @@ class DashdInterface(WndUtils):
         self.app_config = config
         self.app_config = config
         self.db_intf = self.app_config.db_intf
+        self.conn_features = {}
 
         # conn configurations are used from the first item in the list; if one fails, then the next is taken
         if connection:
@@ -798,6 +810,7 @@ class DashdInterface(WndUtils):
         if not for_testing_connections_only:
             self.load_masternode_data_from_db_cache()
         self.reset_metrics()
+        self.mempool_txes = {}
         self.initialized = True
 
     def read_masternode_data_from_db(self, masternodes: List[Masternode], where_condition: str,
@@ -937,6 +950,8 @@ class DashdInterface(WndUtils):
         else:
             self.cur_conn_def = None
         self.reset_metrics()
+        self.conn_features = {}
+        self.mempool_txes = {}
 
     def disconnect(self):
         if self.active:
@@ -957,7 +972,7 @@ class DashdInterface(WndUtils):
             if isinstance(input_bytes, (int, float)):
                 self.metrics_bytes_sent += input_bytes
 
-            self.metrics_rpc_call_count == 1
+            self.metrics_rpc_call_count += 1
         except:
             pass
 
@@ -1394,6 +1409,129 @@ class DashdInterface(WndUtils):
         else:
             raise Exception('Not connected')
 
+    @control_rpc_call(allow_switching_conns=False)
+    def getaddressbalances_dmt(self, addresses):
+        """
+        It retrieves the same information as the official ‘getaddressbalance’ call, but the values returned in the
+        results are separated for each address.
+        :param addresses: List of addresses to query
+        :return:
+        """
+        if self.open():
+            fv = self.checkfeaturesupport('getaddressbalances_dmt', self.app_config.app_version)
+            en = fv.get('enabled', False)
+            results = {}
+
+            if en:
+                results = self.proxy.getaddressbalances_dmt({'addresses': addresses})
+            else:
+                for addr in addresses:
+                    result = self.proxy.getaddressbalance({'addresses': [addr]})
+                    results[addr] = result
+
+            return results
+        else:
+            raise Exception('Not connected')
+
+    def decompress_rpc_result(self, result: Any) -> Tuple[Any, int]:
+        """
+        The function decompresses data received from a remote RPC node if it is compressed.
+        If the data is compressed, it is a dictionary with the following fields: 'encoding' (with value 'gzip+base64')
+        and 'encoded_data'.
+        :param result:
+        :return: [0]: Uncompressed data or the unchanged input data if they are not compressed.
+                 [1]: Size of the received data
+        """
+        if not isinstance(result, dict) or not result.get("encoding") == 'gzip+base64' or not result.get('encoded_data'):
+            return result, len(str(result))
+
+        if result["encoding"] == "gzip+base64":
+            tm_begin = time.time()
+            compressed = base64.b64decode(result["encoded_data"])
+            decompressed = gzip.decompress(compressed)
+            ret = json.loads(decompressed.decode('utf-8'))
+            tm_diff = time.time() - tm_begin
+            log.debug(f'Compressed data length: {len(result["encoded_data"])}, decompress duration: {round(tm_diff, 2)}')
+            return ret, len(result["encoded_data"])
+
+        raise ValueError(f"Unknown encoding format: {result.get('encoding')}")
+
+    @control_rpc_call(allow_switching_conns=False)
+    def getaddressdeltasrawtx_dmt(self, addresses: List[str], start: int, end: int,
+                                  verbose: int, include_mempool: int, skip_cache=False) -> Generator[Dict, None, None]:
+        """
+        :param addresses: List of addresses to query
+        :return:
+        """
+
+        allow_compression = 1
+        max_chunk_prepare_time = 5
+
+        if self.open():
+            tm_begin = time.time()
+            fv = self.checkfeaturesupport('getaddressdeltasrawtx_dmt', self.app_config.app_version)
+            en = fv.get('enabled', False)
+            tx_count = 0
+
+            if start <= end:
+                start_offset = 0
+                if en:
+                    while True:
+                        result = self.proxy.getaddressdeltasrawtx_dmt(addresses, start, end, verbose, include_mempool,
+                                                                      start_offset, allow_compression,
+                                                                      max_chunk_prepare_time)
+                        result, size = self.decompress_rpc_result(result)
+
+                        if isinstance(result, dict):
+                            transactions = result.get('transactions')
+                            is_complete = result.get('is_complete')
+                            self.metrics_bytes_received += size
+
+                            for r in transactions:
+                                tx_count += 1
+                                yield r
+
+                            if is_complete is False:
+                                if len(transactions) == 0:
+                                    log.warning(f'getaddressdeltasrawtx_dmt returned no transactions for '
+                                                f'start_offset={start_offset}. Breaking the process...')
+                                start_offset += len(transactions)
+                            else:
+                                break
+                        else:
+                            log.error('Incorrect type the data received. Should be dict.')
+                else:
+                    r = self.getaddressdeltas({'addresses': addresses, 'start': start, 'end': end})
+
+                    for tx_index, tx_entry in enumerate(r):
+                        tx_id = tx_entry.get('txid')
+                        if tx_id:
+                            tx_raw = self.getrawtransaction(tx_id, verbose, skip_cache=skip_cache)
+                            yield tx_raw
+
+                    if include_mempool:
+                        # add transactions from mempool if there are any
+                        self.fetch_mempool_txes()
+                        for tx_hash in self.mempool_txes:
+                            tx = self.mempool_txes[tx_hash]
+                            vin_list = tx.get('vin')
+                            vout_list = tx.get('vout')
+
+                            if vin_list and isinstance(vin_list, list):
+                                for vin in vin_list:
+                                    if vin.get('address') in addresses:
+                                        yield tx
+
+                            if vout_list and isinstance(vout_list, list):
+                                for vout in vout_list:
+                                    if vout.get('address') in addresses:
+                                        yield tx
+
+            tm_diff = round(time.time() - tm_begin, 2)
+            log.debug(f'getaddressdeltasrawtx_dmt call finished in {tm_diff} seconds for {tx_count} transactions')
+        else:
+            raise Exception('Not connected')
+
     @control_rpc_call
     def getaddressutxos(self, addresses):
         if self.open():
@@ -1571,7 +1709,22 @@ class DashdInterface(WndUtils):
     @control_rpc_call
     def checkfeaturesupport(self, feature_name: str, dmt_version: str, *args) -> Dict:
         if self.open():
-            return self.proxy.checkfeaturesupport(feature_name, dmt_version)
+            if self.cur_conn_def and self.conn_features.get(self.cur_conn_def.get_conn_id()):
+                # Whe have a feature information stored in the in-memory cache
+                conn_features = self.conn_features.get(self.cur_conn_def.get_conn_id())
+            else:
+                conn_features = {}
+
+            feature_value = conn_features.get(feature_name)
+            if feature_value is None:
+                try:
+                    feature_value = self.proxy.checkfeaturesupport(feature_name, dmt_version)
+                except:
+                    feature_value = {'enabled': False, 'message': ''}
+                conn_features[feature_name] = feature_value
+                self.conn_features[self.cur_conn_def.get_conn_id()] = conn_features
+
+            return feature_value
         else:
             raise Exception('Not connected')
 

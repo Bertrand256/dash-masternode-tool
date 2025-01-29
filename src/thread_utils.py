@@ -66,7 +66,7 @@ class EnhRLock:
         else:
             calling_filename, calling_line_number = '', ''
 
-        thread = threading.currentThread()
+        thread = threading.current_thread()
 
         if SAVE_CALL_STACK:  # used in diagnostics
             call_stack = clean_call_stack(stack)
@@ -84,7 +84,7 @@ class EnhRLock:
         self.blocker = LockCaller(thread, calling_filename, calling_line_number, call_stack)
 
     def release(self):
-        if self.blocker is not None and self.blocker.thread != threading.currentThread():
+        if self.blocker is not None and self.blocker.thread != threading.current_thread():
             raise Exception('Cannot release not owned lock')
         self.depth -= 1
         if self.depth == 0:
@@ -92,7 +92,7 @@ class EnhRLock:
         self.__lock.release()
 
     def is_thread_waiting_for_me(self, checked_thread):
-        my_thread = threading.currentThread()
+        my_thread = threading.current_thread()
         threading.main_thread()
 
     @staticmethod
@@ -106,7 +106,7 @@ class EnhRLock:
             for lock in EnhRLock.lock_list:
                 for waiter in lock.waiters:
                     if waiter.thread == checked_thread and \
-                       lock.blocker is not None and lock.blocker.thread == threading.currentThread():
+                       lock.blocker is not None and lock.blocker.thread == threading.current_thread():
                         return waiter, lock.blocker
             return None
         finally:

@@ -1483,14 +1483,13 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         log.debug('Finishing display_thread')
 
     def refresh_scan_metrics(self):
-        address_count = self.current_scan_metrics.get('scanned_address_count', '?')
-        tx_count = self.current_scan_metrics.get('txes_fetched', '?')
+        tx_count = self.current_scan_metrics.get('txes_fetched', 0)
         bytes = self.current_scan_metrics.get('bytes_received', 0)
         if bytes:
             bytes = app_utils.bytes_to_human(bytes)
         else:
             bytes ='?'
-        lbl = f'Fetching transactions (addresses: {address_count}, transactions: {tx_count}, data fetched: {bytes})'
+        lbl = f'Fetching transactions (transactions: {tx_count}, data fetched: {bytes})'
         self.loading_data_spinner.set_message(lbl)
 
 

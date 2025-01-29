@@ -36,12 +36,11 @@ class DBCache(object):
     def is_active(self):
         return self.db_active
 
-    def open(self, db_cache_file_name):
+    def open(self, db_cache_file_name, db_labels_file_name):
         if not db_cache_file_name:
             raise Exception('Invalid database cache file name value.')
         self.db_cache_file_name = db_cache_file_name
-        dir, ext = os.path.splitext(db_cache_file_name)
-        self.db_labels_file_name = dir + '_labels' + ext
+        self.db_labels_file_name = db_labels_file_name
 
         if not self.db_active:
             log.debug('Trying to acquire db cache session')
@@ -167,40 +166,6 @@ class DBCache(object):
                         "pose_penalty INTEGER, pose_revived_height INTEGER, pose_ban_height INTEGER, "                        
                         "operator_payout_address TEXT)")
 
-            # upgrade schema do v 0.9.11:
-            cur.execute("PRAGMA table_info(proposals)")
-            columns = cur.fetchall()
-            prop_owner_exists = False
-            prop_title_exists = False
-            ext_attributes_loaded_exists = False
-            ext_attributes_load_time_exists = False
-            for col in columns:
-                if col[1] == 'owner':
-                    prop_owner_exists = True
-                elif col[1] == 'title':
-                    prop_title_exists = True
-                elif col[1] == 'ext_attributes_loaded':
-                    ext_attributes_loaded_exists = True
-                elif col[1] == 'ext_attributes_load_time':
-                    ext_attributes_load_time_exists = True
-                if prop_owner_exists and prop_title_exists and ext_attributes_loaded_exists and \
-                        ext_attributes_load_time_exists:
-                    break
-
-            if not ext_attributes_loaded_exists:
-                # column for saving information whether additional attributes has been read from external sources
-                # like DashCentral.org (1: yes, 0: no)
-                cur.execute("ALTER TABLE proposals ADD COLUMN ext_attributes_loaded INTEGER")
-            if not prop_owner_exists:
-                # proposal's owner from an external source like DashCentral.org
-                cur.execute("ALTER TABLE proposals ADD COLUMN owner TEXT")
-            if not prop_title_exists:
-                # proposal's title from an external source like DashCentral.org
-                cur.execute("ALTER TABLE proposals ADD COLUMN title TEXT")
-            if not ext_attributes_load_time_exists:
-                # proposal's title from an external source like DashCentral.org
-                cur.execute("ALTER TABLE proposals ADD COLUMN ext_attributes_load_time INTEGER")
-
             cur.execute("CREATE TABLE IF NOT EXISTS voting_results(id INTEGER PRIMARY KEY, proposal_id INTEGER,"
                         " masternode_ident TEXT, voting_time TEXT, voting_result TEXT, signal TEXT, weight INTEGER,"
                         " hash TEXT)")
@@ -214,10 +179,6 @@ class DBCache(object):
             cur.execute("CREATE INDEX IF NOT EXISTS IDX_LIVE_CONFIG_SYMBOL ON LIVE_CONFIG(symbol)")
             cur.execute("CREATE TABLE IF NOT EXISTS hd_tree(id INTEGER PRIMARY KEY, ident TEXT, label TEXT)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_hd_tree_1 ON hd_tree(ident)")
-
-            if not self.table_columns_exist('address', ['parent_id', 'xpub_hash', 'balance', 'address_index',
-                                                        'last_scan_block_height', 'tree_id']):
-                cur.execute("drop table if exists address")
 
             cur.execute("CREATE TABLE IF NOT EXISTS address(id INTEGER PRIMARY KEY,"
                         "xpub_hash TEXT, parent_id INTEGER, address_index INTEGER, address TEXT, path TEXT, "
@@ -235,29 +196,27 @@ class DBCache(object):
             # tx.block_timestamp indicates the moment when the transaction was added to the cache (it will be purged
             # if will not appear on the blockchain after a defined amount of time)
             cur.execute("CREATE TABLE IF NOT EXISTS tx(id INTEGER PRIMARY KEY, tx_hash TEXT, block_height INTEGER,"
-                        "block_timestamp INTEGER, coinbase INTEGER)")
+                        "block_timestamp INTEGER, coinbase INTEGER, tree_id INTEGER)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_1 ON tx(tx_hash)")
-            cur.execute("CREATE INDEX IF NOT EXISTS tx_1 ON tx(block_height)")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_2 ON tx(block_height)")
 
             cur.execute("CREATE TABLE IF NOT EXISTS tx_output(id INTEGER PRIMARY KEY, address_id INTEGER, "
                         "address TEXT, tx_id INTEGER NOT NULL, output_index INTEGER NOT NULL, "
-                        "satoshis INTEGER NOT NULL, spent_tx_id INTEGER, spent_input_index INTEGER, "
+                        "satoshis INTEGER NOT NULL, spent_tx_hash TEXT, spent_input_index INTEGER, "
                         "script_type TEXT)")
 
             cur.execute("CREATE INDEX IF NOT EXISTS tx_output_1 ON tx_output(tx_id, output_index)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_output_2 ON tx_output(address_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_output_3 ON tx_output(address)")
-            cur.execute("CREATE INDEX IF NOT EXISTS tx_output_4 ON tx_output(spent_tx_id)")
 
             cur.execute("CREATE TABLE IF NOT EXISTS tx_input(id INTEGER PRIMARY KEY, src_address TEXT, "
                         "src_address_id INTEGER, tx_id INTEGER NOT NULL, input_index INTEGER NOT NULL, "
-                        "satoshis INTEGER DEFAULT 0, src_tx_hash TEXT, src_tx_id INTEGER, src_tx_output_index INTEGER, "
+                        "satoshis INTEGER DEFAULT 0, src_tx_hash TEXT, src_tx_output_index INTEGER, "
                         "coinbase INTEGER DEFAULT 0 NOT NULL)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_input_1 ON tx_input(tx_id, input_index)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_input_2 ON tx_input(src_address_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_input_3 ON tx_input(src_address)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_input_4 ON tx_input(src_tx_hash)")
-            cur.execute("CREATE INDEX IF NOT EXISTS tx_input_5 ON tx_input(src_tx_id)")
 
             cur.execute('create table if not exists labels.address_label(id INTEGER PRIMARY KEY, key TEXT, label TEXT, '
                         'timestamp INTEGER)')
@@ -312,6 +271,31 @@ class DBCache(object):
                 cur.execute("ALTER TABLE voting_results ADD COLUMN signal TEXT")
             if not self.table_columns_exist('voting_results', ['weight']):
                 cur.execute("ALTER TABLE voting_results ADD COLUMN weight INTEGER")
+
+            # Upgrade to schema 0.9.40
+            cur.execute("PRAGMA table_info(tx)")
+            columns = [x[1] for x in cur.fetchall()]
+            if 'tree_id' not in columns:
+                cur.execute("ALTER TABLE tx ADD COLUMN tree_id INTEGER")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_3 ON tx(tree_id)")
+
+            # Here we're introducing the 'spent_tx_hash' column as a replacement of 'spent_tx_id' to avoid storing
+            # the transactions in db cache that are not strictly related to the addresses from our hardware wallet
+            cur.execute("PRAGMA table_info(tx_output)")
+            columns = [x[1] for x in cur.fetchall()]
+            if 'spent_tx_hash' not in columns:
+                cur.execute("ALTER TABLE tx_output ADD COLUMN spent_tx_hash TEXT")
+            cur.execute("CREATE INDEX IF NOT EXISTS tx_output_5 ON tx_output(spent_tx_hash)")
+            if 'spent_tx_id' in columns:
+                cur.execute("DROP INDEX IF EXISTS tx_output_4")
+                cur.execute('ALTER TABLE tx_output DROP COLUMN spent_tx_id')
+
+            cur.execute("PRAGMA table_info(tx_input)")
+            columns = [x[1] for x in cur.fetchall()]
+            if 'src_tx_id' in columns:
+                cur.execute("DROP INDEX IF EXISTS tx_input_5")
+                cur.execute('ALTER TABLE tx_input DROP COLUMN src_tx_id')  # similar to 'spent_tx_id'
+
         except Exception:
             log.exception('Exception while initializing database.')
             raise

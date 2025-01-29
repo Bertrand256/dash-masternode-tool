@@ -314,7 +314,11 @@ class AppConfig(QObject):
 
         self.data_dir = app_user_dir
         self.cache_dir = os.path.join(self.data_dir, 'cache')
-        cache_file_name = os.path.join(self.cache_dir, 'dmt_cache_v2.json')
+        cache_file_name_prev = os.path.join(self.cache_dir, 'dmt_cache_v2.json')
+        cache_file_name = os.path.join(self.cache_dir, 'dmt_cache_v3.json')
+        if not os.path.exists(cache_file_name) and os.path.exists(cache_file_name_prev):
+            copyfile(cache_file_name_prev, cache_file_name)
+
         global_settings_file_name = os.path.join(self.data_dir, GLOBAL_SETTINGS_FILE_NAME)
 
         if migrate_config:
@@ -541,62 +545,52 @@ class AppConfig(QObject):
 
     def configure_cache(self):
         if self.is_testnet:
-            db_cache_file_name = 'dmt_cache_testnet_v2.db'
+            db_cache_file_name_prev = 'dmt_cache_testnet_v2.db'
+            db_labels_file_name_prev = 'dmt_cache_testnet_v2_labels.db'
+            db_cache_file_name = 'dmt_cache_testnet_v3.db'
+            db_labels_file_name = 'dmt_cache_testnet_v3_labels.db'
         else:
-            db_cache_file_name = 'dmt_cache_v2.db'
+            db_cache_file_name_prev = 'dmt_cache_v2.db'
+            db_labels_file_name_prev = 'dmt_cache_v2_labels.db'
+            db_cache_file_name = 'dmt_cache_v3.db'
+            db_labels_file_name = 'dmt_cache_v3_labels.db'
+
         self.tx_cache_dir = os.path.join(self.cache_dir, 'tx-' + self.hw_coin_name)
         if not os.path.exists(self.tx_cache_dir):
             os.makedirs(self.tx_cache_dir)
             if self.is_testnet:
-                # move testnet json files to a subdir (don't do this for mainnet files
-                # util there most of the users move to dmt v0.9.22
+                # move the testnet JSON files to a subdir (don't do this for mainnet files
+                # until there most of the users move to dmt v0.9.22
                 try:
                     for file in glob.glob(os.path.join(self.cache_dir, 'insight_dash_testnet*.json')):
                         shutil.move(file, self.tx_cache_dir)
                 except Exception as e:
                     logging.exception(str(e))
 
-        new_db_cache_file_name = os.path.join(self.cache_dir, db_cache_file_name)
+        # Copy the previous (v2) database files if files for the new version (v3) do not exist
+        db_cache_file_name_path = os.path.join(self.cache_dir, db_cache_file_name)
+        db_cache_file_name_prev_path = os.path.join(self.cache_dir, db_cache_file_name_prev)
+        db_labels_file_name_path = os.path.join(self.cache_dir, db_labels_file_name)
+        db_labels_file_name_prev_path = os.path.join(self.cache_dir, db_labels_file_name_prev)
+
+        if not os.path.exists(db_cache_file_name_path) and os.path.exists(db_cache_file_name_prev_path):
+            copyfile(db_cache_file_name_prev_path, db_cache_file_name_path)
+
+        if not os.path.exists(db_labels_file_name_path) and os.path.exists(db_labels_file_name_prev_path):
+            copyfile(db_labels_file_name_prev_path, db_labels_file_name_path)
+
         if self.db_intf:
-            if self.db_cache_file_name != new_db_cache_file_name:
-                self.db_cache_file_name = new_db_cache_file_name
+            if self.db_cache_file_name != db_cache_file_name_path:
+                self.db_cache_file_name = db_cache_file_name_path
                 self.db_intf.close()
-                self.db_intf.open(self.db_cache_file_name)
+                self.db_intf.open(self.db_cache_file_name, db_labels_file_name_path)
         else:
             self.db_intf = DBCache()
-            self.db_intf.open(new_db_cache_file_name)
-            self.db_cache_file_name = new_db_cache_file_name
+            self.db_intf.open(db_cache_file_name_path, db_labels_file_name_path)
+            self.db_cache_file_name = db_cache_file_name_path
 
         try:
             cur = self.db_intf.get_cursor()
-
-            if self.app_last_version == '0.9.38':
-                # In Dash v21, changes were made to the format of data returned by getrawtransaction and
-                # decoderawtransaction, which caused incorrect transaction status to be stored in the database
-                # cache by DMT version 0.9.38. Below, we remove the incorrect entries, so they will be reprocessed.
-                # todo: remove this block after 01-Oct-2024
-
-                _theshold_block = 2113000  # Threshold block number above which corrections must be made
-
-                cur.execute('update address set last_scan_block_height=?-1000 where last_scan_block_height>?',
-                            (_theshold_block, _theshold_block))
-                if cur.rowcount:
-                    logging.info(f'Fix DMT-v0.9.38/Dash-v21; fixed addresses count: {cur.rowcount}')
-
-                cur.execute('delete from tx_output where tx_id in (select id from tx where block_height>?)',
-                            (_theshold_block,))
-                if cur.rowcount:
-                    logging.info(f'Fix DMT-v0.9.38/Dash-v21; fixed tx_outputs: {cur.rowcount}')
-
-                cur.execute('delete from tx_input where tx_id in (select id from tx where block_height>?)',
-                            (_theshold_block,))
-                if cur.rowcount:
-                    logging.info(f'Fix DMT-v0.9.38/Dash-v21; fixed tx_inputs: {cur.rowcount}')
-
-                cur.execute('delete from tx where block_height>?', (_theshold_block,))
-                if cur.rowcount:
-                    logging.info(f'Fix DMT-v0.9.38/Dash-v21; fixed txes: {cur.rowcount}')
-                self.db_intf.commit()
 
             # check and clean the wallet addresses inconsistency
             cur.execute('select parent_id, address_index, count(*) from address where parent_id is not null '
