@@ -200,21 +200,19 @@ class DBCache(object):
             cur.execute("CREATE INDEX IF NOT EXISTS tx_1 ON tx(tx_hash)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_2 ON tx(block_height)")
 
-            cur.execute("CREATE TABLE IF NOT EXISTS tx_output(id INTEGER PRIMARY KEY, address_id INTEGER, "
+            cur.execute("CREATE TABLE IF NOT EXISTS tx_output(id INTEGER PRIMARY KEY, "
                         "address TEXT, tx_id INTEGER NOT NULL, output_index INTEGER NOT NULL, "
                         "satoshis INTEGER NOT NULL, spent_tx_hash TEXT, spent_input_index INTEGER, "
                         "script_type TEXT)")
 
             cur.execute("CREATE INDEX IF NOT EXISTS tx_output_1 ON tx_output(tx_id, output_index)")
-            cur.execute("CREATE INDEX IF NOT EXISTS tx_output_2 ON tx_output(address_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_output_3 ON tx_output(address)")
 
             cur.execute("CREATE TABLE IF NOT EXISTS tx_input(id INTEGER PRIMARY KEY, src_address TEXT, "
-                        "src_address_id INTEGER, tx_id INTEGER NOT NULL, input_index INTEGER NOT NULL, "
+                        "tx_id INTEGER NOT NULL, input_index INTEGER NOT NULL, "
                         "satoshis INTEGER DEFAULT 0, src_tx_hash TEXT, src_tx_output_index INTEGER, "
                         "coinbase INTEGER DEFAULT 0 NOT NULL)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_input_1 ON tx_input(tx_id, input_index)")
-            cur.execute("CREATE INDEX IF NOT EXISTS tx_input_2 ON tx_input(src_address_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_input_3 ON tx_input(src_address)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_input_4 ON tx_input(src_tx_hash)")
 
@@ -289,12 +287,18 @@ class DBCache(object):
             if 'spent_tx_id' in columns:
                 cur.execute("DROP INDEX IF EXISTS tx_output_4")
                 cur.execute('ALTER TABLE tx_output DROP COLUMN spent_tx_id')
+            if 'address_id' in columns:
+                cur.execute("DROP INDEX IF EXISTS tx_output_2")
+                cur.execute('ALTER TABLE tx_output DROP COLUMN address_id')
 
             cur.execute("PRAGMA table_info(tx_input)")
             columns = [x[1] for x in cur.fetchall()]
             if 'src_tx_id' in columns:
                 cur.execute("DROP INDEX IF EXISTS tx_input_5")
                 cur.execute('ALTER TABLE tx_input DROP COLUMN src_tx_id')  # similar to 'spent_tx_id'
+            if 'src_address_id' in columns:
+                cur.execute("DROP INDEX IF EXISTS tx_input_2")
+                cur.execute('ALTER TABLE tx_input DROP COLUMN src_address_id')  # similar to 'spent_tx_id'
 
         except Exception:
             log.exception('Exception while initializing database.')

@@ -1348,9 +1348,13 @@ class DashdInterface(WndUtils):
 
                         if protx_json:
                             mn.copy_from_protx_json(protx_json)
+
                         if mn.pose_ban_height > 0 and (old_pose_ban_height != mn.pose_ban_height or
                                                        mn.pose_ban_timestamp is None or mn.pose_ban_timestamp <= 0):
-                            mn.pose_ban_timestamp = self.get_block_timestamp(mn.pose_ban_height)
+                            try:
+                                mn.pose_ban_timestamp = self.get_block_timestamp(mn.pose_ban_height)
+                            except Exception as e:
+                                log.error(f'Error calling get_block_timestamp for block {mn.pose_ban_height}: ' + str(e))
                         mn.marker = True
                     self._update_mn_queue_values(self.masternodes)
                     log.info('Finished processing masternode data')
@@ -1721,6 +1725,14 @@ class DashdInterface(WndUtils):
                     feature_value = self.proxy.checkfeaturesupport(feature_name, dmt_version)
                 except:
                     feature_value = {'enabled': False, 'message': ''}
+
+                if feature_value.get('enabled'):
+                    log.info(f'(+) Extended feature "{feature_name}" is available for RPC node '
+                             f'{self.cur_conn_def.get_description()}')
+                else:
+                    log.info(f'(-) Extended feature "{feature_name}" is not available for RPC node '
+                             f'{self.cur_conn_def.get_description()}')
+
                 conn_features[feature_name] = feature_value
                 self.conn_features[self.cur_conn_def.get_conn_id()] = conn_features
 

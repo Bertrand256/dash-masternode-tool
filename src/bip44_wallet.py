@@ -79,8 +79,7 @@ class Bip44Wallet(QObject):
         self.addresses_by_address: Dict[str, Bip44AddressType] = {}
 
         # addresses whose balance has been modified since the last call of reset_tx_diffs
-        self.addr_bal_updated: Dict[int, int] = {}  # {'address_id': 'address_id' }
-        self.addr_ids_created: Dict[int, int] = {}  # {'address_id': 'address_id' }
+        self.addr_bal_updated: Dict[int, int] = {}  # {'address.id': 'address.id' }
 
         # transactions added/modified since the last reset_tx_diffs call
         self.txs_added: Dict[int, int] = {}  # {'tx_id': 'tx_id'}
@@ -157,7 +156,6 @@ class Bip44Wallet(QObject):
         self.utxos_removed.clear()
         self.utxos_modified.clear()
         self.addr_bal_updated.clear()
-        self.addr_ids_created.clear()
 
     def clear(self):
         self.__tree_id = None
@@ -348,7 +346,6 @@ class Bip44Wallet(QObject):
                     addr.address = address
                     addr.id = db_cursor.lastrowid
                     self.db_intf.commit()
-                    self.addr_ids_created[addr.id] = addr.id
                     self._address_loaded(addr)
                 else:
                     return None
@@ -500,7 +497,6 @@ class Bip44Wallet(QObject):
                             'path': bip32_path,
                             'tree_id': parent_key_entry.tree_id
                         }
-                        self.addr_ids_created[addr_id] = addr_id
                         addr = self._get_address_from_dict(addr_info)
                 else:
                     addr_info = dict([(col[0], row[idx]) for idx, col in enumerate(db_cursor.description)])
@@ -679,18 +675,6 @@ class Bip44Wallet(QObject):
 
             self.db_intf.commit()
 
-    def _process_addresses_created(self, db_cursor):
-        if self.addr_ids_created:
-            self._fill_temp_ids_table([id for id in self.addr_ids_created], db_cursor)
-            db_cursor.execute('select id, address from address where id in (select id from temp_ids)')
-            for id, address in db_cursor.fetchall():
-                db_cursor.execute('update tx_input set src_address_id=? where src_address_id is null and src_address=?',
-                                  (id, address))
-                db_cursor.execute('update tx_output set address_id=? where address_id is null and address=?',
-                                  (id, address))
-            if db_cursor.connection.total_changes:
-                self.db_intf.commit()
-
     def _fetch_child_addrs_txs(self, key_entry: Bip44Entry, account: Bip44AccountType, check_break_process_fun: Callable = None):
         total_addr_count = 0
 
@@ -731,7 +715,8 @@ class Bip44Wallet(QObject):
 
                         # check if there were no transactions for the address
                         if not self.addr_bal_updated.get(addr_id):
-                            db_cursor.execute('select 1 from tx_output where address_id=?', (addr_id,))
+                            db_cursor.execute('select 1 from tx_output o join address ao on ao.address=o.address '
+                                              'where ao.id=? and ao.tree_id=?', (addr_id, self.__tree_id))
                             if db_cursor.fetchone():
                                 break
                         else:
@@ -794,10 +779,13 @@ class Bip44Wallet(QObject):
             self._fill_temp_ids_table(addr_ids, db_cursor)
 
             db_cursor.execute("""select tx_hash from tx where tree_id=? and block_height=? and
-              (exists(select * from tx_input i where i.tx_id=tx.id and i.src_address_id in (select id from temp_ids)) or
-               exists(select * from tx_output o where o.tx_id=tx.id and o.address_id in (select id from temp_ids))) 
+              (exists(select * from tx_input i join address ai on ai.address=i.src_address and ai.tree_id=?
+                      where i.tx_id=tx.id and ai.id in (select id from temp_ids)) or
+               exists(select * from tx_output o join address ao on ao.address=o.address and ao.tree_id=? 
+                      where o.tx_id=tx.id and ao.id in (select id from temp_ids))) 
               and block_timestamp < ?
-            """, (self.__tree_id, UNCONFIRMED_TX_BLOCK_HEIGHT, int(time.time() - 20 * 60)))
+            """, (self.__tree_id, UNCONFIRMED_TX_BLOCK_HEIGHT, self.__tree_id, self.__tree_id,
+                  int(time.time() - 20 * 60)))
 
             for tx_hash, in db_cursor.fetchall():
                 tx_json = self._getrawtransaction(tx_hash, skip_cache=True)
@@ -871,7 +859,7 @@ class Bip44Wallet(QObject):
 
             # Update all unspent transaction outputs according to the db cache that seem to being spent anyway
             for addr_info in addr_info_list:
-                db_cursor.execute('select o.id, o.address, o.address_id, i.src_address, i.src_address_id, tx1.id, '
+                db_cursor.execute('select o.id, o.address, i.src_address, tx1.id, '
                                   'i.input_index spent_input_index_matching,'
                                    ' tx2.tx_hash spent_tx_hash_matching '
                                    'from tx_output o '
@@ -880,10 +868,10 @@ class Bip44Wallet(QObject):
                                    '         i.src_tx_output_index=o.output_index '
                                    '    join tx tx2 on tx2.id=i.tx_id and tx2.tree_id=tx1.tree_id '
                                    '  where (o.spent_tx_hash is null or o.spent_input_index is null) and tx1.tree_id=?'
-                                   '  and (o.address=? or o.address_id=? or i.src_address=? or i.src_address_id=?)',
-                    (self.__tree_id, addr_info.address, addr_info.id, addr_info.address, addr_info.id))
+                                   '  and (o.address=? or i.src_address=?)',
+                    (self.__tree_id, addr_info.address, addr_info.address))
 
-                for output_id, address1, address1_id, address_2, address2_id, tx_id, spent_index, spent_tx_hash in \
+                for output_id, address1, address2, tx_id, spent_index, spent_tx_hash in \
                     db_cursor.fetchall():
                     db_cursor.execute('update tx_output set spent_tx_hash=?, spent_input_index=? where id=?',
                                       (spent_tx_hash, spent_index, output_id))
@@ -891,10 +879,14 @@ class Bip44Wallet(QObject):
                     self._utxo_modified(output_id)
 
                     addrs_to_update = []
-                    if address1_id is not None:
-                        addrs_to_update.append(address1_id)
-                    if address2_id is not None:
-                        addrs_to_update.append(address2_id)
+                    if address1 is not None:
+                        address1_id = self.get_address_id(address1, db_cursor)
+                        if address1_id:
+                            addrs_to_update.append(address1_id)
+                    if address2 is not None:
+                        address2_id = self.get_address_id(address2, db_cursor)
+                        if address2_id:
+                            addrs_to_update.append(address2_id)
 
                     if addrs_to_update:
                         self._update_addr_balances(account=None, addr_ids=addrs_to_update, db_cursor=db_cursor)
@@ -1032,8 +1024,8 @@ class Bip44Wallet(QObject):
                         self.db_intf.commit()
 
                         # list utxos for this transaction and signal they got confirmed
-                        db_cursor.execute('select id from main.tx_output where tx_id=? and (spent_tx_hash is null '
-                                          'or spent_input_index is null) and address_id is not null', (tx_id,))
+                        db_cursor.execute('select id from tx_output where tx_id=? and (spent_tx_hash is null '
+                                          'or spent_input_index is null) and address is not null', (tx_id,))
                         for utxo_id, in db_cursor.fetchall():
                             utxo = self.utxos_by_id.get(utxo_id)
                             if utxo:
@@ -1057,20 +1049,16 @@ class Bip44Wallet(QObject):
                 # remove redundant outputs and inputs that may be leftover after entering orphaned forks or other read
                 # errors from RCP nodes
                 # 1. outputs:
-                db_cursor.execute('select id, address_id from tx_output where tx_id=?', (tx_id,))
-                for _id, _address_id in db_cursor.fetchall():
+                db_cursor.execute('select id, address from tx_output where tx_id=?', (tx_id,))
+                for _id, _ in db_cursor.fetchall():
                     if _id not in existing_output_ids:
                         db_cursor.execute('delete from tx_output where id=?', (_id,))
-                        if _address_id:
-                            self.addr_bal_updated[_address_id] = True
 
                 # 2. inputs:
-                db_cursor.execute('select id, src_address_id from tx_input where tx_id=?', (tx_id,))
-                for _id, _address_id in db_cursor.fetchall():
+                db_cursor.execute('select id, src_address from tx_input where tx_id=?', (tx_id,))
+                for _id, _ in db_cursor.fetchall():
                     if _id not in existing_input_ids:
                         db_cursor.execute('delete from tx_input where id=?', (_id,))
-                        if _address_id:
-                            self.addr_bal_updated[_address_id] = True
 
         except Exception as e:
             self.db_intf.rollback()
@@ -1116,15 +1104,15 @@ class Bip44Wallet(QObject):
                     spent_input_index = None
                     spent_tx_hash = None
 
-                db_cursor.execute('select id, address_id, address, satoshis, spent_tx_hash, spent_input_index '
+                db_cursor.execute('select id, address, satoshis, spent_tx_hash, spent_input_index '
                                   'from tx_output where tx_id=? and output_index=?', (tx_id, output_index))
                 row = db_cursor.fetchone()
 
                 if not row:
-                    db_cursor.execute('insert into tx_output(address_id, address, tx_id, output_index, satoshis, '
+                    db_cursor.execute('insert into tx_output(address, tx_id, output_index, satoshis, '
                                       'spent_tx_hash, spent_input_index, script_type) '
-                                      'values(?,?,?,?,?,?,?,?)',
-                                      (addr_id, address, tx_id, output_index, satoshis, spent_tx_hash,
+                                      'values(?,?,?,?,?,?,?)',
+                                      (address, tx_id, output_index, satoshis, spent_tx_hash,
                                        spent_input_index, scr_type))
 
                     utxo_id = db_cursor.lastrowid
@@ -1133,10 +1121,9 @@ class Bip44Wallet(QObject):
                         self.addr_bal_updated[addr_id] = True
                     output_db_id = utxo_id
                 else:
-                    (output_db_id, addr_id_cached, address_cached, satoshis_cached, spent_tx_hash_cached,
-                     spent_input_index_cached) = row
+                    (output_db_id, address_cached, satoshis_cached, spent_tx_hash_cached, spent_input_index_cached) = row
 
-                    if (addr_id_cached != addr_id or address_cached != address or satoshis_cached != satoshis or
+                    if (address_cached != address or satoshis_cached != satoshis or
                         spent_tx_hash != spent_tx_hash_cached or spent_input_index_cached != spent_input_index):
 
                         if addr_id:
@@ -1144,9 +1131,9 @@ class Bip44Wallet(QObject):
 
                         # update db if there is any discrepency with the data fetched from the network; it may be
                         # caused by the network problems or the chain reorganization
-                        db_cursor.execute('update tx_output set address_id=?, address=?, satoshis=?, spent_tx_hash=?, '
+                        db_cursor.execute('update tx_output set address=?, satoshis=?, spent_tx_hash=?, '
                                           'spent_input_index=? where id=?',
-                                          (addr_id, address, satoshis, spent_tx_hash, spent_input_index, output_db_id))
+                                          (address, satoshis, spent_tx_hash, spent_input_index, output_db_id))
             else:
                 log.warning('No scriptPub in output, txhash: %s, index: %s', tx_hash, output_index)
         else:
@@ -1169,8 +1156,8 @@ class Bip44Wallet(QObject):
             related_tx_hash = vin.get('txid')
             related_tx_index = vin.get('vout')
 
-            db_cursor.execute('select id, src_address, src_address_id, satoshis, src_tx_hash, '
-                              'src_tx_output_index, coinbase from tx_input where tx_id=? and input_index=?',
+            db_cursor.execute('select id, src_address, satoshis, src_tx_hash, src_tx_output_index, coinbase '
+                              'from tx_input where tx_id=? and input_index=?',
                               (tx_id, input_index))
             row = db_cursor.fetchone()
             addr = vin.get('address')
@@ -1181,31 +1168,31 @@ class Bip44Wallet(QObject):
             coinbase = 1 if vin.get('coinbase') else 0
 
             if not row:
-                db_cursor.execute('insert into tx_input(tx_id, input_index, src_address, src_address_id, satoshis,'
-                                  'src_tx_hash, src_tx_output_index, coinbase) values(?,?,?,?,?,?,?,?)',
-                                  (tx_id, input_index, addr, addr_id, satoshis, related_tx_hash, related_tx_index,
+                db_cursor.execute('insert into tx_input(tx_id, input_index, src_address, satoshis,'
+                                  'src_tx_hash, src_tx_output_index, coinbase) values(?,?,?,?,?,?,?)',
+                                  (tx_id, input_index, addr, satoshis, related_tx_hash, related_tx_index,
                                    coinbase))
                 if addr_id:
                     self.addr_bal_updated[addr_id] = True
                 input_db_id = db_cursor.lastrowid
                 related_tx_hash_cached = None
             else:
-                (input_db_id, src_address_cached, src_address_id_cached, satoshis_cached, related_tx_hash_cached,
-                 related_tx_index_cached, coinbase_cached) = row
+                (input_db_id, src_address_cached, satoshis_cached, related_tx_hash_cached, related_tx_index_cached,
+                 coinbase_cached) = row
 
-                if (src_address_cached != addr or src_address_id_cached != addr_id or
-                    satoshis_cached != satoshis or related_tx_hash_cached != related_tx_hash or
-                    related_tx_index_cached != related_tx_index or coinbase_cached != coinbase):
+                if (src_address_cached != addr or satoshis_cached != satoshis or
+                    related_tx_hash_cached != related_tx_hash or related_tx_index_cached != related_tx_index or
+                    coinbase_cached != coinbase):
 
                     if addr_id:
                         self.addr_bal_updated[addr_id] = True
 
                     # update db if there is any discrepency with the data fetched from the network; it may be
                     # caused by the network problems or the chain reorganization
-                    db_cursor.execute('update tx_input set src_address=?, src_address_id=?, satoshis=?,'
-                                      'src_tx_hash=?, src_tx_output_index=?, coinbase=? where id=?',
-                                      (addr, addr_id, satoshis, related_tx_hash, related_tx_index,
-                                       coinbase, input_db_id))
+                    db_cursor.execute('update tx_input set src_address=?, satoshis=?, src_tx_hash=?, '
+                                      'src_tx_output_index=?, coinbase=? where id=?',
+                                      (addr, addr_id, satoshis, related_tx_hash, related_tx_index, coinbase,
+                                       input_db_id))
 
                     log.warning(f'Updating tx_input id {input_db_id} due to the data discrepency between cache and '
                                 f'the Dash network')
@@ -1310,13 +1297,11 @@ class Bip44Wallet(QObject):
             self._update_addr_balances(account)
             account.read_from_db(db_cursor)
             account.evaluate_address_if_null(db_cursor, self.dash_network)
-            self._process_addresses_created(db_cursor)
 
         log.debug('Starting fetching transactions for all accounts.')
         self._wait_for_tx_fetch_terminate(priority)
         try:
             self.validate_hd_tree()
-            self.addr_ids_created.clear()
             self.increase_ext_call_level()
             self._reset_scan_metrics()
             db_cursor = self.db_intf.get_cursor()
@@ -1366,7 +1351,6 @@ class Bip44Wallet(QObject):
         try:
             tm_begin = time.time()
             self.validate_hd_tree()
-            self.addr_ids_created.clear()
             self.increase_ext_call_level()
             db_cursor = self.db_intf.get_cursor()
             self._reset_scan_metrics()
@@ -1383,7 +1367,6 @@ class Bip44Wallet(QObject):
                 change_level_node.evaluate_address_if_null(db_cursor, self.dash_network)
                 self._fetch_child_addrs_txs(change_level_node, acc, check_break_process_fun)
                 self._update_addr_balances(acc)
-                self._process_addresses_created(db_cursor)
             finally:
                 self.decrease_ext_call_level()
                 self.db_intf.release_cursor()
@@ -1461,10 +1444,12 @@ class Bip44Wallet(QObject):
             mod_addr_ids = []
 
             # following addressses will have the balance changed after purging the transaction
-            db_cursor.execute('select address_id from tx_output where address_id is not null and '
-                              '(tx_id=? or spent_tx_hash=?) union '
-                              'select src_address_id from tx_input where src_address_id is not null and tx_id=?',
-                              (tx_id, tx_hash, tx_id))
+            db_cursor.execute('select a.id from tx_output o join address a on a.address=o.address '
+                              'where (tx_id=? or spent_tx_hash=?) and a.tree_id=?'
+                              ' union '
+                              'select a.id from tx_input i join address a on a.address=i.src_address '
+                              'where tx_id=? and a.tree_id=?',
+                              (tx_id, tx_hash, self.__tree_id, tx_id, self.__tree_id))
 
             for row in db_cursor.fetchall():
                 if not row[0] in mod_addr_ids:
@@ -1472,13 +1457,13 @@ class Bip44Wallet(QObject):
 
             # list all transaction outputs that were previously spent - due to the transaction deletion
             # they are no longer spent, so we add them to the "new" utxos list
-            db_cursor.execute('select id, address_id from tx_output where spent_tx_hash=?', (tx_hash,))
+            db_cursor.execute('select id from tx_output where spent_tx_hash=?', (tx_hash,))
             for row in db_cursor.fetchall():
                 self._utxo_added(row[0])
             db_cursor.execute('update tx_output set spent_tx_hash=null, spent_input_index=null where spent_tx_hash=?',
                               (tx_hash,))
 
-            db_cursor.execute('select id, address_id from tx_output where tx_id=?', (tx_id,))
+            db_cursor.execute('select id from tx_output where tx_id=?', (tx_id,))
             for row in db_cursor.fetchall():
                 self._utxo_removed(row[0])
 
@@ -1517,9 +1502,9 @@ class Bip44Wallet(QObject):
                 db_cursor.execute(
                     "select id, account_id, real_received, "
                     "real_spent + real_received real_balance, tree_id from (select a.id id, aa.id account_id, "
-                    "a.received, (select ifnull(sum(satoshis), 0) from tx_output o where o.address_id = a.id) "
+                    "a.received, (select ifnull(sum(satoshis), 0) from tx_output o where o.address = a.address) "
                     "real_received, a.balance, (select ifnull(sum(satoshis), 0) "
-                    "from tx_input o where o.src_address_id = a.id) real_spent, aa.tree_id tree_id from address a "
+                    "from tx_input o where o.src_address = a.address) real_spent, aa.tree_id tree_id from address a "
                     "left join address ca on ca.id = a.parent_id left join address aa on aa.id = ca.parent_id "
                     "where a.id in (select id from temp_ids)) "
                     "where received <> real_received or balance <> real_received + real_spent")
@@ -1528,9 +1513,9 @@ class Bip44Wallet(QObject):
                 db_cursor.execute(
                    "select id, account_id, real_received, real_spent + real_received real_balance, "
                    "tree_id from (select a.id id, ca.id change_id, aa.id account_id, "
-                   "a.received, (select ifnull(sum(satoshis), 0) from tx_output o where o.address_id = a.id) "
+                   "a.received, (select ifnull(sum(satoshis), 0) from tx_output o where o.address = a.address) "
                    "real_received, a.balance, (select ifnull(sum(satoshis), 0) "
-                   "from tx_input o where o.src_address_id = a.id) real_spent, aa.tree_id tree_id from address a "
+                   "from tx_input o where o.src_address = a.address) real_spent, aa.tree_id tree_id from address a "
                    "join address ca on ca.id = a.parent_id join address aa on aa.id = ca.parent_id where aa.id=?) "
                    "where received <> real_received or balance <> real_received + real_spent", (account.id,))
             else:
@@ -1627,13 +1612,14 @@ class Bip44Wallet(QObject):
         self.validate_hd_tree()
         db_cursor = self.db_intf.get_cursor()
         try:
-            sql_text = "select o.id, tx.block_height, tx.coinbase, tx.block_timestamp," \
-                       "tx.tx_hash, o.output_index, o.satoshis, o.address_id from tx_output o " \
-                       "join address a on a.id=o.address_id join address cha on cha.id=a.parent_id join address aca " \
-                       "on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_hash is null " \
-                       "or spent_input_index is null)"
-
             params = []
+            sql_text = "select o.id, tx.block_height, tx.coinbase, tx.block_timestamp," \
+                       "tx.tx_hash, o.output_index, o.satoshis, a.id from tx_output o " \
+                       "join address a on a.address=o.address join address cha on cha.id=a.parent_id join address aca "\
+                       "on aca.id=cha.parent_id join tx on tx.id=o.tx_id where (spent_tx_hash is null " \
+                       "or spent_input_index is null) and a.tree_id=?"
+            params.append(self.__tree_id)
+
             if account_id:
                 sql_text += ' and aca.id=?'
                 params.append(account_id)
@@ -1673,12 +1659,13 @@ class Bip44Wallet(QObject):
                                  filter_by_satoshis: Optional[int] = None) -> Generator[UtxoType, None, None]:
         db_cursor = self.db_intf.get_cursor()
         try:
-            sql_text = "select o.id, tx.block_height, tx.coinbase,tx.block_timestamp, tx.tx_hash, o.output_index, " \
-                       "o.satoshis, o.address_id from tx_output o join address a" \
-                       " on a.id=o.address_id join tx on tx.id=o.tx_id where (spent_tx_hash is null " \
-                       " or spent_input_index is null) and a.id in (select id from temp_ids2)"
-
             params = []
+            sql_text = "select o.id, tx.block_height, tx.coinbase,tx.block_timestamp, tx.tx_hash, o.output_index, " \
+                       "o.satoshis, a.id from tx_output o join address a" \
+                       " on a.address=o.address join tx on tx.id=o.tx_id where (spent_tx_hash is null " \
+                       " or spent_input_index is null) and a.id in (select id from temp_ids2) and a.tree_id=?"
+            params.append(self.__tree_id)
+
             self._fill_temp_ids_table(address_ids, db_cursor, tab_sufix='2')
 
             if only_new:
@@ -1713,12 +1700,12 @@ class Bip44Wallet(QObject):
             self._fill_temp_ids_table(utxo_ids, db_cursor)
 
             sql_text = "select o.id, tx.block_height, tx.coinbase,tx.block_timestamp, tx.tx_hash, o.output_index, " \
-                       "o.satoshis, o.address_id from tx_output o join address a" \
-                       " on a.id=o.address_id join tx on tx.id=o.tx_id where (spent_tx_hash is null " \
+                       "o.satoshis, a.id from tx_output o join address a" \
+                       " on a.address=o.address join tx on tx.id=o.tx_id where (spent_tx_hash is null " \
                        " or spent_input_index is null) and o.id in (select id from temp_ids) " \
-                       " order by tx.block_height desc"
+                       " and a.tree_id=? order by tx.block_height desc"
 
-            db_cursor.execute(sql_text)
+            db_cursor.execute(sql_text, (self.__tree_id,))
 
             for id, block_height, coinbase, block_timestamp, tx_hash, \
                 output_index, satoshis, address_id in db_cursor.fetchall():
@@ -1735,19 +1722,22 @@ class Bip44Wallet(QObject):
 
     def _prepare_cursor_for_txs_list(self, db_cursor, account_id: Optional[int], address_ids: Optional[List[int]]):
 
+        cond_params = []
         if account_id is not None:
             condition = ' join address ach on ach.id=a.parent_id join address aca on aca.id=ach.parent_id where ' \
                         'aca.id=? '
+            cond_params.append(account_id)
         elif address_ids:
             condition = ' where a.id in (select id from temp_ids) '
             self._fill_temp_ids_table(address_ids, db_cursor)
         else:
             condition = ''
 
+        params = []
         sql_text = """
             select -1 type,
                    group_concat(DISTINCT a.id) src_addr_ids,
-                   (select group_concat(DISTINCT ifnull(o.address_id,'')||':'||o.address||':'||output_index||':'||o.satoshis) 
+                   (select group_concat(DISTINCT ifnull(null,'')||':'||o.address||':'||output_index||':'||o.satoshis) 
                     from tx_output o where o.tx_id=t.id) rcp_addresses,
                    sum(i.satoshis),
                    t.id,
@@ -1756,27 +1746,34 @@ class Bip44Wallet(QObject):
                    t.block_timestamp,
                    0 is_coinbase,
                    -1
-            from tx_input i join tx t on t.id=i.tx_id join address a on a.id=i.src_address_id """ + \
-            condition + \
-            """ group by t.id
+            from tx_input i join tx t on t.id=i.tx_id join address a on a.address=i.src_address and a.tree_id=?"""
+
+        params.append(self.__tree_id)
+        params.extend(cond_params)
+
+        sql_text += condition + """ group by t.id
             union
             select 1 type,
-                   group_concat(DISTINCT ifnull(src_address_id,'')||':'||i.src_address),
-                   ifnull(o.address_id,'')||':'||o.address||':'||o.output_index||':'||o.satoshis,
+                   group_concat(DISTINCT ifnull(ai.id,'')||':'||ai.address),
+                   ifnull(a.id,'')||':'||a.address||':'||o.output_index||':'||o.satoshis,
                    o.satoshis,
                    t.id,
                    t.tx_hash,
                    t.block_height,
                    t.block_timestamp, max(i.coinbase) is_coinbase,
                    o.id
-            from tx_output o join tx t on t.id=o.tx_id join address a on a.id=o.address_id 
-            join tx_input i on i.tx_id=t.id """ + \
-            condition + \
-            """ group by o.id
+            from tx_output o join tx t on t.id=o.tx_id join address a on a.address=o.address and a.tree_id=?
+            join tx_input i on i.tx_id=t.id left join address ai on ai.address=i.src_address and ai.tree_id=?"""
+
+        params.append(self.__tree_id)
+        params.append(self.__tree_id)
+        params.extend(cond_params)
+
+        sql_text += condition + """ group by o.id
             order by block_height desc, type desc"""
 
         t = time.time()
-        db_cursor.execute(sql_text, (account_id, account_id) if account_id else ())
+        db_cursor.execute(sql_text, params)
         log.debug('SQL exec time: %s', time.time() - t)
 
     def _parse_addrs_str_gen(self, addrs_str: str) -> Generator[Union[Bip44AddressType, str], None, None]:
@@ -1835,7 +1832,6 @@ class Bip44Wallet(QObject):
     def list_accounts(self) -> Generator[Bip44AccountType, None, None]:
         tm_begin = time.time()
         self.validate_hd_tree()
-        self.addr_ids_created.clear()
         db_cursor = self.db_intf.get_cursor()
         try:
             tree_id = self.get_tree_id()
@@ -1852,8 +1848,6 @@ class Bip44Wallet(QObject):
 
                 yield acc
         finally:
-            self._process_addresses_created(db_cursor)
-
             if db_cursor.connection.total_changes > 0:
                 self.db_intf.commit()
             self.db_intf.release_cursor()
@@ -1869,7 +1863,6 @@ class Bip44Wallet(QObject):
         self._wait_for_tx_fetch_terminate(priority)
         try:
             self.validate_hd_tree()
-            self.addr_ids_created.clear()
             self.increase_ext_call_level()
             try:
                 db_cursor = self.db_intf.get_cursor()
@@ -1892,7 +1885,6 @@ class Bip44Wallet(QObject):
                     account.read_from_db(db_cursor)
                     account.evaluate_address_if_null(db_cursor, self.dash_network)
                     self.set_account_status(account, 1)
-                    self._process_addresses_created(db_cursor)
                 finally:
                     if db_cursor.connection.total_changes > 0:
                         self.db_intf.commit()
@@ -1927,16 +1919,6 @@ class Bip44Wallet(QObject):
         log.debug(f'Deleting account from db. Account address db id: {id}')
         db_cursor = self.db_intf.get_cursor()
         try:
-            db_cursor.execute("update tx_output set address_id=null where address_id in ("
-                              "select a.id from address a join address a1 on a1.id=a.parent_id "
-                              "join address a2 on a2.id=a1.parent_id where a2.id=?)",
-                              (id,))
-
-            db_cursor.execute("update tx_input set src_address_id=null where src_address_id in ("
-                              "select a.id from address a join address a1 on a1.id=a.parent_id "
-                              "join address a2 on a2.id=a1.parent_id where a2.id=?)",
-                              (id,))
-
             db_cursor.execute("delete from address where parent_id in ("
                               "select a1.id from address a1 where a1.parent_id=?)", (id,))
 
@@ -1964,10 +1946,6 @@ class Bip44Wallet(QObject):
         log.debug(f'Deleting address from db. Account address db id: %s', id)
         db_cursor = self.db_intf.get_cursor()
         try:
-            db_cursor.execute("delete from tx_output where address_id=?", (id,))
-
-            db_cursor.execute("delete from tx_input where src_address_id=?", (id,))
-
             db_cursor.execute("update address set last_scan_block_height=0 where id=?", (id,))
 
             addr, _ = self._find_address_item_in_cache_by_id(id)
@@ -2087,10 +2065,6 @@ class Bip44Wallet(QObject):
     def delete_hd_identity(self, id: int):
         db_cursor = self.db_intf.get_cursor()
         try:
-            db_cursor.execute("update tx_input set src_address_id=null where src_address_id in (select id from "
-                              "address where tree_id=?)", (id,))
-            db_cursor.execute("update tx_output set address_id=null where address_id in (select id from address "
-                              "where tree_id=?)", (id,))
             db_cursor.execute("delete from address where id in (select ca.parent_id from address a join address ca "
                               "on ca.id=a.parent_id where a.tree_id=?)", (id,))
             db_cursor.execute("delete from address where id in (select a.parent_id from address a where a.tree_id=?)",
