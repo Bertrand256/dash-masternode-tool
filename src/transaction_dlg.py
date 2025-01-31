@@ -212,13 +212,6 @@ class TransactionDlg(QDialog, QDetectThemeChange, Ui_TransactionDlg, WndUtils):
                             address = ''
                             if spk:
                                 address = spk.get('address')
-                                if not address:
-                                    # todo: remove after 1-Oct-2024
-                                    ads = spk.get('addresses')  # Dash < v21
-                                    if isinstance(ads, list) and len(ads) == 1:
-                                        address = ads[0]
-                                    else:
-                                        address = str(ads)
 
                             address_info = ''
                             if row_idx < len(self.tx_outputs):

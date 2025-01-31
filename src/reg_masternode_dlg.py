@@ -1360,13 +1360,6 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                                         f'field.')
 
                     address = spk.get('address')
-                    if not address:
-                        # todo: remove after 1-Oct-2024
-                        ads = spk.get('addresses')  # < Dash v21
-                        if not ads or len(ads) < 0:
-                            raise Exception('The collateral transaction output doesn\'t have the Dash address assigned.')
-                        else:
-                            address = ads[0]
 
                     if vout.get('valueSat') != collateral_value_needed:
                         raise Exception(f'The value of the collateral transaction output is not equal to '
