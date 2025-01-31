@@ -1737,7 +1737,10 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
             if self.refresh_ui_timer:
                 self.refresh_ui_timer.stop()
-                self.refresh_ui_timer.timeout.disconnect(self.refresh_scan_metrics)
+                try:
+                    self.refresh_ui_timer.timeout.disconnect()
+                except (TypeError, RuntimeError):
+                    pass
 
         if threading.current_thread() != threading.main_thread():
             if self.enable_synch_with_main_thread:

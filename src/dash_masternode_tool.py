@@ -18,7 +18,7 @@ from wnd_utils import WndUtils
 
 if __name__ == '__main__':
     def my_excepthook(type, value, tback):
-        print('=========================')
+        print('========== my_exceptionhook ===============')
         traceback.print_tb(tback)
         for fh in logging.RootLogger.root.handlers:
             if isinstance(fh, logging.FileHandler):
@@ -30,7 +30,10 @@ if __name__ == '__main__':
                 msg = 'An unhandled exception occurred: ' + value.__class__.__name__ + '.'
             except:
                 msg = 'An unhandled exception occurred.'
-        WndUtils.error_msg(msg)
+        if "sipBadCatcherResult" in str(msg):
+            print('Ignofing exception: ' + msg)
+        else:
+            WndUtils.error_msg(msg)
 
     sys.excepthook = my_excepthook
 

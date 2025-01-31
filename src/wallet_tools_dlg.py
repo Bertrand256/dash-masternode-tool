@@ -94,7 +94,10 @@ class WalletToolsDlg(QDialog, ui_wallet_tools_dlg.Ui_WalletToolsDlg, WndUtils):
         self.finishing = True
         if self.action_widget:
             self.action_widget.finishing = True
-        self.hw_devices.sig_connected_hw_device_changed.disconnect(self.on_connected_hw_device_changed)
+        try:
+            self.hw_devices.sig_connected_hw_device_changed.disconnect()
+        except:
+            pass
         self.hw_devices.restore_state()
         if self.action_widget:
             self.action_widget.on_close()
