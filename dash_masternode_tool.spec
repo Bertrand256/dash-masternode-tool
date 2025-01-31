@@ -55,7 +55,7 @@ def add_binary_file(file: str, dest_dir: str):
 for f in os.listdir(os.path.join(base_dir, 'img')):
     f_full = os.path.join(base_dir, 'img', f)
     if os.path.isfile(f_full):
-        add_data_file('img/' + f, '/img')
+        add_data_file('img/' + f, 'img')
 
 
 def find_file_in_dirs(dirs, file_name):
@@ -68,9 +68,9 @@ def find_file_in_dirs(dirs, file_name):
 
 lib_paths = [p for p in sys.path if 'site-packages' in p]
 
-add_data_file(find_file_in_dirs(lib_paths, 'bitcoin/english.txt'), '/bitcoin')
+add_data_file(find_file_in_dirs(lib_paths, 'bitcoin/english.txt'), 'bitcoin')
 if os_type != 'win32':  # todo: find out why on windows sometimes it complains about duplicated english.txt
-    add_data_file(find_file_in_dirs(lib_paths, 'mnemonic/wordlist/english.txt'), '/mnemonic/wordlist')
+    add_data_file(find_file_in_dirs(lib_paths, 'mnemonic/wordlist/english.txt'), 'mnemonic/wordlist')
 add_data_file(find_file_in_dirs(lib_paths, 'trezorlib/transport'), 'trezorlib/transport')
 
 excludes = [
