@@ -23,3 +23,4 @@ blspy==2.0.3
 construct==2.10.70
 protobuf==5.29.3
 QDarkStyle==3.2.3
+nuitka
