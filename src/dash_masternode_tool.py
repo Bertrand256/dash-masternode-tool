@@ -31,7 +31,7 @@ if __name__ == '__main__':
             except:
                 msg = 'An unhandled exception occurred.'
         if "sipBadCatcherResult" in str(msg):
-            print('Ignofing exception: ' + msg)
+            pass #Ignoring exception sipBadCatcherResult
         else:
             WndUtils.error_msg(msg)
 
