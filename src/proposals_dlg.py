@@ -31,6 +31,9 @@ from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QMessageBox, QTableView, 
 from math import floor
 import urllib.request
 import ssl
+
+from bitcoinrpc.authproxy import JSONRPCException
+
 import app_cache
 import app_utils
 import base58
@@ -256,16 +259,21 @@ class Proposal(AttrsProtected):
             else:
                 self.voting_in_progress = False
 
-            _, start_sb = self.find_superblocks_for_timestamp(payment_start)
-            end_sb, _ = self.find_superblocks_for_timestamp(payment_end)
+            passed_days = (time.time() - payment_end)/ 86400
+            if passed_days < 15:
+                _, start_sb = self.find_superblocks_for_timestamp(payment_start)
+                end_sb, _ = self.find_superblocks_for_timestamp(payment_end)
+                payment_cycles = int((end_sb - start_sb) / cycle_blocks) + 1
 
-            payment_cycles = int((end_sb - start_sb) / cycle_blocks) + 1
-
-            # calculate the number of payment-months that passed already for the proposal
-            if start_sb > last_superblock:
-                cur_cycle = 0
+                # calculate the number of payment-months that passed already for the proposal
+                if start_sb > last_superblock:
+                    cur_cycle = 0
+                else:
+                    cur_cycle = int(((last_superblock - start_sb) / cycle_blocks)) + 1
             else:
-                cur_cycle = int(((last_superblock - start_sb) / cycle_blocks)) + 1
+                # for old proposals, only estimate the cycles number
+                payment_cycles = round((payment_end - payment_start) / 60 / 60 / self.budget_cycle_hours)
+                cur_cycle = -1
 
             self.set_value('cycles', payment_cycles)
             self.set_value('current_cycle', cur_cycle)
@@ -955,153 +963,147 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     log.exception('Error while processing proposal data. Proposal hash: ' + hash)
                     errors += 1
 
-            if len(proposals_new) > 0:
-                if errors < len(proposals_new) / 10:
-                    try:
-                        cur = self.db_intf.get_cursor()
+            if errors <= len(proposals_new) / 10:
+                try:
+                    cur = self.db_intf.get_cursor()
 
-                        for prop in self.proposals:
-                            if self.finishing:
-                                raise CloseDialogException
+                    for prop in self.proposals:
+                        if self.finishing:
+                            raise CloseDialogException
 
-                            if prop.marker:
-                                if not prop.db_id:
-                                    # first, check if there is a proposal with the same hash in the database
-                                    # dashd sometimes does not return some proposals, so they are deactivated id the db
-                                    hash = prop.get_value('hash')
-                                    cur.execute('SELECT id from PROPOSALS where hash=?', (hash,))
-                                    row = cur.fetchone()
-                                    if row:
-                                        prop.db_id = row[0]
-                                        prop.modified = True
-                                        cur.execute('UPDATE PROPOSALS set dmt_active=1, dmt_deactivation_time=NULL '
-                                                    'WHERE id=?', (row[0],))
-                                        log.info('Proposal "%s" (db_id: %d) exists int the DB. Re-activating.' %
-                                                 (hash, row[0]))
+                        if prop.marker:
+                            if not prop.db_id:
+                                # first, check if there is a proposal with the same hash in the database
+                                # dashd sometimes does not return some proposals, so they are deactivated id the db
+                                hash = prop.get_value('hash')
+                                cur.execute('SELECT id from PROPOSALS where hash=?', (hash,))
+                                row = cur.fetchone()
+                                if row:
+                                    prop.db_id = row[0]
+                                    prop.modified = True
+                                    cur.execute('UPDATE PROPOSALS set dmt_active=1, dmt_deactivation_time=NULL '
+                                                'WHERE id=?', (row[0],))
+                                    log.info('Proposal "%s" (db_id: %d) exists int the DB. Re-activating.' %
+                                             (hash, row[0]))
 
-                                if not prop.db_id:
-                                    log.debug('Adding a new proposal to DB. Hash: ' + prop.get_value('hash'))
-                                    cur.execute(
-                                        "INSERT INTO PROPOSALS (name, payment_start, payment_end, payment_amount,"
-                                        " yes_count, absolute_yes_count, no_count, abstain_count, creation_time,"
-                                        " url, payment_address, type, hash, collateral_hash, f_blockchain_validity,"
-                                        " f_cached_valid, f_cached_delete, f_cached_funding, f_cached_endorsed, "
-                                        " object_type, is_valid_reason, dmt_active, dmt_create_time, "
-                                        " dmt_deactivation_time, dmt_voting_last_read_time)"
-                                        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)",
-                                        (prop.get_value('name'),
-                                         prop.get_value('payment_start').strftime('%Y-%m-%d %H:%M:%S'),
-                                         prop.get_value('payment_end').strftime('%Y-%m-%d %H:%M:%S'),
-                                         prop.get_value('payment_amount'),
-                                         prop.get_value('yes_count'),
-                                         prop.get_value('absolute_yes_count'),
-                                         prop.get_value('no_count'),
-                                         prop.get_value('abstain_count'),
-                                         prop.get_value('creation_time').strftime('%Y-%m-%d %H:%M:%S'),
-                                         prop.get_value('url'),
-                                         prop.get_value('payment_address'),
-                                         prop.get_value('type'),
-                                         prop.get_value('hash'),
-                                         prop.get_value('collateral_hash'),
-                                         prop.get_value('fBlockchainValidity'),
-                                         prop.get_value('fCachedValid'),
-                                         prop.get_value('fCachedDelete'),
-                                         prop.get_value('fCachedFunding'),
-                                         prop.get_value('fCachedEndorsed'),
-                                         prop.get_value('ObjectType'),
-                                         prop.get_value('IsValidReason'),
-                                         1,
-                                         datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                         None))
-                                    prop.db_id = cur.lastrowid
-                                    self.proposals_by_db_id[prop.db_id] = prop
-                                else:
-                                    # proposal's db record already exists, check if should be updated
-                                    if prop.modified:
-                                        log.debug('Updating proposal in the DB. Hash: %s, DB id: %d' %
-                                                  (prop.get_value('hash'), prop.db_id))
-                                        cur.execute("UPDATE PROPOSALS set name=?, payment_start=?, payment_end=?, "
-                                                    "payment_amount=?, yes_count=?, absolute_yes_count=?, no_count=?, "
-                                                    "abstain_count=?, creation_time=?, url=?, payment_address=?, type=?,"
-                                                    "hash=?, collateral_hash=?, f_blockchain_validity=?, f_cached_valid=?,"
-                                                    "f_cached_delete=?, f_cached_funding=?, f_cached_endorsed=?, object_type=?,"
-                                                    "is_valid_reason=? WHERE id=?",
-                                                    (
-                                                        prop.get_value('name'),
-                                                        prop.get_value('payment_start').strftime('%Y-%m-%d %H:%M:%S'),
-                                                        prop.get_value('payment_end').strftime('%Y-%m-%d %H:%M:%S'),
-                                                        prop.get_value('payment_amount'),
-                                                        prop.get_value('yes_count'),
-                                                        prop.get_value('absolute_yes_count'),
-                                                        prop.get_value('no_count'),
-                                                        prop.get_value('abstain_count'),
-                                                        prop.get_value('creation_time').strftime('%Y-%m-%d %H:%M:%S'),
-                                                        prop.get_value('url'),
-                                                        prop.get_value('payment_address'),
-                                                        prop.get_value('type'),
-                                                        prop.get_value('hash'),
-                                                        prop.get_value('collateral_hash'),
-                                                        prop.get_value('fBlockchainValidity'),
-                                                        prop.get_value('fCachedValid'),
-                                                        prop.get_value('fCachedDelete'),
-                                                        prop.get_value('fCachedFunding'),
-                                                        prop.get_value('fCachedEndorsed'),
-                                                        prop.get_value('ObjectType'),
-                                                        prop.get_value('IsValidReason'),
-                                                        prop.db_id
-                                                    ))
+                            if not prop.db_id:
+                                log.debug('Adding a new proposal to DB. Hash: ' + prop.get_value('hash'))
+                                cur.execute(
+                                    "INSERT INTO PROPOSALS (name, payment_start, payment_end, payment_amount,"
+                                    " yes_count, absolute_yes_count, no_count, abstain_count, creation_time,"
+                                    " url, payment_address, type, hash, collateral_hash, f_blockchain_validity,"
+                                    " f_cached_valid, f_cached_delete, f_cached_funding, f_cached_endorsed, "
+                                    " object_type, is_valid_reason, dmt_active, dmt_create_time, "
+                                    " dmt_deactivation_time, dmt_voting_last_read_time)"
+                                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)",
+                                    (prop.get_value('name'),
+                                     prop.get_value('payment_start').strftime('%Y-%m-%d %H:%M:%S'),
+                                     prop.get_value('payment_end').strftime('%Y-%m-%d %H:%M:%S'),
+                                     prop.get_value('payment_amount'),
+                                     prop.get_value('yes_count'),
+                                     prop.get_value('absolute_yes_count'),
+                                     prop.get_value('no_count'),
+                                     prop.get_value('abstain_count'),
+                                     prop.get_value('creation_time').strftime('%Y-%m-%d %H:%M:%S'),
+                                     prop.get_value('url'),
+                                     prop.get_value('payment_address'),
+                                     prop.get_value('type'),
+                                     prop.get_value('hash'),
+                                     prop.get_value('collateral_hash'),
+                                     prop.get_value('fBlockchainValidity'),
+                                     prop.get_value('fCachedValid'),
+                                     prop.get_value('fCachedDelete'),
+                                     prop.get_value('fCachedFunding'),
+                                     prop.get_value('fCachedEndorsed'),
+                                     prop.get_value('ObjectType'),
+                                     prop.get_value('IsValidReason'),
+                                     1,
+                                     datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                     None))
+                                prop.db_id = cur.lastrowid
+                                self.proposals_by_db_id[prop.db_id] = prop
+                            else:
+                                # proposal's db record already exists, check if should be updated
+                                if prop.modified:
+                                    log.debug('Updating proposal in the DB. Hash: %s, DB id: %d' %
+                                              (prop.get_value('hash'), prop.db_id))
+                                    cur.execute("UPDATE PROPOSALS set name=?, payment_start=?, payment_end=?, "
+                                                "payment_amount=?, yes_count=?, absolute_yes_count=?, no_count=?, "
+                                                "abstain_count=?, creation_time=?, url=?, payment_address=?, type=?,"
+                                                "hash=?, collateral_hash=?, f_blockchain_validity=?, f_cached_valid=?,"
+                                                "f_cached_delete=?, f_cached_funding=?, f_cached_endorsed=?, object_type=?,"
+                                                "is_valid_reason=? WHERE id=?",
+                                                (
+                                                    prop.get_value('name'),
+                                                    prop.get_value('payment_start').strftime('%Y-%m-%d %H:%M:%S'),
+                                                    prop.get_value('payment_end').strftime('%Y-%m-%d %H:%M:%S'),
+                                                    prop.get_value('payment_amount'),
+                                                    prop.get_value('yes_count'),
+                                                    prop.get_value('absolute_yes_count'),
+                                                    prop.get_value('no_count'),
+                                                    prop.get_value('abstain_count'),
+                                                    prop.get_value('creation_time').strftime('%Y-%m-%d %H:%M:%S'),
+                                                    prop.get_value('url'),
+                                                    prop.get_value('payment_address'),
+                                                    prop.get_value('type'),
+                                                    prop.get_value('hash'),
+                                                    prop.get_value('collateral_hash'),
+                                                    prop.get_value('fBlockchainValidity'),
+                                                    prop.get_value('fCachedValid'),
+                                                    prop.get_value('fCachedDelete'),
+                                                    prop.get_value('fCachedFunding'),
+                                                    prop.get_value('fCachedEndorsed'),
+                                                    prop.get_value('ObjectType'),
+                                                    prop.get_value('IsValidReason'),
+                                                    prop.db_id
+                                                ))
 
-                        # delete proposals which no longer exists in tha Dash network
-                        rows_removed = False
-                        for prop_idx in reversed(range(len(self.proposals))):
-                            if self.finishing:
-                                raise CloseDialogException
+                    # delete proposals that no longer exist in the Dash network
+                    rows_removed = False
+                    for prop_idx in reversed(range(len(self.proposals))):
+                        if self.finishing:
+                            raise CloseDialogException
 
-                            prop = self.proposals[prop_idx]
+                        prop = self.proposals[prop_idx]
 
-                            if not prop.marker:
-                                log.info('Deactivating proposal in the cache. Hash: %s, DB id: %s' %
-                                         (prop.get_value('hash'), str(prop.db_id)))
-                                cur.execute("UPDATE PROPOSALS set dmt_active=0, dmt_deactivation_time=? WHERE id=?",
-                                            (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), prop.db_id))
+                        if not prop.marker:
+                            log.info('Deactivating proposal in the cache. Hash: %s, DB id: %s' %
+                                     (prop.get_value('hash'), str(prop.db_id)))
+                            cur.execute("UPDATE PROPOSALS set dmt_active=0, dmt_deactivation_time=? WHERE id=?",
+                                        (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), prop.db_id))
 
-                                self.proposals_by_hash.pop(prop.get_value('hash'), 0)
-                                self.proposals_by_db_id.pop(prop.db_id)
-                                del self.proposals[prop_idx]
-                                rows_removed = True
+                            self.proposals_by_hash.pop(prop.get_value('hash'), 0)
+                            self.proposals_by_db_id.pop(prop.db_id)
+                            del self.proposals[prop_idx]
+                            rows_removed = True
 
-                        # self.set_cache_value('ProposalsLastReadTime', int(time.time()))  # save when proposals has been
-                        cur.execute("UPDATE LIVE_CONFIG SET value=? WHERE symbol=?",
-                                    (int(time.time()), CFG_PROPOSALS_LAST_READ_TIME))
-                        if cur.rowcount == 0:
-                            cur.execute("INSERT INTO LIVE_CONFIG(symbol, value) VALUES(?, ?)",
-                                        (CFG_PROPOSALS_LAST_READ_TIME, int(time.time())))
+                    # self.set_cache_value('ProposalsLastReadTime', int(time.time()))  # save when proposals has been
+                    cur.execute("UPDATE LIVE_CONFIG SET value=? WHERE symbol=?",
+                                (int(time.time()), CFG_PROPOSALS_LAST_READ_TIME))
+                    if cur.rowcount == 0:
+                        cur.execute("INSERT INTO LIVE_CONFIG(symbol, value) VALUES(?, ?)",
+                                    (CFG_PROPOSALS_LAST_READ_TIME, int(time.time())))
 
-                        if rows_added or rows_removed:
-                            WndUtils.call_in_main_thread(self.display_proposals_data)
+                    if rows_added or rows_removed:
+                        WndUtils.call_in_main_thread(self.display_proposals_data)
 
-                    except CloseDialogException:
-                        raise
+                except CloseDialogException:
+                    raise
 
-                    except Exception as e:
-                        log.exception('Exception while saving proposals to db.')
-                        self.db_intf.rollback()
-                        raise
-                    finally:
-                        self.db_intf.commit()
-                        self.db_intf.release_cursor()
-                        self.show_message('')
+                except Exception as e:
+                    log.exception('Exception while saving proposals to db.')
+                    self.db_intf.rollback()
+                    raise
+                finally:
+                    self.db_intf.commit()
+                    self.db_intf.release_cursor()
+                    self.show_message('')
 
-                    if errors > 0:
-                        self.warn_msg('Problems encountered while processing some of the proposals data. '
-                                      'Look into the log file for details.')
-                else:
-                    # error count > 10% of the proposals count
-                    raise Exception('Errors while processing proposals data. Look into the log file for details.')
+                if errors > 0:
+                    self.warn_msg('Problems encountered while processing some of the proposals data. '
+                                  'Look into the log file for details.')
             else:
-                # no proposals read from network - skip deactivating records because probably
-                # some network glitch occurred
-                log.warning('No proposals returned from dashd.')
+                log.error('Error count >= 10% of the proposals count')
             log.info('Finished reading proposals data from network.')
 
         except CloseDialogException:
@@ -1156,61 +1158,48 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                            "Some features may not work correctly because of this. Details: " + str(e))
 
     def find_superblocks_for_timestamp(self, timestamp: int) -> Tuple[int, int]:
-        """The method looks for two consecutive superblocks, the first with a smaller timestamp than given in
+        """The method looks for two consecutive superblocks, the first of with having a smaller timestamp than given in
         the argument, the second with a greater one."""
-
-        def get_next_sb_ts(sb_nr: int) -> int:
-            if sb_nr > self.last_superblock:
-                sb_timestamp = sb_before_ts + (self.superblock_cycle_blocks * self.block_interval_seconds)
-            else:
-                sb_timestamp = self.dashd_intf.get_block_timestamp(sb_nr)
-            return sb_timestamp
 
         if timestamp >= self.last_superblock_time:
             # the timestamp checked is in the future relative to the last superblock - estimate what would
             # be the last superblock before that time
             sb_cycles_diff = int((timestamp - self.last_superblock_time) /
                                  (self.block_interval_seconds * self.superblock_cycle_blocks))
-            sb_before = self.last_superblock + (sb_cycles_diff * self.superblock_cycle_blocks)
-            sb_after = sb_before + self.superblock_cycle_blocks
+            sb_begin = self.last_superblock + (sb_cycles_diff * self.superblock_cycle_blocks)
+            sb_end = sb_begin + self.superblock_cycle_blocks
 
         else:
             sb_cycles_diff = int((self.last_superblock_time - timestamp) /
                                  (self.block_interval_seconds * self.superblock_cycle_blocks)) + 1
 
             # look for the last superblock before timestamp
-            sb_before = self.last_superblock - (sb_cycles_diff * self.superblock_cycle_blocks)
-            sb_before_ts = self.dashd_intf.get_block_timestamp(sb_before)
+            sb_begin = self.last_superblock - (sb_cycles_diff * self.superblock_cycle_blocks)
+            sb_begin_ts = self.dashd_intf.get_block_timestamp(sb_begin)
+            sb_end = self.last_superblock
+            sb_cycles_step = int((sb_end - sb_begin) / self.superblock_cycle_blocks / 2)
+            if sb_cycles_step == 0:
+                sb_cycles_step = 1
+            cur_sb = sb_end
 
+            cnt = 0
             while True:
-                # move with superblocks back in history until the sb timestamp is less than the 'timestamp' value
-                while sb_before_ts > timestamp:
-                    diff_ts = sb_before_ts - timestamp
-                    sb_cycles_diff = int(diff_ts / (self.block_interval_seconds * self.superblock_cycle_blocks))
-                    sb_cycles_diff = int(sb_cycles_diff / 2)
-                    if sb_cycles_diff == 0:
-                        sb_cycles_diff = 1
+                _cur_sb = cur_sb - (sb_cycles_step * self.superblock_cycle_blocks)
+                _cur_ts = self.dashd_intf.get_block_timestamp(_cur_sb)
+                if _cur_ts < timestamp:
+                    sb_cycles_step = int(sb_cycles_step / 2)
+                    if sb_cycles_step <= 1:
+                        sb_begin = _cur_sb
+                        sb_end = sb_begin + self.superblock_cycle_blocks
+                        log.debug('Found superblock in interation number ' + str(cnt))
+                        break
+                else:
+                    cur_sb = _cur_sb
+                cnt += 1
+                if cnt > 200:
+                    raise Exception('Internal error: cannot locate superblock for timestamp')
 
-                    sb_before = sb_before - (sb_cycles_diff * self.superblock_cycle_blocks)
-                    sb_before_ts = self.dashd_intf.get_block_timestamp(sb_before)
-
-                sb_after = sb_before + self.superblock_cycle_blocks
-                sb_after_ts = get_next_sb_ts(sb_after)
-                if sb_before_ts <= timestamp <= sb_after_ts:
-                    break
-
-                # moved too far in history, let's move forward
-                while sb_before_ts < timestamp:
-                    diff_ts = timestamp - sb_before_ts
-                    sb_cycles_diff = int(diff_ts / (self.block_interval_seconds * self.superblock_cycle_blocks))
-                    sb_cycles_diff = int(sb_cycles_diff / 2)
-                    if sb_cycles_diff == 0:
-                        sb_cycles_diff = 1
-
-                    sb_before = sb_before + (sb_cycles_diff * self.superblock_cycle_blocks)
-                    sb_before_ts = self.dashd_intf.get_block_timestamp(sb_before)
-
-        return sb_before, sb_after
+        return sb_begin, sb_end
 
     def refresh_filter(self):
         self.propsModel.invalidateFilter()
@@ -1284,7 +1273,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                             if row:
                                 self.proposals_last_read_time = int(row[0])
 
-                            log.info("Reading proposals' data from DB")
+                            log.info("Reading proposals data from DB")
                             tm_begin = time.time()
                             cur.execute(
                                 "SELECT name, payment_start, payment_end, payment_amount,"
@@ -1298,6 +1287,7 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                             )
 
                             data_modified = False
+                            proposals_count = 0
                             for row in cur.fetchall():
                                 if self.finishing:
                                     raise CloseDialogException
@@ -1367,17 +1357,18 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                         if time.time() - ext_attributes_load_time > 86400:
                                             prop.ext_attributes_loaded = False
 
-                                prop.apply_values(self.masternodes, self.last_superblock_time,
-                                                  self.next_superblock_time)
+                                prop.apply_values(self.masternodes, self.last_superblock_time,  self.next_superblock_time)
+
                                 self.proposals.append(prop)
                                 self.proposals_by_hash[prop.get_value('hash')] = prop
                                 self.proposals_by_db_id[prop.db_id] = prop
+                                proposals_count += 1
 
                             if data_modified:
                                 self.db_intf.commit()
 
-                            log.info("Finished reading proposals' data from DB. Time: %s s" %
-                                     str(time.time() - tm_begin))
+                            log.info(f"Finished reading proposals data from DB. Time: {str(time.time() - tm_begin)} s, "
+                                     f"count: {proposals_count}")
 
                             def disp():
                                 self.propsView.sortByColumn(self.propsModel.col_index_by_name('no'),
@@ -1681,6 +1672,13 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                                 try:
                                     votes = self.dashd_intf.rpc_call(False, False, 'gobject', 'getcurrentvotes',
                                                                      prop.get_value('hash'))
+                                except JSONRPCException as e:
+                                    if 'Unknown governance-hash' in e.message:
+                                        continue
+                                    else:
+                                        log.exception(str(e))
+                                        errors += 1
+                                        continue
                                 except Exception:
                                     log.exception('Exception occurred while calling getvotes')
                                     errors += 1
