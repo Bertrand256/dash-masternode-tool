@@ -41,6 +41,7 @@ from common import AttrsProtected, CancelException
 
 log = logging.getLogger('dmt.dashd_intf')
 
+FILE_CACHE_VALID_DAYS = 30
 
 try:
     import http.client as httplib
@@ -445,7 +446,7 @@ def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching
 
                         except (socket.gaierror, ConnectionRefusedError, TimeoutError, socket.timeout,
                                 NoValidConnectionsError) as e:
-                            # exceptions raised most likely by not functioning dashd node; try to switch to another node
+                            # exceptions rose most likely by not functioning dashd node; try to switch to another node
                             # if there is any in the config
                             log.warning('Error while calling of "' + str(func) + ' (3)". Details: ' + str(e))
                             raise DashdConnectionError(e)
@@ -713,8 +714,11 @@ def json_cache_wrapper(func, intf, cache_file_ident, skip_cache=False,
         cache_file = intf.app_config.tx_cache_dir + fname + cache_file_ident + '.json'
         if not skip_cache:
             try:  # looking into cache first
-                with open(cache_file) as fp:
-                    j = json.load(fp, parse_float=decimal.Decimal)
+                if os.path.exists(cache_file):
+                    ts = os.path.getctime(cache_file)
+                    if ts > time.time() - (FILE_CACHE_VALID_DAYS * 24 * 60 * 60):
+                        with open(cache_file) as fp:
+                            j = json.load(fp, parse_float=decimal.Decimal)
 
                 if accept_cache_data_fun is None or accept_cache_data_fun(j):
                     return j
