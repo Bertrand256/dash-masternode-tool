@@ -481,8 +481,8 @@ class Bip44Wallet(QObject):
                         else:
                             label = ''
 
-                        db_cursor.execute('insert into address(parent_id, address_index, address, label, path, tree_id) '
-                                          'values(?,?,?,?,?,?)',
+                        db_cursor.execute('insert into address(parent_id, address_index, address, label, path, tree_id)'
+                                          ' values(?,?,?,?,?,?)',
                                           (parent_key_entry.id, child_addr_index, address, label, bip32_path,
                                            parent_key_entry.tree_id))
 
@@ -778,13 +778,13 @@ class Bip44Wallet(QObject):
 
             self._fill_temp_ids_table(addr_ids, db_cursor)
 
-            db_cursor.execute("""select tx_hash from tx where tree_id=? and block_height=? and
+            db_cursor.execute("""select tx_hash from tx where block_height=? and
               (exists(select * from tx_input i join address ai on ai.address=i.src_address and ai.tree_id=?
                       where i.tx_id=tx.id and ai.id in (select id from temp_ids)) or
                exists(select * from tx_output o join address ao on ao.address=o.address and ao.tree_id=? 
                       where o.tx_id=tx.id and ao.id in (select id from temp_ids))) 
               and block_timestamp < ?
-            """, (self.__tree_id, UNCONFIRMED_TX_BLOCK_HEIGHT, self.__tree_id, self.__tree_id,
+            """, (UNCONFIRMED_TX_BLOCK_HEIGHT, self.__tree_id, self.__tree_id,
                   int(time.time() - 20 * 60)))
 
             for tx_hash, in db_cursor.fetchall():
@@ -866,10 +866,10 @@ class Bip44Wallet(QObject):
                                    '    join tx tx1 on tx1.id=o.tx_id'
                                    '    join tx_input i on  i.src_tx_hash=tx1.tx_hash and '
                                    '         i.src_tx_output_index=o.output_index '
-                                   '    join tx tx2 on tx2.id=i.tx_id and tx2.tree_id=tx1.tree_id '
-                                   '  where (o.spent_tx_hash is null or o.spent_input_index is null) and tx1.tree_id=?'
+                                   '    join tx tx2 on tx2.id=i.tx_id '
+                                   '  where (o.spent_tx_hash is null or o.spent_input_index is null)'
                                    '  and (o.address=? or i.src_address=?)',
-                    (self.__tree_id, addr_info.address, addr_info.address))
+                    (addr_info.address, addr_info.address))
 
                 for output_id, address1, address2, tx_id, spent_index, spent_tx_hash in \
                     db_cursor.fetchall():
@@ -984,15 +984,8 @@ class Bip44Wallet(QObject):
                 log.error('Bip44Wallet error: tree_id is empty')
                 raise Exception('Bip44Wallet error: tree_id is empty')
 
-            db_cursor.execute('select id, block_height from tx where tx_hash=? and tree_id=?', (tx_hash, self.__tree_id))
+            db_cursor.execute('select id, block_height from tx where tx_hash=?', (tx_hash, ))
             row = db_cursor.fetchone()
-            if not row:
-                db_cursor.execute('select id, block_height from tx where tx_hash=? and tree_id is null', (tx_hash, ))
-                row = db_cursor.fetchone()
-                if row:
-                    # update tree_id in the selected record - it has been created before v0.9.40
-                    # todo: remove the correction code after 2025.05.01
-                    db_cursor.execute('update tx set tree_id=? where id=?', (self.__tree_id, row[0]))
 
             block_height = tx_json.get('height')
             block_timestamp = tx_json.get('time')
@@ -1007,9 +1000,9 @@ class Bip44Wallet(QObject):
                 tx_vin = tx_json.get('vin', [])
                 is_coinbase = 1 if (len(tx_vin) == 1 and tx_vin[0].get('coinbase')) else 0
 
-                db_cursor.execute('insert into tx(tx_hash, block_height, block_timestamp, coinbase, tree_id) '
-                                  'values(?,?,?,?,?)',
-                                  (tx_hash, block_height, block_timestamp, is_coinbase, self.__tree_id))
+                db_cursor.execute('insert into tx(tx_hash, block_height, block_timestamp, coinbase) '
+                                  'values(?,?,?,?)',
+                                  (tx_hash, block_height, block_timestamp, is_coinbase))
                 tx_id = db_cursor.lastrowid
                 self._tx_added(tx_id)
             else:
@@ -1094,8 +1087,8 @@ class Bip44Wallet(QObject):
 
                 # check if the output has already been spent
                 db_cursor.execute('select tx.tx_hash, input_index from tx_input join tx on tx_input.tx_id = tx.id '
-                                  'where src_tx_hash=? and src_tx_output_index=? and tx.tree_id=?',
-                                  (tx_hash, output_index, self.__tree_id))
+                                  'where src_tx_hash=? and src_tx_output_index=?',
+                                  (tx_hash, output_index))
                 row = db_cursor.fetchone()
 
                 if row:
@@ -1201,10 +1194,10 @@ class Bip44Wallet(QObject):
                 # mark related utxos as spent
                 db_cursor.execute(
                     'update tx_output set spent_tx_hash=?, spent_input_index=? '
-                    ' where exists(select 1 from tx where tx.id=tx_output.tx_id and tx.tree_id=? and tx.tx_hash=?) '
+                    ' where exists(select 1 from tx where tx.id=tx_output.tx_id and tx.tx_hash=?) '
                     ' and output_index=? and (spent_tx_hash is null or spent_tx_hash<>? or spent_input_index is null '
                     '  or spent_input_index <> ?)',
-                    (tx_hash, input_index, self.__tree_id, related_tx_hash, related_tx_index, tx_hash, input_index))
+                    (tx_hash, input_index, related_tx_hash, related_tx_index, tx_hash, input_index))
                 rc = db_cursor.rowcount
         else:
             log.warning(f'Input index number {input_index} exceeds the number of transaction inputs ({len(vins)}); '
@@ -1216,8 +1209,8 @@ class Bip44Wallet(QObject):
         db_cursor2 = None
         try:
             limit_ts = int(time.time()) - UNCONFIRMED_TX_PURGE_SECONDS
-            db_cursor.execute('select id, tx_hash from tx where block_height=? and block_timestamp<? and tree_id=?',
-                              (UNCONFIRMED_TX_BLOCK_HEIGHT, limit_ts, self.__tree_id))
+            db_cursor.execute('select id, tx_hash from tx where block_height=? and block_timestamp<?',
+                              (UNCONFIRMED_TX_BLOCK_HEIGHT, limit_ts))
             for tx_row in db_cursor.fetchall():
                 if not db_cursor2:
                     db_cursor2 = self.db_intf.get_cursor()
@@ -1445,11 +1438,11 @@ class Bip44Wallet(QObject):
 
             # following addressses will have the balance changed after purging the transaction
             db_cursor.execute('select a.id from tx_output o join address a on a.address=o.address '
-                              'where (tx_id=? or spent_tx_hash=?) and a.tree_id=?'
+                              'where (tx_id=? or spent_tx_hash=?)'
                               ' union '
                               'select a.id from tx_input i join address a on a.address=i.src_address '
-                              'where tx_id=? and a.tree_id=?',
-                              (tx_id, tx_hash, self.__tree_id, tx_id, self.__tree_id))
+                              'where tx_id=?',
+                              (tx_id, tx_hash, tx_id))
 
             for row in db_cursor.fetchall():
                 if not row[0] in mod_addr_ids:

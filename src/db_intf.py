@@ -196,7 +196,7 @@ class DBCache(object):
             # tx.block_timestamp indicates the moment when the transaction was added to the cache (it will be purged
             # if will not appear on the blockchain after a defined amount of time)
             cur.execute("CREATE TABLE IF NOT EXISTS tx(id INTEGER PRIMARY KEY, tx_hash TEXT, block_height INTEGER,"
-                        "block_timestamp INTEGER, coinbase INTEGER, tree_id INTEGER)")
+                        "block_timestamp INTEGER, coinbase INTEGER)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_1 ON tx(tx_hash)")
             cur.execute("CREATE INDEX IF NOT EXISTS tx_2 ON tx(block_height)")
 
@@ -271,12 +271,6 @@ class DBCache(object):
                 cur.execute("ALTER TABLE voting_results ADD COLUMN weight INTEGER")
 
             # Upgrade to schema 0.9.40
-            cur.execute("PRAGMA table_info(tx)")
-            columns = [x[1] for x in cur.fetchall()]
-            if 'tree_id' not in columns:
-                cur.execute("ALTER TABLE tx ADD COLUMN tree_id INTEGER")
-            cur.execute("CREATE INDEX IF NOT EXISTS tx_3 ON tx(tree_id)")
-
             # Here we're introducing the 'spent_tx_hash' column as a replacement of 'spent_tx_id' to avoid storing
             # the transactions in db cache that are not strictly related to the addresses from our hardware wallet
             cur.execute("PRAGMA table_info(tx_output)")
