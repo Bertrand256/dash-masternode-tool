@@ -1,14 +1,11 @@
 python-bitcoinrpc>=1.0
 bitcoin>=1.1.42
 trezor==0.13.9
-keepkey
+keepkey @git+https://github.com/Bertrand256/python-keepkey
 libusb1~=3.2.0
 PyQt5==5.15.11
 PyQtChart==5.15.7
 pyinstaller==6.11.1
-#pyinstaller==4.4; sys_platform == 'linux'
-#pyinstaller==4.10; sys_platform == 'darwin'
-#pyinstaller>=4.3; sys_platform == 'win32'
 paramiko==3.5.0
 requests==2.32.3
 mnemonic~=0.21
@@ -17,10 +14,11 @@ cryptography==44.0.0
 bip32utils~=0.3.post4
 more-itertools==10.6.0
 setuptools==75.8.0
-btchip-python @ git+https://github.com/Bertrand256/btchip-python
+btchip-python @git+https://github.com/Bertrand256/btchip-python
 ledgerwallet==0.6.0
 blspy==2.0.3
 construct==2.10.70
 protobuf==5.29.3
 QDarkStyle==3.2.3
 nuitka
+imageio
