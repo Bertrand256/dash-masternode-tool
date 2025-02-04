@@ -1767,7 +1767,7 @@ def get_hw_firmware_web_sources(hw_models_allowed: Tuple[HWModel, ...],
                 if not url_base:
                     url_base = project_url
 
-                if not re.match('\s*http(s)?://', url, re.IGNORECASE):
+                if not re.match(r'\s*http(s)?://', url, re.IGNORECASE):
                     url = url_path_join(url_base, url)
 
                 if only_official is False or official_source is True:

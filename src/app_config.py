@@ -834,7 +834,7 @@ class AppConfig(QObject):
                 was_error = False
                 for section in config.sections():
                     try:
-                        if re.match('MN\d', section):
+                        if re.match(r'MN\d', section):
                             try:
                                 mn = MasternodeConfig()
                                 mn.name = config.get(section, 'name', fallback='')
@@ -953,7 +953,7 @@ class AppConfig(QObject):
                                 logging.error('Error reading masternode configuration from file. '
                                               'Config section name: ' + section + ': ' + str(e))
                                 was_error = True
-                        elif re.match(conn_cfg_section_name + '\d', section):
+                        elif re.match(conn_cfg_section_name + r'\d', section):
                             # read network configuration from new config file format
                             cfg = DashNetworkConnectionCfg('rpc')
                             cfg.enabled = self.value_to_bool(config.get(section, 'enabled', fallback='1'))
@@ -1037,7 +1037,7 @@ class AppConfig(QObject):
                 logging.exception('Read configuration error:')
                 errors_while_reading = True
                 ret = WndUtils.query_dlg('Configuration file read error: ' + str(e) + '\n\n' +
-                                         'Click \'Open\' to choose another configuration file or \'\Cancel\' to exit.',
+                                         'Click \'Open\' to choose another configuration file or \'Cancel\' to exit.',
                                          buttons=QMessageBox.Cancel | QMessageBox.Open,
                                          default_button=QMessageBox.Yes, icon=QMessageBox.Critical)
                 if ret == QMessageBox.Cancel:

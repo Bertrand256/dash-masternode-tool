@@ -304,7 +304,7 @@ a {{color: {link_color}}}
     def on_edt_recipients_anchorClicked(self, link):
         if self.fn_show_address_on_hw:
             url = link.url()
-            if re.match('^\d+$', url):
+            if re.match(r'^\d+$', url):
                 row_idx = int(url)
                 if 0 <= row_idx < len(self.tx_outputs):
                     self.fn_show_address_on_hw(self.tx_outputs[row_idx].address_ref)

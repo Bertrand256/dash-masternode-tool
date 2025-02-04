@@ -399,7 +399,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
                             if details:
                                 details += '<br>'
                             details += '<b>Notes:</b> '
-                            if re.match('\s*http(s)?://', notes, re.IGNORECASE):
+                            if re.match(r'\s*http(s)?://', notes, re.IGNORECASE):
                                 details += f'<a href={notes}>{notes}</a>'
                             else:
                                 details += notes
@@ -442,7 +442,7 @@ class WdgHwUpdateFirmware(QWidget, Ui_WdgHwUpdateFirmware, ActionPageBase):
                 firmware_fingerprint = self.selected_firmware_source_web.fingerprint
                 file_name = os.path.basename(urllib.parse.urlparse(url).path)
                 f_, ext_ = os.path.splitext(file_name)
-                if f_ and not re.match('.*\d+\.\d+\.\d+.*', f_):
+                if f_ and not re.match(r'.*\d+\.\d+\.\d+.*', f_):
                     # add version string to the name of the file being downloaded
                     file_name = f_ + '-' + self.selected_firmware_source_web.version + ext_
                 local_file_path = os.path.join(self.app_config.cache_dir, file_name)

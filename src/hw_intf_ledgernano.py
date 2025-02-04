@@ -315,7 +315,7 @@ class MessageSignature:
 
 def _ledger_extract_address(addr: Union[str, bytearray]) -> str:
     addr = str(addr)
-    match = re.search('bytearray\(b?["\']([a-zA-Z0-9]+)["\']\)', addr)
+    match = re.search(r'bytearray\(b?["\']([a-zA-Z0-9]+)["\']\)', addr)
     if match and len(match.groups()) == 1:
         addr = match.group(1)
     elif not dash_utils.validate_address(addr):

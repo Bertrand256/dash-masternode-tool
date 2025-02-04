@@ -172,7 +172,7 @@ class WdgHwSettings(QWidget, QDetectThemeChange, Ui_WdgHwSettings, ActionPageBas
                         latest_fw_version = latest_fw_version_src.version if latest_fw_version_src else None
                         if cur_fw_version and latest_fw_version and \
                                 app_utils.is_version_greater(latest_fw_version, cur_fw_version):
-                            if re.match('\s*http(s)?://', latest_fw_version_src.notes, re.IGNORECASE):
+                            if re.match(r'\s*http(s)?://', latest_fw_version_src.notes, re.IGNORECASE):
                                 ver_str = f'<a href={latest_fw_version_src.notes}>{latest_fw_version}</a>'
                             else:
                                 ver_str = latest_fw_version
