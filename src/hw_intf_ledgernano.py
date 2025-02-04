@@ -4,7 +4,7 @@ from bitcoin import compress, bin_hash160
 from btchip.btchip import *
 from btchip.btchipComm import getDongle
 from btchip.btchipUtils import compress_public_key
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import dash_utils
 import hw_common
@@ -297,7 +297,7 @@ def open_session(dongle: HIDDongleHIDAPI):
                      (str(ver.get('version')), str(ver.get('specialVersion')), ver.get('compressedKeys')))
         return client
     except BTChipException as e:
-        # exception would occur if the user haven't run the Dash app on the device
+        # exception would occur if the user hasn't run the Dash app on the device
         dongle.close()
         raise
 
@@ -313,7 +313,8 @@ class MessageSignature:
         self.signature = signature
 
 
-def _ledger_extract_address(addr: str) -> str:
+def _ledger_extract_address(addr: Union[str, bytearray]) -> str:
+    addr = str(addr)
     match = re.search('bytearray\(b?["\']([a-zA-Z0-9]+)["\']\)', addr)
     if match and len(match.groups()) == 1:
         addr = match.group(1)
@@ -342,7 +343,7 @@ def sign_message(hw_client, bip32_path: str, message: str, hw_session: Optional[
                                        default_button=QMessageBox.Retry, icon=QMessageBox.Warning) == QMessageBox.Retry:
 
                 # we need to reconnect the device; first, we'll try to reconnect to HW without closing the interfering
-                # application; it it doesn't help we'll display a message requesting the user to close the app
+                # application; it doesn't help we'll display a message requesting the user to close the app
                 if hw_session:
                     hw_session.disconnect_hardware_wallet()
                     if hw_session.connect_hardware_wallet():
