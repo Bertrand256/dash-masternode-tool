@@ -1184,8 +1184,7 @@ class Bip44Wallet(QObject):
                     # caused by the network problems or the chain reorganization
                     db_cursor.execute('update tx_input set src_address=?, satoshis=?, src_tx_hash=?, '
                                       'src_tx_output_index=?, coinbase=? where id=?',
-                                      (addr, addr_id, satoshis, related_tx_hash, related_tx_index, coinbase,
-                                       input_db_id))
+                                      (addr, satoshis, related_tx_hash, related_tx_index, coinbase, input_db_id))
 
                     log.warning(f'Updating tx_input id {input_db_id} due to the data discrepency between cache and '
                                 f'the Dash network')
