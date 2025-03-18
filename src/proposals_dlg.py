@@ -350,7 +350,6 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
         self.block_interval_seconds = 2.5 * 60
 
         self.masternodes_cfg: List[MasternodeConfig] = []
-        pkeys = []
         mn_idents = []
         for idx, mn in enumerate(self.app_config.masternodes):
             mn_ident = mn.collateral_tx + '-' + str(mn.collateral_tx_index)
@@ -359,10 +358,8 @@ class ProposalsDlg(QDialog, wnd_utils.QDetectThemeChange, ui_proposals.Ui_Propos
                     voting_key = mn.get_current_key_for_voting(self.app_config, self.dashd_intf)
                     if voting_key:
                         if dash_utils.validate_wif_privkey(voting_key, self.app_config.dash_network):
-                            if voting_key not in pkeys:
-                                pkeys.append(voting_key)
-                                mn_idents.append(mn_ident)
-                                self.masternodes_cfg.append(mn)
+                            mn_idents.append(mn_ident)
+                            self.masternodes_cfg.append(mn)
                         else:
                             log.warning(f'Invalid voting private key for masternode: "{mn.name} (idx:{idx})".')
                     else:
