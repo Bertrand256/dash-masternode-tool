@@ -92,7 +92,6 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         self.net_mn_list_columns_resized_by_user = False
         self.net_mn_list_last_where_cond = ''
         self.cur_network_masternode: Optional[Masternode] = None
-        self.network_masternodes_enabled: bool = self.app_config.is_network_masternodes_enabled()
 
         self.refresh_status_thread_ref = None
         self.refresh_price_thread_ref = None
@@ -350,24 +349,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         QTimer.singleShot(10, set_cur_mn)
 
     def config_changed(self):
-        new_enabled = self.app_config.is_network_masternodes_enabled()
-
         try:
-            if self.network_masternodes_enabled != new_enabled:
-                if not new_enabled:
-                    self.network_masternodes_enabled = new_enabled
-                    if self.current_view == Pages.PAGE_NET_MASTERNODES:
-                        self.current_view = Pages.PAGE_MASTERNODE_LIST
-                    self.set_cur_net_masternode(None)
-                    self.last_net_masternodes_db_read_params_hash = ''
-                    self.net_masternodes_last_db_timestamp = 0
-                    self.net_mn_list_last_where_cond = ''
-                    self.net_masternodes.clear()
-                else:
-                    self.network_masternodes_enabled = new_enabled
-                    self.refresh_net_masternodes_view()
-                    self.update_navigation_panel()
-
             self.update_ui()
         except Exception as e:
             logging.exception(str(e))
@@ -444,33 +426,32 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             except Exception as e:
                 logging.exception(str(e))
 
-        if self.network_masternodes_enabled:
+        try:
+            self.net_mn_list_last_where_cond = self.get_net_masternodes_sql_where_cond()
+            new_hash = self.dashd_intf.get_masternode_db_query_hash(self.net_masternodes,
+                                                                    self.net_mn_list_last_where_cond)
+
+            if new_hash != self.last_net_masternodes_db_read_params_hash or \
+                    self.net_masternodes_last_db_timestamp != self.dashd_intf.masternodes_last_db_timestamp:
+
+                if self.refresh_net_mnasternodes_thred_ref is None and self.refresh_status_thread_ref is None:
+                    logging.info('Starting thread "refresh_net_masternodes_view_thread"')
+
+                    self.refresh_net_mnasternodes_thred_ref = WndUtils.run_thread(
+                        self, self.refresh_net_masternodes_view_thread, (new_hash,),
+                        on_thread_finish=update_on_thread_finish)
+        except Exception as e:
+            logging.exception(str(e))
+
+        # restore the focused row
+        if self.get_cur_masternode_from_net_view() != self.cur_network_masternode:
+            if self.cur_network_masternode not in self.net_masternodes:
+                self.set_cur_net_masternode(None)
+            old_state = self.viewNetMasternodes.selectionModel().blockSignals(True)
             try:
-                self.net_mn_list_last_where_cond = self.get_net_masternodes_sql_where_cond()
-                new_hash = self.dashd_intf.get_masternode_db_query_hash(self.net_masternodes,
-                                                                        self.net_mn_list_last_where_cond)
-
-                if new_hash != self.last_net_masternodes_db_read_params_hash or \
-                        self.net_masternodes_last_db_timestamp != self.dashd_intf.masternodes_last_db_timestamp:
-
-                    if self.refresh_net_mnasternodes_thred_ref is None and self.refresh_status_thread_ref is None:
-                        logging.info('Starting thread "refresh_net_masternodes_view_thread"')
-
-                        self.refresh_net_mnasternodes_thred_ref = WndUtils.run_thread(
-                            self, self.refresh_net_masternodes_view_thread, (new_hash,),
-                            on_thread_finish=update_on_thread_finish)
-            except Exception as e:
-                logging.exception(str(e))
-
-            # restore the focused row
-            if self.get_cur_masternode_from_net_view() != self.cur_network_masternode:
-                if self.cur_network_masternode not in self.net_masternodes:
-                    self.set_cur_net_masternode(None)
-                old_state = self.viewNetMasternodes.selectionModel().blockSignals(True)
-                try:
-                    self.set_cur_masternode_in_net_view(self.cur_network_masternode)
-                finally:
-                    self.viewNetMasternodes.selectionModel().blockSignals(old_state)
+                self.set_cur_masternode_in_net_view(self.cur_network_masternode)
+            finally:
+                self.viewNetMasternodes.selectionModel().blockSignals(old_state)
 
     def set_cur_cfg_masternode_modified(self):
         self.refresh_cfg_masternodes_view()
@@ -515,7 +496,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             self.btnMnListColumns.setVisible(False)
             self.btnMnActions.setVisible(False)
 
-        self.lblNavigation3.setVisible(self.network_masternodes_enabled)
+        self.lblNavigation3.setVisible(True)
 
         if self.cur_masternode and self.cur_masternode in self.app_config.masternodes:
             is_first = self.app_config.masternodes.index(self.cur_masternode) == 0
@@ -574,16 +555,15 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         mn_link = '<span>' + mn_link + '</span>'
         self.lblNavigation2.setText(mn_link)
 
-        if self.network_masternodes_enabled:
-            if self.current_view == Pages.PAGE_NET_MASTERNODES:
-                network_info_link = f'<span style="color:black">\u25B6 <b>{tab_lbl_net_masternodes}</b></span>'
+        if self.current_view == Pages.PAGE_NET_MASTERNODES:
+            network_info_link = f'<span style="color:black">\u25B6 <b>{tab_lbl_net_masternodes}</b></span>'
+        else:
+            if self.current_view == Pages.PAGE_SINGLE_MASTERNODE and self.editing_enabled:
+                # don't allow changing view when in edit mode
+                network_info_link = f'<span style="color:gray">{tab_lbl_net_masternodes}</span>'
             else:
-                if self.current_view == Pages.PAGE_SINGLE_MASTERNODE and self.editing_enabled:
-                    # don't allow changing view when in edit mode
-                    network_info_link = f'<span style="color:gray">{tab_lbl_net_masternodes}</span>'
-                else:
-                    network_info_link = f'<a style="text-decoration:none" href="net-masternodes">{tab_lbl_net_masternodes}</a>'
-            self.lblNavigation3.setText(network_info_link)
+                network_info_link = f'<a style="text-decoration:none" href="net-masternodes">{tab_lbl_net_masternodes}</a>'
+        self.lblNavigation3.setText(network_info_link)
 
         if self.current_view == Pages.PAGE_NETWORK_INFO:
             network_info_link = f'<span style="color:black">\u25B6 <b>{tab_lbl_network}</b></span>'

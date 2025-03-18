@@ -1,3 +1,69 @@
+## [0.9.40] - 2025-03-18
+**Fixed**
+- "Incorrect number of bindings supplied" error in the wallet dialog
+- Workaround for Ledger error when trying to send a Dash Platform withdrawal transaction
+- Wallet: fixed bug related to showing an incorrect account balance
+- Wallet: significantly improved wallet content refresh performance and reduced data transfer size, especially when using "public RPC nodes"
+
+**Changed**
+- Allow voting with masternodes having the same voting key
+- Removed option to hide Masternodes (network) tab in main window
+- Updated dependent libraries to the latest supported versions
+- Switched to Python 3.12
+
+## [0.9.39] - 2024-08-14
+**Changed**
+- Adapting to changes introduced in Dash v21 API (what resolves issues related to wallet and transactions)
+- Adapting the payment queue calculation & proposal window to the existence of Evo masternodes.
+
+## [0.9.38] - 2023-12-16
+**Changed**
+- Adapting the application to Dash v20
+
+## [0.9.37] - 2023-09-06
+**Changed**
+- Added the "Legacy operator key" option to the "Update Payout Address" and "Update Voting Key" windows.
+
+## [0.9.36] - 2023-06-27
+**Changed**
+- Changed masternode naming from "HPMN" to "Evolution" to be consistent with the official docs.
+- Workaround for a Qt 5.15 bug on Windows causing the app to enter an infinite loop when copying text to the clipboard in the protx-related dialogs.
+- Added feature to display all masternodes in the Dash network with filtering
+- Changed the error message "Invalid operator public key format" occurring for legacy operator public keys to a message just indicating that it is a legacy key
+
+## [0.9.35] - 2023-06-12
+**Changed**
+- Update service now works with v19 fork not activated (currently on mainnet)
+- Masternode registration feature now uses the old BLS scheme until the v19 fork full activation
+- Numerous improvements of the Update Payout Address, Update Operator Key, Update Voting Key and Update Service windows
+- Added ability to select Dash address from hardware wallet in dialogs related to masternode registration
+- Added configuration options for the lower and upper limit of the random time offset, added to voting time to improve privacy
+- Added ability to generate and store private keys ed25519, related to Platform Node Id
+- Added ability to display developer contact information
+- Protx-related dialogs: removing newline characters when copying text from the helper text box for manual commands
+- Protx-related dialogs: added buttons to copy a manual command to the clipboard
+- Protx-related dialogs: enabling operation without a network connection to RPC servers
+
+## [0.9.34] - 2023-05-15
+**Fixed**
+- Support the old BLS scheme when showing the configuration-to-network discrepancies to avoid the 'Operator public key mismatch..." warning;
+- Respect the vote Signal and Weight fields when drawing the voting progress chart (proposals);
+- Fixed an error that appeared when using the "Fetch MN data" feature;
+- Fixed a problem with starting the app on Ubuntu 22.04
+
+## [0.9.33] - 2023-05-14
+**New**
+- Support for Dash v19.x and HPMN
+- Wallet: select UTXOs by the Dash value
+- Voting on proposals on Testnet
+
+**Fixed**
+- Numerous UI fixes & improvements
+
+**Changed**
+- Updated versions of libraries
+
+
 ## [0.9.32] - 2022-09-02
 **Fixed**
 - Adaptation to v18 of the Dash RPC interface, resolving DMT error "An error occurred while sending 

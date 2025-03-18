@@ -221,7 +221,6 @@ class AppConfig(QObject):
         self.fetch_network_data_after_start = True
         self.show_dash_value_in_fiat = True
         self.ui_use_dark_mode = False  # Use dark mode independently of the OS settings
-        self.show_network_masternodes_tab = False
 
         # attributes related to encryption cache data with hardware wallet:
         self.hw_generated_key = b"\xab\x0fs}\x8b\t\xb4\xc3\xb8\x05\xba\xd1\x96\x9bq`I\xed(8w\xbf\x95\xf0-\x1a\x14\xcb\x1c\x1d+\xcd"
@@ -541,7 +540,6 @@ class AppConfig(QObject):
             self.log_level_str = src_config.log_level_str
         self.encrypt_config_file = src_config.encrypt_config_file
         self.ui_use_dark_mode = src_config.ui_use_dark_mode
-        self.show_network_masternodes_tab = src_config.show_network_masternodes_tab
 
     def configure_cache(self):
         if self.is_testnet:
@@ -657,7 +655,6 @@ class AppConfig(QObject):
         self.trezor_bridge = True
         self.trezor_udp = True
         self.trezor_hid = True
-        self.show_network_masternodes_tab = False
 
     def simple_decrypt(self, str_to_decrypt: str, string_can_be_unencrypted: bool = False, validator: Callable = None) -> str:
         """"
@@ -819,9 +816,6 @@ class AppConfig(QObject):
 
                 self.show_dash_value_in_fiat = self.value_to_bool(
                     config.get(section, 'show_dash_value_in_fiat', fallback='1'))
-
-                self.show_network_masternodes_tab = self.value_to_bool(
-                    config.get(section, 'show_network_masternodes_tab', fallback='1'))
 
                 # with ini ver 3 we changed the connection password encryption scheme, so connections in new ini
                 # file will be saved under different section names - with this we want to disallow the old app
@@ -1134,7 +1128,6 @@ class AppConfig(QObject):
         config.set(section, 'proposal_vote_time_offset_lower', str(self._proposal_vote_time_offset_lower))
         config.set(section, 'proposal_vote_time_offset_upper', str(self._proposal_vote_time_offset_upper))
         config.set(section, 'encrypt_config_file', '1' if self.encrypt_config_file else '0')
-        config.set(section, 'show_network_masternodes_tab', '1' if self.show_network_masternodes_tab else '0')
 
         # save mn configuration
         for idx, mn in enumerate(self.masternodes):
@@ -1250,7 +1243,6 @@ class AppConfig(QObject):
         all_data += str(self._proposal_vote_time_offset_lower)
         all_data += str(self._proposal_vote_time_offset_upper)
         all_data += str(self.encrypt_config_file)
-        all_data += str(self.show_network_masternodes_tab)
 
         for mn in self.masternodes:
             all_data += mn.get_data_str()
@@ -1750,9 +1742,6 @@ class AppConfig(QObject):
             bg_col = palette.color(QPalette.Normal, palette.Base)
             bg_color = bg_col.name()
         return bg_color
-
-    def is_network_masternodes_enabled(self) -> bool:
-        return self.show_network_masternodes_tab
 
 
 class MasternodeConfig:

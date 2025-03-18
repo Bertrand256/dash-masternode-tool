@@ -228,9 +228,6 @@ class Ui_ConfigDlg(object):
         self.chbUIDarkMode = QtWidgets.QCheckBox(self.tabMisc)
         self.chbUIDarkMode.setObjectName("chbUIDarkMode")
         self.verticalLayout_2.addWidget(self.chbUIDarkMode)
-        self.chbShowNetworkMasternodes = QtWidgets.QCheckBox(self.tabMisc)
-        self.chbShowNetworkMasternodes.setObjectName("chbShowNetworkMasternodes")
-        self.verticalLayout_2.addWidget(self.chbShowNetworkMasternodes)
         self.hlLogLevel = QtWidgets.QHBoxLayout()
         self.hlLogLevel.setObjectName("hlLogLevel")
         self.lblLogLevel = QtWidgets.QLabel(self.tabMisc)
@@ -259,8 +256,8 @@ class Ui_ConfigDlg(object):
 
         self.retranslateUi(ConfigDlg)
         self.tabWidget.setCurrentIndex(1)
-        self.buttonBox.accepted.connect(ConfigDlg.accept)
-        self.buttonBox.rejected.connect(ConfigDlg.reject)
+        self.buttonBox.accepted.connect(ConfigDlg.accept) # type: ignore
+        self.buttonBox.rejected.connect(ConfigDlg.reject) # type: ignore
         QtCore.QMetaObject.connectSlotsByName(ConfigDlg)
 
     def retranslateUi(self, ConfigDlg):
@@ -300,8 +297,6 @@ class Ui_ConfigDlg(object):
         self.chbDontUseFileDialogs.setText(_translate("ConfigDlg", "Don\'t use file dialogs"))
         self.chbUIDarkMode.setToolTip(_translate("ConfigDlg", "Use dark mode (independent of the OS settings)"))
         self.chbUIDarkMode.setText(_translate("ConfigDlg", "Use UI dark mode"))
-        self.chbShowNetworkMasternodes.setToolTip(_translate("ConfigDlg", "Shows a tab in the main window with a list of all masternodes in the Dash network"))
-        self.chbShowNetworkMasternodes.setText(_translate("ConfigDlg", "Show network masternodes tab"))
         self.lblLogLevel.setText(_translate("ConfigDlg", "Log level:"))
         self.cboLogLevel.setItemText(0, _translate("ConfigDlg", "Critical"))
         self.cboLogLevel.setItemText(1, _translate("ConfigDlg", "Error"))
