@@ -1513,7 +1513,9 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
 
             check_finishing()
             self.network_status.mempool_entries_count = len(self.dashd_intf.mempool_txes)
-            log.info('get address balances start')
+
+            # prepare addresses to query for balances
+            balances: Dict[str, float] = {}
             for mn_cfg in mns_cfg_list:
                 check_finishing()
                 mn_stat = self.mns_status.get(mn_cfg)
@@ -1523,31 +1525,57 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
 
                 if int(time.time()) - mn_stat.last_addr_balance_fetch_ts >= MN_BALANCE_FETCH_INTERVAL_SECONDS:
                     if not mn_stat.collateral_address_mismatch and mn_cfg.collateral_address:
-                        try:
-                            coll_bal = self.dashd_intf.getaddressbalance([mn_cfg.collateral_address])
-                            mn_stat.collateral_addr_balance = round(coll_bal.get('balance') / 1e8, 5)
-                        except Exception as e:
-                            log.exception(str(e))
+                        balances[mn_cfg.collateral_address] = 0
 
                     if mn_info.payout_address:
-                        try:
-                            mn_stat.payout_address = mn_info.payout_address
-                            payout_bal = self.dashd_intf.getaddressbalance([mn_info.payout_address])
-                            mn_stat.payout_addr_balance = round(payout_bal.get('balance') / 1e8, 5)
-                        except Exception as e:
-                            log.exception(str(e))
+                        balances[mn_info.payout_address] = 0
 
                     if mn_info.operator_payout_address:
-                        try:
-                            mn_stat.operator_payout_address = mn_info.operator_payout_address
-                            if mn_info.operator_payout_address != mn_info.payout_address:
-                                payout_bal = self.dashd_intf.getaddressbalance([mn_info.operator_payout_address])
+                        balances[mn_info.operator_payout_address] = 0
+
+            if balances:
+                try:
+                    balances = self.dashd_intf.getaddressbalances_dmt(list(balances.keys()))
+                except Exception as e:
+                    log.exception(str(e))
+
+            log.info('get address balances start')
+            for mn_cfg in mns_cfg_list:
+                check_finishing()
+                mn_stat = self.mns_status.get(mn_cfg)
+                mn_info: Optional[Masternode] = self.mn_info_by_mn_cfg.get(mn_cfg)
+                if not mn_info:
+                    continue
+
+                if not mn_stat.collateral_address_mismatch and mn_cfg.collateral_address:
+                    try:
+                        coll_bal = balances.get(mn_cfg.collateral_address)
+                        if coll_bal is not None and isinstance(coll_bal.get('balance'), int):
+                            mn_stat.collateral_addr_balance = round(coll_bal.get('balance') / 1e8, 5)
+                    except Exception as e:
+                        log.exception(str(e))
+
+                if mn_info.payout_address:
+                    try:
+                        mn_stat.payout_address = mn_info.payout_address
+                        payout_bal = balances.get(mn_info.payout_address)
+                        if payout_bal is not None and isinstance(payout_bal.get('balance'), int):
+                            mn_stat.payout_addr_balance = round(payout_bal.get('balance') / 1e8, 5)
+                    except Exception as e:
+                        log.exception(str(e))
+
+                if mn_info.operator_payout_address:
+                    try:
+                        mn_stat.operator_payout_address = mn_info.operator_payout_address
+                        if mn_info.operator_payout_address != mn_info.payout_address:
+                            payout_bal = balances.get(mn_info.operator_payout_address)
+                            if payout_bal is not None and isinstance(payout_bal.get('balance'), int):
                                 mn_stat.operator_payout_addr_balance = round(payout_bal.get('balance') / 1e8, 5)
-                            else:
-                                mn_stat.operator_payout_addr_balance = mn_stat.payout_addr_balance
-                        except Exception as e:
-                            log.exception(str(e))
-                    mn_stat.last_addr_balance_fetch_ts = int(time.time())
+                        else:
+                            mn_stat.operator_payout_addr_balance = mn_stat.payout_addr_balance
+                    except Exception as e:
+                        log.exception(str(e))
+                mn_stat.last_addr_balance_fetch_ts = int(time.time())
 
                 mn_stat.last_paid_ts = 0
                 if mn_info.lastpaidtime > time.time() - 3600 * 24 * 365:
