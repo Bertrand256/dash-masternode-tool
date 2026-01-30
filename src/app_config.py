@@ -2313,9 +2313,9 @@ class DashNetworkConnectionCfg(object):
         :return: 
         """
         if self.__use_ssh_tunnel:
-            id = 'SSH:' + self.ssh_conn_cfg.host + ':' + self.__host + ':' + self.__port + ':' + str(self.__testnet)
+            id = 'SSH:' + str(self.ssh_conn_cfg.host) + ':' + str(self.__host) + ':' + str(self.__port) + ':' + str(self.__testnet)
         else:
-            id = 'DIRECT:' + self.__host + ':' + self.__port + ':' + str(self.__testnet)
+            id = 'DIRECT:' + str(self.__host) + ':' + str(self.__port) + ':' + str(self.__testnet)
         id = bitcoin.sha256(id)
         return id
 
