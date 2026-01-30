@@ -221,30 +221,32 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
                       self.revocation_reason,
                       funding_address]
 
+            enhanced_proxy_node = False
             try:
-                revoke_support = self.dashd_intf.checkfeaturesupport('protx_revoke',
-                                                                          self.app_config.app_version)
-                if not revoke_support.get('enabled'):
-                    if revoke_support.get('message'):
-                        raise Exception(revoke_support.get('message'))
-                    else:
-                        raise Exception('The \'protx_revoke\' function is not supported by the RPC node '
-                                        'you are connected to.')
-                public_proxy_node = True
+                _enh_proxy = self.dashd_intf.checkfeaturesupport('enhanced_proxy', self.app_config.app_version)
+                if _enh_proxy.get('enabled'):
+                    revoke_support = self.dashd_intf.checkfeaturesupport('protx_revoke',
+                                                                              self.app_config.app_version)
+                    if not revoke_support.get('enabled'):
+                        if revoke_support.get('message'):
+                            raise Exception(revoke_support.get('message'))
+                        else:
+                            raise Exception('The \'protx_revoke\' function is not supported by the RPC node '
+                                            'you are connected to.')
 
-                active = self.app_config.feature_revoke_operator_automatic.get_value()
-                if not active:
-                    msg = self.app_config.feature_revoke_operator_automatic.get_message()
-                    if not msg:
-                        msg = 'The functionality of the automatic execution of the revoke command on the ' \
-                              '"public" RPC nodes is inactive. Use the manual method or contact the program author ' \
-                              'for details.'
-                    raise Exception(msg)
-
+                    active = self.app_config.feature_revoke_operator_automatic.get_value()
+                    if not active:
+                        msg = self.app_config.feature_revoke_operator_automatic.get_message()
+                        if not msg:
+                            msg = 'The functionality of the automatic execution of the revoke command on the ' \
+                                  '"public" RPC nodes is inactive. Use the manual method or contact the program author ' \
+                                  'for details.'
+                        raise Exception(msg)
+                    enhanced_proxy_node = True
             except JSONRPCException as e:
-                public_proxy_node = False
+                logging.exception('Error checking rpc node feature support: %s', e)
 
-            if not public_proxy_node:
+            if not enhanced_proxy_node:
                 try:
                     # find an address to be used as the source of the transaction fees
                     min_fee = round(1024 * FEE_DUFF_PER_BYTE / 1e8, 8)
@@ -256,13 +258,13 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
                     if not bal_list:
                         raise Exception("No address can be found in the node's wallet with sufficient funds to "
                                         "cover the transaction fees.")
-                    params[5] = bal_list[0]['address']
+                    params[4] = bal_list[0]['address']
                 except JSONRPCException as e:
                     logging.warning("Couldn't list the node address balances. We assume you are using a "
                                     "public RPC node and the funding address for the transaction fee will "
                                     "be estimated during the `update_registrar` call")
 
-            upd_tx_hash = self.dashd_intf.rpc_call(True, False, 'protx', *params)
+            upd_tx_hash = self.dashd_intf.rpc_call(enhanced_proxy_node, False, 'protx', *params)
 
             if upd_tx_hash:
                 logging.info('revoke successfully executed, tx hash: ' + upd_tx_hash)
@@ -278,7 +280,7 @@ class RevokeMnDlg(QDialog, QDetectThemeChange, ui_revoke_mn_dlg.Ui_RevokeMnDlg, 
 
                 msg = 'The revoke transaction has been successfully sent. ' \
                      f'Tx hash: {upd_tx_hash}. <br><br>' \
-                     f'The new values ​​will be visible on the network after the transaction is confirmed, i.e. in ' \
+                     f'The new values will be visible on the network after the transaction is confirmed, i.e. in ' \
                      f'about 2.5 minutes.'
 
                 WndUtils.info_msg(msg)

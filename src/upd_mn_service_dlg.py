@@ -634,30 +634,32 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
 
             params.extend([self.new_operator_payout_address, funding_address])
 
+            enhanced_proxy_node = False
             try:
-                upd_service_support = self.dashd_intf.checkfeaturesupport('protx_' + protx_command,
-                                                                          self.app_config.app_version)
-                if not upd_service_support.get('enabled'):
-                    if upd_service_support.get('message'):
-                        raise Exception(upd_service_support.get('message'))
-                    else:
-                        raise Exception(f'The "protx {protx_command}" function is not supported by the RPC node '
-                                        'you are connected to.')
-                public_proxy_node = True
+                _enh_proxy = self.dashd_intf.checkfeaturesupport('enhanced_proxy', self.app_config.app_version)
+                if _enh_proxy.get('enabled'):
+                    upd_service_support = self.dashd_intf.checkfeaturesupport('protx_' + protx_command,
+                                                                              self.app_config.app_version)
+                    if not upd_service_support.get('enabled'):
+                        if upd_service_support.get('message'):
+                            raise Exception(upd_service_support.get('message'))
+                        else:
+                            raise Exception(f'The "protx {protx_command}" function is not supported by the RPC node '
+                                            'you are connected to.')
 
-                active = self.app_config.feature_update_service_automatic.get_value()
-                if not active:
-                    msg = self.app_config.feature_update_service_automatic.get_message()
-                    if not msg:
-                        msg = f'The functionality of the automatic execution of the {protx_command} command on the ' \
-                              '"public" RPC nodes is inactive. Use the manual method or contact the program author ' \
-                              'for details.'
-                    raise Exception(msg)
-
+                    active = self.app_config.feature_update_service_automatic.get_value()
+                    if not active:
+                        msg = self.app_config.feature_update_service_automatic.get_message()
+                        if not msg:
+                            msg = f'The functionality of the automatic execution of the {protx_command} command on the ' \
+                                  '"public" RPC nodes is inactive. Use the manual method or contact the program author ' \
+                                  'for details.'
+                        raise Exception(msg)
+                    enhanced_proxy_node = True
             except JSONRPCException as e:
-                public_proxy_node = False
+                logging.exception('Error checking rpc node feature support: %s', e)
 
-            if not public_proxy_node:
+            if not enhanced_proxy_node:
                 try:
                     # find an address to be used as the source of the transaction fees
                     min_fee = round(1024 * FEE_DUFF_PER_BYTE / 1e8, 8)
@@ -675,7 +677,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                                     "public RPC node and the funding address for the transaction fee will "
                                     f"be estimated during the `{protx_command}` call")
 
-            upd_tx_hash = self.dashd_intf.rpc_call(True, False, 'protx', *params)
+            upd_tx_hash = self.dashd_intf.rpc_call(enhanced_proxy_node, False, 'protx', *params)
 
             if upd_tx_hash:
                 logging.info(f'protx {protx_command} successfully executed, tx hash: ' + upd_tx_hash)
@@ -719,9 +721,10 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                 WndUtils.info_msg(msg)
 
         except Exception as e:
+            err = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
             if str(e).find('protx-dup') >= 0:
                 WndUtils.error_msg('The previous protx transaction has not been confirmed yet. Wait until it is '
                                    'confirmed before sending a new transaction.')
             else:
-                logging.error('Exception occurred while sending protx update_service: ' + str(e))
-                WndUtils.error_msg(str(e))
+                logging.error('Exception occurred while sending protx update_service: ' + err)
+                WndUtils.error_msg('' + err)

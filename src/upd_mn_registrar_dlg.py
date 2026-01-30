@@ -586,7 +586,22 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
             return
 
         try:
+            ni = self.dashd_intf.getnetworkinfo()
+            protocol_ver = ni.get('protocolversion')
+            if protocol_ver is not None:
+                if protocol_ver >= 70238:
+                    has_submit_arg = True
+                else:
+                    has_submit_arg = False
+            else:
+                node_ver = ni.get('version')
+                if node_ver >= 230000:
+                    has_submit_arg = True
+                else:
+                    has_submit_arg = False
+
             funding_address = ''
+            use_client_rsa_encryption = False
 
             params = [self.update_registrar_rpc_command,
                       self.dmn_protx_hash,
@@ -595,31 +610,38 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                       self.dmn_new_payout_address,
                       funding_address]
 
+            if has_submit_arg:
+                params.append(True)
+
+            enhanced_proxy_node = False
             try:
-                upd_reg_support = self.dashd_intf.checkfeaturesupport('protx_' + self.update_registrar_rpc_command,
-                                                                      self.app_config.app_version)
-                if not upd_reg_support.get('enabled'):
-                    if upd_reg_support.get('message'):
-                        raise Exception(upd_reg_support.get('message'))
-                    else:
-                        raise Exception(f'The \'protx_{self.update_registrar_rpc_command}\' function is not '
-                                        f'supported by the RPC node you are connected to.')
-                public_proxy_node = True
+                _enh_proxy = self.dashd_intf.checkfeaturesupport('enhanced_proxy', self.app_config.app_version)
+                if _enh_proxy.get('enabled'):
+                    upd_reg_support = self.dashd_intf.rpc_call(False, False, 'checkfeaturesupport', 'protx_' +
+                                                               self.update_registrar_rpc_command,
+                                                               self.app_config.app_version)
 
-                active = self.app_config.feature_update_registrar_automatic.get_value()
-                if not active:
-                    msg = self.app_config.feature_update_registrar_automatic.get_message()
-                    if not msg:
-                        msg = f'The functionality of the automatic execution of the ' \
-                              f'{self.update_registrar_rpc_command} command on the ' \
-                              '"public" RPC nodes is inactive. Use the manual method or contact the program author ' \
-                              'for details.'
-                    raise Exception(msg)
+                    if not upd_reg_support.get('enabled'):
+                        if upd_reg_support.get('message'):
+                            raise Exception(upd_reg_support.get('message'))
+                        else:
+                            raise Exception(f'The \'protx_{self.update_registrar_rpc_command}\' function is not '
+                                            f'supported by the RPC node you are connected to.')
 
+                    active = self.app_config.feature_update_registrar_automatic.get_value()
+                    if not active:
+                        msg = self.app_config.feature_update_registrar_automatic.get_message()
+                        if not msg:
+                            msg = f'The functionality of the automatic execution of the ' \
+                                  f'{self.update_registrar_rpc_command} command on the ' \
+                                  '"public" RPC nodes is inactive. Use the manual method or contact the program author ' \
+                                  'for details.'
+                        raise Exception(msg)
+                    enhanced_proxy_node = True
             except JSONRPCException as e:
-                public_proxy_node = False
+                logging.exception('Error checking rpc node feature support: %s', e)
 
-            if not public_proxy_node:
+            if not enhanced_proxy_node:
                 try:
                     # find an address to be used as the source of the transaction fees
                     min_fee = round(1024 * FEE_DUFF_PER_BYTE / 1e8, 8)
@@ -636,10 +658,34 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
                     logging.warning("Couldn't list the node address balances. We assume you are using a "
                                     "public RPC node and the funding address for the transaction fee will "
                                     "be estimated during the `update_registrar` call")
+
+                try:
+                    _help = self.dashd_intf.rpc_call(use_client_rsa_encryption, False, 'help',
+                                                     *['protx', 'update_registrar'])
+                    if isinstance(_help, str):
+                        # check whether our dashd node (not the rpc proxy) supports the 'ownerPrivateKey' argument
+                        # if so, add the parameter to the command
+                        _lines = _help.split('\n')
+                        if len(_lines) > 1:
+                            _line = _lines[0].strip()
+                            if _line.split()[-1] == '"ownerPrivateKey"':
+                                params.append(self.masternode.owner_private_key)
+                except JSONRPCException as e:
+                    pass
             else:
                 params.append(self.masternode.owner_private_key)
 
-            upd_tx_hash = self.dashd_intf.rpc_call(True, False, 'protx', *params)
+                # check if client encryption is active and working properly; we check this two ways: first
+                # by calling the checkfeaturesupport RPC as en encrypted call and second by checking
+                # state of the 'encryption_enabled' feature.
+                try:
+                    r = self.dashd_intf.rpc_call(enhanced_proxy_node, False, 'checkfeaturesupport', 'encryption_enabled')
+                    if r:
+                        use_client_rsa_encryption = True
+                except JSONRPCException as e:
+                    logging.warning("Client RSA encryption is not active. ")
+
+            upd_tx_hash = self.dashd_intf.rpc_call(use_client_rsa_encryption, False, 'protx', *params)
 
             if upd_tx_hash:
                 logging.info(f'{self.update_registrar_rpc_command} successfully executed, tx hash: ' + upd_tx_hash)
@@ -688,7 +734,7 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
                 msg = f'The {self.update_registrar_rpc_command} transaction has been successfully sent. ' \
                       f'Tx hash: {upd_tx_hash}. <br><br>' \
-                      f'The new values ​​will be visible on the network after the transaction is confirmed, ' \
+                      f'The new values will be visible on the network after the transaction is confirmed, ' \
                       f'i.e. in about 2.5 minutes.'
 
                 if changed:
@@ -696,9 +742,10 @@ class UpdMnRegistrarDlg(QDialog, QDetectThemeChange, ui_upd_mn_registrar_dlg.Ui_
 
                 WndUtils.info_msg(msg)
         except Exception as e:
+            err = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
             if str(e).find('protx-dup') >= 0:
                 WndUtils.error_msg('The previous protx transaction has not been confirmed yet. Wait until it is '
                                    'confirmed before sending a new transaction.')
             else:
                 logging.error('Exception occurred while sending protx update_registrar.')
-                WndUtils.error_msg(str(e), True)
+                WndUtils.error_msg(err, True)

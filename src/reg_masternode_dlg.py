@@ -1595,39 +1595,40 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
         def finished_with_success():
             def call():
                 self.next_step()
-
             WndUtils.call_in_main_thread(call)
 
         try:
             green_color = get_widget_font_color_green(self)
+            enhanced_proxy_node = False
+
             try:
-                mn_reg_support = self.dashd_intf.checkfeaturesupport('protx_register', self.app_config.app_version)
-                # is the "registration" feature enabled on the current rpc node?
-                if not mn_reg_support.get('enabled'):
-                    if mn_reg_support.get('message'):
-                        raise Exception(mn_reg_support.get('message'))
-                    else:
-                        raise Exception('The \'protx_register\' function is not supported by the RPC node '
-                                        'you are connected to.')
+                _enh_proxy = self.dashd_intf.checkfeaturesupport('enhanced_proxy', self.app_config.app_version)
+                if _enh_proxy.get('enabled'):
+                    mn_reg_support = self.dashd_intf.checkfeaturesupport('protx_register', self.app_config.app_version)
+                    # is the "registration" feature enabled on the current rpc node?
+                    if not mn_reg_support.get('enabled'):
+                        if mn_reg_support.get('message'):
+                            raise Exception(mn_reg_support.get('message'))
+                        else:
+                            raise Exception('The \'protx_register\' function is not supported by the RPC node '
+                                            'you are connected to.')
 
-                public_proxy_node = True
-
-                active = self.app_config.feature_register_dmn_automatic.get_value()
-                if not active:
-                    msg = self.app_config.feature_register_dmn_automatic.get_message()
-                    if not msg:
-                        msg = 'The functionality of the automatic execution of the ProRegTx command on the ' \
-                              '"public" RPC nodes is inactive. Use the manual method or contact the program author ' \
-                              'for details.'
-                    raise Exception(msg)
-
+                    active = self.app_config.feature_register_dmn_automatic.get_value()
+                    if not active:
+                        msg = self.app_config.feature_register_dmn_automatic.get_message()
+                        if not msg:
+                            msg = 'The functionality of the automatic execution of the ProRegTx command on the ' \
+                                  '"public" RPC nodes is inactive. Use the manual method or contact the program ' \
+                                  'author for details.'
+                        raise Exception(msg)
+                    enhanced_proxy_node = True
             except JSONRPCException as e:
-                public_proxy_node = False  # it's not a "public" rpc node
+                log.exception('Error checking rpc node feature support: %s', e)
 
             # preparing protx message
             try:
                 funding_address = ''
-                if not public_proxy_node:
+                if not enhanced_proxy_node:
                     try:
                         # find an address to be used as the source of the transaction fees
                         min_fee = round(1024 * FEE_DUFF_PER_BYTE / 1e8, 8)
@@ -1665,7 +1666,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                 if funding_address:
                     params.append(funding_address)
 
-                call_ret = self.dashd_intf.rpc_call(True, False, 'protx', *tuple(params))
+                call_ret = self.dashd_intf.rpc_call(enhanced_proxy_node, False, 'protx', *tuple(params))
 
                 call_ret_str = json.dumps(call_ret, default=EncodeDecimal)
                 msg_to_sign = call_ret.get('signMessage', '')
@@ -1676,11 +1677,12 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                          '<b>1. Preparing a ProRegTx transaction on a remote node.</b> <span style="color:green">'
                          'Success.</span>')
             except Exception as e:
+                err = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
                 set_text(
                     self.lblProtxTransaction1,
                     '<b>1. Preparing a ProRegTx transaction on a remote node.</b> <span style="color:red">Failed '
-                    f'with the following error: {str(e)}</span>')
-                log.exception(str(e))
+                    f'with the following error: {err}</span>')
+                log.exception(err)
                 return
 
             set_text(self.lblProtxTransaction2, '<b>Message to be signed:</b><br><code>' + msg_to_sign + '</code>')
@@ -1697,18 +1699,19 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                          '<b>2. Signing message with hardware wallet.</b> <span style="color:red">Cancelled.</span>')
                 return
             except Exception as e:
+                err = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
                 log.exception('Signature failed.')
                 set_text(self.lblProtxTransaction3,
                          '<b>2. Signing message with hardware wallet.</b> <span style="color:red">Failed with the '
-                         f'following error: {str(e)}.</span>')
+                         f'following error: {err}.</span>')
                 return
 
             # submitting signed transaction
             set_text(self.lblProtxTransaction4,
                      '<b>3. Submitting the signed protx transaction to the remote node...</b>')
             try:
-                self.dmn_reg_tx_hash = self.dashd_intf.rpc_call(True, False, 'protx', 'register_submit', protx_tx,
-                                                                payload_sig_str)
+                self.dmn_reg_tx_hash = self.dashd_intf.rpc_call(
+                    enhanced_proxy_node, False, 'protx', 'register_submit', protx_tx, payload_sig_str)
 
                 log.debug('protx register_submit returned: ' + str(self.dmn_reg_tx_hash))
                 set_text(self.lblProtxTransaction4,
@@ -1716,14 +1719,16 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                          f'color:{green_color}">Success.</span>')
                 finished_with_success()
             except Exception as e:
+                err = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
                 log.exception('protx register_submit failed')
                 set_text(self.lblProtxTransaction4,
                          '<b>3. Submitting the signed protx transaction to the remote node.</b> '
-                         f'<span style="color:red">Failed with the following error: {str(e)}</span>')
+                         f'<span style="color:red">Failed with the following error: {err}</span>')
 
         except Exception as e:
+            err = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
             log.exception('Exception occurred')
-            set_text(self.lblProtxTransaction1, f'<span style="color:red">{str(e)}</span>')
+            set_text(self.lblProtxTransaction1, f'<span style="color:red">{err}</span>')
 
     @pyqtSlot(bool)
     def on_btnManualSignProtx_clicked(self):
