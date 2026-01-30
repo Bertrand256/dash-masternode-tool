@@ -42,6 +42,7 @@ from common import AttrsProtected, CancelException
 log = logging.getLogger('dmt.dashd_intf')
 
 FILE_CACHE_VALID_DAYS = 30
+RPC_TIMEOUT_SECONDS = 60
 
 try:
     import http.client as httplib
@@ -250,7 +251,7 @@ class DashdSSH(object):
                     if password:
                         break
 
-            except BadAuthenticationType:
+            except BadAuthenticationType as e:
                 raise Exception(str(e))
 
             except AuthenticationException:
@@ -393,6 +394,7 @@ def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching
                 for try_nr in range(1, 5):
                     try:
                         try:
+                            _args = None
                             if encrypt_rpc_arguments:
                                 if self.cur_conn_def:
                                     pubkey = self.cur_conn_def.get_rpc_encryption_pubkey_object()
@@ -413,12 +415,17 @@ def control_rpc_call(_func=None, *, encrypt_rpc_arguments=False, allow_switching
                                                                         algorithm=hashes.SHA256(),
                                                                         label=None))
                                         encrypted_parts.append(ciphertext.hex())
-                                    args = (args[0], 'DMTENCRYPTEDV1') + tuple(encrypted_parts)
+
+                                    # use a copy of args to avoid multiple encryption when retrying
+                                    _args = (args[0], 'DMTENCRYPTEDV1') + tuple(encrypted_parts)
                                     log.info(
                                         'Arguments of the "%s" call have been encrypted with the RSA public key of '
                                         'the RPC node.', func.__name__)
 
-                            ret = func(*args, **kwargs)
+                            if _args is None:
+                                _args = tuple(args)
+
+                            ret = func(*_args, **kwargs)
 
                             last_exception = None
                             self.mark_cur_conn_cfg_is_ok()
@@ -1147,7 +1154,7 @@ class DashdInterface(WndUtils):
 
             self.rpc_url += rpc_user + ':' + rpc_password + '@' + rpc_host + ':' + str(rpc_port)
             log.debug('AuthServiceProxy configured to: %s' % self.rpc_url)
-            self.proxy = AuthServiceProxy(self.rpc_url, timeout=1000, connection=self.http_conn)
+            self.proxy = AuthServiceProxy(self.rpc_url, timeout=RPC_TIMEOUT_SECONDS, connection=self.http_conn)
 
             try:
                 # check the connection
@@ -1178,7 +1185,7 @@ class DashdInterface(WndUtils):
             finally:
                 log.debug('http_conn.close()')
                 self.http_conn.close()
-                # timeout hase been initially set to 5 seconds to perform 'quick' connection test
+                # timeout has been initially set to 5 seconds to perform 'quick' connection test
                 self.http_conn.timeout = 20
 
             self.active = True
