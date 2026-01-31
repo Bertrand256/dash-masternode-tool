@@ -376,7 +376,12 @@ class AccountListModel(ExtSortFilterItemModel):
 
 
 class UtxoTableModel(ExtSortFilterItemModel):
-    def __init__(self, parent: 'WalletDlg', masternode_list: List[MasternodeConfig], tx_explorer_url: str):
+    def __init__(
+            self,
+            parent: 'WalletDlg',
+            masternode_list: List[MasternodeConfig],
+            tx_explorer_url: str):
+
         ExtSortFilterItemModel.__init__(self, parent, [
             TableModelColumn('satoshis', 'Amount (Dash)', True, 100),
             TableModelColumn('confirmations', 'Confirmations', True, 100),
@@ -391,6 +396,8 @@ class UtxoTableModel(ExtSortFilterItemModel):
             self.insert_column(len(self._columns), TableModelColumn('id', 'DB id', True, 40))
         self.tx_explorer_url = tx_explorer_url
         self.hide_collateral_utxos = True
+        self.hide_dust_utxos = True
+        self.dust_threshold_value = 0.00001
         self.utxos: List[UtxoType] = []
         self.utxo_by_id: Dict[int, UtxoType] = {}
         self.block_height = None
@@ -576,10 +583,22 @@ class UtxoTableModel(ExtSortFilterItemModel):
                 utxo = self.utxos[source_row]
                 if utxo.is_collateral:
                     will_show = False
+            if self.hide_dust_utxos:
+                utxo = self.utxos[source_row]
+                if utxo.satoshis / 1e8 <= self.dust_threshold_value:
+                    will_show = False
         return will_show
 
     def set_hide_collateral_utxos(self, hide):
         self.hide_collateral_utxos = hide
+        self.proxy_model.invalidateFilter()
+
+    def set_hide_dust_utxos(self, hide: bool):
+        self.hide_dust_utxos = hide
+        self.proxy_model.invalidateFilter()
+
+    def set_dust_threshold(self, threshold_value: float):
+        self.dust_threshold_value = threshold_value
         self.proxy_model.invalidateFilter()
 
     def set_block_height(self, block_height: int):

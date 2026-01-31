@@ -449,7 +449,14 @@
                        <string notr="true"/>
                       </property>
                       <property name="text">
-                       <string>Hide collateral UTXOs</string>
+                       <string>Hide collateral</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QCheckBox" name="chbHideDust">
+                      <property name="text">
+                       <string>Hide "dust"</string>
                       </property>
                      </widget>
                     </item>

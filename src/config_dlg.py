@@ -249,6 +249,9 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
         self.chbFetchDataAfterStart.setChecked(self.local_config.fetch_network_data_after_start)
         self.chbShowDashFIATValue.setChecked(self.local_config.show_dash_value_in_fiat)
         self.chbUIDarkMode.setChecked(self.local_config.ui_use_dark_mode)
+        self.edtDustThreshold.setMinimum(0)
+        self.edtDustThreshold.setValue(self.local_config.dust_treshold_value)
+        self.edtDustThreshold.setToolTip("Amount of Dash (or lower) to be considered dust.")
 
         idx = {
                 'CRITICAL': 0,
@@ -797,6 +800,12 @@ class ConfigDlg(QDialog, Ui_ConfigDlg, WndUtils):
     def on_edtVoteTimeOffsetUpper_valueChanged(self, value):
         if not self.updating_ui:
             self.local_config.proposal_vote_time_offset_upper = value
+            self.set_modified()
+
+    @pyqtSlot(float)
+    def on_edtDustThreshold_valueChanged(self, value):
+        if not self.updating_ui:
+            self.local_config.dust_treshold_value = value
             self.set_modified()
 
     @pyqtSlot(bool)

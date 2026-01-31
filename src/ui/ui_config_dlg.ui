@@ -595,6 +595,47 @@
         </widget>
        </item>
        <item>
+        <layout class="QHBoxLayout" name="hlDustThreshold">
+         <item>
+          <widget class="QLabel" name="lblDustThreshold">
+           <property name="text">
+            <string>Dust threshold:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QDoubleSpinBox" name="edtDustThreshold">
+           <property name="decimals">
+            <number>8</number>
+           </property>
+           <property name="singleStep">
+            <double>0.00001</double>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="lblDustThresholdUnit">
+           <property name="text">
+            <string>DASH</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_dust">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
         <layout class="QHBoxLayout" name="hlLogLevel">
          <item>
           <widget class="QLabel" name="lblLogLevel">

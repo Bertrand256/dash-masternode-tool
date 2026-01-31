@@ -221,6 +221,7 @@ class AppConfig(QObject):
         self.fetch_network_data_after_start = True
         self.show_dash_value_in_fiat = True
         self.ui_use_dark_mode = False  # Use dark mode independently of the OS settings
+        self.dust_treshold_value = 0.00001
 
         # attributes related to encryption cache data with hardware wallet:
         self.hw_generated_key = b"\xab\x0fs}\x8b\t\xb4\xc3\xb8\x05\xba\xd1\x96\x9bq`I\xed(8w\xbf\x95\xf0-\x1a\x14\xcb\x1c\x1d+\xcd"
@@ -540,6 +541,7 @@ class AppConfig(QObject):
             self.log_level_str = src_config.log_level_str
         self.encrypt_config_file = src_config.encrypt_config_file
         self.ui_use_dark_mode = src_config.ui_use_dark_mode
+        self.dust_treshold_value = src_config.dust_treshold_value
 
     def configure_cache(self):
         if self.is_testnet:
@@ -816,6 +818,11 @@ class AppConfig(QObject):
 
                 self.show_dash_value_in_fiat = self.value_to_bool(
                     config.get(section, 'show_dash_value_in_fiat', fallback='1'))
+
+                try:
+                    self.dust_treshold_value = float(config.get(section, 'dust_treshold_value', fallback='0.00001'))
+                except Exception:
+                    self.dust_treshold_value = 0.00001
 
                 # with ini ver 3 we changed the connection password encryption scheme, so connections in new ini
                 # file will be saved under different section names - with this we want to disallow the old app
@@ -1128,6 +1135,7 @@ class AppConfig(QObject):
         config.set(section, 'proposal_vote_time_offset_lower', str(self._proposal_vote_time_offset_lower))
         config.set(section, 'proposal_vote_time_offset_upper', str(self._proposal_vote_time_offset_upper))
         config.set(section, 'encrypt_config_file', '1' if self.encrypt_config_file else '0')
+        config.set(section, 'dust_treshold_value', str(self.dust_treshold_value))
 
         # save mn configuration
         for idx, mn in enumerate(self.masternodes):
@@ -1243,6 +1251,7 @@ class AppConfig(QObject):
         all_data += str(self._proposal_vote_time_offset_lower)
         all_data += str(self._proposal_vote_time_offset_upper)
         all_data += str(self.encrypt_config_file)
+        all_data += str(self.dust_treshold_value)
 
         for mn in self.masternodes:
             all_data += mn.get_data_str()

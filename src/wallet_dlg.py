@@ -62,6 +62,8 @@ CACHE_ITEM_MAIN_SPLITTER_SIZES = 'WalletDlg_MainSplitterSizes'
 CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES = 'WalletDlg_ShowAccountAddresses'
 CACHE_ITEM_SHOW_ZERO_BALANCE_ADDRESSES = 'WalletDlg_ShowZeroBalanceAddresses'
 CACHE_ITEM_SHOW_NOT_USED_ADDRESSES = 'WalletDlg_ShowNotUsedAddresses'
+CACHE_ITEM_HIDE_COLLATERAL_UTXOS = 'WalletDlg_HideCollateralUtxos'
+CACHE_ITEM_HIDE_DUST_UTXOS = 'WalletDlg_HideDustUtxos'
 
 FETCH_DATA_INTERVAL_SECONDS = 60
 MAIN_VIEW_BIP44_ACCOUNTS = 1
@@ -128,6 +130,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.enable_synch_with_main_thread = True  # if False threads cannot synchronize with the main thread
         self.update_data_view_thread_ref: Optional[WorkerThread] = None
         self.initial_mn_sel = initial_mn_sel
+        self.dust_treshold_value = self.app_config.dust_treshold_value
+        if not isinstance(self.dust_treshold_value, float):
+            self.dust_treshold_value = 0.00001
+        self.hide_collateral_utxos = True
+        self.hide_dust_utxos = True
 
         # for self.utxo_src_mode == 1
         self.hw_account_base_bip32_path = ''
@@ -182,17 +189,20 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
     def setupUi(self, dialog: QDialog):
         ui_wallet_dlg.Ui_WalletDlg.setupUi(self, self)
         self.setWindowTitle('Wallet')
-        self.chbHideCollateralTx.setChecked(True)
         self.restore_cache_settings()
         self.splitterMain.setStretchFactor(0, 0)
         self.splitterMain.setStretchFactor(1, 1)
+        self.chbHideCollateralTx.setChecked(self.hide_collateral_utxos)
+        self.chbHideDust.setChecked(self.hide_dust_utxos)
 
         # set up the "loading" spinner
         self.loading_data_spinner = SpinnerWidget(self.pnl_input, 22, message='Fetching transactions')
         self.loading_data_spinner.hide()
         self.lay_input.insertWidget(self.lay_input.indexOf(self.btnFetchTransactions) + 1, self.loading_data_spinner)
 
-        self.utxo_table_model.set_hide_collateral_utxos(True)
+        self.utxo_table_model.set_hide_collateral_utxos(self.hide_collateral_utxos)
+        self.utxo_table_model.set_hide_dust_utxos(self.hide_dust_utxos)
+        self.utxo_table_model.set_dust_threshold(self.dust_treshold_value)
         self.utxoTableView.setSortingEnabled(True)
         self.utxoTableView.setItemDelegate(ReadOnlyTableCellDelegate(self.utxoTableView))
         self.utxoTableView.verticalHeader().setDefaultSectionSize(
@@ -225,6 +235,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.mn_view_restore_selection()
 
         self.chbHideCollateralTx.toggled.connect(self.chbHideCollateralTxToggled)
+        self.chbHideDust.toggled.connect(self.chbHideDustToggled)
 
         self.cboAddressSourceMode.blockSignals(True)
         if self.utxo_src_mode == MAIN_VIEW_BIP44_ACCOUNTS or self.display_mode == WalletDisplayMode.SELECT_ADDRESS:
@@ -276,6 +287,11 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.ui_txes_filter.setupUi(self.wdg_txes_filter)
         l.insertWidget(1, self.wdg_txes_filter)
         self.ui_txes_filter.btnApply.clicked.connect(self.apply_txes_filter)
+
+        self.chbHideCollateralTx.setToolTip(f"Hide entries for masternode collateral transactions")
+        _threshold_str = f"{self.dust_treshold_value:.8f}".rstrip("0").rstrip(".")
+        self.chbHideDust.setToolTip(f"Hide all entries with value less than or equal to {_threshold_str} DASH "
+                                    f"(can be changed in the app configuration)")
 
         WndUtils.set_icon(self.main_ui, self.btnSetHwIdentityLabel, 'label@16px.png')
         WndUtils.set_icon(self.main_ui, self.btnPurgeHwIdentity, 'delete@16px.png')
@@ -430,6 +446,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
                                                                          False, bool)
         self.account_list_model.show_zero_balance_addresses = self.accounts_view_show_zero_balance_addesses
         self.account_list_model.show_not_used_addresses = self.accounts_view_show_not_used_addresses
+        self.hide_collateral_utxos = app_cache.get_value(CACHE_ITEM_HIDE_COLLATERAL_UTXOS, True, bool)
+        self.hide_dust_utxos = app_cache.get_value(CACHE_ITEM_HIDE_DUST_UTXOS, True, bool)
 
     def save_cache_settings(self):
         app_cache.save_window_size(self)
@@ -469,6 +487,8 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         app_cache.set_value(CACHE_ITEM_SHOW_ACCOUNT_ADDRESSES, self.accounts_view_show_individual_addresses)
         app_cache.set_value(CACHE_ITEM_SHOW_ZERO_BALANCE_ADDRESSES, self.accounts_view_show_zero_balance_addesses)
         app_cache.set_value(CACHE_ITEM_SHOW_NOT_USED_ADDRESSES, self.accounts_view_show_not_used_addresses)
+        app_cache.set_value(CACHE_ITEM_HIDE_COLLATERAL_UTXOS, self.hide_collateral_utxos)
+        app_cache.set_value(CACHE_ITEM_HIDE_DUST_UTXOS, self.hide_dust_utxos)
 
     def stop_threads(self):
         self.finishing = True
@@ -564,7 +584,13 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
 
     @pyqtSlot(bool)
     def chbHideCollateralTxToggled(self, checked):
+        self.hide_collateral_utxos = checked
         self.utxo_table_model.set_hide_collateral_utxos(checked)
+
+    @pyqtSlot(bool)
+    def chbHideDustToggled(self, checked):
+        self.hide_dust_utxos = checked
+        self.utxo_table_model.set_hide_dust_utxos(checked)
 
     @pyqtSlot(bool)
     def on_btnUncheckAll_clicked(self):
