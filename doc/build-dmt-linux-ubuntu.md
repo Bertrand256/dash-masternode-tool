@@ -2,109 +2,85 @@
 
 ### Method based on physical or virtual linux machine
 
-An Ubuntu distribution with Python 3.8 is required to build DMT. This example uses Ubuntu 16.04, which comes with an 
-appropriate version installed by default. You can verify the Python version by typing:
+An Ubuntu distribution with Python 3.11 is required to build DMT. This example uses Ubuntu 20.04 and `uv` to manage Python versions and environments. You can verify if `uv` is installed by typing:
 
 ```
-python3 --version
+uv --version
 ```
 
-You should see a response similar to the following:
-
-  `Python 3.8.x`
-
-After making sure that you have the correct Python version, execute the following commands from the terminal:
+After making sure that you have `uv` installed (or after installing it in the steps below), execute the following commands from the terminal:
 
 ```
 sudo apt update \
 && sudo apt -y upgrade \
-&& sudo apt -y install software-properties-common \
-&& sudo add-apt-repository -y ppa:deadsnakes/ppa \
-&& sudo apt update \
-&& sudo apt -y install curl libxcb-xinerama0 libudev-dev libusb-1.0-0-dev libfox-1.6-dev autotools-dev autoconf automake libtool libpython3-all-dev python3.8 python3.8-venv python3.8-dev git cmake python3.8-distutils \
-&& cd ~ \
-&& curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py \
-&& sudo python3.8 get-pip.py \
-&& mkdir -p dmt-build \
-&& cd dmt-build \
-&& python3.8 -m pip install virtualenv \
-&& python3.8 -m virtualenv -p python3.8 venv \
+&& sudo DEBIAN_FRONTEND=noninteractive apt -y install curl libxcb-xinerama0 libudev-dev libusb-1.0-0-dev libfox-1.6-dev autotools-dev autoconf automake libtool git cmake \
+   libspeechd2 libwayland-cursor0 libxkbcommon0 libxcb-xkb1 libxkbcommon-x11-0 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-shape0 libxcb-icccm4 libxcb-render0 libxcomposite1 libwayland-egl1 \
+&& curl -LsSf https://astral.sh/uv/install.sh | sh \
+&& source $HOME/.local/bin/env \
+&& mkdir -p ~/dmt-build \
+&& cd ~/dmt-build \
+&& uv venv --python 3.11 venv \
 && . venv/bin/activate \
 && git clone https://github.com/Bertrand256/dash-masternode-tool \
 && cd dash-masternode-tool/ \
-&& pip install -r requirements.txt \
-&& mkdir -p ~/dmt-build/dist
-pyinstaller --distpath=dist/linux --workpath=dist/linux/build dash_masternode_tool.spec
+&& uv pip install -r requirements.txt \
+&& mkdir -p ~/dmt-build/dist \
+&& pyinstaller --distpath=../dist/linux --workpath=../dist/linux/build dash_masternode_tool.spec \
+&& . build/ubuntu/build-appimage.sh
 ```
 
 The following files will be created once the build has completed successfully:
 
 * Executable: `~/dmt-build/dist/linux/DashMasternodeTool`
-* Compressed executable: `~/dmt-build/dist/all/DashMasternodeTool_<verion_string>.linux.tar.gz`
+* Compressed executable: `~/dmt-build/dist/all/DashMasternodeTool_<version_string>.linux.tar.gz`
+* AppImage: `~/dmt-build/dist/all/DashMasternodeTool_<version_string>.AppImage`
 
 
 ### Method based on Docker
 
-This method uses a dedicated **docker image** configured to carry out an automated build process for *Dash Masternode Tool*. The advantage of this method is its simplicity, and the fact that it does not make any changes in the list of installed apps/libraries on your physical/virtual machine. All necessary dependencies are installed inside the Docker container. The second important advantage is that compilation can also be carried out on Windows or macOS (if Docker is installed), but keep in mind that the result of the build will be a Linux executable.
+This method uses a dedicated **Docker image** configured to carry out an automated build process for *Dash Masternode Tool*. The advantage of this method is its simplicity, and the fact that it does not make any changes in the list of installed apps/libraries on your physical/virtual machine. All necessary dependencies are installed inside the Docker container. 
 
-> **Note: skip steps 1 to 4 if you have done them before - if you are just building a newer version of DMT, go 
-> straight to step 5.**
+The build process is performed inside an Ubuntu 20.04 container, which ensures that the resulting binaries are compatible with older Linux distributions.
 
-#### 1. Create a new directory
-We will refer to this as the *working directory* in the remainder of this documentation.
+#### 1. Clone the DMT repository
 
-#### 2. Open the terminal app and `cd` to the *working directory*
+If you haven't already, clone the Dash Masternode Tool repository to your local machine:
 
 ```
-cd <working_directory>
+git clone https://github.com/Bertrand256/dash-masternode-tool
+cd dash-masternode-tool
 ```
 
-#### 3. Install the *bertrand256/build-dmt:ubuntu* Docker image
+#### 2. Build the Docker image
 
-Skip this step if you have done this before. At any time, you can check whether the required image exists in your local machine by issuing following command:
-
-```
-docker images bertrand256/build-dmt:ubuntu
-```
-
-The required image can be obtained in one of two ways:
-
-**Download from Docker Hub**
-
-Execute the following command:
+Build the Docker image using the provided `Dockerfile` located in the `build/ubuntu` directory:
 
 ```
-docker pull bertrand256/build-dmt:ubuntu
+docker build -t dmt-build-ubuntu build/ubuntu
 ```
 
-**Build the image yourself, using the Dockerfile file from the DMT project repository.** 
+#### 3. Run the build process
 
-* Download the https://github.com/Bertrand256/dash-masternode-tool/blob/master/build/ubuntu/Dockerfile file and place it in the *working directory*
-* Execute the following command:
-```
-docker build -t bertrand256/build-dmt:ubuntu .
-```
-
-#### 4. Create a Docker container
-
-A Docker container is an instance of an image (similar to how an object is an instance of a class in the software development world), and it exists until you delete it. You can therefore skip this step if you have created the container before. To easily identify the container, we give it a specific name (dmtbuild) when it is created, so you can easily check if it exists in your system.
+Run the build container. We map the current directory to `/root/dmt` inside the container so that the source code is accessible and the resulting binaries are saved back to your host machine:
 
 ```
-docker ps -a --filter name=dmtbuild --filter ancestor=bertrand256/build-dmt:ubuntu
-```
-Create the container:
-
-``` 
-mkdir -p build
-docker create --name dmtbuild -v $(pwd)/build:/root/dmt-build/dist -it bertrand256/build-dmt:ubuntu
+docker run --rm -v $(pwd):/root/dmt dmt-build-ubuntu
 ```
 
-#### 5. Build the Dash Masternode Tool executable
+#### 4. Collect the binaries
 
-```
-docker start -ai dmtbuild
+After the process completes, the resulting files can be found in the `dist/linux` and `dist/all` subdirectories:
+
+* Executable: `dist/linux/DashMasternodeTool`
+* Compressed executable: `dist/all/DashMasternodeTool_<version_string>.linux.tar.gz`
+* AppImage: `dist/all/DashMasternodeTool_<version_string>.AppImage`
+
+### Signing the release
+
+After building the binaries and creating a release on GitHub, you can use the `scripts/sign-release.sh` script to sign the assets and update the release description with SHA512 hashes. This script requires `github-cli (gh)` and `keybase` to be installed and configured.
+
+```bash
+./scripts/sign-release.sh
 ```
 
-After the process completes, the resulting files can be found in the `build` subdirectory of your current directory:
-* Executable: `linux/DashMasternodeTool`
-* Compressed executable: `all/DashMasternodeTool_<verion_string>.linux.tar.gz`
+Follow the prompts to enter the release tag name. The script will download assets, sign them, upload the signatures, and update the release notes.
