@@ -216,6 +216,16 @@ The procedure differs depending on the operating system and, in the case of Linu
 * [Building the DMT executable file on macOS](doc/build-dmt-mac.md)
 * [Building the DMT executable file on Windows](doc/build-dmt-windows.md)
 
+### Automated Builds (GitHub Actions)
+The project is configured to build binaries for Windows, Linux, and macOS (Intel/Silicon) using GitHub Actions. Builds are triggered manually via the `Actions` tab in GitHub, where you can specify the version number. This process automatically creates a GitHub Release and a corresponding tag. You can find the workflow configuration in `.github/workflows/build.yml`.
+
+### Local Build using uv
+To build the application locally, you can use the provided `build_binaries.py` script with [uv](https://github.com/astral-sh/uv):
+```bash
+uv run build_binaries.py
+```
+The resulting binaries will be placed in the `all/` directory.
+
 ## Running DMT on an offline Linux system
 This topic is covered [here](doc/running-dmt-on-linux-live-cd.md).
 

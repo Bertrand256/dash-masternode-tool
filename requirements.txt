@@ -5,7 +5,7 @@ keepkey @git+https://github.com/Bertrand256/python-keepkey
 libusb1~=3.2.0
 PyQt5==5.15.11
 PyQtChart==5.15.7
-pyinstaller==6.11.1
+pyinstaller==6.18.0
 paramiko==3.5.0
 requests==2.32.3
 mnemonic~=0.21

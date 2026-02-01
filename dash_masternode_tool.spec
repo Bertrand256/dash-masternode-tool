@@ -3,6 +3,7 @@ import importlib
 import sys
 import os.path
 import platform
+import subprocess
 from PyInstaller.utils.hooks import (collect_data_files, collect_submodules,
                                      collect_dynamic_libs)
 
@@ -13,7 +14,7 @@ no_bits = platform.architecture()[0].replace('bit', '')
 version_str = ''
 base_dir = os.path.dirname(os.path.abspath('__file__'))
 
-# look for version string
+# Check for version string
 with open(os.path.join(base_dir, 'version.txt')) as fptr:
     for line in fptr:
         parts = [elem.strip() for elem in line.split('=')]
@@ -36,7 +37,8 @@ hiddenimports += collect_submodules('keepkeylib')
 hiddenimports += collect_submodules('websocket')
 hiddenimports += [
     'PyQt5.sip',
-    'usb1'
+    'usb1',
+    'backports'
 ]
 
 
@@ -69,7 +71,7 @@ def find_file_in_dirs(dirs, file_name):
 lib_paths = [p for p in sys.path if 'site-packages' in p]
 
 add_data_file(find_file_in_dirs(lib_paths, 'bitcoin/english.txt'), 'bitcoin')
-if os_type != 'win32':  # todo: find out why on windows sometimes it complains about duplicated english.txt
+if os_type != 'win32':  # TODO: find out why on windows sometimes it complains about duplicated english.txt
     add_data_file(find_file_in_dirs(lib_paths, 'mnemonic/wordlist/english.txt'), 'mnemonic/wordlist')
 add_data_file(find_file_in_dirs(lib_paths, 'trezorlib/transport'), 'trezorlib/transport')
 
@@ -118,10 +120,28 @@ data_files += collect_data_files('btchip')
 data_files += collect_data_files('keepkeylib')
 
 if os_type == 'darwin':
-    add_binary_file('/usr/local/lib/libusb-1.0.dylib', '.')
+    libusb_path = '/opt/homebrew/lib/libusb-1.0.dylib'
+    if not os.path.exists(libusb_path):
+        libusb_path = '/usr/local/lib/libusb-1.0.dylib'
+    if not os.path.exists(libusb_path):
+        # Try to find using brew --prefix
+        try:
+            prefix = subprocess.check_output(['brew', '--prefix'], encoding='utf-8').strip()
+            libusb_path = os.path.join(prefix, 'lib', 'libusb-1.0.dylib')
+        except Exception:
+            pass
+    
+    if os.path.exists(libusb_path):
+        add_binary_file(libusb_path, '.')
+    else:
+        print('WARNING: libusb-1.0.dylib not found!!')
 elif os_type == 'linux':
-    add_binary_file(find_file_in_dirs(('/usr/lib', '/usr/lib64', '/usr/lib/x86_64-linux-gnu'),
-                                      'libxcb-xinerama.so.0'), '.')
+    try:
+        lib_path = find_file_in_dirs(('/usr/lib', '/usr/lib64', '/usr/lib/x86_64-linux-gnu'),
+                                          'libxcb-xinerama.so.0')
+        add_binary_file(lib_path, '.')
+    except Exception as e:
+        print(f'WARNING: libxcb-xinerama.so.0 not found: {str(e)}')
 elif os_type == 'win32':
     mod = importlib.import_module('usb1')
     if mod and mod.__path__:
@@ -178,19 +198,29 @@ all_bin_dir = os.path.join(dist_path, '..', 'all')
 if not os.path.exists(all_bin_dir):
     os.makedirs(all_bin_dir)
 
-# zip archives
+# Zip archives
 os.chdir(dist_path)
 
 if os_type == 'win32':
     print('Compressing Windows executable')
-    os.system('"7z.exe" a %s %s -mx0' % (
-        os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.win' + no_bits + '.zip'),
-        'DashMasternodeTool.exe'))
+    archive_file = os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.win' + no_bits + '.zip')
+    os.system('"7z.exe" a %s %s -mx0' % (archive_file, 'DashMasternodeTool.exe'))
+    print('Created archive: ' + archive_file)
 elif os_type == 'darwin':
     print('Compressing Mac executable')
-    os.system('zip -r "%s" "%s"' % (
-        os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.mac.zip'), 'DashMasternodeTool.app'))
+    arch = platform.machine().lower()
+    if arch in ['x86_64', 'amd64']:
+        arch_suffix = '.mac-x64.zip'
+    elif arch in ['arm64', 'aarch64']:
+        arch_suffix = '.mac-arm64.zip'
+    else:
+        arch_suffix = '.mac-' + arch + '.zip'
+
+    archive_file = os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + arch_suffix)
+    os.system('zip -r "%s" "%s"' % (archive_file, 'DashMasternodeTool.app'))
+    print('Created archive: ' + archive_file)
 elif os_type == 'linux':
     print('Compressing Linux executable')
-    os.system('tar -zcvf %s %s' % (
-        os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.linux.tar.gz'), 'DashMasternodeTool'))
+    archive_file = os.path.join(all_bin_dir, 'DashMasternodeTool_' + version_str + '.linux.tar.gz')
+    os.system('tar -zcvf %s %s' % (archive_file, 'DashMasternodeTool'))
+    print('Created archive: ' + archive_file)

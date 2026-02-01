@@ -20,7 +20,7 @@ def add_data_file(file: str, dest_dir: str):
     print(f'Adding file {file} to dest dir {dest_dir}')
 
 def add_binary_file(file: str, dest_dir: str):
-    global bianry_files
+    global binary_files
     binary_files.append((file, dest_dir))
     print(f'Adding binary file {file} to dest dir {dest_dir}')
 
@@ -117,7 +117,7 @@ all_bin_dir = os.path.join(dist_path, '..', 'all')
 if not os.path.exists(all_bin_dir):
     os.makedirs(all_bin_dir)
 
-# zip archives
+# Zip archives
 print(dist_path)
 print(all_bin_dir)
 os.chdir(dist_path)

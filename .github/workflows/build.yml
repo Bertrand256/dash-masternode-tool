@@ -1,0 +1,151 @@
+name: Build Binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g. 0.9.40)'
+        required: true
+        default: '0.9.40'
+      build_windows:
+        description: 'Build for Windows'
+        type: boolean
+        default: true
+      build_linux:
+        description: 'Build for Linux'
+        type: boolean
+        default: true
+      build_macos_intel:
+        description: 'Build for macOS (Intel)'
+        type: boolean
+        default: true
+      build_macos_silicon:
+        description: 'Build for macOS (Silicon)'
+        type: boolean
+        default: true
+      pre_release:
+        description: 'Set as Pre-release'
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            arch: x64
+            artifact_name: DashMasternodeTool-win64
+            runs_on: windows-latest
+          - os: ubuntu-22.04
+            arch: x64
+            artifact_name: DashMasternodeTool-linux
+            runs_on: ubuntu-22.04
+          - os: macos-15
+            arch: x64
+            artifact_name: DashMasternodeTool-mac-intel
+            runs_on: macos-15-intel
+          - os: macos-14
+            arch: arm64
+            artifact_name: DashMasternodeTool-mac-silicon
+            runs_on: macos-14
+
+    steps:
+      - name: Check if platform should be built
+        id: check_skip
+        shell: bash
+        run: |
+          SHOULD_BUILD=false
+          if [[ "${{ matrix.os }}" == "windows-latest" && "${{ github.event.inputs.build_windows }}" == "true" ]]; then SHOULD_BUILD=true; fi
+          if [[ "${{ matrix.os }}" == "ubuntu-22.04" && "${{ github.event.inputs.build_linux }}" == "true" ]]; then SHOULD_BUILD=true; fi
+          if [[ "${{ matrix.os }}" == "macos-15" && "${{ github.event.inputs.build_macos_intel }}" == "true" ]]; then SHOULD_BUILD=true; fi
+          if [[ "${{ matrix.os }}" == "macos-14" && "${{ github.event.inputs.build_macos_silicon }}" == "true" ]]; then SHOULD_BUILD=true; fi
+          echo "should_build=$SHOULD_BUILD" >> $GITHUB_OUTPUT
+
+      - name: Checkout code
+        if: steps.check_skip.outputs.should_build == 'true'
+        uses: actions/checkout@v4
+
+      - name: Update version.txt
+        if: steps.check_skip.outputs.should_build == 'true'
+        shell: bash
+        run: |
+            echo "version_str = '${{ github.event.inputs.version }}'" > version.txt
+
+      - name: Install uv
+        if: steps.check_skip.outputs.should_build == 'true' && runner.os != 'Linux'
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python 3.11
+        if: steps.check_skip.outputs.should_build == 'true' && runner.os != 'Linux'
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        if: steps.check_skip.outputs.should_build == 'true' && runner.os != 'Linux'
+        run: |
+          uv venv
+          uv pip install -r requirements.txt
+
+      - name: Install system dependencies (macOS)
+        if: steps.check_skip.outputs.should_build == 'true' && runner.os == 'macOS'
+        run: |
+          brew install libusb create-dmg
+
+      - name: Build binary
+        if: steps.check_skip.outputs.should_build == 'true'
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" == "Linux" ]; then
+            docker build -t dmt-build-ubuntu build/ubuntu
+            docker run --rm -v $(pwd):/root/dmt dmt-build-ubuntu
+          else
+            uv run build_binaries.py
+          fi
+
+      - name: Upload Artifacts
+        if: steps.check_skip.outputs.should_build == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            dist/all/DashMasternodeTool_*.zip
+            dist/all/DashMasternodeTool_*.tar.gz
+            dist/all/DashMasternodeTool_*.AppImage
+            dist/all/DashMasternodeTool_*.dmg
+
+  release:
+    name: Create Release
+    needs: build
+    if: always() && !cancelled() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+            path: artifacts
+
+      - name: Prepare files for release
+        run: |
+          mkdir -p release_files
+          find artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.AppImage" -o -name "*.dmg" \) -exec cp -v {} release_files/ \;
+          ls -R release_files/
+
+      - name: Create or Update Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: Version ${{ github.event.inputs.version }}
+          files: release_files/*
+          draft: false
+          prerelease: ${{ github.event.inputs.pre_release == 'true' }}
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
