@@ -931,7 +931,8 @@ class Bip44Wallet(QObject):
                                 a.last_balance_verify_ts = int(time.time())
                                 if current_balance is not None and current_balance != a.balance:
                                     log.warning(f'Balance of address {a.address}, id: {a.id} discrepency; cached '
-                                                f'balance: {a.balance}, network balance: {current_balance}')
+                                                f'balance: {a.balance} ({app_utils.to_string(a.balance / 1e8)} Dash), '
+                                                f'network balance: {current_balance} ({app_utils.to_string(current_balance / 1e8)} Dash)')
 
                                     txes = self.dashd_intf.getaddressdeltasrawtx_dmt(addresses=[a.address], start = 0,
                                                                                      end = max_block_height, verbose=1,
@@ -965,7 +966,7 @@ class Bip44Wallet(QObject):
     def _process_transaction(self, db_cursor, tx_hash: str, tx_json: Dict = None, skip_cache=False) \
             -> Tuple[int, Optional[Dict]]:
         """
-        Adds records related to transaction do a local cache database, fetching a transaction detaisl (JSON) from RPC
+        Adds records related to transaction do a local cache database, fetching a transaction details (JSON) from RPC
         node if necessary.
         :param db_cursor: cursor to a local database
         :param tx_hash: hash of the transaction
@@ -979,10 +980,6 @@ class Bip44Wallet(QObject):
         try:
             if not tx_json:
                 tx_json = self._getrawtransaction(tx_hash, skip_cache=skip_cache)
-
-            if not self.__tree_id:
-                log.error('Bip44Wallet error: tree_id is empty')
-                raise Exception('Bip44Wallet error: tree_id is empty')
 
             db_cursor.execute('select id, block_height from tx where tx_hash=?', (tx_hash, ))
             row = db_cursor.fetchone()
@@ -1647,16 +1644,22 @@ class Bip44Wallet(QObject):
         diff = time.time() - tm_begin
         log.debug('list_utxos_for_account exec time: %ss', diff)
 
-    def list_utxos_for_addresses(self, address_ids: List[int], only_new = False,
-                                 filter_by_satoshis: Optional[int] = None) -> Generator[UtxoType, None, None]:
+    def list_utxos_for_addresses(
+            self, address_ids: List[int],
+            only_new = False,
+            filter_by_satoshis: Optional[int] = None,
+            skip_hw: bool = False
+    ) -> Generator[UtxoType, None, None]:
         db_cursor = self.db_intf.get_cursor()
         try:
             params = []
             sql_text = "select o.id, tx.block_height, tx.coinbase,tx.block_timestamp, tx.tx_hash, o.output_index, " \
                        "o.satoshis, a.id from tx_output o join address a" \
                        " on a.address=o.address join tx on tx.id=o.tx_id where (spent_tx_hash is null " \
-                       " or spent_input_index is null) and a.id in (select id from temp_ids2) and a.tree_id=?"
-            params.append(self.__tree_id)
+                       " or spent_input_index is null) and a.id in (select id from temp_ids2)"
+            if not skip_hw:
+                sql_text += " and a.tree_id=?"
+                params.append(self.__tree_id)
 
             self._fill_temp_ids_table(address_ids, db_cursor, tab_sufix='2')
 
@@ -1712,7 +1715,13 @@ class Bip44Wallet(QObject):
                 self.db_intf.commit()
             self.db_intf.release_cursor()
 
-    def _prepare_cursor_for_txs_list(self, db_cursor, account_id: Optional[int], address_ids: Optional[List[int]]):
+    def _prepare_cursor_for_txs_list(
+            self,
+            db_cursor,
+            account_id: Optional[int],
+            address_ids: Optional[List[int]],
+            skip_hw: bool = False
+    ):
 
         cond_params = []
         if account_id is not None:
@@ -1738,12 +1747,19 @@ class Bip44Wallet(QObject):
                    t.block_timestamp,
                    0 is_coinbase,
                    -1
-            from tx_input i join tx t on t.id=i.tx_id join address a on a.address=i.src_address and a.tree_id=?"""
+            from tx_input i join tx t on t.id=i.tx_id join address a on a.address=i.src_address"""
 
-        params.append(self.__tree_id)
+        if not skip_hw:
+            sql_text += ' and a.tree_id=?'
+            params.append(self.__tree_id)
+            hw_cond1 = ' and a.tree_id=?'
+            hw_cond2 = ' and ai.tree_id=?'
+        else:
+            hw_cond1 = ''
+            hw_cond2 = ''
         params.extend(cond_params)
 
-        sql_text += condition + """ group by t.id
+        sql_text += condition + f""" group by t.id
             union
             select 1 type,
                    group_concat(DISTINCT ifnull(ai.id,'')||':'||ai.address),
@@ -1754,11 +1770,12 @@ class Bip44Wallet(QObject):
                    t.block_height,
                    t.block_timestamp, max(i.coinbase) is_coinbase,
                    o.id
-            from tx_output o join tx t on t.id=o.tx_id join address a on a.address=o.address and a.tree_id=?
-            join tx_input i on i.tx_id=t.id left join address ai on ai.address=i.src_address and ai.tree_id=?"""
+            from tx_output o join tx t on t.id=o.tx_id join address a on a.address=o.address { hw_cond1 }
+            join tx_input i on i.tx_id=t.id left join address ai on ai.address=i.src_address { hw_cond2 }"""
 
-        params.append(self.__tree_id)
-        params.append(self.__tree_id)
+        if not skip_hw:
+            params.append(self.__tree_id)
+            params.append(self.__tree_id)
         params.extend(cond_params)
 
         sql_text += condition + """ group by o.id
@@ -1786,15 +1803,20 @@ class Bip44Wallet(QObject):
                 else:
                     yield addr_str
 
-    def list_txs(self, account_id: Optional[int], address_ids: Optional[List[int]], only_new = False) -> \
-            Generator[TxType, None, None]:
+    def list_txs(
+            self,
+            account_id: Optional[int],
+            address_ids: Optional[List[int]],
+            only_new = False,
+            skip_hw: bool = False
+    ) -> Generator[TxType, None, None]:
 
         tm_begin = time.time()
         if account_id:
             self.validate_hd_tree()  # we don't need a hw connection when scanning specific addresses
         db_cursor = self.db_intf.get_cursor()
         try:
-            self._prepare_cursor_for_txs_list(db_cursor, account_id, address_ids)
+            self._prepare_cursor_for_txs_list(db_cursor, account_id, address_ids, skip_hw)
 
             for type, snd_addrs, rcp_addrs, satoshis, tx_id, tx_hash, bh, bts, is_coinbase, output_id \
                     in db_cursor.fetchall():

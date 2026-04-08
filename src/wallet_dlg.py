@@ -1344,7 +1344,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             for mni in self.selected_mns:
                 if mni.address and not mni.address.id in address_ids:
                     address_ids.append(mni.address.id)
-            list_utxos = self.bip44_wallet.list_utxos_for_addresses(address_ids)
+            list_utxos = self.bip44_wallet.list_utxos_for_addresses(address_ids, skip_hw=True)
         else:
             raise Exception('Invalid utxo_src_mode')
         return list_utxos
@@ -1364,7 +1364,7 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
             for mni in self.selected_mns:
                 if mni.address and not mni.address.id in address_ids:
                     address_ids.append(mni.address.id)
-            list_txs = self.bip44_wallet.list_txs(None, address_ids, only_new)
+            list_txs = self.bip44_wallet.list_txs(None, address_ids, only_new, skip_hw=True)
         else:
             raise Exception('Invalid utxo_src_mode')
         return list_txs
