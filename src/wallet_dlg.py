@@ -494,10 +494,12 @@ class WalletDlg(QDialog, ui_wallet_dlg.Ui_WalletDlg, WndUtils):
         self.finishing = True
         self.data_thread_event.set()
         self.display_thread_event.set()
-        if self.data_thread_ref:
-            self.data_thread_ref.wait(5000)
-        if self.display_thread_ref:
-            self.display_thread_ref.wait(5000)
+        # Wait for workers while pumping the event loop - otherwise a worker
+        # currently blocked inside call_in_main_thread will deadlock against
+        # the main thread that is now waiting on it.
+        WndUtils.wait_for_threads(
+            [self.data_thread_ref, self.display_thread_ref, self.update_data_view_thread_ref],
+            5000)
 
     def start_threads(self):
         self.finishing = False
