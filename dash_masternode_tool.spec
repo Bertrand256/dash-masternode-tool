@@ -171,20 +171,31 @@ a = Analysis(['src/dash_masternode_tool.py'],
 pyz = PYZ(a.pure, a.zipped_data,
           cipher=block_cipher)
 
-exe = EXE(pyz,
-          a.scripts,
-          a.binaries,
-          a.zipfiles,
-          a.datas,
-          name='DashMasternodeTool',
-          debug=False,
-          strip=False,
-          upx=False,
-          console=False,
-          icon=os.path.join('img', ('dmt.%s' % ('icns' if os_type == 'darwin' else 'ico'))))
-
 if os_type == 'darwin':
-    app = BUNDLE(exe,
+    # One-dir mode on macOS: avoids per-launch extraction of a one-file archive
+    # to /tmp/_MEIxxxxxx, which combined with Gatekeeper scanning makes cold
+    # starts take a minute or more. The .app bundle wraps the collected dir.
+    exe = EXE(pyz,
+              a.scripts,
+              [],
+              exclude_binaries=True,
+              name='DashMasternodeTool',
+              debug=False,
+              strip=False,
+              upx=False,
+              console=False,
+              icon=os.path.join('img', 'dmt.icns'))
+
+    coll = COLLECT(exe,
+                   a.binaries,
+                   a.zipfiles,
+                   a.datas,
+                   strip=False,
+                   upx=False,
+                   upx_exclude=[],
+                   name='DashMasternodeTool')
+
+    app = BUNDLE(coll,
                  name='DashMasternodeTool.app',
                  icon='img/dmt.icns',
                  bundle_identifier=None,
@@ -192,6 +203,19 @@ if os_type == 'darwin':
                      'NSHighResolutionCapable': 'True'
                  }
                  )
+else:
+    # One-file mode on Windows and Linux.
+    exe = EXE(pyz,
+              a.scripts,
+              a.binaries,
+              a.zipfiles,
+              a.datas,
+              name='DashMasternodeTool',
+              debug=False,
+              strip=False,
+              upx=False,
+              console=False,
+              icon=os.path.join('img', 'dmt.ico'))
 
 dist_path = os.path.join(base_dir, DISTPATH)
 all_bin_dir = os.path.join(dist_path, '..', 'all')
