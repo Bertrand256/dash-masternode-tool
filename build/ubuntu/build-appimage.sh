@@ -16,6 +16,14 @@ mkdir -p "$APP_DIR/usr/share/applications"
 # Copy executable
 cp "$DIST_DIR/$EXE_NAME" "$APP_DIR/usr/bin/"
 
+# Fix executable stack on libpython if it exists in the distribution (for newer Linux versions)
+# This is often needed for Fedora 42/43 or newer kernels that block executable stack by default
+if [ -d "$DIST_DIR/_internal" ]; then
+    find "$DIST_DIR/_internal" -name "libpython*.so*" -exec execstack -c {} +
+else
+    execstack -c "$DIST_DIR/$EXE_NAME" || true
+fi
+
 # Copy icon
 cp "img/dmt.png" "$APP_DIR/usr/share/icons/hicolor/256x256/apps/dmt.png"
 cp "img/dmt.png" "$APP_DIR/dmt.png"
