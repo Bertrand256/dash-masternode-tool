@@ -302,12 +302,20 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
 
     def stop_threads(self):
         self.finishing = True
+        # Wait for workers while pumping the event loop - otherwise a worker
+        # currently blocked inside call_in_main_thread will deadlock against
+        # the main thread that is now waiting on it.
         if self.refresh_status_thread_ref:
             log.info('Waiting for refresh_status_thread to finish...')
-            self.refresh_status_thread_ref.wait(5000)
         if self.refresh_price_thread_ref:
             log.info('Waiting for refresh_price_thread to finish...')
-            self.refresh_price_thread_ref.wait(5000)
+        if self.refresh_net_mnasternodes_thred_ref:
+            log.info('Waiting for refresh_net_mnasternodes_thred to finish...')
+        WndUtils.wait_for_threads(
+            [self.refresh_status_thread_ref,
+             self.refresh_price_thread_ref,
+             self.refresh_net_mnasternodes_thred_ref],
+            5000)
 
     def resume_threads(self):
         self.finishing = False

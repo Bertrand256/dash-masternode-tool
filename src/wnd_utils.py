@@ -18,7 +18,7 @@ import thread_utils
 import time
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtCore import Qt, QObject, QLocale, QEventLoop, QTimer, QPoint, QEvent, QPointF, QSize, QModelIndex, QRect, \
-    QUrl
+    QUrl, QThread
 from PyQt5.QtGui import QPalette, QPainter, QBrush, QColor, QPen, QIcon, QPixmap, QTextDocument, \
     QAbstractTextDocumentLayout, QTransform, QShowEvent, QDesktopServices
 from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QItemDelegate, QLineEdit, \
@@ -26,9 +26,44 @@ from PyQt5.QtWidgets import QMessageBox, QWidget, QFileDialog, QInputDialog, QIt
     QProxyStyle, QWidgetItem, QLayout, QSpacerItem, QLabel
 import math
 from common import CancelException
-from thread_fun_dlg import ThreadFunDlg, WorkerThread, CtrlObject
+from thread_fun_dlg import ThreadFunDlg, WorkerThread, WorkerDlgThread, CtrlObject
 
 app_config = None
+
+# Registry of every live background QThread started via WndUtils - both
+# WorkerThread (run_thread) and WorkerDlgThread (run_thread_dialog). Used at
+# application shutdown to cooperatively stop orphan threads (parent=None)
+# that would otherwise be missed by a widget-tree walk, and to keep their
+# sip wrappers strongly referenced past shutdown handling so they are not
+# finalized while the underlying OS thread is still running - which would
+# trigger Qt's "QThread: Destroyed while thread is still running" fatal.
+#
+# Must be a strong container (not WeakSet): PyQt5 does not hold the Python
+# wrapper of a running QThread alive on its own, so a WeakSet entry can
+# disappear as soon as the caller drops its handle (e.g. app_config's
+# delayed_copy worker that is fire-and-forget).
+_live_threads: "List[QThread]" = []
+_live_threads_lock = threading.Lock()
+
+
+def _register_live_thread(thread: QThread):
+    """
+    Add a background thread to the live-thread registry and arrange for it
+    to be removed when it finishes. Safe to call from the main thread only
+    (QThread.finished.connect expects it).
+    """
+    with _live_threads_lock:
+        if thread not in _live_threads:
+            _live_threads.append(thread)
+
+    def _remove():
+        with _live_threads_lock:
+            try:
+                _live_threads.remove(thread)
+            except ValueError:
+                pass
+
+    thread.finished.connect(_remove)
 
 
 def set_app_config(new_app_config):
@@ -227,10 +262,21 @@ class WndUtils:
         def call(worker_fun, worker_fun_args, close_after_finish, buttons, title, text, center_by_window,
                  force_close_dlg_callback, show_window_delay_ms):
 
+            # Refuse to spawn a new background worker once the app has
+            # started shutting down. Without this, a queued handler
+            # dispatched by wait_for_threads' event pump could create a
+            # fresh thread that escapes the already-taken snapshot in
+            # stop_all_threads.
+            if thread_wnd_utils._shutting_down:
+                logging.warning('run_thread_dialog called during shutdown; not starting %s', worker_fun)
+                return None
+
             ui = ThreadFunDlg(worker_fun, worker_fun_args, close_after_finish,
                               buttons=buttons, title=title, text=text, center_by_window=center_by_window,
                               force_close_dlg_callback=force_close_dlg_callback,
                               show_window_delay_ms=show_window_delay_ms)
+            if ui.worker_thread is not None:
+                _register_live_thread(ui.worker_thread)
             ui.wait_for_worker_completion()
             ret = ui.get_result()
             ret_exception = ui.worker_exception
@@ -286,7 +332,17 @@ class WndUtils:
             st = traceback.format_stack()
             logging.error('Running thread from inside another thread. Stack: \n' + ''.join(st))
 
+        # Refuse to spawn a new background worker once the app has started
+        # shutting down. A queued handler dispatched by wait_for_threads'
+        # event pump could otherwise create a fresh thread that escapes
+        # the snapshot taken in stop_all_threads and keep running past
+        # sip cleanup.
+        if thread_wnd_utils._shutting_down:
+            logging.warning('run_thread called during shutdown; not starting %s', worker_fun)
+            return None
+
         thread = WorkerThread(parent=parent, worker_fun=worker_fun, worker_fun_args=worker_fun_args)
+        _register_live_thread(thread)
 
         # in Python 3.5 local variables sometimes are removed before calling on_thread_finished_int
         # so we have to bind that variables with the function ref
@@ -309,6 +365,117 @@ class WndUtils:
 
         return thread_wnd_utils.call_in_main_thread_ext(fun_to_call, skip_if_main_thread_locked,
                                                         callback_if_main_thread_locked, *args, **kwargs)
+
+    @staticmethod
+    def wait_for_threads(threads: List[QThread], timeout_ms: int):
+        """
+        Wait for the given worker threads to finish while pumping the Qt
+        event loop. Needed because a worker may currently be blocked inside
+        call_in_main_thread on a queued fun_call_signal - that signal will
+        only be delivered if the main thread keeps dispatching events while
+        it waits, otherwise it deadlocks against its own workers.
+        """
+        threads = [t for t in threads if t is not None]
+        if not threads:
+            return
+        deadline = time.time() + max(0, timeout_ms) / 1000.0
+        while True:
+            alive = [t for t in threads if t.isRunning()]
+            if not alive:
+                return
+            if time.time() >= deadline:
+                return
+            QApplication.processEvents(QEventLoop.AllEvents, 50)
+            for t in alive:
+                if not t.isRunning():
+                    continue
+                t.wait(50)
+
+    @staticmethod
+    def stop_all_threads(timeout_ms: int = 8000):
+        """
+        Cooperatively stop every live WorkerThread before Qt/sip shutdown.
+
+        Must run while the QApplication event loop is still alive (e.g. from
+        the QApplication.aboutToQuit signal). Without this, worker threads
+        parented to widgets can still be running when sip tears down the
+        QObject tree at interpreter finalization, which makes Qt fatal-abort
+        with "QThread: Destroyed while thread is still running".
+        """
+        # Prevent any further call_in_main_thread invocations from blocking
+        # on the 1h mutex - the main thread is about to stop dispatching
+        # events, so new synchronous calls would deadlock forever.
+        thread_wnd_utils._shutting_down = True
+
+        app = QApplication.instance()
+        if app is None:
+            return
+
+        # Collect every live background thread. The registry (strong refs)
+        # covers both WorkerThread and WorkerDlgThread, including orphan
+        # threads created with parent=None (e.g. app_cache writer,
+        # app_config delayed_copy worker) that a widget-tree walk would
+        # miss. The widget walk is kept as a belt-and-braces source in
+        # case anything ever constructs a worker thread without going
+        # through the WndUtils helpers.
+        threads: List[QThread] = []
+        seen = set()
+        with _live_threads_lock:
+            registered = list(_live_threads)
+        for t in registered:
+            if id(t) not in seen:
+                seen.add(id(t))
+                threads.append(t)
+        for w in app.topLevelWidgets():
+            for t in w.findChildren(WorkerThread):
+                if id(t) not in seen:
+                    seen.add(id(t))
+                    threads.append(t)
+            for t in w.findChildren(WorkerDlgThread):
+                if id(t) not in seen:
+                    seen.add(id(t))
+                    threads.append(t)
+
+        if not threads:
+            return
+
+        # Ask workers to stop via their cooperative flag. Both WorkerThread
+        # and WorkerDlgThread expose a ctrl_obj with a `finish` attribute.
+        for t in threads:
+            try:
+                ctrl = getattr(t, 'ctrl_obj', None)
+                if ctrl is not None:
+                    ctrl.finish = True
+            except Exception:
+                pass
+            try:
+                t.requestInterruption()
+            except Exception:
+                pass
+
+        # Pump events + wait until all finish or timeout. Event pumping is
+        # essential: workers that are currently blocked in mutex.tryLock
+        # inside call_in_main_thread will only be released when the main
+        # thread actually dispatches their queued fun_call_signal.
+        WndUtils.wait_for_threads(threads, timeout_ms)
+
+        # Anything still running after the timeout is a last-resort case.
+        # Detach it from its parent so the Qt parent-destruction cascade
+        # does not touch it - we'd rather leak a thread on exit than crash.
+        # The thread is retained in the module-level _live_threads registry
+        # (or a parent-less entry kept alive by sip through its connected
+        # finished slot), so the Python wrapper will not be finalized while
+        # the underlying OS thread is still running.
+        for t in threads:
+            if t.isRunning():
+                try:
+                    logging.warning(
+                        '%s still running at shutdown; detaching from '
+                        'parent to avoid Qt fatal. worker_fun=%s',
+                        type(t).__name__, getattr(t, 'worker_fun', None))
+                    t.setParent(None)
+                except Exception:
+                    logging.exception('Failed to detach running worker thread at shutdown.')
 
     @staticmethod
     def get_icon_pixmap(ico_file_name: str, rotate=0, force_color_change: str = None) -> QPixmap:
@@ -518,6 +685,14 @@ class ThreadWndUtils(QObject):
         self.fun_call_signal.connect(self.fun_call_signalled)
         self.fun_call_ret_value = None
         self.fun_call_exception = None
+        # Set to True when the application is shutting down. When set,
+        # __call_in_main_thread returns immediately instead of emitting a
+        # signal and blocking on a mutex waiting for the main thread, which
+        # is no longer processing events during finalization. Without this,
+        # worker threads can stay blocked in mutex.tryLock(3600000) at exit
+        # and Qt fatal-aborts with "QThread: Destroyed while thread is still
+        # running" when sip tears down their parent widgets.
+        self._shutting_down = False
 
     def fun_call_signalled(self, fun_to_call, args, kwargs, mutex):
         """
@@ -566,6 +741,19 @@ class ThreadWndUtils(QObject):
         ret = None
         try:
             if threading.current_thread() != threading.main_thread():
+
+                # If the app is shutting down, the main thread is no longer
+                # processing events, so do not try to synchronize with it -
+                # the mutex.tryLock below would block until its 1h timeout,
+                # leaving the worker thread alive past sip cleanup and
+                # triggering the "QThread: Destroyed while thread is still
+                # running" Qt fatal. Raise CancelException so the worker
+                # unwinds through its normal cancel path instead of getting
+                # a surprise None return value that breaks callers which
+                # e.g. tuple-unpack the result (psw_cache.py) or expect an
+                # int (hw_intf_keepkey.py).
+                if self._shutting_down:
+                    raise CancelException()
 
                 # check whether the main thread waits for the lock acquired by the current thread
                 # if so, raise deadlock detected exception

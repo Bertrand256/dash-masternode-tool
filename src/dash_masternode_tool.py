@@ -66,6 +66,12 @@ if __name__ == '__main__':
     except Exception:
         pass
 
+    # Ensure any running WorkerThread is cooperatively stopped before sip
+    # tears down the Qt object tree at interpreter finalization. Without
+    # this, a worker still running at exit causes Qt to fatal-abort with
+    # "QThread: Destroyed while thread is still running".
+    app.aboutToQuit.connect(WndUtils.stop_all_threads)
+
     ui = main_dlg.MainWindow(app_dir, ui_dark_mode_activated)
     ui.show()
 
