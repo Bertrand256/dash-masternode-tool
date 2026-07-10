@@ -42,10 +42,12 @@ class AppCache(object):
     def start(self):
         """ Run saving thread after GUI initializes. """
         if not self.thread:
+            self.finishing = False
             self.thread = WndUtils.run_thread(None, self.save_data_thread, ())
 
     def finish(self):
         self.finishing = True
+        self.save_data()
         self.save_event.set()
 
     def save_data(self):
@@ -88,13 +90,14 @@ class AppCache(object):
 
     def save_data_thread(self, ctrl):
         last_save_date = 0
-        while not self.finishing:
+        while not self.finishing and not ctrl.finish:
             self.save_event.wait(2)
             if self.save_event.is_set():
                 self.save_event.clear()
             if self.last_data_change_time > 0 and last_save_date < self.last_data_change_time:
                 self.save_data()
                 last_save_date = time.time()
+        self.save_data()
         self.thread = None
 
 
@@ -186,4 +189,3 @@ def save_splitter_sizes(window: QDialog, splitter: QSplitter):
     if cache:
         symbol = window.__class__.__name__ + '_' + splitter.objectName()
         cache.set_value(symbol, splitter.sizes())
-

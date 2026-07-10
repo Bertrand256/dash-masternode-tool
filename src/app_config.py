@@ -135,7 +135,7 @@ class AppConfig(QObject):
         # Hash of the configuration data, last saved to disk. If None, config isn't saved or read from disk yet.
         self.config_file_data_hash: Optional[str] = None
 
-        self.global_config = Optional[app_cache.AppCache]
+        self.global_config: Optional[app_cache.AppCache] = None
         QLocale.setDefault(app_utils.get_default_locale())
         self.date_format = app_utils.get_default_locale().dateFormat(QLocale.ShortFormat)
         self.date_time_format = app_utils.get_default_locale().dateTimeFormat(QLocale.ShortFormat)
@@ -474,11 +474,16 @@ class AppConfig(QObject):
     def close(self):
         self.save_cache_settings()
         self.save_loggers_config()
-        app_cache.finish()
 
-        self.global_config.set_value('UI_USE_DARK_MODE', self.ui_use_dark_mode)
+        if self.global_config:
+            self.global_config.set_value('UI_USE_DARK_MODE', self.ui_use_dark_mode)
         app_cache.save_data(True)
-        self.global_config.save_data()
+        if self.global_config:
+            self.global_config.save_data()
+
+        app_cache.finish()
+        if self.global_config:
+            self.global_config.finish()
 
         if self.db_intf:
             self.db_intf.close()
