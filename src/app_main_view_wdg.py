@@ -401,12 +401,10 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
 
         try:
             WndUtils.call_in_main_thread(on_start)
-            updated = []
-            removed = []
 
             tm_begin = time.time()
-            self.dashd_intf.read_masternode_data_from_db(self.net_masternodes, self.net_mn_list_last_where_cond,
-                                                         updated, removed)
+            self.dashd_intf.read_masternode_data_from_db(self.net_masternodes, self.net_mn_list_last_where_cond)
+            self.dashd_intf.update_masternode_data_with_latest_info_from_network(self.net_masternodes)
             self.last_net_masternodes_db_read_params_hash = new_hash
             self.net_masternodes_last_db_timestamp = self.dashd_intf.masternodes_last_db_timestamp
 
@@ -1458,12 +1456,12 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 self.mn_info_by_mn_cfg[mn_cfg] = mn_info
 
                 mn_stat.status = mn_info.status
-                if mn_info.queue_position:
-                    mn_stat.next_payment_block = block_height + mn_info.queue_position + 1
-                    mn_stat.next_payment_ts = int(time.time()) + (mn_info.queue_position * 2.5 * 60)
-                else:
-                    mn_stat.next_payment_block = None
-                    mn_stat.next_payment_ts = None
+                mn_stat.next_payment_block = mn_info.next_payment_block
+                mn_stat.next_payment_ts = mn_info.next_payment_ts
+                mn_stat.next_payment_dt = datetime.fromtimestamp(float(mn_stat.next_payment_ts)) if mn_stat.next_payment_ts is not None else None
+                mn_stat.next_payment_in = mn_info.next_payment_in
+                in_str = app_utils.seconds_to_human(mn_stat.next_payment_in, out_unit_auto_adjust=True)
+                mn_stat.next_payment_in_str = 'in ' + in_str if in_str else ''
 
                 if mn_info.status == 'ENABLED' or mn_info.status == 'PRE_ENABLED':
                     mn_stat.status_warning = False
@@ -1602,12 +1600,6 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                     mn_stat.last_paid_ago = int(time.time()) - int(mn_stat.last_paid_ts)
                     ago_str = app_utils.seconds_to_human(mn_stat.last_paid_ago, out_unit_auto_adjust=True)
                     mn_stat.last_paid_ago_str = ago_str + ' ago' if ago_str else ''
-
-                if mn_stat.next_payment_block and mn_stat.next_payment_ts:
-                    mn_stat.next_payment_dt = datetime.fromtimestamp(float(mn_stat.next_payment_ts))
-                    mn_stat.next_payment_in = mn_stat.next_payment_ts - int(time.time())
-                    in_str = app_utils.seconds_to_human(mn_stat.next_payment_in, out_unit_auto_adjust=True)
-                    mn_stat.next_payment_in_str = 'in ' + in_str if in_str else ''
 
                 if self.dashd_intf.is_protx_update_pending(mn_info.protx_hash, mn_info.ip_port):
                     mn_stat.protx_conf_pending = True
@@ -2021,6 +2013,10 @@ class MasternodesFromNetworkTableModel(ExtSortFilterItemModel):
             TableModelColumn('last_paid_time', 'Last paid time', False, 100),
             TableModelColumn('last_paid_block', 'Last paid block', False, 100,
                              horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('next_payment_block', 'Next payment (block)', False, 100,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('next_payment_time', 'Next payment (time)', True, 150),
+            TableModelColumn('next_payment_in', 'Next payment (in)', True, 150),
             TableModelColumn('protx', 'Protx', False, 100),
             TableModelColumn('dmt_active', 'DMT active', False, 100),
             TableModelColumn('dmt_creation_time', 'DMT creation time', False, 150),
@@ -2137,6 +2133,29 @@ class MasternodesFromNetworkTableModel(ExtSortFilterItemModel):
                             ret_val = app_utils.to_string(datetime.fromtimestamp(mn.lastpaidtime))
                 elif col_name == 'last_paid_block':
                     ret_val = mn.lastpaidblock
+                elif col_name == 'next_payment_block':
+                    ret_val = mn.next_payment_block
+                    if ret_val is None and for_sorting:
+                        ret_val = SORTING_MAX_VALUE_FOR_NULL
+                elif col_name == 'next_payment_time':
+                    if for_sorting:
+                        ret_val = mn.next_payment_ts
+                        if ret_val is None:
+                            ret_val = SORTING_MAX_VALUE_FOR_NULL
+                    else:
+                        next_payment_dt = datetime.fromtimestamp(float(mn.next_payment_ts)) if mn.next_payment_ts is not None else None
+                        ret_val = app_utils.to_string(next_payment_dt)
+                elif col_name == 'next_payment_in':
+                    if for_sorting:
+                        ret_val = mn.next_payment_in
+                        if ret_val is None:
+                            ret_val = SORTING_MAX_VALUE_FOR_NULL
+                    else:
+                        if mn.next_payment_in is not None:
+                            in_str = app_utils.seconds_to_human(mn.next_payment_in, out_unit_auto_adjust=True)
+                            ret_val = 'in ' + in_str if in_str else ''
+                        else:
+                            ret_val = ''
                 elif col_name == 'ip_port':
                     ret_val = mn.ip_port
                 elif col_name == 'protx':

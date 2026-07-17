@@ -531,6 +531,9 @@ class Masternode(AttrsProtected):
         self.dmt_creation_time: Optional[int] = None
         self.dmt_deactivation_time: Optional[int] = None
         self.dmt_active: Optional[int] = None
+        self.next_payment_block: Optional[int] = None
+        self.next_payment_ts: Optional[int] = None
+        self.next_payment_in: Optional[int] = None
         self.set_attr_protection()
 
     def copy_from(self, src: Masternode):
@@ -562,6 +565,9 @@ class Masternode(AttrsProtected):
         self.dmt_creation_time = src.dmt_creation_time
         self.dmt_deactivation_time = src.dmt_deactivation_time
         self.dmt_active = src.dmt_active
+        self.next_payment_block = src.next_payment_block
+        self.next_payment_ts = src.next_payment_ts
+        self.next_payment_in = src.next_payment_in
 
     def copy_from_json(self, mn_ident: str, mn_json: Dict):
         m = re.match(r'([a-zA-F0-9]+)-(\d+)', mn_ident, re.IGNORECASE)
@@ -824,8 +830,11 @@ class DashdInterface(WndUtils):
         self.mempool_txes = {}
         self.initialized = True
 
-    def read_masternode_data_from_db(self, masternodes: List[Masternode], where_condition: str,
-                                     updated: Optional[List[Masternode]], removed_dbids: Optional[List[int]]):
+    def read_masternode_data_from_db(
+            self,
+            masternodes: List[Masternode],
+            where_condition: str
+        ):
         """
         :param masternodes: Target masternode list
         :param where_condition: A string with a where condition, to be appended to the SQL query.
@@ -859,9 +868,7 @@ class DashdInterface(WndUtils):
                     masternodes.append(mn)
                     mn_by_db_id[db_id] = mn
                     mn.db_id = db_id
-                    new_mn = True
                 else:
-                    new_mn = False
                     mn.modified = False
                 mn_by_db_id_current[mn.db_id] = mn
 
@@ -893,18 +900,15 @@ class DashdInterface(WndUtils):
                 mn.dmt_creation_time = int(datetime.datetime.strptime(row[26], '%Y-%m-%d %H:%M:%S').timestamp()) if row[26] else None
                 mn.dmt_deactivation_time = int(datetime.datetime.strptime(row[27], '%Y-%m-%d %H:%M:%S').timestamp()) if row[27] else None
                 mn.dmt_active = row[28]
-                if not new_mn and updated is not None:
-                    updated.append(mn)
 
             tm_diff = time.time() - tm_start
             log.info(f'DB read time of {len(masternodes)} MASTERNODES: {str(tm_diff)} s')
 
-            if removed_dbids is not None:
-                for mn_db_id in mn_by_db_id:
-                    if not mn_by_db_id_current.get(mn_db_id):
-                        removed_dbids.append(mn_db_id)
-                        mn = mn_by_db_id[mn_db_id]
-                        masternodes.remove(mn)
+            # remove masternodes from the input list that are not in the DB anymore
+            for mn_db_id in mn_by_db_id:
+                if not mn_by_db_id_current.get(mn_db_id):
+                    mn = mn_by_db_id[mn_db_id]
+                    masternodes.remove(mn)
         except Exception as e:
             log.exception('Reading masternodes from DB error: ' + str(e))
         finally:
@@ -920,13 +924,30 @@ class DashdInterface(WndUtils):
             self.masternodes_by_ip_port.clear()
             self.block_timestamps.clear()
 
-            self.read_masternode_data_from_db(self.masternodes, 'dmt_active=1', updated=None, removed_dbids=None)
+            self.read_masternode_data_from_db(self.masternodes, 'dmt_active=1')
 
             for mn in self.masternodes:
                 self.masternodes_by_ident[mn.ident] = mn
                 self.masternodes_by_ip_port[mn.ip_port] = mn
 
             self.masternodes_last_db_timestamp = int(time.time())
+
+    def update_masternode_data_with_latest_info_from_network(self, masternodes: List[Masternode]):
+        """
+        Update masternode data with latest info from network if available.
+        :param masternodes:
+        """
+        if self.masternodes:
+            _mns_to_remove = []
+            for mn in masternodes:
+                _mn_net = self.masternodes_by_ident.get(mn.ident)
+                if _mn_net:
+                    mn.copy_from(_mn_net)
+                else:
+                    _mns_to_remove.append(mn)
+
+            for mn in _mns_to_remove:
+                masternodes.remove(mn)
 
     def get_masternode_db_query_hash(self, masternode_list: List[Masternode], where_condition: str) -> str:
         str_to_hash = str(self.db_intf.db_cache_file_name) + where_condition + str(id(masternode_list))
@@ -1271,8 +1292,9 @@ class DashdInterface(WndUtils):
         """
         Updates masternode payment queue order values.
         """
-
         payment_queue = []
+        block_height = self.getblockcount()
+
         for mn in masternodes:
             if mn.status == 'ENABLED':
                 try:
@@ -1299,6 +1321,13 @@ class DashdInterface(WndUtils):
         for mn in masternodes:
             if mn.status == 'ENABLED':
                 mn.queue_position = payment_queue.index(mn) + 1
+                mn.next_payment_block = block_height + mn.queue_position + 1
+                mn.next_payment_ts = int(time.time()) + (mn.queue_position * 2.5 * 60)
+                mn.next_payment_in = mn.next_payment_ts - int(time.time())
+            else:
+                mn.next_payment_block = None
+                mn.next_payment_ts = None
+                mn.next_payment_in = None
 
     @control_rpc_call
     def get_masternodelist(self, *args, data_max_age=MASTERNODES_CACHE_VALID_SECONDS,
@@ -1802,4 +1831,3 @@ class DashdInterface(WndUtils):
             return False
         except Exception as e:
             return False
-

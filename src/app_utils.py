@@ -223,58 +223,59 @@ def seconds_to_human(number_of_seconds, out_seconds=True, out_minutes=True, out_
     """
     human_strings = []
 
-    if out_unit_auto_adjust:
-        if number_of_seconds > 600:  # don't show seconds if time > 10 min
-            out_seconds = False
-            if number_of_seconds > 86400:  # don't show minutes if time > 10 hours
-                out_minutes = False
-                if number_of_seconds > 864000:  # don't show hours if time > 10 days
-                    out_hours = False
-                    if number_of_seconds > 6048000:
-                        out_days = False
+    if number_of_seconds is not None:
+        if out_unit_auto_adjust:
+            if number_of_seconds > 600:  # don't show seconds if time > 10 min
+                out_seconds = False
+                if number_of_seconds > 86400:  # don't show minutes if time > 10 hours
+                    out_minutes = False
+                    if number_of_seconds > 864000:  # don't show hours if time > 10 days
+                        out_hours = False
+                        if number_of_seconds > 6048000:
+                            out_days = False
 
-    weeks = 0
-    days = 0
-    hours = 0
-    if out_weeks and number_of_seconds > 604800:
-        # weeks
-        weeks = int(number_of_seconds / 604800)
-        number_of_seconds = number_of_seconds - (weeks * 604800)
-        elem_str = str(int(weeks)) + ' week'
-        if weeks > 1:
-            elem_str += 's'
-        human_strings.append(elem_str)
+        weeks = 0
+        days = 0
+        hours = 0
+        if out_weeks and number_of_seconds > 604800:
+            # weeks
+            weeks = int(number_of_seconds / 604800)
+            number_of_seconds = number_of_seconds - (weeks * 604800)
+            elem_str = str(int(weeks)) + ' week'
+            if weeks > 1:
+                elem_str += 's'
+            human_strings.append(elem_str)
 
-    if out_days and number_of_seconds > 86400:
-        # days
-        days = int(number_of_seconds / 86400)
-        number_of_seconds = number_of_seconds - (days * 86400)
-        elem_str = str(int(days)) + ' day'
-        if days > 1:
-            elem_str += 's'
-        human_strings.append(elem_str)
+        if out_days and number_of_seconds > 86400:
+            # days
+            days = int(number_of_seconds / 86400)
+            number_of_seconds = number_of_seconds - (days * 86400)
+            elem_str = str(int(days)) + ' day'
+            if days > 1:
+                elem_str += 's'
+            human_strings.append(elem_str)
 
-    if out_hours and number_of_seconds > 3600:
-        hours = int(number_of_seconds / 3600)
-        number_of_seconds = number_of_seconds - (hours * 3600)
-        elem_str = str(int(hours)) + ' hour'
-        if hours > 1:
-            elem_str += 's'
-        human_strings.append(elem_str)
+        if out_hours and number_of_seconds > 3600:
+            hours = int(number_of_seconds / 3600)
+            number_of_seconds = number_of_seconds - (hours * 3600)
+            elem_str = str(int(hours)) + ' hour'
+            if hours > 1:
+                elem_str += 's'
+            human_strings.append(elem_str)
 
-    if out_minutes and number_of_seconds > 60:
-        minutes = int(number_of_seconds / 60)
-        number_of_seconds = number_of_seconds - (minutes * 60)
-        elem_str = str(int(minutes)) + ' minute'
-        if minutes > 1:
-            elem_str += 's'
-        human_strings.append(elem_str)
+        if out_minutes and number_of_seconds > 60:
+            minutes = int(number_of_seconds / 60)
+            number_of_seconds = number_of_seconds - (minutes * 60)
+            elem_str = str(int(minutes)) + ' minute'
+            if minutes > 1:
+                elem_str += 's'
+            human_strings.append(elem_str)
 
-    if out_seconds and number_of_seconds >= 1:
-        elem_str = str(int(number_of_seconds)) + ' second'
-        if number_of_seconds > 1:
-            elem_str += 's'
-        human_strings.append(elem_str)
+        if out_seconds and number_of_seconds >= 1:
+            elem_str = str(int(number_of_seconds)) + ' second'
+            if number_of_seconds > 1:
+                elem_str += 's'
+            human_strings.append(elem_str)
 
     return ' '.join(human_strings)
 
