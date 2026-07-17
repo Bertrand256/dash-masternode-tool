@@ -41,15 +41,18 @@ echo 'KERNEL=="hidraw*", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="53c1", MODE
 sudo udevadm trigger
 sudo udevadm control --reload-rules
 </pre>
-<h4>KeepKey devices:</h4>
-<pre>
-echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2b24", ATTR{idProduct}=="0001", MODE="0666", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl", SYMLINK+="keepkey%n"' | sudo tee /etc/udev/rules.d/51-usb-keepkey.rules
-echo 'KERNEL=="hidraw*", ATTRS{idVendor}=="2b24", ATTRS{idProduct}=="0001",  MODE="0666", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl"' | sudo tee -a /etc/udev/rules.d/51-usb-keepkey.rules
-echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2b24", ATTR{idProduct}=="0002", MODE="0666", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl", SYMLINK+="keepkey%n"' | sudo tee -a /etc/udev/rules.d/51-usb-keepkey.rules
-echo 'KERNEL=="hidraw*", ATTRS{idVendor}=="2b24", ATTRS{idProduct}=="0002",  MODE="0666", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl"' | sudo tee -a /etc/udev/rules.d/51-usb-keepkey.rules
-sudo udevadm trigger
-sudo udevadm control --reload-rules
-</pre>
+	<h4>KeepKey devices:</h4>
+	<pre>
+	echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2b24", ATTR{idProduct}=="0001", MODE="0666", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl", SYMLINK+="keepkey%n"' | sudo tee /etc/udev/rules.d/51-usb-keepkey.rules
+	echo 'KERNEL=="hidraw*", ATTRS{idVendor}=="2b24", ATTRS{idProduct}=="0001",  MODE="0666", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl"' | sudo tee -a /etc/udev/rules.d/51-usb-keepkey.rules
+	echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2b24", ATTR{idProduct}=="0002", MODE="0666", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl", SYMLINK+="keepkey%n"' | sudo tee -a /etc/udev/rules.d/51-usb-keepkey.rules
+	echo 'KERNEL=="hidraw*", ATTRS{idVendor}=="2b24", ATTRS{idProduct}=="0002",  MODE="0666", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl"' | sudo tee -a /etc/udev/rules.d/51-usb-keepkey.rules
+	sudo chown root:root /etc/udev/rules.d/51-usb-keepkey.rules
+	sudo chmod 644 /etc/udev/rules.d/51-usb-keepkey.rules
+	sudo udevadm control --reload-rules
+	sudo udevadm trigger
+	# Disconnect and reconnect KeepKey after reloading rules. Product id 0002 uses WebUSB transport.
+	</pre>
 <h4>Ledger Nano devices:</h4>
 <pre>
 echo 'SUBSYSTEMS=="usb", ATTRS{idVendor}=="2581", ATTRS{idProduct}=="1b7c|2b7c|3b7c|4b7c", TAG+="uaccess", TAG+="udev-acl"' | sudo tee /etc/udev/rules.d/20-hw1.rules
@@ -85,4 +88,3 @@ sudo udevadm control --reload-rules
         self.set_btn_continue_visible(False)
         self.set_btn_close_visible(True)
         self.set_btn_close_enabled(True)
-

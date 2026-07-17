@@ -6,14 +6,18 @@ import binascii
 import hashlib
 import logging
 import threading
+import time
 import unicodedata
 import hid
+import usb1
+from contextlib import contextmanager
 from decimal import Decimal
 from typing import Optional, Tuple, List, Generator, Iterator, Any
 
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import QEvent, Qt, QTimer
 from PyQt5.QtWidgets import QDialog, QLineEdit, QWidget
+from keepkeylib.transport import Transport
 from keepkeylib.transport_hid import HidTransport, DEVICE_IDS, is_normal_link, is_debug_link
 from keepkeylib.transport_webusb import WebUsbTransport
 from keepkeylib.client import TextUIMixin as keepkey_TextUIMixin, format_mnemonic
@@ -33,6 +37,9 @@ import keepkeylib.types_pb2 as proto_types
 import wallet_common
 from hw_common import clean_bip32_path
 from wnd_utils import WndUtils
+
+KEEPKEY_DEFAULT_READ_TIMEOUT_SECONDS = 30.0
+KEEPKEY_USER_ACTION_READ_TIMEOUT_SECONDS = 1800.0
 
 
 class CharInputLineEdit(QLineEdit):
@@ -246,6 +253,12 @@ class MyKeepkeyClient(keepkey_ProtocolMixin, MyKeepkeyTextUIMixin, keepkey_BaseC
         MyKeepkeyTextUIMixin.__init__(self, transport, ask_for_pin_fun, ask_for_pass_fun, passphrase_encoding)
         keepkey_BaseClient.__init__(self, transport)
 
+    def call_raw(self, msg):
+        transport = getattr(self, 'transport', None)
+        if transport is not None and hasattr(transport, 'buffer'):
+            transport.buffer = bytearray()
+        return super().call_raw(msg)
+
     def validate_firmware(self, fingerprint: str, firmware_data: bytes):
         try:
             if firmware_data[:8] == b'4b504b59':
@@ -267,8 +280,47 @@ class MyHidTransport(HidTransport):
     Class based on Keepkey's HidTransport, the purpose of which is to modify the enumerate method to return
     the serial number of the hw device, needed when switching between normal and bootloader mode.
     """
+    read_timeout_seconds: Optional[float] = KEEPKEY_DEFAULT_READ_TIMEOUT_SECONDS
+
     def __init__(self, device_paths, *args, **kwargs):
-        super(MyHidTransport, self).__init__(device_paths, *args, **kwargs)
+        self.hid = None
+        self.buffer = ""
+
+        self.use_debug_link = kwargs.get("debug_link", False)
+        self.interface_index = 1 if self.use_debug_link else 0
+
+        self.path = device_paths[self.interface_index]
+        if self.path is None:
+            raise Exception("KeepKey HID path not found for the selected interface.")
+
+        Transport.__init__(self, self.path, *args, **kwargs)
+
+    def _raw_read(self, length):
+        started = time.monotonic()
+        while len(self.buffer) < length:
+            timeout_seconds = self.read_timeout_seconds
+            if timeout_seconds is not None and time.monotonic() - started > timeout_seconds:
+                raise TimeoutError(
+                    f'Timeout while reading from KeepKey HID transport: no response for '
+                    f'{timeout_seconds:.1f}s.')
+
+            data = self.hid.read(64)
+            if not len(data):
+                time.sleep(0.001)
+                continue
+
+            report_id = data[0]
+
+            if report_id > 63:
+                # Command report
+                raise Exception("Not implemented")
+
+            # Payload received, skip the report ID
+            self.buffer.extend(bytearray(data[1:]))
+
+        ret = self.buffer[:length]
+        self.buffer = self.buffer[length:]
+        return bytes(ret)
 
     @classmethod
     def enumerate(cls):
@@ -276,38 +328,119 @@ class MyHidTransport(HidTransport):
         Slightly modified function
         """
         devices = {}
+        pending_devices = {}
         for d in hid.enumerate(0, 0):
             vendor_id = d['vendor_id']
             product_id = d['product_id']
             serial_number = d['serial_number']
-            interface_number = d['interface_number']
-            path = d['path']
-
-            # HIDAPI on Mac cannot detect correct HID interfaces, so device with
-            # DebugLink doesn't work on Mac...
-            if devices.get(serial_number) is not None and devices[serial_number][0] == path:
-                raise Exception("Two devices with the same path and S/N found. This is Mac, right? :-/")
 
             if (vendor_id, product_id) in DEVICE_IDS:
-                devices.setdefault(serial_number, [None, None, None])
+                pending_devices.setdefault(serial_number, []).append(d)
+
+        for serial_number, dev_list in pending_devices.items():
+            devices.setdefault(serial_number, [None, None, serial_number])
+            for d in dev_list:
+                interface_number = d['interface_number']
+                path = d['path']
+                usage_page = d.get('usage_page')
+
+                # HIDAPI on Mac cannot detect correct HID interfaces, so device with
+                # DebugLink doesn't work on Mac...
+                if devices.get(serial_number) is not None and devices[serial_number][0] == path:
+                    raise Exception("Two devices with the same path and S/N found. This is Mac, right? :-/")
+
                 if is_normal_link(d):
                     devices[serial_number][0] = path
                 elif is_debug_link(d):
-                    devices[serial_number][1] = path
+                    if len(dev_list) == 1 and usage_page == 0 and d['product_id'] != 0x0002:
+                        logging.info(
+                            'KeepKey HID device reports a single interface as debug link '
+                            '(interface_number=%s, usage_page=%s); using it as normal link.',
+                            interface_number, usage_page)
+                        devices[serial_number][0] = path
+                    else:
+                        devices[serial_number][1] = path
                 else:
                     raise Exception("Unknown USB interface number: %d" % interface_number)
-                devices[serial_number][2] = serial_number  # to pass serial number we're using the last element
 
         # List of two-tuples (path_normal, path_debuglink)
-        return list(devices.values())
+        return [device_paths for device_paths in devices.values() if device_paths[0] is not None]
+
+
+class MyWebUsbTransport(WebUsbTransport):
+    read_timeout_seconds: Optional[float] = KEEPKEY_DEFAULT_READ_TIMEOUT_SECONDS
+
+    def _open(self):
+        self.handle = self.device.open()
+        if self.handle is None:
+            raise IOError("Cannot open KeepKey WebUSB device")
+
+        try:
+            self.handle.setAutoDetachKernelDriver(True)
+        except (usb1.USBError, AttributeError):
+            pass
+
+        try:
+            if self.handle.kernelDriverActive(self.interface):
+                self.handle.detachKernelDriver(self.interface)
+        except usb1.USBErrorNotSupported:
+            pass
+        except usb1.USBErrorNotFound:
+            pass
+
+        self.handle.claimInterface(self.interface)
+
+    def _raw_read(self, length):
+        started = time.monotonic()
+        endpoint = 0x80 | self.endpoint
+        while len(self.buffer) < length:
+            timeout_seconds = self.read_timeout_seconds
+            if timeout_seconds is not None and time.monotonic() - started > timeout_seconds:
+                raise TimeoutError(
+                    f'Timeout while reading from KeepKey WebUSB transport: no response for '
+                    f'{timeout_seconds:.1f}s.')
+
+            try:
+                data = self.handle.interruptRead(endpoint, 64, 100)
+            except usb1.USBErrorTimeout:
+                continue
+
+            if data:
+                if len(data) != 64:
+                    raise Exception("Unexpected chunk size: %d" % len(data))
+                self.buffer.extend(bytearray(data[1:]))
+            else:
+                time.sleep(0.001)
+
+        ret = self.buffer[:length]
+        self.buffer = self.buffer[length:]
+        return bytes(ret)
+
+    @classmethod
+    def enumerate(cls):
+        try:
+            return super().enumerate()
+        except usb1.USBError as e:
+            logging.warning('Cannot enumerate KeepKey WebUSB devices: %s', e)
+            return []
 
 
 def enumerate_devices(device_id: Optional[str]) -> Iterator[Tuple[type, any, str]]:
-    transports = [MyHidTransport, WebUsbTransport]
+    transports = [MyWebUsbTransport, MyHidTransport]
     for t in transports:
-        for d in t.enumerate():
+        try:
+            found_devices = t.enumerate()
+        except Exception as e:
+            logging.warning('Cannot enumerate KeepKey devices for transport %s: %s', t.__name__, e)
+            continue
+
+        for d in found_devices:
             if d.__class__.__name__ == 'USBDevice' and hasattr(d, 'getSerialNumber'):
-                cur_device_id = d.getSerialNumber()
+                try:
+                    cur_device_id = d.getSerialNumber()
+                except Exception as e:
+                    cur_device_id = None
+                    logging.warning('Could not get KeepKey WebUSB serial number: %s', e)
             elif t == MyHidTransport and isinstance(d, list) and len(d) >= 3:
                 cur_device_id = d[2]
                 d[2] = None  # restore None in the last element of the list used by MyHidTransport.enumerate
@@ -317,7 +450,7 @@ def enumerate_devices(device_id: Optional[str]) -> Iterator[Tuple[type, any, str
 
             if not device_id:
                 yield t, d, cur_device_id
-            elif cur_device_id == device_id:
+            elif cur_device_id == device_id or cur_device_id is None:
                 yield t, d, cur_device_id
                 break
 
@@ -381,6 +514,9 @@ def open_session(device_id: str, passphrase_encoding: Optional[str] = 'NFC') -> 
     for transport_cls, d, serial_number in enumerate_devices(device_id):
         transport = transport_cls(d)
         client = MyKeepkeyClient(transport, ask_for_pin_callback, ask_for_pass_callback, passphrase_encoding)
+        if device_id and not serial_number and client.features.device_id != device_id:
+            client.close()
+            continue
         if client:
             logging.info('Keepkey connected. Firmware version: %s.%s.%s, vendor: %s, initialized: %s, '
                          'pp_protection: %s, pp_cached: %s, bootloader_mode: %s ' %
@@ -396,6 +532,25 @@ def open_session(device_id: str, passphrase_encoding: Optional[str] = 'NFC') -> 
 
 def close_session(client: MyKeepkeyClient):
     client.close()
+
+
+@contextmanager
+def read_timeout(hw_client: MyKeepkeyClient, timeout_seconds: Optional[float]):
+    transport = getattr(hw_client, 'transport', None)
+    if transport is None or not hasattr(transport, 'read_timeout_seconds'):
+        yield
+        return
+
+    old_timeout_seconds = transport.read_timeout_seconds
+    transport.read_timeout_seconds = timeout_seconds
+    try:
+        yield
+    finally:
+        transport.read_timeout_seconds = old_timeout_seconds
+
+
+def user_action_read_timeout(hw_client: MyKeepkeyClient):
+    return read_timeout(hw_client, KEEPKEY_USER_ACTION_READ_TIMEOUT_SECONDS)
 
 
 class MyTxApiInsight(TxApiInsight):
@@ -524,7 +679,8 @@ def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: 
     if outputs_amount + tx_fee != inputs_amount:
         raise Exception('Transaction validation failure: inputs + fee != outputs')
 
-    signed = client.sign_tx(rt_data.hw_coin_name, inputs, outputs)
+    with user_action_read_timeout(client):
+        signed = client.sign_tx(rt_data.hw_coin_name, inputs, outputs)
     logging.info('Signed transaction')
     return signed[1], inputs_amount
 
@@ -532,7 +688,8 @@ def sign_tx(hw_session: HWSessionBase, rt_data: AppRuntimeData, utxos_to_spend: 
 def sign_message(hw_client, hw_coin_name: str, bip32path: str, message: str):
     address_n = hw_client.expand_path(clean_bip32_path(bip32path))
     try:
-        return hw_client.sign_message(hw_coin_name, address_n, message)
+        with user_action_read_timeout(hw_client):
+            return hw_client.sign_message(hw_coin_name, address_n, message)
     except CallException as e:
         if e.args and len(e.args) >= 2 and e.args[1].lower().find('cancelled') >= 0:
             raise CancelException('Cancelled')
@@ -541,26 +698,30 @@ def sign_message(hw_client, hw_coin_name: str, bip32path: str, message: str):
 
 
 def ping(hw_client, message: str):
-    hw_client.ping(message, True)
+    with user_action_read_timeout(hw_client):
+        hw_client.ping(message, True)
 
 
 def change_pin(hw_client, remove=False):
     if hw_client:
-        hw_client.change_pin(remove)
+        with user_action_read_timeout(hw_client):
+            hw_client.change_pin(remove)
     else:
         raise Exception('HW client not set.')
 
 
 def enable_passphrase(hw_client, passphrase_enabled):
     if hw_client:
-        hw_client.apply_settings(use_passphrase=passphrase_enabled)
+        with user_action_read_timeout(hw_client):
+            hw_client.apply_settings(use_passphrase=passphrase_enabled)
     else:
         raise Exception('HW client not set.')
 
 
 def set_label(hw_client, label: str):
     if hw_client:
-        hw_client.apply_settings(label=label)
+        with user_action_read_timeout(hw_client):
+            hw_client.apply_settings(label=label)
     else:
         raise Exception('HW client not set.')
 
@@ -577,7 +738,8 @@ def wipe_device(hw_device_id: str, hw_client: Any, passphrase_encoding: Optional
             client = hw_client
 
         if client:
-            client.wipe_device()
+            with user_action_read_timeout(client):
+                client.wipe_device()
             hw_device_id = client.features.device_id
             return hw_device_id
         else:
@@ -609,13 +771,15 @@ def recover_device(hw_device_id: str, hw_client: Any, word_count: int, passphras
 
         if client:
             if client.features.initialized:
-                client.wipe_device()
+                with user_action_read_timeout(client):
+                    client.wipe_device()
                 hw_device_id = client.features.device_id
 
             client.parent_dialog = parent_window
-            client.recovery_device(use_trezor_method=False, word_count=word_count,
-                                   passphrase_protection=passphrase_enabled, pin_protection=pin_enabled,
-                                   label=hw_label, language='english')
+            with user_action_read_timeout(client):
+                client.recovery_device(use_trezor_method=False, word_count=word_count,
+                                       passphrase_protection=passphrase_enabled, pin_protection=pin_enabled,
+                                       label=hw_label, language='english')
             client.close()
             return hw_device_id
         else:
@@ -647,11 +811,13 @@ def initialize_device(hw_device_id: str, hw_client: Any, strength: int, passphra
 
         if client:
             if client.features.initialized:
-                client.wipe_device()
+                with user_action_read_timeout(client):
+                    client.wipe_device()
                 hw_device_id = client.features.device_id
 
-            client.reset_device(display_random=True, strength=strength, passphrase_protection=passphrase_enabled,
-                                pin_protection=pin_enabled, label=hw_label, language='english')
+            with user_action_read_timeout(client):
+                client.reset_device(display_random=True, strength=strength, passphrase_protection=passphrase_enabled,
+                                    pin_protection=pin_enabled, label=hw_label, language='english')
             return hw_device_id
         else:
             raise Exception('Couldn\'t connect to Keepkey device.')
@@ -664,4 +830,3 @@ def initialize_device(hw_device_id: str, hw_client: Any, strength: int, passphra
     finally:
         if client and hw_client != client:
             client.close()
-

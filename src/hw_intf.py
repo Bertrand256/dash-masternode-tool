@@ -95,10 +95,14 @@ def control_hw_call(func):
             finally:
                 hw_session.release_client()
 
+        except TimeoutError:
+            logging.exception('Timeout calling %s function' % func.__name__)
+            raise
+
         except (OSError, usb1.USBErrorNoDevice) as e:
             logging.exception('Exception calling %s function' % func.__name__)
             logging.info('Disconnecting HW after OSError occurred')
-            hw_session.hw_disconnect()
+            hw_session.disconnect_hardware_wallet()
             raise HWNotConnectedException('The hardware wallet device has been disconnected with the '
                                           'following error: ' + str(e))
 
@@ -877,7 +881,12 @@ class HWDevices(QObject):
                     raise CancelException()
 
             elif hw_device.hw_type == HWType.keepkey:
-                data = hw_device.hw_client.encrypt_keyvalue(bip32_path_n, label, value, ask_on_encrypt, ask_on_decrypt)
+                if ask_on_encrypt or ask_on_decrypt:
+                    with keepkey.user_action_read_timeout(hw_device.hw_client):
+                        data = hw_device.hw_client.encrypt_keyvalue(
+                            bip32_path_n, label, value, ask_on_encrypt, ask_on_decrypt)
+                else:
+                    data = hw_device.hw_client.encrypt_keyvalue(bip32_path_n, label, value, ask_on_encrypt, ask_on_decrypt)
                 pub_key = hw_device.hw_client.get_public_node(bip32_path_n).node.public_key
                 return data, pub_key
 
@@ -921,7 +930,11 @@ class HWDevices(QObject):
 
             elif hw_device.hw_type == HWType.keepkey:
                 client = hw_device.hw_client
-                data = client.decrypt_keyvalue(bip32_path_n, label, value, ask_on_encrypt, ask_on_decrypt)
+                if ask_on_encrypt or ask_on_decrypt:
+                    with keepkey.user_action_read_timeout(client):
+                        data = client.decrypt_keyvalue(bip32_path_n, label, value, ask_on_encrypt, ask_on_decrypt)
+                else:
+                    data = client.decrypt_keyvalue(bip32_path_n, label, value, ask_on_encrypt, ask_on_decrypt)
                 pub_key = client.get_public_node(bip32_path_n).node.public_key
                 return data, pub_key
 
@@ -1535,7 +1548,11 @@ def get_address(hw_session: HwSessionInfo, bip32_path: str, show_display: bool =
                     try:
                         if isinstance(bip32_path, str):
                             bip32_path = dash_utils.bip32_path_string_to_n(bip32_path)
-                        return client.get_address(hw_session.runtime_data.hw_coin_name, bip32_path, show_display)
+                        if show_display:
+                            with keepkey.user_action_read_timeout(client):
+                                return client.get_address(hw_session.runtime_data.hw_coin_name, bip32_path, show_display)
+                        else:
+                            return client.get_address(hw_session.runtime_data.hw_coin_name, bip32_path, show_display)
                     except keepkeylib.client.CallException as e:
                         if isinstance(e.args, tuple) and len(e.args) >= 2 and isinstance(e.args[1], str) and \
                                 e.args[1].find('cancel') >= 0:
