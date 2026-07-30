@@ -1040,7 +1040,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
 
     @pyqtSlot(bool)
     def on_btnRefreshMnStatus_clicked(self):
-        self.refresh_network_data()
+        self.refresh_network_data(force_refresh=True)
 
     @pyqtSlot(QModelIndex)
     def on_viewMasternodes_doubleClicked(self, index):
@@ -1251,7 +1251,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             except Exception as e:
                 WndUtils.error_msg(str(e), True)
 
-    def refresh_network_data(self):
+    def refresh_network_data(self, force_refresh=False):
         def update():
             if not self.refresh_status_thread_ref and not self.refresh_price_thread_ref and \
                not self.refresh_net_mnasternodes_thred_ref:
@@ -1263,7 +1263,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
 
         if not self.refresh_status_thread_ref:
             logging.info('Starting thread "refresh_status_thread"')
-            self.refresh_status_thread_ref = WndUtils.run_thread(self, self.refresh_status_thread, (),
+            self.refresh_status_thread_ref = WndUtils.run_thread(self, self.refresh_status_thread, (force_refresh,),
                                                                  on_thread_finish=update)
 
         if self.app_config.show_dash_value_in_fiat and (self.app_config.is_mainnet or SCREENSHOT_MODE):
@@ -1392,7 +1392,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             return protx
         return None
 
-    def refresh_status_thread(self, _):
+    def refresh_status_thread(self, _, force_refresh=False):
         def on_start():
             self.show_loading_animation()
             self.update_mn_preview()
@@ -1405,13 +1405,16 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             check_finishing()
             WndUtils.call_in_main_thread(on_start)
 
-            # check if any of the masternodes from config had waited protx transaction; if so, we will minimize
-            # the cache max data age attribute
-            cache_max_age = 60
-            for mn_cfg in self.mns_status:
-                mn_stat = self.mns_status[mn_cfg]
-                if mn_stat.protx_conf_pending:
-                    cache_max_age = 1
+            if force_refresh:
+                cache_max_age = 0
+            else:
+                # check if any of the masternodes from config had waited protx transaction; if so, we will minimize
+                # the cache max data age attribute
+                cache_max_age = 60
+                for mn_cfg in self.mns_status:
+                    mn_stat = self.mns_status[mn_cfg]
+                    if mn_stat.protx_conf_pending:
+                        cache_max_age = 1
 
             self.dashd_intf.get_masternodelist('json', data_max_age=cache_max_age, feedback_fun=check_finishing)
             check_finishing()

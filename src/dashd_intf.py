@@ -1294,6 +1294,7 @@ class DashdInterface(WndUtils):
         """
         payment_queue = []
         block_height = self.getblockcount()
+        log.info(f'Current block count: {block_height}')
 
         for mn in masternodes:
             if mn.status == 'ENABLED':
@@ -1321,7 +1322,7 @@ class DashdInterface(WndUtils):
         for mn in masternodes:
             if mn.status == 'ENABLED':
                 mn.queue_position = payment_queue.index(mn) + 1
-                mn.next_payment_block = block_height + mn.queue_position + 1
+                mn.next_payment_block = block_height + mn.queue_position
                 mn.next_payment_ts = int(time.time()) + (mn.queue_position * 2.5 * 60)
                 mn.next_payment_in = mn.next_payment_ts - int(time.time())
             else:
