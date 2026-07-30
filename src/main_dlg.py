@@ -499,7 +499,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
     def on_action_open_log_file_triggered(self, checked):
         if os.path.exists(self.app_config.log_file):
             try:
-                ret = QDesktopServices.openUrl(QUrl("file:///%s" % self.app_config.log_file))
+                ret = QDesktopServices.openUrl(QUrl.fromLocalFile(self.app_config.log_file))
                 if not ret:
                     self.warn_msg('Could not open "%s" file using a default OS application.' % self.app_config.log_file)
             except Exception as e:
@@ -554,7 +554,7 @@ class MainWindow(QMainWindow, QDetectThemeChange, WndUtils, ui_main_dlg.Ui_MainW
     def on_action_open_data_folder_triggered(self, checked):
         if os.path.exists(self.app_config.data_dir):
             try:
-                ret = QDesktopServices.openUrl(QUrl("file:///%s" % self.app_config.data_dir))
+                ret = QDesktopServices.openUrl(QUrl.fromLocalFile(self.app_config.data_dir))
                 if not ret:
                     self.warn_msg(
                         'Could not open "%s" folder using a default OS application.' % self.app_config.data_dir)
