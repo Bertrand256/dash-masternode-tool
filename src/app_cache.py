@@ -8,6 +8,8 @@ Handles caching different data from application forms.
 """
 import copy
 import json
+import os
+import tempfile
 import threading
 import time
 import logging
@@ -31,13 +33,20 @@ class AppCache(object):
         self.__data = {}
         self.thread = None
         self.changes_pending = False
+        self.data_revision = 0
+        self.data_lock = threading.RLock()
+        self.save_lock = threading.RLock()
 
     def set_file_name(self, cache_file_name: str):
-        if cache_file_name != self.cache_file_name:
-            if self.last_data_change_time > 0:
-                self.save_data()
-            self.cache_file_name = cache_file_name
-            self.load_data()
+        with self.save_lock:
+            with self.data_lock:
+                if cache_file_name != self.cache_file_name:
+                    # Keep setters out until pending data is flushed to the old
+                    # file and the state for the new file has been loaded.
+                    if self.changes_pending:
+                        self.save_data()
+                    self.cache_file_name = cache_file_name
+                    self.load_data()
 
     def start(self):
         """ Run saving thread after GUI initializes. """
@@ -51,52 +60,92 @@ class AppCache(object):
         self.save_event.set()
 
     def save_data(self):
+        tmp_file_name = None
         try:
-            if self.changes_pending:
-                self.__data['app_version'] = self.app_version
-                json.dump(self.__data, open(self.cache_file_name, 'w'))
-                self.last_data_change_time = 0
-                self.changes_pending = False
+            # Only one thread can write the cache file at a time. The state lock is
+            # deliberately released during disk I/O, so GUI updates are not blocked.
+            with self.save_lock:
+                with self.data_lock:
+                    if not self.changes_pending or not self.cache_file_name:
+                        return
+                    revision = self.data_revision
+                    cache_file_name = self.cache_file_name
+                    data = copy.deepcopy(self.__data)
+                    data['app_version'] = self.app_version
+
+                cache_dir = os.path.dirname(cache_file_name) or '.'
+                fd, tmp_file_name = tempfile.mkstemp(prefix='.dmt_cache_', suffix='.tmp', dir=cache_dir)
+                with os.fdopen(fd, 'w') as file_ptr:
+                    json.dump(data, file_ptr)
+                    file_ptr.flush()
+                    os.fsync(file_ptr.fileno())
+                os.replace(tmp_file_name, cache_file_name)
+                tmp_file_name = None
+
+                with self.data_lock:
+                    # A setter may have modified the cache while the snapshot was
+                    # being written. In that case leave it pending for the next save.
+                    if self.cache_file_name == cache_file_name and self.data_revision == revision:
+                        self.__data['app_version'] = self.app_version
+                        self.last_data_change_time = 0
+                        self.changes_pending = False
         except Exception as e:
             log.error('Error writing cache: ' + str(e))
+        finally:
+            if tmp_file_name:
+                try:
+                    os.unlink(tmp_file_name)
+                except OSError:
+                    pass
 
     def load_data(self):
         try:
-            j = json.load(open(self.cache_file_name))
-            if j:
-                self.__data = j
+            with self.data_lock:
+                cache_file_name = self.cache_file_name
+            with open(cache_file_name) as file_ptr:
+                j = json.load(file_ptr)
+            if isinstance(j, dict):
+                with self.data_lock:
+                    self.__data = j
+                    self.last_data_change_time = 0
+                    self.changes_pending = False
+                    self.data_revision = 0
         except:
             pass
 
     def data_changed(self):
-        self.last_data_change_time = time.time()
-        self.changes_pending = True
+        with self.data_lock:
+            self.last_data_change_time = time.time()
+            self.changes_pending = True
+            self.data_revision += 1
 
     def set_value(self, symbol, value):
         if isinstance(value, (int, float, str, list, tuple, dict)):
-            modified = self.__data.get(symbol, None) != value
-            if modified:
-                self.__data[symbol] = copy.deepcopy(value)
-                self.data_changed()
+            with self.data_lock:
+                modified = self.__data.get(symbol, None) != value
+                if modified:
+                    self.__data[symbol] = copy.deepcopy(value)
+                    self.data_changed()
         elif value is not None:
             raise ValueError('Invalid type of value for cache item ' + symbol)
 
     def get_value(self, symbol, default_value, type):
-        v = self.__data.get(symbol, default_value)
-        if isinstance(v, type):
-            return v
-        else:
-            return default_value
+        with self.data_lock:
+            v = self.__data.get(symbol, default_value)
+            if isinstance(v, type):
+                return copy.deepcopy(v)
+            else:
+                return default_value
 
     def save_data_thread(self, ctrl):
-        last_save_date = 0
         while not self.finishing and not ctrl.finish:
             self.save_event.wait(2)
             if self.save_event.is_set():
                 self.save_event.clear()
-            if self.last_data_change_time > 0 and last_save_date < self.last_data_change_time:
+            with self.data_lock:
+                changes_pending = self.changes_pending
+            if changes_pending:
                 self.save_data()
-                last_save_date = time.time()
         self.save_data()
         self.thread = None
 

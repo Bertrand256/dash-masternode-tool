@@ -81,7 +81,6 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         self.cfg_masternodes_model = MasternodesFromConfigTableModel(self, self.app_config.masternodes,
                                                                      self.mns_status, self.get_dash_amount_str)
         self.mn_list_columns_cache_name: str = ''
-        self.mn_list_columns_resized_by_user = False
 
         self.net_masternodes: List[Masternode] = []
         self.net_masternodes_model = MasternodesFromNetworkTableModel(self, self.net_masternodes)
@@ -89,7 +88,6 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         self.network_masternodes_filter_visible = False
         self.net_masternodes_last_db_timestamp = 0
         self.net_mn_list_columns_cache_name: str = ''
-        self.net_mn_list_columns_resized_by_user = False
         self.net_mn_list_last_where_cond = ''
         self.cur_network_masternode: Optional[Masternode] = None
 
@@ -140,9 +138,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         self.viewMasternodes.setItemDelegate(ReadOnlyTableCellDelegate(self.viewMasternodes))
         self.viewMasternodes.verticalHeader().setDefaultSectionSize(
             self.viewMasternodes.verticalHeader().fontMetrics().height() + 10)
-        self.cfg_masternodes_model.set_sort_column('no', Qt.AscendingOrder)
         self.cfg_masternodes_model.set_view(self.viewMasternodes)
-        self.viewMasternodes.horizontalHeader().sectionResized.connect(self.on_mn_list_column_resized)
         self.viewMasternodes.selectionModel().selectionChanged.connect(self.on_cfg_mn_view_selection_changed)
         self.viewMasternodes.setContextMenuPolicy(Qt.CustomContextMenu)
 
@@ -151,9 +147,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         self.viewNetMasternodes.setItemDelegate(ReadOnlyTableCellDelegate(self.viewNetMasternodes))
         self.viewNetMasternodes.verticalHeader().setDefaultSectionSize(
             self.viewNetMasternodes.verticalHeader().fontMetrics().height() + 10)
-        self.net_masternodes_model.set_sort_column('id', Qt.AscendingOrder)
         self.net_masternodes_model.set_view(self.viewNetMasternodes)
-        self.viewNetMasternodes.horizontalHeader().sectionResized.connect(self.on_net_mn_list_column_resized)
         self.viewNetMasternodes.selectionModel().selectionChanged.connect(self.on_net_mn_view_selection_changed)
         self.viewNetMasternodes.setContextMenuPolicy(Qt.CustomContextMenu)
 
@@ -254,15 +248,11 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
         self.save_cache_config_dependent()
 
     def save_cache_config_dependent(self):
-        """Save runtime configuration (stored in cache) that is dependent on the main configuration file.
-        Currently, it's the configuration of the masternode list view columns (order, widths, visibility).
-        """
+        """Save grid configuration that is dependent on the main configuration file."""
         if self.mn_list_columns_cache_name:
-            if self.mn_list_columns_resized_by_user:
-                self.cfg_masternodes_model.save_col_defs(self.mn_list_columns_cache_name)
+            self.cfg_masternodes_model.save_col_defs(self.mn_list_columns_cache_name)
         if self.net_mn_list_columns_cache_name:
-            if self.net_mn_list_columns_resized_by_user:
-                self.net_masternodes_model.save_col_defs(self.net_mn_list_columns_cache_name)
+            self.net_masternodes_model.save_col_defs(self.net_mn_list_columns_cache_name)
 
     def restore_cache_config_dependent(self):
         """Save runtime configuration (stored in cache) that is dependent on the main configuration file."""
@@ -337,9 +327,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 self.save_cache_config_dependent()
                 h = hashlib.sha256(self.app_config.app_config_file_name.encode('ascii', 'ignore')).hexdigest()
                 self.mn_list_columns_cache_name = 'MainWindow_MnListColumns_' + h[0:8]
-                self.mn_list_columns_resized_by_user = False
                 self.net_mn_list_columns_cache_name = 'MainWindow_NetMnListColumns_' + h[0:8]
-                self.net_mn_list_columns_resized_by_user = False
                 self.restore_cache_config_dependent()
 
                 if len(self.app_config.masternodes) and not self.cur_masternode:
@@ -881,12 +869,6 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
             self.update_ui()
         except Exception as e:
             WndUtils.error_msg(str(e), True)
-
-    def on_mn_list_column_resized(self, logical_index, old_size, new_size):
-        self.mn_list_columns_resized_by_user = True
-
-    def on_net_mn_list_column_resized(self, logical_index, old_size, new_size):
-        self.net_mn_list_columns_resized_by_user = True
 
     def on_mn_data_changed(self):
         if self.cur_masternode or self.edited_masternode:

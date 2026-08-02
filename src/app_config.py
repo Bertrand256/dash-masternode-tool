@@ -306,97 +306,28 @@ class AppConfig(QObject):
                 WndUtils.error_msg('--data-dir parameter doesn\'t point to an existing directory. Using the default '
                                    'data directory.')
 
-        migrate_config = False
-        old_user_data_dir = ''
         user_home_dir = os.path.expanduser('~')
         if not app_user_dir:
             app_user_dir = AppConfig.get_default_user_data_dir()
 
         self.data_dir = app_user_dir
         self.cache_dir = os.path.join(self.data_dir, 'cache')
-        cache_file_name_prev = os.path.join(self.cache_dir, 'dmt_cache_v2.json')
-        cache_file_name = os.path.join(self.cache_dir, 'dmt_cache_v3.json')
-        if not os.path.exists(cache_file_name) and os.path.exists(cache_file_name_prev):
-            copyfile(cache_file_name_prev, cache_file_name)
+        cache_file_name_v2 = os.path.join(self.cache_dir, 'dmt_cache_v2.json')
+        cache_file_name_v3 = os.path.join(self.cache_dir, 'dmt_cache_v3.json')
+        cache_file_name = os.path.join(self.cache_dir, 'dmt_cache_v4.json')
+
+        def migrate_json_cache_file():
+            if not os.path.exists(cache_file_name):
+                for previous_cache_file_name in (cache_file_name_v3, cache_file_name_v2):
+                    if os.path.exists(previous_cache_file_name):
+                        copyfile(previous_cache_file_name, cache_file_name)
+                        break
 
         global_settings_file_name = os.path.join(self.data_dir, GLOBAL_SETTINGS_FILE_NAME)
 
-        if migrate_config:
-            try:
-                dirs_do_copy_later: List[Tuple[str, str]] = []
-
-                def ignore_fun(cur_dir: str, items: List):
-                    """In the first stage, ignore directories with a lot of files inside."""
-                    nonlocal dirs_do_copy_later
-                    to_ignore = []
-                    if cur_dir == os.path.join(old_user_data_dir, 'cache'):
-                        # subfolders with the cached tx data will be copied in the background to not delay
-                        # the app startup
-                        for item in items:
-                            item_path = os.path.join(cur_dir, item)
-                            if os.path.isdir(item_path):
-                                to_ignore.append(item)
-                                dest_path = item_path.replace(old_user_data_dir, self.data_dir)
-                                dirs_do_copy_later.append((item_path, dest_path))
-                    elif cur_dir == os.path.join(old_user_data_dir, 'logs'):
-                        to_ignore.extend(items)
-                    return to_ignore
-
-                def delayed_copy_thread(ctrl, dirs_to_copy: List[Tuple[str, str]]):
-                    """Directories with a possible large number of files copy in the background."""
-                    try:
-                        logging.info('Beginning to copy data in the background')
-                        for (src_dir, dest_dir) in dirs_to_copy:
-                            shutil.copytree(src_dir, dest_dir)
-                        logging.info('Finished copying data in the background')
-                    except Exception as e:
-                        logging.exception('Exception while copying data in the background')
-
-                shutil.copytree(old_user_data_dir, self.data_dir, ignore=ignore_fun)
-                if dirs_do_copy_later:
-                    WndUtils.run_thread(None, delayed_copy_thread, (dirs_do_copy_later,))
-
-                if os.path.exists(cache_file_name):
-                    # correct the configuration file paths stored in the cache file using the
-                    # newly created data folder
-                    cache_data = json.load(open(cache_file_name))
-                    fn = cache_data.get('AppConfig_ConfigFileName')
-
-                    old_dir = old_user_data_dir.replace('\\', '/')  # windows: paths stored in the cache file
-                    # have possibly '/' characters instead od '\'
-                    fn = fn.replace('\\', '/')
-
-                    if fn.find(old_dir) >= 0 and len(fn) > len(old_dir) \
-                            and fn[len(old_dir)] in ('/', '\\'):
-                        fn = self.data_dir + fn[len(old_dir):]
-                        if sys.platform == 'win32':
-                            fn = fn.replace('/', '\\')
-                        cache_data['AppConfig_ConfigFileName'] = fn
-
-                    mru = cache_data.get('MainWindow_ConfigFileMRUList')
-                    modified = False
-                    for idx, fn in enumerate(mru):
-                        fn = fn.replace('\\', '/')
-                        if fn.find(old_dir) >= 0 and len(fn) > len(old_dir) \
-                                and fn[len(old_dir)] in ('/', '\\'):
-                            fn = self.data_dir + fn[len(old_dir):]
-                            if sys.platform == 'win32':
-                                fn = fn.replace('/', '\\')
-                            mru[idx] = fn
-                            modified = True
-                    if modified:
-                        cache_data['MainWindow_ConfigFileMRUList'] = mru
-
-                    json.dump(cache_data, open(cache_file_name, 'w'))
-            except Exception as e:
-                logging.exception('Exception occurred while copying the data directory')
-                # if there was an error when migrating to a new configuration, use the old data directory
-                self.data_dir = old_user_data_dir
-                self.cache_dir = os.path.join(self.data_dir, 'cache')
-                cache_file_name = os.path.join(self.cache_dir, 'dmt_cache_v2.json')
-
         if not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir)
+        migrate_json_cache_file()
 
         app_cache.init(cache_file_name, self.app_version)
         self.app_last_version = app_cache.get_value('app_version', '', str)

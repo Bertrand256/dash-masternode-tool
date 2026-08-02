@@ -109,14 +109,21 @@ class ExtSortFilterItemModel(QAbstractItemModel, AttrsProtected):
                 if self.view:
                     self.view.horizontalHeader().setSortIndicator(idx, sort_order)
                 else:
-                    self.initial_sorting_order = col_name
+                    # view is not ready, so postpone setting the sorting column until it's ready
+                    self.initial_sorting_column_name = col_name
                     self.initial_sorting_order = sort_order
             else:
                 raise Exception(f'Column {col_name} not in column list' )
 
     def set_view(self, view: QAbstractItemView):
-        self.view = view
-        self.get_view_horizontal_header().sectionMoved.connect(self.on_view_column_moved)
+        if self.view is not view:
+            if self.view:
+                try:
+                    self.get_view_horizontal_header().sectionMoved.disconnect(self.on_view_column_moved)
+                except (TypeError, RuntimeError):
+                    pass
+            self.view = view
+            self.get_view_horizontal_header().sectionMoved.connect(self.on_view_column_moved)
         if self.proxy_model:
             self.view.setModel(self.proxy_model)
         else:
@@ -219,7 +226,7 @@ class ExtSortFilterItemModel(QAbstractItemModel, AttrsProtected):
             return None
 
     def col_index_by_name(self, name: str):
-        return self._col_idx_by_name.get(name)
+        return self._col_idx_by_name.get(name, -1)
 
     def col_by_index(self, index: int):
         return self._columns[index]
@@ -248,27 +255,78 @@ class ExtSortFilterItemModel(QAbstractItemModel, AttrsProtected):
             cols.append({'name': c.name,
                          'visible': c.visible,
                          'width': width})
-        app_cache.set_value(setting_name, cols)
+
+        sorting = None
+        sort_col = self.get_sort_column()
+        sort_order = self.get_sort_order()
+        if sort_col and sort_order in (Qt.AscendingOrder, Qt.DescendingOrder):
+            sorting = {
+                'column': sort_col.name,
+                'order': 'ascending' if sort_order == Qt.AscendingOrder else 'descending'
+            }
+
+        app_cache.set_value(setting_name, {
+            'columns': cols,
+            'sorting': sorting
+        })
 
     def restore_col_defs(self, setting_name: str) -> bool:
         """
         :return: True, if columns settings were found in cache, False otherwise
         """
-        cols = app_cache.get_value(setting_name, [], list)
-        if cols:
-            idx = 0
-            for _c in cols:
-                name = _c.get('name')
-                c = self.col_by_name(name)
-                if c:
-                    c.visual_index = idx
-                    c.visible = _c.get('visible', True)
-                    c.initial_width = _c.get('width', c.initial_width)
-                    idx += 1
-            self._columns.sort(key=lambda x: x.visual_index)
-            self._rebuild_column_index()
-            return True
-        return False
+        data = app_cache.get_value(setting_name, None, (list, dict))
+        if isinstance(data, list):
+            # Cache format used up to dmt_cache_v3.json.
+            cols = data
+            sorting = None
+        elif isinstance(data, dict):
+            cols = data.get('columns')
+            sorting = data.get('sorting')
+        else:
+            return False
+
+        columns_restored = False
+        if isinstance(cols, list) and cols:
+            restored_columns = []
+            restored_column_names = set()
+            for col_data in cols:
+                if not isinstance(col_data, dict):
+                    continue
+                name = col_data.get('name')
+                if not isinstance(name, str) or name in restored_column_names:
+                    continue
+                col = self.col_by_name(name)
+                if col:
+                    visible = col_data.get('visible')
+                    if isinstance(visible, bool):
+                        col.visible = visible
+                    width = col_data.get('width')
+                    if isinstance(width, int) and not isinstance(width, bool) and width > 0:
+                        col.initial_width = width
+                    restored_columns.append(col)
+                    restored_column_names.add(name)
+
+            if restored_columns:
+                # Columns introduced after the settings were saved are appended in
+                # their model-defined order and receive non-conflicting indexes.
+                restored_columns.extend(c for c in self._columns if c.name not in restored_column_names)
+                self._columns[:] = restored_columns
+                self._rebuild_column_index()
+                columns_restored = True
+
+        if isinstance(sorting, dict):
+            sort_col_name = sorting.get('column')
+            sort_order_name = sorting.get('order')
+            if isinstance(sort_col_name, str) and self.col_by_name(sort_col_name):
+                if sort_order_name == 'ascending':
+                    sort_order = Qt.AscendingOrder
+                else:
+                    sort_order = Qt.DescendingOrder
+                self.initial_sorting_column_name = sort_col_name
+                self.initial_sorting_order = sort_order
+                self.set_sort_column(sort_col_name, sort_order)
+
+        return columns_restored
 
     def on_view_column_moved(self, logicalIndex, oldVisualIndex, newVisualIndex):
         hdr = self.get_view_horizontal_header()
