@@ -1309,12 +1309,7 @@ class DashdInterface(WndUtils):
                         mn.queue_position = mn.pose_revived_height
                 except Exception as e:
                     log.exception(str(e))
-
                 payment_queue.append(mn)
-                if mn.type == 'Evo':
-                    payment_queue.append(mn)  # for Evo node, take 4 places in the payment queue
-                    payment_queue.append(mn)
-                    payment_queue.append(mn)
             else:
                 mn.queue_position = None
         payment_queue.sort(key=lambda x: x.queue_position, reverse=False)
