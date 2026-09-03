@@ -25,7 +25,7 @@ import app_cache
 import app_utils
 import hw_intf
 from app_config import (AppConfig, MasternodeConfig, MasternodeType, MasternodeTypeMap, DMN_ROLE_OWNER,
-                        DMN_ROLE_OPERATOR, DMN_ROLE_VOTING)
+                        DMN_ROLE_OPERATOR, DMN_ROLE_VOTING, InputKeyType)
 from app_defs import COLOR_ERROR_STR, COLOR_WARNING_STR, COLOR_ERROR, COLOR_WARNING, \
     AppTextMessageType, SCREENSHOT_MODE
 from common import CancelException
@@ -813,7 +813,7 @@ class WdgAppMainView(QWidget, QDetectThemeChange, ui_app_main_view_wdg.Ui_WdgApp
                 add_status_line([('Operator pubkey', mn.pubkey_operator, None)])
                 add_status_line([('Operator reward', str(mn.operator_reward), None),
                                  ('Operator payout address', mn.operator_payout_address if mn.operator_payout_address else '&lt;empty&gt;', None)])
-                add_status_line([('Platform Node Id', mn.platform_node_id if mn.platform_node_id else '&lt;empty&gt;', None),
+                add_status_line([('Platform Node ID', mn.platform_node_id if mn.platform_node_id else '&lt;empty&gt;', None),
                                  ('Platform P2P port', str(mn.platform_p2p_port) if mn.platform_p2p_port else '&lt;empty&gt;', None),
                                  ('Platform HTTP port', str(mn.platform_http_port) if mn.platform_http_port else '&lt;empty&gt;', None)])
                 add_status_line([('PoSe penalty', str(mn.pose_penalty) if mn.pose_penalty is not None else '&lt;empty&gt;', None),
@@ -1738,6 +1738,7 @@ class MasternodesFromConfigTableModel(ExtSortFilterItemModel):
             TableModelColumn('no', '', True, 25, horizontal_alignment=HorizontalAlignment.RIGHT),
             TableModelColumn('name', 'Name', True, 150),
             TableModelColumn('status', 'Status', True, 140),
+            TableModelColumn('masternode_type', 'Masternode type', True, 100),
             TableModelColumn('ip_port', 'IP/port', True, 160),
             TableModelColumn('collateral', 'Collateral address', False, 100),
             TableModelColumn('collateral_tx', 'Collateral tx/index', False, 100),
@@ -1760,8 +1761,21 @@ class MasternodesFromConfigTableModel(ExtSortFilterItemModel):
             TableModelColumn('payout_addr_balance_dash', 'Payout balance [DASH]', False, 100,
                              horizontal_alignment=HorizontalAlignment.RIGHT),
             TableModelColumn('payout_addr_balance_fiat', 'Payout balance [USD]', False, 100,
-                             horizontal_alignment=HorizontalAlignment.RIGHT)
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('owner_dash_address', 'Owner Dash address', False, 100),
+            TableModelColumn('owner_private_key', 'Owner private key', False, 100),
+            TableModelColumn('operator_public_key', 'Operator public key', False, 100),
+            TableModelColumn('operator_private_key', 'Operator private key', False, 100),
+            TableModelColumn('voting_dash_address', 'Voting Dash address', False, 100),
+            TableModelColumn('voting_private_key', 'Voting private key', False, 100),
+            TableModelColumn('platform_node_id', 'Platform Node ID', False, 100),
+            TableModelColumn('platform_node_key', 'Platform Node key', False, 100),
+            TableModelColumn('platform_p2p_port', 'Platform P2P port', False, 100,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
+            TableModelColumn('platform_http_port', 'Platform HTTP port', False, 100,
+                             horizontal_alignment=HorizontalAlignment.RIGHT),
         ], True, True)
+        self.wdg_main_view: WdgAppMainView = parent
         self.masternodes = masternodes
         self.mns_status = mns_status
         self.background_color = QtGui.QColor('lightgray')
@@ -1835,8 +1849,9 @@ class MasternodesFromConfigTableModel(ExtSortFilterItemModel):
             mn = self.masternodes[row_idx]
             if mn:
                 st = self.mns_status.get(mn)
+            else:
+                st = None
 
-            st = self.mns_status.get(mn)
             col = self.col_by_index(col_idx)
             if col:
                 col_name = col.name
@@ -1955,6 +1970,57 @@ class MasternodesFromConfigTableModel(ExtSortFilterItemModel):
                                 ret_val = 0
                         else:
                             ret_val = self.get_dash_amount_str(st.payout_addr_balance, False, True, False, False)
+                elif col_name == 'masternode_type':
+                    if mn.masternode_type == MasternodeType.REGULAR:
+                        ret_val = 'Regular'
+                    elif mn.masternode_type == MasternodeType.EVO:
+                        ret_val = 'Evo'
+                    else:
+                        ret_val = None
+
+                elif col_name == 'owner_dash_address':
+                    ret_val = mn.get_owner_public_address(self.wdg_main_view.app_config.dash_network)
+
+                elif col_name == 'owner_private_key':
+                    ret_val = mn.owner_private_key if mn.owner_key_type == InputKeyType.PRIVATE else None
+
+                elif col_name == 'operator_public_key':
+                    ret_val = mn.get_operator_pubkey()
+
+                elif col_name == 'operator_private_key':
+                    ret_val = mn.operator_private_key if mn.operator_key_type == InputKeyType.PRIVATE else None
+
+                elif col_name == 'voting_dash_address':
+                    ret_val = mn.get_voting_public_address(self.wdg_main_view.app_config.dash_network)
+
+                elif col_name == 'voting_private_key':
+                    ret_val = mn.voting_private_key if mn.voting_key_type == InputKeyType.PRIVATE else None
+
+                elif col_name == 'platform_node_id':
+                    if mn.masternode_type == MasternodeType.EVO:
+                        ret_val = mn.get_platform_node_id()
+                    else:
+                        ret_val = None
+
+                elif col_name == 'platform_node_key':
+                    if mn.masternode_type == MasternodeType.EVO and mn.platform_node_key_type == InputKeyType.PRIVATE:
+                        ret_val = mn.platform_node_private_key
+                    else:
+                        ret_val = None
+
+                elif col_name == 'platform_p2p_port':
+                    if mn.masternode_type == MasternodeType.EVO:
+                        ret_val = mn.platform_p2p_port
+                    else:
+                        ret_val = None
+
+                elif col_name == 'platform_http_port':
+                    if mn.masternode_type == MasternodeType.EVO:
+                        ret_val = mn.platform_http_port
+                    else:
+                        ret_val = None
+
+
         return ret_val
 
     def lessThan(self, col_index, left_row_index, right_row_index):
@@ -2008,7 +2074,7 @@ class MasternodesFromNetworkTableModel(ExtSortFilterItemModel):
             TableModelColumn('dmt_deactivation_time', 'DMT deactivation time', False, 150),
             TableModelColumn('registered_height', 'Registered height', False, 100,
                              horizontal_alignment=HorizontalAlignment.RIGHT),
-            TableModelColumn('platform_node_id', 'Platform Node Id', False, 150),
+            TableModelColumn('platform_node_id', 'Platform Node ID', False, 150),
             TableModelColumn('platform_p2p_port', 'Platform P2P port', False, 100,
                              horizontal_alignment=HorizontalAlignment.RIGHT),
             TableModelColumn('platform_http_port', 'Platform HTTP port', False, 100,

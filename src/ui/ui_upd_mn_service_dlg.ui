@@ -210,7 +210,7 @@
           </font>
          </property>
          <property name="text">
-          <string>Platform Node Id</string>
+          <string>Platform Node ID</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>

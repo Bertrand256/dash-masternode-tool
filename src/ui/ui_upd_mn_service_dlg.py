@@ -264,7 +264,7 @@ class Ui_UpdMnServiceDlg(object):
         self.label_2.setText(_translate("UpdMnServiceDlg", "Port"))
         self.btnChooseAddressFromWallet.setToolTip(_translate("UpdMnServiceDlg", "Choose a Dash address for masternode rewards from your hardware wallet"))
         self.btnChooseAddressFromWallet.setText(_translate("UpdMnServiceDlg", "Choose from hardware wallet"))
-        self.lblPlatformNodeKey.setText(_translate("UpdMnServiceDlg", "Platform Node Id"))
+        self.lblPlatformNodeKey.setText(_translate("UpdMnServiceDlg", "Platform Node ID"))
         self.lblOperatorPayoutMsg.setText(_translate("UpdMnServiceDlg", "..."))
         self.lblPlatformPortsMsg.setText(_translate("UpdMnServiceDlg", "..."))
         self.lblPlatformP2PPort.setText(_translate("UpdMnServiceDlg", "Platform P2P port"))

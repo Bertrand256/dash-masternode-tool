@@ -253,7 +253,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                 style = ''
             else:
                 key_type, tooltip_anchor, placeholder_text = ('platform_node_id', 'privkey',
-                                                              'Enter the Platform Node Id')
+                                                              'Enter the Platform Node ID')
                 style = 'hl1'
             set_key_related_label(self.lblPlatformNodeKey, 'Platform Node', key_type, tooltip_anchor, style)
             self.edtPlatformNodeKey.setPlaceholderText(placeholder_text)
@@ -315,7 +315,7 @@ class UpdMnServiceDlg(QDialog, QDetectThemeChange, ui_upd_mn_service_dlg.Ui_UpdM
                               'generate it here, then copy it into the Tenderdash configuration.'
                     style = 'info'
                 else:
-                    msg = 'Enter the Platform Node Id generated from the Tenderdash private key.'
+                    msg = 'Enter the Platform Node ID generated from the Tenderdash private key.'
                     style = 'info'
 
         set_info_label(self.lblPlatformNodeKeyMsg, msg, style)

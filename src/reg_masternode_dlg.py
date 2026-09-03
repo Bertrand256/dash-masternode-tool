@@ -296,7 +296,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                 style = ''
             else:
                 key_type, tooltip_anchor, placeholder_text = ('platform_node_id', 'privkey',
-                                                              'Enter the Platform Node Id')
+                                                              'Enter the Platform Node ID')
                 style = 'hl1'
             self.lblPlatformNodeKey.setText(get_label_text('Platform Node', key_type, tooltip_anchor, style))
             self.edtPlatformNodeKey.setPlaceholderText(placeholder_text)
@@ -384,7 +384,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
     @pyqtSlot(str)
     def on_lblPlatformNodeKey_linkHovered(self, link):
         if link == 'node id':
-            tt = 'Change input type to Platform Node Id'
+            tt = 'Change input type to Platform Node ID'
         else:
             tt = 'Change input type to Ed25519 private key'
         self.lblPlatformNodeKey.setToolTip(tt)
@@ -786,7 +786,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                                   'generate it here, then copy it into the Tenderdash configuration.'
                         style = 'info'
                     else:
-                        msg = 'Enter the Platform Node Id generated from the Tenderdash private key.'
+                        msg = 'Enter the Platform Node ID generated from the Tenderdash private key.'
                         style = 'info'
 
         self.set_ctrl_message(self.lblPlatformNodeKeyMsg, msg, style)
@@ -1013,7 +1013,7 @@ class RegMasternodeDlg(QDialog, QDetectThemeChange, ui_reg_masternode_dlg.Ui_Reg
                         self.summary_info.append(f'Platform Node key (raw)\t{priv_hex}')
                 else:
                     if self.platform_node_id:
-                        self.summary_info.append(f'Platform Node Id\t{self.platform_node_id}')
+                        self.summary_info.append(f'Platform Node ID\t{self.platform_node_id}')
 
             text = '<table>'
             for l in self.summary_info:

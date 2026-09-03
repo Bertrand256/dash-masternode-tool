@@ -409,7 +409,7 @@ class Ui_WdgAppMainView(object):
         self.cboNetMnsFilterType.setItemText(1, _translate("WdgAppMainView", "Regular (1k)"))
         self.cboNetMnsFilterType.setItemText(2, _translate("WdgAppMainView", "Evo (4k)"))
         self.label_8.setText(_translate("WdgAppMainView", "Protx hash:"))
-        self.label_9.setText(_translate("WdgAppMainView", "Platform Node Id:"))
+        self.label_9.setText(_translate("WdgAppMainView", "Platform Node ID:"))
         self.label_6.setText(_translate("WdgAppMainView", "Owner address:"))
         self.label_7.setText(_translate("WdgAppMainView", "Voting address:"))
         self.label_12.setText(_translate("WdgAppMainView", "Operator pubkey:"))

@@ -133,7 +133,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
         self.act_view_as_platform_node_private_key_tenderdash.setData('privkey_tenderdash')
         self.act_view_as_platform_node_private_key_tenderdash.triggered.connect(
             self.on_platform_node_view_key_type_changed)
-        self.act_view_as_platform_node_id = QAction('View as Platform Node Id', self)
+        self.act_view_as_platform_node_id = QAction('View as Platform Node ID', self)
         self.act_view_as_platform_node_id.setData('platform_node_id')
         self.act_view_as_platform_node_id.triggered.connect(self.on_platform_node_view_key_type_changed)
         self.act_view_as_platform_node_private_key_pkcs8_base64 = QAction('View as PKCS8/base64 private key', self)
@@ -429,7 +429,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                                   'privkey_pkcs8_der', 'privkey_raw'):
                 lbl = key_desc_prefix + ' key'
             elif cur_key_type == 'platform_node_id':
-                lbl = key_desc_prefix + ' id'
+                lbl = key_desc_prefix + ' ID'
             else:
                 lbl = key_desc_prefix
 
@@ -514,7 +514,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                     style = 'hl2'
             else:
                 key_type, tooltip_anchor, placeholder_text = ('platform_node_id', 'privkey',
-                                                              'Enter the Platform Node id')
+                                                              'Enter the Platform Node ID')
                 if not self.edit_mode:
                     style = 'hl1' if self.act_view_as_platform_node_id.isChecked() else 'hl2'
 
@@ -523,7 +523,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                 if self.masternode.platform_node_key_type == InputKeyType.PRIVATE:
                     err_msg = 'Invalid Platform Node key format (sould be Ed25519)'
                 else:
-                    err_msg = 'Invalid Plarform Node Id format'
+                    err_msg = 'Invalid Plarform Node ID format'
             set_label_text(self.lblPlatformNodeKey, self.lblPlatformNodeMsg, 'Platform Node', key_type,
                            tooltip_anchor, self.ag_platform_node_key, style, err_msg)
             self.edtPlatformNodeKey.setPlaceholderText(placeholder_text)
@@ -881,7 +881,7 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
     @pyqtSlot(str)
     def on_lblPlatformNodeKey_linkHovered(self, link):
         if link == 'platform node id':
-            tt = 'Change input type to Platform Node id'
+            tt = 'Change input type to Platform Node ID'
         else:
             tt = 'Change input type to private key'
         self.lblPlatformNodeKey.setToolTip(tt)
