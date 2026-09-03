@@ -1111,29 +1111,47 @@ class WdgMasternodeDetails(QWidget, ui_masternode_details_wdg.Ui_WdgMasternodeDe
                         mn_cfg.collateral_tx_index = str(mn_info.collateral_index)
                         modified = True
 
-                    if mn_cfg.dmn_user_roles & DMN_ROLE_OWNER > 0 and \
-                            ((not mn_cfg.owner_private_key and mn_cfg.owner_key_type == InputKeyType.PRIVATE) or
-                             (not mn_cfg.owner_address and mn_cfg.owner_key_type == InputKeyType.PUBLIC)):
+                    if (mn_cfg.dmn_user_roles & DMN_ROLE_OWNER > 0 and
+                            mn_cfg.get_owner_public_address(self.app_config.dash_network) != mn_info.owner_address):
+                        updated_fields.append('owner key address')
                         mn_cfg.owner_key_type = InputKeyType.PUBLIC
                         mn_cfg.owner_address = mn_info.owner_address
                         modified = True
                         keys_modified.append('owner')
 
-                    if mn_cfg.dmn_user_roles & DMN_ROLE_OPERATOR > 0 and \
-                            ((not mn_cfg.operator_private_key and mn_cfg.operator_key_type == InputKeyType.PRIVATE) or
-                             (not mn_cfg.operator_public_key and mn_cfg.operator_key_type == InputKeyType.PUBLIC)):
+                    if (mn_cfg.dmn_user_roles & DMN_ROLE_OPERATOR > 0 and
+                            mn_cfg.get_operator_pubkey() != mn_info.pubkey_operator):
+                        updated_fields.append('operator pubkey')
                         mn_cfg.operator_key_type = InputKeyType.PUBLIC
                         mn_cfg.operator_public_key = mn_info.pubkey_operator
                         modified = True
                         keys_modified.append('operator')
 
-                    if mn_cfg.dmn_user_roles & DMN_ROLE_VOTING > 0 and \
-                            ((not mn_cfg.voting_private_key and mn_cfg.voting_key_type == InputKeyType.PRIVATE) or
-                             (not mn_cfg.voting_address and mn_cfg.voting_key_type == InputKeyType.PUBLIC)):
+                    if (mn_cfg.dmn_user_roles & DMN_ROLE_VOTING > 0 and
+                            mn_cfg.get_voting_public_address(self.app_config.dash_network) != mn_info.voting_address):
+                        updated_fields.append('voting key address')
                         mn_cfg.voting_key_type = InputKeyType.PUBLIC
                         mn_cfg.voting_address = mn_info.voting_address
                         modified = True
                         keys_modified.append('voting')
+
+                    if mn_cfg.masternode_type == MasternodeType.EVO and mn_cfg.dmn_user_roles & DMN_ROLE_OPERATOR > 0:
+                        if mn_cfg.get_platform_node_id() != mn_info.platform_node_id:
+                            updated_fields.append('platform node id')
+                            mn_cfg.platform_node_key_type = InputKeyType.PUBLIC
+                            mn_cfg.platform_node_id = mn_info.platform_node_id
+                            modified = True
+                            keys_modified.append('platform node')
+
+                        if mn_cfg.platform_http_port != mn_info.platform_http_port:
+                            updated_fields.append('platform http port')
+                            mn_cfg.platform_http_port = mn_info.platform_http_port
+                            modified = True
+
+                        if mn_cfg.platform_p2p_port != mn_info.platform_p2p_port:
+                            updated_fields.append('platform p2p port')
+                            mn_cfg.platform_p2p_port = mn_info.platform_p2p_port
+                            modified = True
 
                     if modified:
                         self.masternode_data_to_ui()
