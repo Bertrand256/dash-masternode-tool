@@ -13,7 +13,7 @@ simplejson==4.1.2
 cryptography==50.0.1
 bip32utils~=0.3.post4
 more-itertools==11.1.0
-setuptools==75.8.0
+setuptools==83.0.0
 btchip-python @git+https://github.com/Bertrand256/btchip-python
 ledgerwallet==0.6.0
 blspy==2.0.3
