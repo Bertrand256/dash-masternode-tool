@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to build (e.g. 0.9.40)'
+        description: 'Version to build (e.g. 0.9.42)'
         required: true
-        default: '0.9.40'
+        default: '0.9.42'
       build_windows:
         description: 'Build for Windows'
         type: boolean
@@ -26,7 +26,7 @@ on:
       pre_release:
         description: 'Set as Pre-release'
         type: boolean
-        default: false
+        default: true
 
 jobs:
   build:
