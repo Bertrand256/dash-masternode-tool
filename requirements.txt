@@ -6,19 +6,19 @@ libusb1~=3.2.0
 PyQt5==5.15.11
 PyQtChart==5.15.7
 pyinstaller==6.18.0
-paramiko==3.5.0
-requests==2.32.3
+paramiko==3.5.1
+requests==2.34.2
 mnemonic~=0.21
-simplejson==3.19.3
-cryptography==44.0.0
+simplejson==4.1.2
+cryptography==50.0.1
 bip32utils~=0.3.post4
-more-itertools==10.6.0
+more-itertools==11.1.0
 setuptools==75.8.0
 btchip-python @git+https://github.com/Bertrand256/btchip-python
 ledgerwallet==0.6.0
 blspy==2.0.3
 construct==2.10.70
-protobuf==5.29.3
+protobuf==5.29.6
 QDarkStyle==3.2.3
 nuitka
 imageio

@@ -1,10 +1,28 @@
+## [0.9.42] - 2026-09-05
+**New**
+- Added all remaining masternode configuration fields to the list of available columns on the "Masternode (config)" tab.
+- Added support for retrieving EVO node-specific fields via "Fetch MN data".
+- Updated the payment queue position calculation to reflect the current EVO node reward distribution mechanism.
+- Added columns with next payment information to the "Masternodes (network)" tab.
+
+**Changed**
+- Updated compatibility with the latest KeepKey firmware.
+- Improved application startup performance on macOS (thanks to UdjinM6).
+
+**Fixed**
+- Fixed the "Open log file" and "Open Application Data Folder" actions.
+- Fixed the "QThread: Destroyed while thread is still running" error on exit (thanks to UdjinM6).
+- Improved application cache robustness under concurrent access from multiple threads.
+- Fixed executable stack issues in the Linux build.
+
+
 ## [0.9.41] - 2026-04-08
-### New
+**New**
 - Added the option to hide “dust” UTXOs in the wallet window.
 - Added binaries for macOS (Apple Silicon) and Linux (AppImage).
 - Added automated builds via GitHub Actions.
 
-### Fixed
+**Fixed**
 - Fixed the “XXXX function is not supported by the RPC node you are connected to” error when using a custom RPC node.
 - Fixed the “DMTENCRYPTEDV1” error that could occur during `protx` calls when a connection issue happened (e.g., a timeout).
 - Optimized address balance fetching by batching requests, reducing redundant API calls.
