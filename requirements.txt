@@ -6,7 +6,7 @@ libusb1~=3.2.0
 PyQt5==5.15.11
 PyQtChart==5.15.7
 pyinstaller==6.18.0
-paramiko==3.5.1
+paramiko==5.0.0
 requests==2.34.2
 mnemonic~=0.21
 simplejson==4.1.2
